@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 
 const inputStyle = {
   width: '100%',
@@ -23,6 +24,7 @@ const labelStyle = {
 };
 
 const Register = () => {
+  const router = useRouter();
   const [form, setForm] = useState({
     fullName: '',
     email: '',
@@ -43,7 +45,8 @@ const Register = () => {
     if (!form.email.trim()) return 'Email is required.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return 'Invalid email address.';
     if (!form.phone.trim()) return 'Phone number is required.';
-    if (!/^[0-9+\-\s()]{7,20}$/.test(form.phone)) return 'Invalid phone number.';
+    const phoneDigits = form.phone.replace(/[\s+\-()]/g, '');
+    if (!/^\d{7,15}$/.test(phoneDigits)) return 'Invalid phone number.';
     if (!form.password) return 'Password is required.';
     if (form.password.length < 6) return 'Password must be at least 6 characters.';
     return null;
@@ -87,7 +90,7 @@ const Register = () => {
 
       // Redirect to login after 4 seconds
       setTimeout(() => {
-        window.location.href = '/login';
+        router.push('/login');
       }, 4000);
     } catch {
       setError('Registration failed. Please try again.');

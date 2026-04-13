@@ -14,7 +14,8 @@ function isValidEmail(email) {
 }
 
 function isValidPhone(phone) {
-  return /^[0-9+\-\s()]{7,20}$/.test(phone);
+  const digits = phone.replace(/[\s+\-()]/g, '');
+  return /^\d{7,15}$/.test(digits);
 }
 
 export default async function handler(req, res) {
@@ -93,8 +94,10 @@ export default async function handler(req, res) {
   }
 
   if (!customerId) {
-    // Fallback: use timestamp-based ID
-    customerId = `BBC-${Date.now().toString().slice(-5)}`;
+    // Fallback: derive from auth user UUID to guarantee per-user uniqueness
+    const hex = authData.user.id.replace(/-/g, '');
+    const num = parseInt(hex.slice(0, 8), 16) % 90000 + 10000;
+    customerId = `BBC-${num}`;
   }
 
   // --- Insert profile into users table ---
