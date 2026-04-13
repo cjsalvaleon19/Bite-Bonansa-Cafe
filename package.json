@@ -1,1 +1,27 @@
-{\n  "name": "bite-bonansa-cafe",\n  "version": "1.0.0",\n  "description": "Node.js backend for Bite Bonansa Cafe project",\n  "main": "index.js",\n  "scripts": {\n    "start": "node index.js",\n    "dev": "nodemon index.js"\n  },\n  "dependencies": {\n    "express": "^4.17.1",\n    "mongoose": "^5.10.9",\n    "jsonwebtoken": "^8.5.1",\n    "dotenv": "^8.2.0"\n  },\n  "devDependencies": {\n    "nodemon": "^2.0.4"\n  },\n  "author": "cjsalvaleon19",\n  "license": "ISC"\n}
+{
+  "name": "bite-bonansa-cafe",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.0.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "@supabase/supabase-js": "2.38.0",
+    "recharts": "2.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.0.0",
+    "@types/react": "18.2.0",
+    "autoprefixer": "10.4.0",
+    "postcss": "8.4.0",
+    "tailwindcss": "3.3.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
