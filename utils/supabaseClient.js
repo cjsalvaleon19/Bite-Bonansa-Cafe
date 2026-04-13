@@ -19,7 +19,7 @@ function getSupabase() {
 export const supabase = new Proxy({}, {
   get(_, prop) {
     const client = getSupabase()
-    if (!client) return () => Promise.resolve({ data: null, error: new Error('Supabase not configured') })
+    if (!client) return () => Promise.resolve({ data: null, error: new Error('Supabase credentials not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.') })
     const value = client[prop]
     return typeof value === 'function' ? value.bind(client) : value
   }

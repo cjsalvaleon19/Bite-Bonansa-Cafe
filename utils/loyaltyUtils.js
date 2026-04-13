@@ -10,11 +10,18 @@ export function calcPointsEarned(total) {
 }
 
 /**
- * Generate a unique BBC-XXXXX style customer ID.
+ * Generate a unique BBC-XXXXX style customer ID using a cryptographically
+ * secure random source when available.
  */
 export function generateCustomerId() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = 'BBC-';
-  for (let i = 0; i < 5; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const buf = new Uint8Array(5);
+    crypto.getRandomValues(buf);
+    for (let i = 0; i < 5; i++) result += chars[buf[i] % chars.length];
+  } else {
+    for (let i = 0; i < 5; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
   return result;
 }

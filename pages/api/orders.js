@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     // Financial transaction: sale
     await supabase.from('financial_transactions').insert({
       type: 'sale',
-      amount: total_amount || subtotal || 0,
+      amount: total_amount ?? subtotal ?? 0,
       date: new Date().toISOString().split('T')[0],
       order_id: order.id,
       category: 'revenue',
