@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 const bg = '#0a0a0a', card = '#1a1a1a', accent = '#ffc107', text = '#fff', muted = '#999';
+
+const escHtml = (str) => String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const inputStyle = { width: '100%', background: '#111', border: '1px solid #333', color: '#fff', padding: '10px 14px', borderRadius: '6px', fontFamily: "'Poppins', sans-serif", fontSize: '14px', boxSizing: 'border-box' };
 const btnStyle = (bg2='#ffc107', color='#000') => ({ background: bg2, color, border: 'none', borderRadius: '6px', padding: '10px 18px', cursor: 'pointer', fontFamily: "'Poppins', sans-serif", fontWeight: '600', fontSize: '14px' });
 
@@ -104,7 +106,7 @@ export default function CashierPOS() {
   const change = Math.max(0, (Number(cashAmount) + Number(gcashAmount)) - amountDue);
 
   const placeOrder = async () => {
-    if (cart.length === 0) { setMsg('❌ Cart is empty'); return; }
+    if (cart.length === 0) { setMsg('❌ Cart is empty'); setTimeout(() => setMsg(''), 3000); return; }
     setLoading(true);
     const items = cart.map(c => ({
       menu_item_id: c.id, name: c.name, department_id: c.department_id,
@@ -156,18 +158,18 @@ export default function CashierPOS() {
       <div class="center bold">BITE BONANSA CAFE</div>
       <div class="center">Laconon-Salacafe Rd, Tboli, SC</div>
       <hr/>
-      <div>Receipt: ${receipt?.receipt_number || ''}</div>
+      <div>Receipt: ${escHtml(receipt?.receipt_number)}</div>
       <div>Date: ${new Date().toLocaleString('en-PH')}</div>
-      <div>Order Type: ${order?.order_type?.replace('_',' ').toUpperCase()}</div>
+      <div>Order Type: ${escHtml(order?.order_type?.replace('_',' ').toUpperCase())}</div>
       <hr/>
-      <div>Customer: ${receiptDetails.customer_name || order?.customer_name || 'Walk-in'}</div>
-      ${customerId ? `<div>ID: ${customerId}</div>` : ''}
-      ${receiptDetails.address ? `<div>Address: ${receiptDetails.address}</div>` : ''}
-      ${receiptDetails.tin ? `<div>TIN: ${receiptDetails.tin}</div>` : ''}
-      ${receiptDetails.business_style ? `<div>Business: ${receiptDetails.business_style}</div>` : ''}
+      <div>Customer: ${escHtml(receiptDetails.customer_name || order?.customer_name || 'Walk-in')}</div>
+      ${customerId ? `<div>ID: ${escHtml(customerId)}</div>` : ''}
+      ${receiptDetails.address ? `<div>Address: ${escHtml(receiptDetails.address)}</div>` : ''}
+      ${receiptDetails.tin ? `<div>TIN: ${escHtml(receiptDetails.tin)}</div>` : ''}
+      ${receiptDetails.business_style ? `<div>Business: ${escHtml(receiptDetails.business_style)}</div>` : ''}
       <hr/>
       <div class="bold">ITEMS</div>
-      ${cart.map(item => `<div class="row"><span>${item.quantity}x ${item.name}</span><span>₱${(item.selling_price * item.quantity).toFixed(2)}</span></div>${item.special_instructions ? `<div style="color:#666;font-size:11px">  Note: ${item.special_instructions}</div>` : ''}`).join('')}
+      ${cart.map(item => `<div class="row"><span>${item.quantity}x ${escHtml(item.name)}</span><span>₱${(item.selling_price * item.quantity).toFixed(2)}</span></div>${item.special_instructions ? `<div style="color:#666;font-size:11px">  Note: ${escHtml(item.special_instructions)}</div>` : ''}`).join('')}
       <hr/>
       <div class="row"><span>SUBTOTAL:</span><span>₱${subtotal.toFixed(2)}</span></div>
       <div class="row bold"><span>TOTAL:</span><span>₱${total.toFixed(2)}</span></div>
@@ -177,8 +179,8 @@ export default function CashierPOS() {
       ${change > 0 ? `<div class="row"><span>Change:</span><span>₱${change.toFixed(2)}</span></div>` : ''}
       ${customer ? `<div class="row"><span>Points Balance:</span><span>${(Number(customer.points_balance) - pointsValue + (total > 0 ? Math.floor(total * (total >= 500 ? 0.005 : 0.002)) : 0)).toFixed(2)} pts</span></div>` : ''}
       <hr/>
-      <div class="center">We hoped we satisfied your cravings!</div>
-      ${receipt ? `<div class="center" style="margin-top:10px">Scan QR for reviews:</div><div class="center">${receipt.qr_code_data || ''}</div>` : ''}
+      <div class="center">We hope we satisfied your cravings!</div>
+      ${receipt ? `<div class="center" style="margin-top:10px">Scan QR for reviews:</div><div class="center">${escHtml(receipt.qr_code_data)}</div>` : ''}
       </body></html>
     `);
     w.document.close();
@@ -197,20 +199,20 @@ export default function CashierPOS() {
     Object.entries(byDept).forEach(([deptName, deptItems]) => {
       const w = window.open('', '_blank', 'width=300,height=400');
       w.document.write(`
-        <html><head><title>Kitchen - ${deptName}</title><style>
+        <html><head><title>Kitchen - ${escHtml(deptName)}</title><style>
           body { font-family: monospace; font-size: 13px; margin: 10px; width: 280px; }
           hr { border-top: 1px dashed #000; }
           .center { text-align: center; }
           .big { font-size: 16px; font-weight: bold; }
         </style></head><body>
-        <div class="center big">KITCHEN: ${deptName.toUpperCase()}</div>
+        <div class="center big">KITCHEN: ${escHtml(deptName.toUpperCase())}</div>
         <div class="center">${new Date().toLocaleTimeString('en-PH')}</div>
-        <div>Order: ${order?.order_number || 'NEW'}</div>
-        <div>Type: ${order?.order_type?.replace('_',' ').toUpperCase() || ''}</div>
+        <div>Order: ${escHtml(order?.order_number || 'NEW')}</div>
+        <div>Type: ${escHtml(order?.order_type?.replace('_',' ').toUpperCase() || '')}</div>
         <hr/>
         ${deptItems.map(item => `
-          <div class="big">${item.quantity}x ${item.name}</div>
-          ${item.special_instructions ? `<div>** ${item.special_instructions} **</div>` : ''}
+          <div class="big">${item.quantity}x ${escHtml(item.name)}</div>
+          ${item.special_instructions ? `<div>** ${escHtml(item.special_instructions)} **</div>` : ''}
           <hr/>
         `).join('')}
         </body></html>
