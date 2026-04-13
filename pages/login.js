@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import Link from 'next/link';
+import React, { useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
 
 const Login = () => {
