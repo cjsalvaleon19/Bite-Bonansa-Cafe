@@ -40,10 +40,19 @@ const Register = () => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const isValidEmail = (email) => {
+    const parts = email.split('@');
+    if (parts.length !== 2) return false;
+    const [local, domain] = parts;
+    if (!local || local.length === 0 || local.length > 64) return false;
+    const domainParts = domain.split('.');
+    return domainParts.length >= 2 && domainParts.every((p) => p.length > 0) && domain.length <= 255;
+  };
+
   const validate = () => {
     if (!form.fullName.trim()) return 'Full name is required.';
     if (!form.email.trim()) return 'Email is required.';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return 'Invalid email address.';
+    if (!isValidEmail(form.email)) return 'Invalid email address.';
     if (!form.phone.trim()) return 'Phone number is required.';
     const phoneDigits = form.phone.replace(/[\s+\-()]/g, '');
     if (!/^\d{7,15}$/.test(phoneDigits)) return 'Invalid phone number.';

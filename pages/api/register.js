@@ -10,7 +10,12 @@ function createAdminClient() {
 }
 
 function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const parts = email.split('@');
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+  if (!local || local.length === 0 || local.length > 64) return false;
+  const domainParts = domain.split('.');
+  return domainParts.length >= 2 && domainParts.every((p) => p.length > 0) && domain.length <= 255;
 }
 
 function isValidPhone(phone) {
