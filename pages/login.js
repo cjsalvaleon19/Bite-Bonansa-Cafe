@@ -14,6 +14,12 @@ const Login = () => {
     setError('');
 
     try {
+      if (!supabase) {
+        setError('Service unavailable. Please contact support.');
+        setLoading(false);
+        return;
+      }
+
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
