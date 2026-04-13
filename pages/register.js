@@ -1,13 +1,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../utils/supabaseClient';
-
-function generateCustomerId() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = 'BBC-';
-  for (let i = 0; i < 5; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
-  return result;
-}
+import { generateCustomerId } from '../utils/loyaltyUtils';
 
 const inputStyle = {
   width: '100%', padding: '12px', border: '2px solid #333', borderRadius: '6px',

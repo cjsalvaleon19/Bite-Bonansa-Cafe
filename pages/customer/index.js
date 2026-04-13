@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabaseClient';
+import { calcPointsEarned } from '../../utils/loyaltyUtils';
 
 const S = {
   page: { minHeight: '100vh', background: '#0a0a0a', fontFamily: "'Poppins', sans-serif", color: '#fff' },
@@ -27,12 +28,6 @@ const S = {
   }),
 };
 
-function calcPointsEarned(total) {
-  const t = parseFloat(total) || 0;
-  if (t >= 500) return parseFloat((t * 0.005).toFixed(2));
-  if (t > 0) return parseFloat((t * 0.002).toFixed(2));
-  return 0;
-}
 
 function NavBar({ customerName }) {
   const logout = async () => { await supabase.auth.signOut(); window.location.href = '/login'; };

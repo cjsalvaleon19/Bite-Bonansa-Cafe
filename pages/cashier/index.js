@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../utils/supabaseClient';
+import { calcPointsEarned } from '../../utils/loyaltyUtils';
 
 // ─── Shared Styles ───────────────────────────────────────────────────────────
 const S = {
@@ -38,13 +39,6 @@ const S = {
   success: { background: '#1a3a1a', color: '#4caf50', padding: '10px 14px', borderRadius: '6px', border: '1px solid #4caf50', fontSize: '13px' },
   error: { background: '#3a1a1a', color: '#f44336', padding: '10px 14px', borderRadius: '6px', border: '1px solid #f44336', fontSize: '13px' },
 };
-
-function calcPointsEarned(total) {
-  const t = parseFloat(total) || 0;
-  if (t >= 500) return parseFloat((t * 0.005).toFixed(2));
-  if (t > 0) return parseFloat((t * 0.002).toFixed(2));
-  return 0;
-}
 
 // ─── NavBar ───────────────────────────────────────────────────────────────────
 function NavBar({ user }) {
@@ -111,7 +105,7 @@ function POSTab() {
   };
 
   const subtotal = cart.reduce((s, c) => s + c.selling_price * c.quantity, 0);
-  const maxRedeemable = customer ? Math.min(customer.points_balance, subtotal) : 0;
+  const maxRedeemable = customer ? Math.min(parseFloat(customer.points_balance), subtotal) : 0;
   const effectiveRedemption = Math.min(parseFloat(pointsToRedeem) || 0, maxRedeemable);
   const totalAfterPoints = Math.max(0, subtotal - effectiveRedemption);
   const pointsEarned = calcPointsEarned(totalAfterPoints);

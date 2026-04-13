@@ -1,11 +1,5 @@
 import { supabase } from '../../lib/supabase';
-
-function calcPointsEarned(total) {
-  const t = parseFloat(total);
-  if (t >= 500) return parseFloat((t * 0.005).toFixed(2));
-  if (t > 0) return parseFloat((t * 0.002).toFixed(2));
-  return 0;
-}
+import { calcPointsEarned } from '../../utils/loyaltyUtils';
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {

@@ -44,8 +44,9 @@ function NavBar() {
   );
 }
 
+const MS_PER_DAY = 86400000;
 const today = new Date().toISOString().split('T')[0];
-const weekStart = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+const weekStart = new Date(Date.now() - 6 * MS_PER_DAY).toISOString().split('T')[0];
 const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
 function StatCard({ label, value, color = '#fff', icon }) {

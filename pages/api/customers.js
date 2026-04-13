@@ -1,11 +1,5 @@
 import { supabase } from '../../lib/supabase';
-
-function generateCustomerId() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = 'BBC-';
-  for (let i = 0; i < 5; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
-  return result;
-}
+import { generateCustomerId } from '../../utils/loyaltyUtils';
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {

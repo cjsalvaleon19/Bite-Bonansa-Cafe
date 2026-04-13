@@ -48,12 +48,17 @@ export default async function handler(req, res) {
       const newCost = parseFloat(cost_per_unit);
       const qty = parseFloat(existing.quantity_on_hand) || 0;
       const newQty = parseFloat(quantity_on_hand ?? existing.quantity_on_hand) || 0;
-      // Weighted average cost
-      const totalOldValue = qty * oldCost;
-      const addedQty = Math.max(0, newQty - qty);
-      const averageCost = (newQty > 0)
-        ? (totalOldValue + addedQty * newCost) / newQty
-        : newCost;
+      // Weighted average cost: only blend if adding new stock (newQty > qty).
+      // When quantity decreases (usage/adjustment), the cost structure is unchanged
+      // so the average cost equals the new cost_per_unit provided.
+      let averageCost;
+      if (newQty > qty) {
+        const totalOldValue = qty * oldCost;
+        const addedQty = newQty - qty;
+        averageCost = (totalOldValue + addedQty * newCost) / newQty;
+      } else {
+        averageCost = newCost;
+      }
 
       updateFields.cost_per_unit = newCost;
 
