@@ -1,13 +1,4 @@
-# Node.js standard ignores
-
-# Dependency directories
 node_modules/
-
-# Environment variables
-.env
-
-# macOS files
-.DS_Store
-
-# Log files
-*.log
+.next/
+.env.local
+.vercel/
