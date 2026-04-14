@@ -74,6 +74,7 @@ const Register = () => {
 
     setLoading(true);
     try {
+      console.log('Submitting registration form...');
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,9 +87,12 @@ const Register = () => {
         }),
       });
 
+      console.log('Response status:', res.status);
       const data = await res.json();
+      console.log('Response data:', data);
 
       if (!res.ok || !data.success) {
+        console.error('Registration failed:', data.error);
         setError(data.error || 'Registration failed. Please try again.');
         setLoading(false);
         return;
@@ -101,8 +105,9 @@ const Register = () => {
       setTimeout(() => {
         router.push('/login');
       }, 4000);
-    } catch {
-      setError('Registration failed. Please try again.');
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError(err.message || 'Registration failed. Please try again.');
       setLoading(false);
     }
   };
@@ -211,10 +216,12 @@ const Register = () => {
         ) : (
           <form onSubmit={handleSubmit} noValidate>
             <div style={{ marginBottom: '16px' }}>
-              <label style={labelStyle}>Full Name</label>
+              <label htmlFor="fullName" style={labelStyle}>Full Name</label>
               <input
+                id="fullName"
                 type="text"
                 name="fullName"
+                autoComplete="name"
                 value={form.fullName}
                 onChange={handleChange}
                 placeholder="e.g. Catherine Jean Salvaleon"
@@ -226,10 +233,12 @@ const Register = () => {
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <label style={labelStyle}>Email</label>
+              <label htmlFor="email" style={labelStyle}>Email</label>
               <input
+                id="email"
                 type="email"
                 name="email"
+                autoComplete="email"
                 value={form.email}
                 onChange={handleChange}
                 placeholder="your@email.com"
@@ -241,10 +250,12 @@ const Register = () => {
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <label style={labelStyle}>Phone Number</label>
+              <label htmlFor="phone" style={labelStyle}>Phone Number</label>
               <input
+                id="phone"
                 type="tel"
                 name="phone"
+                autoComplete="tel"
                 value={form.phone}
                 onChange={handleChange}
                 placeholder="e.g. 09514915138"
@@ -256,10 +267,12 @@ const Register = () => {
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <label style={labelStyle}>Password</label>
+              <label htmlFor="password" style={labelStyle}>Password</label>
               <input
+                id="password"
                 type="password"
                 name="password"
+                autoComplete="new-password"
                 value={form.password}
                 onChange={handleChange}
                 placeholder="Minimum 6 characters"
@@ -271,12 +284,14 @@ const Register = () => {
             </div>
 
             <div style={{ marginBottom: '24px' }}>
-              <label style={labelStyle}>
+              <label htmlFor="address" style={labelStyle}>
                 Address <span style={{ color: '#666', fontWeight: '400' }}>(optional)</span>
               </label>
               <input
+                id="address"
                 type="text"
                 name="address"
+                autoComplete="address-line1"
                 value={form.address}
                 onChange={handleChange}
                 placeholder="Your delivery address"

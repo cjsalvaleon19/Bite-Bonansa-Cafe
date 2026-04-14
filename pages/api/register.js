@@ -4,6 +4,14 @@ import { generateCustomerId } from '../../utils/loyaltyUtils';
 function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || typeof url !== 'string' || !url.startsWith('http')) {
+    console.error('[register] NEXT_PUBLIC_SUPABASE_URL is not set or invalid:', url);
+    return null;
+  }
+  if (!serviceRoleKey) {
+    console.error('[register] SUPABASE_SERVICE_ROLE_KEY is not set');
+    return null;
+  }
   return createClient(url, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -30,8 +38,11 @@ export default async function handler(req, res) {
 
   const { fullName, email, phone, password, address } = req.body;
 
+  console.log('[1] Starting registration for:', email.replace(/(.{2})[^@]*(@.*)/, '$1***$2'));
+
   // --- Validation ---
   if (!fullName || !email || !phone || !password) {
+    console.log('[2] Missing required fields');
     return res.status(400).json({ success: false, error: 'Full name, email, phone and password are required.' });
   }
 
@@ -47,9 +58,16 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, error: 'Password must be at least 6 characters.' });
   }
 
+  console.log('[3] Validation passed, initializing Supabase admin client...');
   const supabaseAdmin = createAdminClient();
 
+  if (!supabaseAdmin) {
+    console.error('[4] Supabase admin client could not be initialized. Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.');
+    return res.status(500).json({ success: false, error: 'Service unavailable. Please contact support.' });
+  }
+
   // --- Check for existing email in users table ---
+  console.log('[5] Checking for existing email...');
   const { data: existingUsers, error: lookupError } = await supabaseAdmin
     .from('users')
     .select('id')
@@ -57,15 +75,17 @@ export default async function handler(req, res) {
     .limit(1);
 
   if (lookupError && lookupError.code !== 'PGRST116') {
-    console.error('User lookup error:', lookupError);
+    console.error('[6] User lookup error:', lookupError.message, lookupError);
     return res.status(500).json({ success: false, error: 'Server error. Please try again.' });
   }
 
   if (existingUsers && existingUsers.length > 0) {
+    console.log('[7] Email already exists');
     return res.status(409).json({ success: false, error: 'An account with this email already exists.' });
   }
 
   // --- Create Supabase Auth user ---
+  console.log('[8] Creating auth user...');
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email: email.toLowerCase().trim(),
     password,
@@ -75,13 +95,17 @@ export default async function handler(req, res) {
 
   if (authError) {
     if (authError.message && authError.message.toLowerCase().includes('already registered')) {
+      console.log('[9] Auth user already exists');
       return res.status(409).json({ success: false, error: 'An account with this email already exists.' });
     }
-    console.error('Auth create error:', authError);
-    return res.status(500).json({ success: false, error: 'Registration failed. Please try again.' });
+    console.error('[9] Auth create error:', authError.message, authError);
+    return res.status(500).json({ success: false, error: authError.message || 'Registration failed. Please try again.' });
   }
 
+  console.log('[10] Auth user created:', authData.user.id);
+
   // --- Generate unique customer loyalty ID ---
+  console.log('[11] Generating customer loyalty ID...');
   let customerId;
   let attempts = 0;
   while (attempts < 10) {
@@ -105,7 +129,10 @@ export default async function handler(req, res) {
     customerId = `BBC-${num}`;
   }
 
+  console.log('[12] Customer ID assigned:', customerId);
+
   // --- Insert profile into users table ---
+  console.log('[13] Inserting user profile...');
   const { error: profileError } = await supabaseAdmin.from('users').insert({
     id: authData.user.id,
     email: email.toLowerCase().trim(),
@@ -121,10 +148,11 @@ export default async function handler(req, res) {
   if (profileError) {
     // Rollback: remove the created auth user
     await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-    console.error('Profile insert error:', profileError);
-    return res.status(500).json({ success: false, error: 'Registration failed. Please try again.' });
+    console.error('[14] Profile insert error:', profileError.message, profileError);
+    return res.status(500).json({ success: false, error: profileError.message || 'Registration failed. Please try again.' });
   }
 
+  console.log('[15] Registration complete for:', email.replace(/(.{2})[^@]*(@.*)/, '$1***$2'));
   return res.status(201).json({
     success: true,
     message: 'Account created successfully!',
