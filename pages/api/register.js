@@ -1,21 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { generateCustomerId } from '../../utils/loyaltyUtils';
-
-function createAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || typeof url !== 'string' || !url.startsWith('http')) {
-    console.error('[register] NEXT_PUBLIC_SUPABASE_URL is not set or invalid:', url);
-    return null;
-  }
-  if (!serviceRoleKey) {
-    console.error('[register] SUPABASE_SERVICE_ROLE_KEY is not set');
-    return null;
-  }
-  return createClient(url, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
+import { createAdminClient } from '../../lib/supabaseAdmin';
 
 function isValidEmail(email) {
   const parts = email.split('@');
