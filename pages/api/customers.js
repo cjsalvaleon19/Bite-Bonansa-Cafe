@@ -64,7 +64,8 @@ export default async function handler(req, res) {
     }
 
     if (email) {
-      console.log('[customers] Looking up by email:', email.replace(/(.{2})[^@]*(@.*)/, '$1***$2'));
+      const safeEmail = String(email).length > 2 ? email.replace(/(.{2})[^@]*(@.*)/, '$1***$2') : '***';
+      console.log('[customers] Looking up by email:', safeEmail);
 
       const { data, error } = await supabase
         .from('users')
@@ -118,9 +119,14 @@ export default async function handler(req, res) {
 
     if (!customerId) {
       // Fallback: derive from userId UUID to guarantee uniqueness
-      const hex = userId.replace(/-/g, '');
-      const num = parseInt(hex.slice(0, 8), 16) % 90000 + 10000;
-      customerId = `BBC-${num}`;
+      const uuidHex = /^[0-9a-f-]{32,36}$/i.test(userId) ? userId.replace(/-/g, '') : null;
+      if (uuidHex) {
+        const num = parseInt(uuidHex.slice(0, 8), 16) % 90000 + 10000;
+        customerId = `BBC-${num}`;
+      } else {
+        // Last resort: random 5-digit suffix
+        customerId = `BBC-${String(Math.floor(Math.random() * 90000) + 10000)}`;
+      }
     }
 
     console.log('[customers] Assigned customer ID:', customerId);
@@ -143,7 +149,7 @@ export default async function handler(req, res) {
 
     if (error) {
       console.error('[customers] Supabase insert error:', error.message, error);
-      return res.status(500).json({ error: error.message || 'Failed to create customer. Please try again.' });
+      return res.status(500).json({ error: 'Failed to create customer. Please try again.' });
     }
 
     console.log('[customers] Customer created:', customerId);
