@@ -6,9 +6,11 @@ function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || typeof url !== 'string' || !url.startsWith('http')) {
+    console.error('[customers] NEXT_PUBLIC_SUPABASE_URL is not set or invalid:', url);
     return null;
   }
   if (!serviceRoleKey) {
+    console.error('[customers] SUPABASE_SERVICE_ROLE_KEY is not set');
     return null;
   }
   return createClient(url, serviceRoleKey, {
@@ -33,6 +35,7 @@ export default async function handler(req, res) {
 
   const supabaseAdmin = createAdminClient();
   if (!supabaseAdmin) {
+    console.error('[customers] Supabase admin client could not be initialized. Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.');
     return res.status(500).json({ error: 'Service unavailable. Please contact support.' });
   }
 
