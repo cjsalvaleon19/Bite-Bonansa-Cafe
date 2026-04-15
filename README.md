@@ -32,7 +32,43 @@ Bite Bonansa Cafe is a comprehensive online ordering system designed to streamli
 - **Comprehensive Reports**: Generate detailed accounting reports for auditing and analysis.
 
 ## Getting Started
-To set up your local environment, follow the installation instructions provided in the documentation.
+
+### Prerequisites
+- Node.js 18+
+- A [Supabase](https://supabase.com) project
+
+### Local Development
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Configure environment variables
+cp .env.example .env.local
+# Edit .env.local and fill in your real Supabase credentials
+
+# 3. Run the development server
+npm run dev
+```
+
+### Required Environment Variables
+
+| Variable | Description | Where to find it |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | Supabase Dashboard → Project Settings → API → Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public anonymous key | Supabase Dashboard → Project Settings → API → anon / public |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Secret** server-side key | Supabase Dashboard → Project Settings → API → service_role |
+
+> ⚠️ Never commit `SUPABASE_SERVICE_ROLE_KEY` to source control. It should only be set in your local `.env.local` (which is git-ignored) and in Vercel's Environment Variables.
+
+### Vercel Deployment
+
+1. Import the repository into [Vercel](https://vercel.com).
+2. In the Vercel project, go to **Settings → Environment Variables** and add all three variables above.
+3. Redeploy to apply the changes.
+
+To verify your configuration, visit `https://<your-deployment>/api/health` after deploying.
+
 
 ## Contributing
 Contributions are welcome! Please open issues or submit pull requests for enhancements or bug fixes.

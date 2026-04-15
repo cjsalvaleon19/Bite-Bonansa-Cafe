@@ -6,9 +6,19 @@ function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || typeof url !== 'string' || !url.startsWith('http')) {
+    console.error(
+      '[customers] NEXT_PUBLIC_SUPABASE_URL is missing or not a valid URL.',
+      'Set it in Vercel: Project Settings → Environment Variables.',
+      'Current value:', url || '(not set)'
+    );
     return null;
   }
   if (!serviceRoleKey) {
+    console.error(
+      '[customers] SUPABASE_SERVICE_ROLE_KEY is not set.',
+      'Set it in Vercel: Project Settings → Environment Variables.',
+      'Find the key at: Supabase Dashboard → Project Settings → API → service_role.'
+    );
     return null;
   }
   return createClient(url, serviceRoleKey, {
@@ -33,7 +43,11 @@ export default async function handler(req, res) {
 
   const supabaseAdmin = createAdminClient();
   if (!supabaseAdmin) {
-    return res.status(500).json({ error: 'Service unavailable. Please contact support.' });
+    console.error('[customers] Admin client unavailable. Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. See /api/health for configuration status.');
+    return res.status(500).json({
+      error: 'Service unavailable. Please contact support.',
+      hint: 'Visit /api/health to check server configuration.',
+    });
   }
 
   const { data: customer, error } = await supabaseAdmin
