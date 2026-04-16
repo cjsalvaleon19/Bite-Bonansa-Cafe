@@ -1,7 +1,6 @@
-// pages/api/customers.js
-
 import { createClient } from '@supabase/supabase-js';
 
+// Secure creation of Supabase admin client
 function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -27,6 +26,7 @@ export default async function handler(req, res) {
 
   const { customerId } = req.query;
 
+  // Validate ID format
   if (!customerId || !/^BBC-\d{5}$/.test(customerId)) {
     return res.status(400).json({ error: 'Invalid Customer ID format. Use BBC-XXXXX.' });
   }
@@ -36,19 +36,29 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Service unavailable. Please contact support.' });
   }
 
-  const { data: customer, error } = await supabaseAdmin
+  // Try fetching the customer
+  const { data, error } = await supabaseAdmin
     .from('users')
     .select('full_name, customer_id, loyalty_balance, role, created_at')
     .eq('customer_id', customerId)
     .single();
 
   if (error) {
+    // PostgREST "not found" error
     if (error.code === 'PGRST116') {
       return res.status(404).json({ error: 'Customer not found.' });
     }
+    // Log for server diagnostics
     console.error('[customers] Lookup error:', error.message);
     return res.status(500).json({ error: 'Server error. Please try again.' });
   }
 
-  return res.status(200).json(customer);
+  // Respond with normalized payload
+  return res.status(200).json({
+    id: data.customer_id,
+    name: data.full_name,
+    role: data.role,
+    created_at: data.created_at,
+    loyaltyBalance: data.loyalty_balance ?? 0,
+  });
 }
