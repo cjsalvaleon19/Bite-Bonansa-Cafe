@@ -8,6 +8,7 @@ export default function CustomerDashboard() {
   const [user, setUser] = useState(null);
   const [customerData, setCustomerData] = useState(null);
   const [recentOrders, setRecentOrders] = useState([]);
+  const [totalOrdersCount, setTotalOrdersCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,6 +46,16 @@ export default function CustomerDashboard() {
           console.error('[CustomerDashboard] Failed to fetch user data:', userError.message);
         } else {
           setCustomerData(userData);
+        }
+
+        // Fetch total orders count
+        const { count, error: countError } = await supabase
+          .from('orders')
+          .select('*', { count: 'exact', head: true })
+          .eq('customer_id', session.user.id);
+
+        if (!countError && count !== null) {
+          setTotalOrdersCount(count);
         }
 
         // Fetch recent orders (if orders table exists)
@@ -115,7 +126,7 @@ export default function CustomerDashboard() {
             <div style={styles.statCard}>
               <div style={styles.statIcon}>🛒</div>
               <div style={styles.statLabel}>Total Orders</div>
-              <div style={styles.statValue}>{recentOrders.length}</div>
+              <div style={styles.statValue}>{totalOrdersCount}</div>
             </div>
 
             <div style={styles.statCard}>
