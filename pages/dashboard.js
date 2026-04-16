@@ -7,6 +7,7 @@ import { supabase } from '../utils/supabaseClient';
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [logoutOpen, setLogoutOpen] = useState(false);
 
@@ -33,6 +34,37 @@ export default function Dashboard() {
         }
 
         setUser(session.user);
+
+        // Fetch user role from database
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!mounted) return;
+
+        if (userError) {
+          console.error('[Dashboard] Failed to fetch user role:', userError.message);
+          setLoading(false);
+          return;
+        }
+
+        const role = userData?.role || 'customer';
+        setUserRole(role);
+
+        // Role-based redirect
+        if (role === 'customer') {
+          router.replace('/customer/menu').catch(console.error);
+          return;
+        } else if (role === 'cashier') {
+          router.replace('/cashier').catch(console.error);
+          return;
+        } else if (role === 'rider') {
+          router.replace('/rider/deliveries').catch(console.error);
+          return;
+        }
+        // Admin stays on dashboard
         setLoading(false);
       } catch (err) {
         console.error('[Dashboard] Session check failed:', err?.message ?? err);
@@ -48,12 +80,21 @@ export default function Dashboard() {
     // Subscribe to auth state changes and clean up on unmount to prevent
     // orphaned async listeners (which cause the "message channel closed" error).
     const { data: { subscription } } = supabase
-      ? supabase.auth.onAuthStateChange((_event, session) => {
+      ? supabase.auth.onAuthStateChange(async (_event, session) => {
           if (!mounted) return;
           if (!session) {
             router.replace('/login').catch(console.error);
           } else {
             setUser(session.user);
+            // Fetch role for auth state changes
+            const { data: userData } = await supabase
+              .from('users')
+              .select('role')
+              .eq('id', session.user.id)
+              .single();
+            if (userData?.role) {
+              setUserRole(userData.role);
+            }
           }
         })
       : { data: { subscription: null } };
@@ -134,12 +175,17 @@ export default function Dashboard() {
 
       <main style={styles.main}>
         <div style={styles.grid}>
-          <NavCard href="/cashier" icon="🧾" label="Cashier" />
-          <NavCard href="/admin/menu" icon="🍽️" label="Menu" />
-          <NavCard href="/admin/inventory" icon="📦" label="Inventory" />
-          <NavCard href="/admin/reports" icon="📊" label="Reports" />
-          <NavCard href="/admin/customers" icon="👥" label="Customers" />
-          <NavCard href="/admin/reviews" icon="⭐" label="Reviews" />
+          {/* Only show admin features - other roles are redirected */}
+          {userRole === 'admin' && (
+            <>
+              <NavCard href="/cashier" icon="🧾" label="Cashier" />
+              <NavCard href="/admin/menu" icon="🍽️" label="Menu" />
+              <NavCard href="/admin/inventory" icon="📦" label="Inventory" />
+              <NavCard href="/admin/reports" icon="📊" label="Reports" />
+              <NavCard href="/admin/customers" icon="👥" label="Customers" />
+              <NavCard href="/admin/reviews" icon="⭐" label="Reviews" />
+            </>
+          )}
         </div>
       </main>
       </div>
