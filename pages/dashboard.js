@@ -7,7 +7,6 @@ import { supabase } from '../utils/supabaseClient';
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [logoutOpen, setLogoutOpen] = useState(false);
 
@@ -34,22 +33,6 @@ export default function Dashboard() {
         }
 
         setUser(session.user);
-
-        // Fetch user role from the users table
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', session.user.id)
-          .single();
-
-        if (userError) {
-          console.error('[Dashboard] Failed to fetch user role:', userError.message);
-          // Default to customer if role fetch fails
-          setUserRole('customer');
-        } else {
-          setUserRole(userData?.role || 'customer');
-        }
-
         setLoading(false);
       } catch (err) {
         console.error('[Dashboard] Session check failed:', err?.message ?? err);
@@ -151,25 +134,12 @@ export default function Dashboard() {
 
       <main style={styles.main}>
         <div style={styles.grid}>
-          {/* Customer Portal - Only show Menu, Order Tracking, My Profile, Customer Dashboard */}
-          {userRole === 'customer' ? (
-            <>
-              <NavCard href="/customer/dashboard" icon="📱" label="Customer Dashboard" />
-              <NavCard href="/customer/menu" icon="🍽️" label="Menu" />
-              <NavCard href="/customer/orders" icon="📦" label="Order Tracking" />
-              <NavCard href="/customer/profile" icon="👤" label="My Profile" />
-            </>
-          ) : (
-            /* Admin/Staff Portal - Show all features */
-            <>
-              <NavCard href="/cashier" icon="🧾" label="Cashier" />
-              <NavCard href="/admin/menu" icon="🍽️" label="Menu" />
-              <NavCard href="/admin/inventory" icon="📦" label="Inventory" />
-              <NavCard href="/admin/reports" icon="📊" label="Reports" />
-              <NavCard href="/admin/customers" icon="👥" label="Customers" />
-              <NavCard href="/admin/reviews" icon="⭐" label="Reviews" />
-            </>
-          )}
+          <NavCard href="/cashier" icon="🧾" label="Cashier" />
+          <NavCard href="/admin/menu" icon="🍽️" label="Menu" />
+          <NavCard href="/admin/inventory" icon="📦" label="Inventory" />
+          <NavCard href="/admin/reports" icon="📊" label="Reports" />
+          <NavCard href="/admin/customers" icon="👥" label="Customers" />
+          <NavCard href="/admin/reviews" icon="⭐" label="Reviews" />
         </div>
       </main>
       </div>

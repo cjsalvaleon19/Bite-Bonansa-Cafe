@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { fullName, email, phone, password, address, shippingAddress, city, postalCode } = req.body;
+  const { fullName, email, phone, password, address } = req.body;
 
   // Input validation
   if (!email || !password) {
@@ -74,10 +74,6 @@ export default async function handler(req, res) {
       full_name: fullName || null,
       phone: phone || null,
       address: address || null,
-      shipping_address: shippingAddress || null,
-      city: city || null,
-      postal_code: postalCode || null,
-      payment_method: 'cash_on_delivery', // Default payment method
       customer_id: customerId,
       loyalty_balance: 0,
       role: 'customer',
