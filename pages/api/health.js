@@ -3,6 +3,9 @@
 // Visit /api/health to check server configuration without exposing secret values.
 
 export default function handler(req, res) {
+  // Prevent browsers and CDNs from caching health-check responses.
+  res.setHeader('Cache-Control', 'no-store');
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

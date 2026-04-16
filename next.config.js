@@ -33,8 +33,23 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // Apply security headers to all routes.
         source: '/:path*',
         headers: securityHeaders,
+      },
+      {
+        // Prevent browsers from caching HTML pages and API responses.
+        // This stops the browser from showing "Content unavailable. Resource was not
+        // cached" when a previously visited page can no longer be fetched from the network.
+        // Static assets under /_next/static/ are intentionally excluded here because
+        // Next.js already sets long-lived immutable cache headers for them.
+        source: '/((?!_next/static|_next/image).*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+        ],
       },
     ];
   },
