@@ -461,7 +461,7 @@ const styles = {
     borderRadius: '6px',
     fontSize: '14px',
     cursor: 'pointer',
-    fontFamily: "'Poppins', sans-serif',
+    fontFamily: "'Poppins', sans-serif",
   },
   saveBtn: {
     padding: '12px 24px',
