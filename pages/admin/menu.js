@@ -140,7 +140,7 @@ export default function MenuPage() {
         <h1 style={styles.logo}>🍽️ Menu Management</h1>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button style={styles.addBtn} onClick={openNew}>+ Add Item</button>
-          <button style={styles.backBtn} onClick={() => router.push('/dashboard')}>← Dashboard</button>
+          <button style={styles.backBtn} onClick={() => router.push('/dashboard').catch(console.error)}>← Dashboard</button>
         </div>
       </header>
 

@@ -104,7 +104,7 @@ export default function ReportsPage() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header style={styles.header}>
         <h1 style={styles.logo}>📊 Sales Reports</h1>
-        <button style={styles.backBtn} onClick={() => router.push('/dashboard')}>← Dashboard</button>
+        <button style={styles.backBtn} onClick={() => router.push('/dashboard').catch(console.error)}>← Dashboard</button>
       </header>
 
       <main style={styles.main}>
