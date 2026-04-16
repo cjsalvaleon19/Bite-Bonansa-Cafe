@@ -13,25 +13,33 @@ export default function Dashboard() {
     let mounted = true;
 
     async function checkSession() {
-      if (!supabase) {
+      try {
+        if (!supabase) {
+          if (mounted) {
+            setLoading(false);
+            router.replace('/login');
+          }
+          return;
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!mounted) return;
+
+        if (!session) {
+          router.replace('/login');
+          return;
+        }
+
+        setUser(session.user);
+        setLoading(false);
+      } catch (err) {
+        console.error('[Dashboard] Session check failed:', err?.message ?? err);
         if (mounted) {
           setLoading(false);
           router.replace('/login');
         }
-        return;
       }
-
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!mounted) return;
-
-      if (!session) {
-        router.replace('/login');
-        return;
-      }
-
-      setUser(session.user);
-      setLoading(false);
     }
 
     checkSession();
@@ -57,8 +65,15 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     setLogoutOpen(false);
-    if (supabase) {
-      await supabase.auth.signOut();
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (err) {
+      // Log the failure but still clear local state and redirect so the
+      // user is not left in a broken UI state. The server session may
+      // persist; the user will need to sign in again to get a fresh token.
+      console.warn('[Dashboard] Sign out failed:', err?.message ?? err);
     }
     localStorage.removeItem('token');
     router.replace('/login');
