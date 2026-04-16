@@ -68,6 +68,19 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+## Test Users
+
+The following test accounts are available for development and testing purposes:
+
+| Role | Email | Description |
+|---|---|---|
+| **Customer** | l3on.03191992@gmail.com | Access to customer portal: menu browsing, ordering, order tracking |
+| **Rider** | johndave0991@gmail.com | Access to delivery management and order pickup |
+| **Cashier** | arclitacj@gmail.com | Access to POS system and sales processing |
+| **Admin** | cjsalvaleon19@gmail.com | Full access to all features including reports and inventory |
+
+> **Note:** These accounts are for testing only. Contact the system administrator for passwords or to create additional test accounts.
+
 ### 4. Verify configuration
 
 After starting the server, visit [http://localhost:3000/api/health](http://localhost:3000/api/health) to confirm all environment variables are correctly configured:
