@@ -17,7 +17,7 @@ export default function Dashboard() {
         if (!supabase) {
           if (mounted) {
             setLoading(false);
-            router.replace('/login');
+            router.replace('/login').catch(console.error);
           }
           return;
         }
@@ -27,7 +27,7 @@ export default function Dashboard() {
         if (!mounted) return;
 
         if (!session) {
-          router.replace('/login');
+          router.replace('/login').catch(console.error);
           return;
         }
 
@@ -37,7 +37,7 @@ export default function Dashboard() {
         console.error('[Dashboard] Session check failed:', err?.message ?? err);
         if (mounted) {
           setLoading(false);
-          router.replace('/login');
+          router.replace('/login').catch(console.error);
         }
       }
     }
@@ -50,7 +50,7 @@ export default function Dashboard() {
       ? supabase.auth.onAuthStateChange((_event, session) => {
           if (!mounted) return;
           if (!session) {
-            router.replace('/login');
+            router.replace('/login').catch(console.error);
           } else {
             setUser(session.user);
           }
@@ -76,7 +76,7 @@ export default function Dashboard() {
       console.warn('[Dashboard] Sign out failed:', err?.message ?? err);
     }
     localStorage.removeItem('token');
-    router.replace('/login');
+    router.replace('/login').catch(console.error);
   };
 
   if (loading) {

@@ -104,40 +104,39 @@ self.addEventListener('fetch', (event) => {
   // visited pages work offline.  On failure, return the cached copy of the
   // specific page, then fall back to /offline, preventing the browser's
   // "Content unavailable. Resource was not cached" error.
+  //
+  // NOTE: The response is cloned before caching so the original body stream
+  // remains available for the browser. Using a single fetch chain (rather than
+  // a shared promise referenced by both event.waitUntil and event.respondWith)
+  // avoids the subtle race where both consumers try to read the same Response
+  // body, which would cause one of them to receive an already-consumed stream.
   if (request.mode === 'navigate') {
-    const networkFetch = fetch(request);
-
-    // Extend the service worker lifetime so the cache write fully completes
-    // even if the page load finishes quickly.  Caching is best-effort.
-    event.waitUntil(
-      networkFetch
+    event.respondWith(
+      fetch(request)
         .then((response) => {
           // Only cache successful responses; non-ok responses (4xx/5xx) are
           // intentionally skipped to avoid persisting error pages offline.
-          if (!response.ok) return;
-          return caches
-            .open(CACHE_NAME)
-            .then((cache) => cache.put(request, response.clone()));
+          if (response.ok) {
+            const clone = response.clone();
+            // Cache write is best-effort — do not let it delay the response.
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
         })
-        .catch(() => {}), // swallow errors — caching is best-effort
-    );
-
-    // Respond with the live network response, or fall back gracefully.
-    event.respondWith(
-      networkFetch.catch(() =>
-        caches.match(request).then(
-          (cached) =>
-            cached ||
-            caches.match('/offline').then(
-              (offlinePage) =>
-                offlinePage ||
-                new Response('You are offline. Please check your connection.', {
-                  status: 503,
-                  headers: { 'Content-Type': 'text/plain' },
-                }),
-            ),
+        .catch(() =>
+          caches.match(request).then(
+            (cached) =>
+              cached ||
+              caches.match('/offline').then(
+                (offlinePage) =>
+                  offlinePage ||
+                  new Response('You are offline. Please check your connection.', {
+                    status: 503,
+                    headers: { 'Content-Type': 'text/plain' },
+                  }),
+              ),
+          ),
         ),
-      ),
     );
     return;
   }
