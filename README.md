@@ -185,7 +185,7 @@ current codebase:
 - **Service Worker** (`public/service-worker.js`): Implements network-first for HTML
   navigation, cache-first for static assets, and stale-while-revalidate for everything
   else. Falls back to `/offline` to prevent the browser "Content unavailable. Resource
-  was not cached" error. Cache bumped to `bite-bonansa-v2`.
+  was not cached" error. Cache bumped to `bite-bonansa-v4`.
 - **Zustand v5**: `store/useCartStore.js` uses the v5 named export
   (`import { create } from 'zustand'`), replacing the deprecated default import.
 - **Dialog accessibility**: All Radix UI `<Dialog.Content>` elements include a
@@ -195,7 +195,80 @@ current codebase:
   `onAuthStateChange` subscription is cleaned up on component unmount via the returned
   `subscription.unsubscribe()` callback.
 
+## GitHub Projects — 10-Repository Connection Limit
+
+GitHub enforces a hard limit of **10 repository connections per Project** (and
+equivalently, a single repository cannot be linked to more than 10 Projects at
+the same time). If you see the error:
+
+> *A Git Repository cannot be connected to more than 10 Projects.*
+
+it means this repository is already linked to 10 GitHub Projects and no new
+connections can be added until at least one existing connection is removed.
+
+### Identify connected projects
+
+1. Go to the repository page on GitHub.
+2. Click the **Projects** tab (next to Issues and Pull Requests in the top nav).
+3. All projects this repository is currently linked to are listed there.
+
+Alternatively, use the GitHub CLI:
+```bash
+gh project list --owner cjsalvaleon19
+```
+
+### Remove a project connection
+
+**Via the GitHub UI (recommended):**
+
+1. Open the Project board you want to unlink
+   (e.g. `github.com/users/cjsalvaleon19/projects/<N>`).
+2. Click the **⚙ Settings** icon (top-right of the project board).
+3. Scroll to the **Repositories** (or *Linked repositories*) section.
+4. Find `cjsalvaleon19/Bite-Bonansa-Cafe` in the list and click **Remove** (🗑 icon).
+5. Confirm the removal — the project board itself is not deleted, only the
+   repository link is removed.
+
+**Via the GitHub CLI:**
+```bash
+# List linked repos for a project (replace <PROJECT_NUMBER> with the number
+# shown in the project URL, e.g. 1 for .../projects/1)
+gh api graphql -f query='
+  query($login: String!, $number: Int!) {
+    user(login: $login) {
+      projectV2(number: $number) { title repositories(first: 20) { nodes { nameWithOwner } } }
+    }
+  }
+' -f login=cjsalvaleon19 -F number=<PROJECT_NUMBER>
+
+# Remove this repository from a ProjectV2 (requires its node ID):
+# 1. Get the project node ID
+gh api graphql -f query='{ user(login:"cjsalvaleon19") { projectV2(number:<PROJECT_NUMBER>) { id } } }'
+# 2. Get this repo's node ID
+gh api repos/cjsalvaleon19/Bite-Bonansa-Cafe --jq '.node_id'
+# 3. Unlink
+gh api graphql -f query='
+  mutation($projectId: ID!, $repoId: ID!) {
+    unlinkProjectV2FromRepository(input: { projectId: $projectId, repositoryId: $repoId }) { repository { nameWithOwner } }
+  }
+' -f projectId=<PROJECT_NODE_ID> -f repoId=<REPO_NODE_ID>
+```
+
+### Options for working within the 10-project limit
+
+| Option | How |
+|---|---|
+| **Archive old projects** | Open the project → Settings → scroll to *Danger zone* → **Archive**. Archived projects are hidden but not deleted; you can restore them later. The repository slot is freed immediately. |
+| **Delete unused projects** | Open the project → Settings → *Danger zone* → **Delete**. This is permanent. |
+| **Unlink without deleting** | Follow the *Remove a project connection* steps above. The project board is kept intact; only the repository link is removed. |
+| **Request a limit increase** | GitHub does not currently offer self-serve limit increases. You can contact [GitHub Support](https://support.github.com/contact) and request an exception, but approval is not guaranteed. |
+| **Consolidate projects** | Merge related project boards into a single board using labels, custom fields, or milestones instead of separate boards. |
+
+> **Tip:** Use GitHub's **Views** feature inside a single project to create
+> multiple filtered/grouped perspectives without needing separate project boards.
+
 ## Contributing
+
 Contributions are welcome! Please open issues or submit pull requests for enhancements or bug fixes.
 
 ## License

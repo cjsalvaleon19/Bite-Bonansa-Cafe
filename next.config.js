@@ -5,21 +5,26 @@
 //
 // MIGRATION NOTE (14.x → 15.x, Pages Router):
 //   - Pages Router API is unchanged; no code updates were needed for this app.
-//   - 'unsafe-inline' is still required in the CSP script-src directive for
-//     Next.js Pages Router hydration scripts (same as before).
+//   - 'unsafe-inline' and 'unsafe-eval' are required in the CSP script-src
+//     directive for Next.js Pages Router hydration scripts and Vercel's
+//     deployment infrastructure (preview toolbar, analytics, speed insights).
 //   - If you migrate to the App Router in the future, replace 'unsafe-inline'
-//     with a nonce-based CSP using Next.js middleware.
+//     and 'unsafe-eval' with a nonce-based CSP using Next.js middleware.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const securityHeaders = [
   {
     key: 'Content-Security-Policy',
-    // Disallows eval(), new Function(), and string-based setTimeout/setInterval.
     // 'unsafe-inline' is required for Next.js inline hydration scripts (pages router).
-    // Remove 'unsafe-inline' and use nonces if you migrate to the App Router with middleware.
+    // 'unsafe-eval' is required for Vercel's deployment infrastructure (preview toolbar,
+    // speed insights, and analytics scripts that Vercel injects into all deployments).
+    // Some third-party libraries bundled at runtime (e.g. recharts/d3) may also
+    // invoke new Function() during data processing.
+    // Remove 'unsafe-inline' / 'unsafe-eval' and use nonces if you migrate to the
+    // App Router with Next.js middleware.
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob:",

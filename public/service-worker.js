@@ -15,12 +15,12 @@
  *    Returns a 503 on cache-miss + network failure instead of throwing, to prevent
  *    the browser error page.
  *
- * BREAKING CHANGE (v3): Cache version bumped to 'bite-bonansa-v3'.
+ * BREAKING CHANGE (v4): Cache version bumped to 'bite-bonansa-v4'.
  *  The activate handler purges all older caches ('bite-bonansa-v1', 'bite-bonansa-v2',
- *  etc.) automatically so stale or corrupt cache entries do not persist.
+ *  'bite-bonansa-v3', etc.) automatically so stale or corrupt cache entries do not persist.
  */
 
-const CACHE_NAME = 'bite-bonansa-v3';
+const CACHE_NAME = 'bite-bonansa-v4';
 
 // Key pages and assets to pre-cache on service worker install so they are
 // available offline even on first visit (including the dashboard).
