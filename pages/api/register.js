@@ -6,6 +6,10 @@ const supabaseAdmin = createClient(
 );
 
 export default async function handler(req, res) {
+  // Prevent browsers from caching API responses; stale cached responses
+  // can trigger "Content unavailable. Resource was not cached" errors.
+  res.setHeader('Cache-Control', 'no-store');
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
