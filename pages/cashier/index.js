@@ -2,12 +2,10 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
 import useCartStore from '../../store/useCartStore';
-import { getUserRole, ROLES, canAccessPage } from '../../utils/roleGuard';
 
 // ─── Cashier / POS Page ───────────────────────────────────────────────────────
 // Allows cashier staff to browse menu items, build an order in the cart, and
 // submit the order. Auth-guarded: redirects to /login if no active session.
-// Role-guarded: only cashiers and admins can access this page.
 
 export default function CashierPage() {
   const router = useRouter();
@@ -21,7 +19,7 @@ export default function CashierPage() {
   const { items, addItem, removeItem, updateQuantity, clearCart, getTotalPrice } =
     useCartStore();
 
-  // ── Auth & Role guard ──────────────────────────────────────────────────────────────
+  // ── Auth guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
     async function checkSession() {
@@ -33,21 +31,6 @@ export default function CashierPage() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!mounted) return;
         if (!session) { router.replace('/login'); return; }
-        
-        // Check user role
-        const roleData = await getUserRole();
-        if (!roleData || !canAccessPage(roleData.role, '/cashier')) {
-          // User doesn't have permission, redirect to their default page
-          if (roleData?.role === ROLES.CUSTOMER) {
-            router.replace('/customer/menu');
-          } else if (roleData?.role === ROLES.RIDER) {
-            router.replace('/rider/deliveries');
-          } else {
-            router.replace('/dashboard');
-          }
-          return;
-        }
-        
         setAuthLoading(false);
       } catch {
         if (mounted) { setAuthLoading(false); router.replace('/login'); }

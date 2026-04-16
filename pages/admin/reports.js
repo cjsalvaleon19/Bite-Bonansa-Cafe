@@ -10,12 +10,10 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../../utils/supabaseClient';
-import { getUserRole, ROLES, canAccessPage } from '../../utils/roleGuard';
 
 // ─── Admin: Reports Page ──────────────────────────────────────────────────────
 // Shows a sales summary and a bar chart of daily revenue for the last 30 days.
 // Auth-guarded: redirects to /login if no active session.
-// Role-guarded: only admins can access this page.
 
 export default function ReportsPage() {
   const router = useRouter();
@@ -24,7 +22,7 @@ export default function ReportsPage() {
   const [summary, setSummary] = useState({ totalOrders: 0, totalRevenue: 0, avgOrder: 0 });
   const [chartData, setChartData] = useState([]);
 
-  // ── Auth & Role guard ──────────────────────────────────────────────────────────────
+  // ── Auth guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
     async function checkSession() {
@@ -36,23 +34,6 @@ export default function ReportsPage() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!mounted) return;
         if (!session) { router.replace('/login'); return; }
-        
-        // Check user role
-        const roleData = await getUserRole();
-        if (!roleData || !canAccessPage(roleData.role, '/admin/reports')) {
-          // User doesn't have permission, redirect to their default page
-          if (roleData?.role === ROLES.CUSTOMER) {
-            router.replace('/customer/menu');
-          } else if (roleData?.role === ROLES.CASHIER) {
-            router.replace('/cashier');
-          } else if (roleData?.role === ROLES.RIDER) {
-            router.replace('/rider/deliveries');
-          } else {
-            router.replace('/dashboard');
-          }
-          return;
-        }
-        
         setAuthLoading(false);
       } catch {
         if (mounted) { setAuthLoading(false); router.replace('/login'); }

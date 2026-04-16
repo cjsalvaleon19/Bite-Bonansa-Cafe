@@ -3,12 +3,10 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import * as Dialog from '@radix-ui/react-dialog';
 import { supabase } from '../utils/supabaseClient';
-import { getUserRole, ROLES } from '../utils/roleGuard';
 
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [logoutOpen, setLogoutOpen] = useState(false);
 
@@ -35,31 +33,6 @@ export default function Dashboard() {
         }
 
         setUser(session.user);
-
-        // Fetch user role
-        const roleData = await getUserRole();
-        if (roleData && roleData.role) {
-          setUserRole(roleData.role);
-          
-          // Redirect customers to their menu page
-          if (roleData.role === ROLES.CUSTOMER) {
-            router.replace('/customer/menu').catch(console.error);
-            return;
-          }
-          
-          // Redirect cashiers to cashier page
-          if (roleData.role === ROLES.CASHIER) {
-            router.replace('/cashier').catch(console.error);
-            return;
-          }
-          
-          // Redirect riders to their delivery page
-          if (roleData.role === ROLES.RIDER) {
-            router.replace('/rider/deliveries').catch(console.error);
-            return;
-          }
-        }
-
         setLoading(false);
       } catch (err) {
         console.error('[Dashboard] Session check failed:', err?.message ?? err);
@@ -161,17 +134,12 @@ export default function Dashboard() {
 
       <main style={styles.main}>
         <div style={styles.grid}>
-          {/* Admin-only dashboard */}
-          {userRole === ROLES.ADMIN && (
-            <>
-              <NavCard href="/cashier" icon="🧾" label="Cashier" />
-              <NavCard href="/admin/menu" icon="🍽️" label="Menu" />
-              <NavCard href="/admin/inventory" icon="📦" label="Inventory" />
-              <NavCard href="/admin/reports" icon="📊" label="Reports" />
-              <NavCard href="/admin/customers" icon="👥" label="Customers" />
-              <NavCard href="/admin/reviews" icon="⭐" label="Reviews" />
-            </>
-          )}
+          <NavCard href="/cashier" icon="🧾" label="Cashier" />
+          <NavCard href="/admin/menu" icon="🍽️" label="Menu" />
+          <NavCard href="/admin/inventory" icon="📦" label="Inventory" />
+          <NavCard href="/admin/reports" icon="📊" label="Reports" />
+          <NavCard href="/admin/customers" icon="👥" label="Customers" />
+          <NavCard href="/admin/reviews" icon="⭐" label="Reviews" />
         </div>
       </main>
       </div>
