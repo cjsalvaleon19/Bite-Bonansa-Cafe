@@ -6,6 +6,8 @@ export default class MyDocument extends Document {
       <Html lang="en">
         <Head>
           <meta name="viewport" content="width=device-width, initial-scale=1" />
+          {/* Theme colour — used by mobile browsers for the browser chrome. */}
+          <meta name="theme-color" content="#0a0a0a" />
           {/* Favicon — served from /public so browsers don't 404 on resource requests */}
           <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
