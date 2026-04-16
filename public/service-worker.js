@@ -159,7 +159,8 @@ self.addEventListener('fetch', (event) => {
             // Cache write is best-effort — do not let it delay the response.
             caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
             console.log('[SW] Navigation response cached:', url.pathname);
-          } else {
+          } else if (response.status !== 0) {
+            // Only log non-ok responses that have actual status codes (not network failures)
             console.warn('[SW] Navigation response not cached (non-ok):', url.pathname, response.status);
           }
           return response;
