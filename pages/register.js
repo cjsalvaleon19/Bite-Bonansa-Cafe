@@ -31,6 +31,9 @@ const Register = () => {
     phone: '',
     password: '',
     address: '',
+    shippingAddress: '',
+    city: '',
+    postalCode: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -84,6 +87,9 @@ const Register = () => {
           phone: form.phone.trim(),
           password: form.password,
           address: form.address.trim() || undefined,
+          shippingAddress: form.shippingAddress.trim() || undefined,
+          city: form.city.trim() || undefined,
+          postalCode: form.postalCode.trim() || undefined,
         }),
       });
 
@@ -283,9 +289,9 @@ const Register = () => {
               />
             </div>
 
-            <div style={{ marginBottom: '24px' }}>
+            <div style={{ marginBottom: '16px' }}>
               <label htmlFor="address" style={labelStyle}>
-                Address <span style={{ color: '#666', fontWeight: '400' }}>(optional)</span>
+                Billing Address <span style={{ color: '#666', fontWeight: '400' }}>(optional)</span>
               </label>
               <input
                 id="address"
@@ -294,11 +300,67 @@ const Register = () => {
                 autoComplete="address-line1"
                 value={form.address}
                 onChange={handleChange}
-                placeholder="Your delivery address"
+                placeholder="Your billing address"
                 style={inputStyle}
                 onFocus={focusStyle}
                 onBlur={blurStyle}
               />
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label htmlFor="shippingAddress" style={labelStyle}>
+                Shipping Address <span style={{ color: '#666', fontWeight: '400' }}>(optional)</span>
+              </label>
+              <input
+                id="shippingAddress"
+                type="text"
+                name="shippingAddress"
+                autoComplete="shipping street-address"
+                value={form.shippingAddress}
+                onChange={handleChange}
+                placeholder="Delivery address for online orders"
+                style={inputStyle}
+                onFocus={focusStyle}
+                onBlur={blurStyle}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+              <div>
+                <label htmlFor="city" style={labelStyle}>
+                  City <span style={{ color: '#666', fontWeight: '400' }}>(optional)</span>
+                </label>
+                <input
+                  id="city"
+                  type="text"
+                  name="city"
+                  autoComplete="address-level2"
+                  value={form.city}
+                  onChange={handleChange}
+                  placeholder="City"
+                  style={inputStyle}
+                  onFocus={focusStyle}
+                  onBlur={blurStyle}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="postalCode" style={labelStyle}>
+                  Postal Code <span style={{ color: '#666', fontWeight: '400' }}>(optional)</span>
+                </label>
+                <input
+                  id="postalCode"
+                  type="text"
+                  name="postalCode"
+                  autoComplete="postal-code"
+                  value={form.postalCode}
+                  onChange={handleChange}
+                  placeholder="ZIP/Postal code"
+                  style={inputStyle}
+                  onFocus={focusStyle}
+                  onBlur={blurStyle}
+                />
+              </div>
             </div>
 
             <button
