@@ -39,9 +39,8 @@ export default async function handler(req, res) {
   // Try fetching the customer
   const { data, error } = await supabaseAdmin
     .from('users')
-    .select('full_name, customer_id, role, created_at, loyalty_balance')
+    .select('full_name, customer_id, loyalty_balance, role, created_at')
     .eq('customer_id', customerId)
-    .limit(1)
     .single();
 
   if (error) {
