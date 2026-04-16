@@ -86,6 +86,19 @@ If any variable is missing or invalid, the response will show `"status": "miscon
 3. Redeploy the project after adding the variables.
 4. Visit `https://<your-vercel-url>/api/health` to confirm the deployment is correctly configured.
 
+### Content Security Policy (CSP)
+
+The application uses a Content Security Policy configured in `next.config.js` to enhance security. The policy includes:
+
+- **Script sources**: `'self'`, `'unsafe-inline'`, `'unsafe-eval'`, and Vercel infrastructure domains (`vercel.live`, `*.vercel.app`)
+- **Style sources**: `'self'`, `'unsafe-inline'`, and Google Fonts
+- **Connect sources**: `'self'`, Supabase domains, and Vercel infrastructure
+
+If you encounter CSP violations in browser console (blocked scripts/styles), check:
+1. The blocked domain is allowed in the CSP configuration
+2. For Vercel deployments, ensure `vercel.live` and `*.vercel.app` are in `script-src` and `connect-src`
+3. External scripts/APIs require explicit CSP permission
+
 ### Troubleshooting registration (500 errors)
 
 If `/api/register` returns a 500 error with `"Service unavailable. Please contact support."`:
@@ -96,6 +109,27 @@ If `/api/register` returns a 500 error with `"Service unavailable. Please contac
    - `[register] SUPABASE_SERVICE_ROLE_KEY is not set` → The service role key env var is missing.
 3. Correct the missing variable in **Project Settings → Environment Variables** and **redeploy**.
 4. Check `/api/health` after redeploying to confirm all checks pass.
+
+### Troubleshooting login errors
+
+If you see **"Service unavailable. Please contact support."** on the login page:
+
+1. Check the browser console for this warning:
+   ```
+   Supabase URL is not configured. Auth features will not work.
+   ```
+2. This means your `.env.local` file (for local development) or Vercel environment variables (for deployed sites) have placeholder values instead of real Supabase credentials.
+
+**For local development:**
+1. Verify your `.env.local` file exists and has real values (not `your_supabase_url` or `your-project-id.supabase.co`)
+2. Get your real values from [Supabase Dashboard → Project Settings → API](https://app.supabase.com/project/_/settings/api)
+3. Restart the dev server after updating `.env.local`
+
+**For Vercel deployments:**
+1. Go to **Project Settings → Environment Variables**
+2. Update `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` with real values
+3. Redeploy the project
+4. Visit `/api/health` to verify configuration
 
 ## Environment Variables
 
