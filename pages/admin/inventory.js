@@ -2,12 +2,10 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import * as Dialog from '@radix-ui/react-dialog';
 import { supabase } from '../../utils/supabaseClient';
-import { getUserRole, ROLES, canAccessPage } from '../../utils/roleGuard';
 
 // ─── Admin: Inventory Management ─────────────────────────────────────────────
 // Displays inventory items and lets admins update stock status, cost, and
 // pricing details.  Auth-guarded: redirects to /login if no active session.
-// Role-guarded: only admins can access this page.
 
 const STOCK_OPTIONS = ['In Stock', 'Low Stock', 'Out of Stock'];
 const EMPTY_FORM = {
@@ -32,7 +30,7 @@ export default function InventoryPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  // ── Auth & Role guard ──────────────────────────────────────────────────────────────
+  // ── Auth guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
     async function checkSession() {
@@ -44,23 +42,6 @@ export default function InventoryPage() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!mounted) return;
         if (!session) { router.replace('/login'); return; }
-        
-        // Check user role
-        const roleData = await getUserRole();
-        if (!roleData || !canAccessPage(roleData.role, '/admin/inventory')) {
-          // User doesn't have permission, redirect to their default page
-          if (roleData?.role === ROLES.CUSTOMER) {
-            router.replace('/customer/menu');
-          } else if (roleData?.role === ROLES.CASHIER) {
-            router.replace('/cashier');
-          } else if (roleData?.role === ROLES.RIDER) {
-            router.replace('/rider/deliveries');
-          } else {
-            router.replace('/dashboard');
-          }
-          return;
-        }
-        
         setAuthLoading(false);
       } catch {
         if (mounted) { setAuthLoading(false); router.replace('/login'); }
