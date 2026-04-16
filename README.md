@@ -97,6 +97,37 @@ If `/api/register` returns a 500 error with `"Service unavailable. Please contac
 3. Correct the missing variable in **Project Settings → Environment Variables** and **redeploy**.
 4. Check `/api/health` after redeploying to confirm all checks pass.
 
+## Environment Variables
+
+This project requires the following environment variables to connect to Supabase. Copy `.env.example` to `.env.local` and fill in the values from your [Supabase project settings](https://app.supabase.com/project/_/settings/api).
+
+| Variable | Where to find it | Used by |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase Dashboard → Project Settings → API → Project URL | Frontend + API routes |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase Dashboard → Project Settings → API → anon / public key | Frontend pages |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Dashboard → Project Settings → API → service_role key | Server-side API routes only (`/api/register`, `/api/customers`) |
+
+> **Security note:** `SUPABASE_SERVICE_ROLE_KEY` bypasses Row Level Security. Never expose it to the browser — only use it in server-side API routes.
+
+### Deploying to Vercel
+
+1. Go to your project on the [Vercel Dashboard](https://vercel.com/dashboard).
+2. Navigate to **Settings → Environment Variables**.
+3. Add all three variables above with their exact names and correct values.
+4. Set the environment scope to **Production** (and **Preview** if needed).
+5. **Redeploy** the project — Vercel does not pick up new env vars until the next deployment.
+
+If `/api/register` or `/api/customers` returns HTTP 500 with the message *"Service unavailable. Please contact support."*, check the Vercel **Functions** logs for a line like:
+
+```
+[customers] NEXT_PUBLIC_SUPABASE_URL is not set or invalid
+[customers] SUPABASE_SERVICE_ROLE_KEY is not set
+[register] NEXT_PUBLIC_SUPABASE_URL is not set or invalid
+[register] SUPABASE_SERVICE_ROLE_KEY is not set
+```
+
+This confirms which variable is missing or misconfigured.
+
 ## Contributing
 Contributions are welcome! Please open issues or submit pull requests for enhancements or bug fixes.
 
