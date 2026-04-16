@@ -1,7 +1,14 @@
 // ─── Security Notes ──────────────────────────────────────────────────────────
-// Next.js version: 14.2.35 (patched release; see README "Dependency Upgrades").
-// Remaining npm audit advisories (RSC DoS, next/image disk-cache) do NOT apply
-// here because the app uses the Pages Router and does not use next/image.
+// Next.js version: 15.5.15 (patched release — 0 known vulnerabilities).
+// See README "Dependency Upgrades & Migration Notes" for the full upgrade path
+// (14.2.10 → 14.2.35 → 15.5.15) and migration considerations.
+//
+// MIGRATION NOTE (14.x → 15.x, Pages Router):
+//   - Pages Router API is unchanged; no code updates were needed for this app.
+//   - 'unsafe-inline' is still required in the CSP script-src directive for
+//     Next.js Pages Router hydration scripts (same as before).
+//   - If you migrate to the App Router in the future, replace 'unsafe-inline'
+//     with a nonce-based CSP using Next.js middleware.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const securityHeaders = [

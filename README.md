@@ -130,28 +130,41 @@ This confirms which variable is missing or misconfigured.
 
 ## Dependency Upgrades & Migration Notes
 
-### `next` 14.2.10 → 14.2.35 (security patch)
+### `next` 14.2.10 → 15.5.15 (security upgrade)
 
-**Reason:** Next.js 14.2.10 contained several CVEs including an authorization bypass
-(GHSA-7gfc-8cq8-jh5f), cache-key confusion for image optimization (GHSA-g5qg-72qw-gw5v),
-and potential SSRF via middleware redirect handling (GHSA-4342-x723-ch2f).
-Version 14.2.35 is the latest patched release in the 14.x line and fixes all of the
-above.
+**Upgrade path:** 14.2.10 → 14.2.35 → **15.5.15** (final)
 
-**Breaking changes:** None — 14.2.35 is a patch release within the same minor line.
+**Reason:** Next.js 14.2.10 contained several critical CVEs, and the Server Components
+DoS advisories (GHSA-q4gf-8mx6-v5v3, GHSA-h25m-26qc-wcjf) affect every Next.js version
+from 13.0.0 up to 15.5.15 — the only fully patched release.
 
-**Note on remaining advisories:** The `npm audit` report for 14.2.35 still lists a small
-set of advisories that do **not** apply to this project:
+CVEs fixed by upgrading to 15.5.15:
 
-| Advisory | Reason it does not apply |
+| Advisory | Description |
 |---|---|
-| GHSA-q4gf-8mx6-v5v3 / GHSA-h25m-26qc-wcjf (Server Components DoS) | App uses Pages Router — no React Server Components or Server Actions |
-| GHSA-9g9p-9gw9-jx7f / GHSA-3x4c-7xq6-9pq8 (`next/image` issues) | `next/image` is not used anywhere in the codebase |
-| GHSA-ggv3-7p47-pfv8 (HTTP request smuggling in rewrites) | No `rewrites` are configured in `next.config.js` |
+| GHSA-7gfc-8cq8-jh5f | Authorization bypass |
+| GHSA-g5qg-72qw-gw5v | Cache-key confusion for image optimization |
+| GHSA-4342-x723-ch2f | Middleware SSRF redirect handling |
+| GHSA-qpjv-v59x-3qc4 | Race condition to cache poisoning |
+| GHSA-xv57-4mr9-wg8v | Content injection via image optimization |
+| GHSA-f82v-jwr5-mffw | Authorization bypass in middleware |
+| GHSA-q4gf-8mx6-v5v3 / GHSA-h25m-26qc-wcjf | Denial of Service with Server Components |
+| GHSA-9g9p-9gw9-jx7f / GHSA-3x4c-7xq6-9pq8 | `next/image` DoS / disk-cache issues |
+| GHSA-ggv3-7p47-pfv8 | HTTP request smuggling in rewrites |
 
-A full upgrade to Next.js 15.x+ would resolve all outstanding advisories but requires
-migrating from Pages Router to App Router and updating several APIs — that migration is
-outside the scope of this change.
+**`npm audit` result after upgrade: 0 vulnerabilities.**
+
+**Breaking changes (14.x → 15.x, Pages Router):** None for this codebase.
+The Pages Router API (`useRouter`, `getStaticProps`, `getServerSideProps`,
+custom `_app.js` / `_document.js`) is unchanged in Next.js 15. The breaking changes
+introduced in Next.js 15 (async `params`/`searchParams`, async `cookies()`/`headers()`)
+only affect the App Router, which this project does not use.
+
+> **Future migration note:** If you later migrate to the App Router, update any
+> page components that read `params` or `searchParams` to `await` those values, and
+> update any Server Components that call `cookies()` or `headers()` to `await` them.
+> See the [Next.js 15 upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-15)
+> for the full checklist.
 
 ### `@supabase/supabase-js` 2.45.0 → 2.103.2 (security patch)
 
@@ -160,7 +173,7 @@ vulnerable to insecure path routing from malformed user input (GHSA-8r88-6cj9-9f
 Version 2.103.2 bundles a patched `@supabase/auth-js` and is the version recommended
 by `npm audit`.
 
-**Breaking changes:** None expected. The API surface used by this project
+**Breaking changes:** None. The API surface used by this project
 (`supabase.auth.signInWithPassword`, `getSession`, `onAuthStateChange`, `signOut`,
 and the table query builder) is stable across the 2.x line and unchanged in 2.103.2.
 
