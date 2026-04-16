@@ -128,6 +128,60 @@ If `/api/register` or `/api/customers` returns HTTP 500 with the message *"Servi
 
 This confirms which variable is missing or misconfigured.
 
+## Dependency Upgrades & Migration Notes
+
+### `next` 14.2.10 → 14.2.35 (security patch)
+
+**Reason:** Next.js 14.2.10 contained several CVEs including an authorization bypass
+(GHSA-7gfc-8cq8-jh5f), cache-key confusion for image optimization (GHSA-g5qg-72qw-gw5v),
+and potential SSRF via middleware redirect handling (GHSA-4342-x723-ch2f).
+Version 14.2.35 is the latest patched release in the 14.x line and fixes all of the
+above.
+
+**Breaking changes:** None — 14.2.35 is a patch release within the same minor line.
+
+**Note on remaining advisories:** The `npm audit` report for 14.2.35 still lists a small
+set of advisories that do **not** apply to this project:
+
+| Advisory | Reason it does not apply |
+|---|---|
+| GHSA-q4gf-8mx6-v5v3 / GHSA-h25m-26qc-wcjf (Server Components DoS) | App uses Pages Router — no React Server Components or Server Actions |
+| GHSA-9g9p-9gw9-jx7f / GHSA-3x4c-7xq6-9pq8 (`next/image` issues) | `next/image` is not used anywhere in the codebase |
+| GHSA-ggv3-7p47-pfv8 (HTTP request smuggling in rewrites) | No `rewrites` are configured in `next.config.js` |
+
+A full upgrade to Next.js 15.x+ would resolve all outstanding advisories but requires
+migrating from Pages Router to App Router and updating several APIs — that migration is
+outside the scope of this change.
+
+### `@supabase/supabase-js` 2.45.0 → 2.103.2 (security patch)
+
+**Reason:** Versions 2.41.1 – 2.49.2 bundle `@supabase/auth-js < 2.69.1`, which is
+vulnerable to insecure path routing from malformed user input (GHSA-8r88-6cj9-9fh5).
+Version 2.103.2 bundles a patched `@supabase/auth-js` and is the version recommended
+by `npm audit`.
+
+**Breaking changes:** None expected. The API surface used by this project
+(`supabase.auth.signInWithPassword`, `getSession`, `onAuthStateChange`, `signOut`,
+and the table query builder) is stable across the 2.x line and unchanged in 2.103.2.
+
+### Other code improvements (previous sessions)
+
+The following improvements were applied in earlier pull requests and are present in the
+current codebase:
+
+- **Service Worker** (`public/service-worker.js`): Implements network-first for HTML
+  navigation, cache-first for static assets, and stale-while-revalidate for everything
+  else. Falls back to `/offline` to prevent the browser "Content unavailable. Resource
+  was not cached" error. Cache bumped to `bite-bonansa-v2`.
+- **Zustand v5**: `store/useCartStore.js` uses the v5 named export
+  (`import { create } from 'zustand'`), replacing the deprecated default import.
+- **Dialog accessibility**: All Radix UI `<Dialog.Content>` elements include a
+  `<Dialog.Title>` and `<Dialog.Description>` to satisfy screen-reader requirements.
+- **Async navigation**: All `router.push()` / `router.replace()` calls are wrapped with
+  `.catch(console.error)` to prevent unhandled promise rejections. The `dashboard.js`
+  `onAuthStateChange` subscription is cleaned up on component unmount via the returned
+  `subscription.unsubscribe()` callback.
+
 ## Contributing
 Contributions are welcome! Please open issues or submit pull requests for enhancements or bug fixes.
 

@@ -1,3 +1,9 @@
+// ─── Security Notes ──────────────────────────────────────────────────────────
+// Next.js version: 14.2.35 (patched release; see README "Dependency Upgrades").
+// Remaining npm audit advisories (RSC DoS, next/image disk-cache) do NOT apply
+// here because the app uses the Pages Router and does not use next/image.
+// ─────────────────────────────────────────────────────────────────────────────
+
 const securityHeaders = [
   {
     key: 'Content-Security-Policy',
