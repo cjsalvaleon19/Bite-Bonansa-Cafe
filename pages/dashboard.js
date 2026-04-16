@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import Head from 'next/head';
 import * as Dialog from '@radix-ui/react-dialog';
 import { supabase } from '../utils/supabaseClient';
 
@@ -90,8 +91,13 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
+    <>
+      <Head>
+        <title>Dashboard - Bite Bonansa Cafe</title>
+        <meta name="description" content="Bite Bonansa Cafe Dashboard - Access cashier, menu management, inventory, reports, customers, and reviews" />
+      </Head>
+      <div style={styles.page}>
+        <header style={styles.header}>
         <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
         <span style={styles.welcome}>
           Welcome, {user?.email ?? 'Guest'}
@@ -136,7 +142,8 @@ export default function Dashboard() {
           <NavCard href="/admin/reviews" icon="⭐" label="Reviews" />
         </div>
       </main>
-    </div>
+      </div>
+    </>
   );
 }
 
