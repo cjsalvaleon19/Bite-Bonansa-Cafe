@@ -28,7 +28,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com https://vercel.live",
       "img-src 'self' data: blob: https://vercel.live https://vercel.com",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vercel.live https://*.vercel.app wss://ws-us3.pusher.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vercel.live https://*.vercel.app wss://*.pusher.com",
       "frame-src https://vercel.live https://*.vercel.app",
       "frame-ancestors 'none'",
     ].join('; '),
