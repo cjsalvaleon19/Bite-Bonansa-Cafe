@@ -14,7 +14,7 @@ export default function ServerError() {
           If the problem persists, contact support.
         </p>
         <div style={styles.actions}>
-          <button style={styles.btn} onClick={() => router.push('/dashboard')}>
+          <button style={styles.btn} onClick={() => router.push('/dashboard').catch(console.error)}>
             Go to Dashboard
           </button>
           <button style={styles.btnSecondary} onClick={() => router.reload()}>

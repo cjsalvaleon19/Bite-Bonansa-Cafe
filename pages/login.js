@@ -34,7 +34,7 @@ const Login = () => {
       }
 
       localStorage.setItem('token', data.session.access_token);
-      router.push('/dashboard');
+      await router.push('/dashboard');
     } catch (err) {
       setError('Login failed. Please try again.');
       setLoading(false);

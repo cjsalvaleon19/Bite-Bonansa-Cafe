@@ -14,7 +14,7 @@ export default function NotFound() {
           It may have been moved, deleted, or never existed.
         </p>
         <div style={styles.actions}>
-          <button style={styles.btn} onClick={() => router.push('/dashboard')}>
+          <button style={styles.btn} onClick={() => router.push('/dashboard').catch(console.error)}>
             Go to Dashboard
           </button>
           <button style={styles.btnSecondary} onClick={() => router.back()}>

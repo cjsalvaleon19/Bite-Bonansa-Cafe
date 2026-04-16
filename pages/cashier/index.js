@@ -107,7 +107,7 @@ export default function CashierPage() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header style={styles.header}>
         <h1 style={styles.logo}>☕ Cashier / POS</h1>
-        <button style={styles.backBtn} onClick={() => router.push('/dashboard')}>
+        <button style={styles.backBtn} onClick={() => router.push('/dashboard').catch(console.error)}>
           ← Dashboard
         </button>
       </header>

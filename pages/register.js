@@ -103,7 +103,7 @@ const Register = () => {
 
       // Redirect to login after 4 seconds
       setTimeout(() => {
-        router.push('/login');
+        router.push('/login').catch(console.error);
       }, 4000);
     } catch (err) {
       console.error('Registration error:', err);

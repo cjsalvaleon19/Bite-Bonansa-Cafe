@@ -144,7 +144,7 @@ function NavCard({ href, icon, label }) {
   const router = useRouter();
   return (
     <button
-      onClick={() => router.push(href)}
+      onClick={() => router.push(href).catch(console.error)}
       style={styles.card}
       onMouseOver={(e) => {
         e.currentTarget.style.borderColor = '#ffb300';

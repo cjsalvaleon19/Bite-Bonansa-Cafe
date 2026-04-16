@@ -30,7 +30,7 @@ export default function Offline() {
           <button style={styles.btn} onClick={handleRetry}>
             🔄 Try Again
           </button>
-          <button style={styles.btnSecondary} onClick={() => router.push('/')}>
+          <button style={styles.btnSecondary} onClick={() => router.push('/').catch(console.error)}>
             Go to Home
           </button>
         </div>

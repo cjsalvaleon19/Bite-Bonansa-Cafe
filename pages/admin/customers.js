@@ -76,7 +76,7 @@ export default function CustomersPage() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header style={styles.header}>
         <h1 style={styles.logo}>👥 Customer Management</h1>
-        <button style={styles.backBtn} onClick={() => router.push('/dashboard')}>← Dashboard</button>
+        <button style={styles.backBtn} onClick={() => router.push('/dashboard').catch(console.error)}>← Dashboard</button>
       </header>
 
       <main style={styles.main}>
