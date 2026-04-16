@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { supabase } from '../utils/supabaseClient';
 
 const Login = () => {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,7 +34,7 @@ const Login = () => {
       }
 
       localStorage.setItem('token', data.session.access_token);
-      window.location.href = '/dashboard';
+      router.push('/dashboard');
     } catch (err) {
       setError('Login failed. Please try again.');
       setLoading(false);
