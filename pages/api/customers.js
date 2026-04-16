@@ -18,8 +18,7 @@ function createAdminClient() {
 
 /**
  * Handles customer lookup by Customer ID.
- * @param {string} customerId - The Customer ID to look up (format: BBC-XXXXX)
- * @returns {Object|null} - Returns customer object if found, null otherwise.
+ * GET /api/customers?customerId=BBC-XXXXX
  */
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -33,14 +32,13 @@ export default async function handler(req, res) {
   }
 
   const supabaseAdmin = createAdminClient();
-
   if (!supabaseAdmin) {
     return res.status(500).json({ error: 'Service unavailable. Please contact support.' });
   }
 
-  const { data, error } = await supabaseAdmin
+  const { data: customer, error } = await supabaseAdmin
     .from('users')
-    .select('full_name, loyalty_balance')
+    .select('full_name, customer_id, loyalty_balance, role, created_at')
     .eq('customer_id', customerId)
     .single();
 
@@ -48,12 +46,9 @@ export default async function handler(req, res) {
     if (error.code === 'PGRST116') {
       return res.status(404).json({ error: 'Customer not found.' });
     }
+    console.error('[customers] Lookup error:', error.message);
     return res.status(500).json({ error: 'Server error. Please try again.' });
   }
 
-  return res.status(200).json({
-    id: data.customer_id,
-    name: data.full_name,
-    loyaltyBalance: data.loyalty_balance ?? 0,
-  });
+  return res.status(200).json(customer);
 }
