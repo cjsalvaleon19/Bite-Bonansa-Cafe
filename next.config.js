@@ -12,6 +12,8 @@ const securityHeaders = [
       "img-src 'self' data: blob:",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
       "frame-ancestors 'none'",
+      // Allow same-origin service workers (sw.js served from /public).
+      "worker-src 'self'",
     ].join('; '),
   },
   {
@@ -32,6 +34,21 @@ const nextConfig = {
   reactStrictMode: true,
   async headers() {
     return [
+      {
+        // The service worker must never be served from a stale HTTP cache,
+        // otherwise browsers keep running an outdated version.
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+          {
+            key: 'Content-Type',
+            value: 'application/javascript; charset=utf-8',
+          },
+        ],
+      },
       {
         source: '/:path*',
         headers: securityHeaders,
