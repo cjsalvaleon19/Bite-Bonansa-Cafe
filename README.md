@@ -92,12 +92,15 @@ The application uses a Content Security Policy configured in `next.config.js` to
 
 - **Script sources**: `'self'`, `'unsafe-inline'`, `'unsafe-eval'`, and Vercel infrastructure domains (`vercel.live`, `*.vercel.app`)
 - **Style sources**: `'self'`, `'unsafe-inline'`, and Google Fonts
-- **Connect sources**: `'self'`, Supabase domains, and Vercel infrastructure
+- **Font sources**: `'self'`, Google Fonts, and Vercel infrastructure (`vercel.live`)
+- **Image sources**: `'self'`, `data:`, `blob:`, Vercel infrastructure (`vercel.live`), and Vercel CDN (`vercel.com`)
+- **Connect sources**: `'self'`, Supabase domains, Vercel infrastructure, and Pusher WebSocket (`wss://ws-us3.pusher.com`)
 
 If you encounter CSP violations in browser console (blocked scripts/styles), check:
 1. The blocked domain is allowed in the CSP configuration
 2. For Vercel deployments, ensure `vercel.live` and `*.vercel.app` are in `script-src` and `connect-src`
 3. External scripts/APIs require explicit CSP permission
+4. Real-time features (WebSockets) require appropriate `connect-src` entries
 
 ### Troubleshooting registration (500 errors)
 
