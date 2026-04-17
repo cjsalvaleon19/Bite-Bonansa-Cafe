@@ -4,6 +4,8 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 
+const DEFAULT_DELIVERY_FEE = 50;
+
 export default function RiderDeliveries() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -326,7 +328,7 @@ export default function RiderDeliveries() {
                           <strong>Address:</strong> {delivery.customer_address || 'N/A'}
                         </p>
                         <p style={styles.infoItem}>
-                          <strong>Delivery Fee:</strong> ₱{delivery.delivery_fee || 50}
+                          <strong>Delivery Fee:</strong> ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
                         </p>
                         <p style={styles.infoItem}>
                           <strong>Order Total:</strong> ₱{delivery.orders?.total || 0}

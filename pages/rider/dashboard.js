@@ -4,6 +4,8 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 
+const DEFAULT_DELIVERY_FEE = 50;
+
 export default function RiderDashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -116,7 +118,7 @@ export default function RiderDashboard() {
           .select('*', { count: 'exact', head: true })
           .eq('rider_id', userId)
           .eq('status', 'completed')
-          .is('report_submitted', false);
+          .eq('report_submitted', false);
 
         setStats({
           activeDeliveries: activeCount || 0,

@@ -4,6 +4,8 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 
+const DEFAULT_DELIVERY_FEE = 50;
+
 export default function RiderReports() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -142,7 +144,7 @@ export default function RiderReports() {
   const calculateTotalFees = () => {
     return completedDeliveries
       .filter((d) => selectedDeliveries.includes(d.id))
-      .reduce((sum, d) => sum + (d.delivery_fee || 50), 0);
+      .reduce((sum, d) => sum + (d.delivery_fee || DEFAULT_DELIVERY_FEE), 0);
   };
 
   const handleSubmitReport = async () => {
@@ -304,7 +306,7 @@ export default function RiderReports() {
                           📅 {new Date(delivery.completed_at || delivery.created_at).toLocaleDateString()}
                         </p>
                         <div style={styles.deliveryFee}>
-                          Delivery Fee: ₱{delivery.delivery_fee || 50}
+                          Delivery Fee: ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
                         </div>
                       </div>
                     </div>
