@@ -159,7 +159,7 @@ export default function MyProfile() {
         });
 
         if (passwordError) {
-          console.error('Failed to update password');
+          console.error('Failed to update password - validation or service error occurred');
           alert('Profile updated but password change failed. Please try again.');
           setSaving(false);
           return;

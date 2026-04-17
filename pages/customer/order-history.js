@@ -129,7 +129,7 @@ export default function OrderHistory() {
               items = order.items;
             }
           } catch (e) {
-            console.error('Failed to parse items:', e);
+            console.error('[OrderHistory] Failed to parse items for order:', order.id, 'Raw items:', order.items);
             return;
           }
 
