@@ -6,12 +6,14 @@ import { supabase } from '../../utils/supabaseClient';
 export default function OrderPortal() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [userData, setUserData] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [menuItems, setMenuItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loadingMenu, setLoadingMenu] = useState(false);
+  const [deliveryFee] = useState(50); // Default delivery fee
 
   useEffect(() => {
     let mounted = true;
@@ -37,10 +39,10 @@ export default function OrderPortal() {
 
         setUser(session.user);
 
-        // Fetch user role
-        const { data: userData, error: userError } = await supabase
+        // Fetch user role and data
+        const { data: userDataResult, error: userError } = await supabase
           .from('users')
-          .select('role')
+          .select('role, full_name, email, phone, address, city, postal_code, payment_method')
           .eq('id', session.user.id)
           .maybeSingle();
 
@@ -52,8 +54,9 @@ export default function OrderPortal() {
           return;
         }
 
-        const role = userData?.role || 'customer';
+        const role = userDataResult?.role || 'customer';
         setUserRole(role);
+        setUserData(userDataResult);
 
         // Redirect if not a customer
         if (role !== 'customer') {
@@ -150,6 +153,14 @@ export default function OrderPortal() {
 
   const getTotalPrice = () => {
     return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+  };
+
+  const getSubtotal = () => {
+    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+  };
+
+  const getGrandTotal = () => {
+    return getSubtotal() + deliveryFee;
   };
 
   // Get unique categories
@@ -293,10 +304,96 @@ export default function OrderPortal() {
                     </div>
                   ))}
                 </div>
-                <div style={styles.cartTotal}>
-                  <span style={styles.totalLabel}>Total:</span>
-                  <span style={styles.totalAmount}>₱{getTotalPrice().toFixed(2)}</span>
+
+                {/* Checkout Details */}
+                <div style={styles.checkoutDetails}>
+                  <h4 style={styles.checkoutTitle}>Checkout Details</h4>
+                  
+                  {/* Delivery Address */}
+                  <div style={styles.detailSection}>
+                    <div style={styles.detailHeader}>
+                      <span style={styles.detailIcon}>📍</span>
+                      <span style={styles.detailLabel}>Delivery Address</span>
+                    </div>
+                    {userData?.address ? (
+                      <div style={styles.detailContent}>
+                        <p style={styles.detailText}>{userData.address}</p>
+                        {(userData.city || userData.postal_code) && (
+                          <p style={styles.detailText}>
+                            {userData.city}{userData.postal_code && `, ${userData.postal_code}`}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p style={styles.detailTextMissing}>
+                        <a 
+                          href="/customer/profile" 
+                          style={styles.link}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            router.push('/customer/profile');
+                          }}
+                        >
+                          Add address in profile
+                        </a>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Contact Info */}
+                  <div style={styles.detailSection}>
+                    <div style={styles.detailHeader}>
+                      <span style={styles.detailIcon}>📞</span>
+                      <span style={styles.detailLabel}>Contact Number</span>
+                    </div>
+                    {userData?.phone ? (
+                      <p style={styles.detailText}>{userData.phone}</p>
+                    ) : (
+                      <p style={styles.detailTextMissing}>
+                        <a 
+                          href="/customer/profile" 
+                          style={styles.link}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            router.push('/customer/profile');
+                          }}
+                        >
+                          Add phone in profile
+                        </a>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Payment Method */}
+                  <div style={styles.detailSection}>
+                    <div style={styles.detailHeader}>
+                      <span style={styles.detailIcon}>💳</span>
+                      <span style={styles.detailLabel}>Payment Method</span>
+                    </div>
+                    <p style={styles.detailText}>
+                      {userData?.payment_method === 'cash_on_delivery' || !userData?.payment_method
+                        ? 'Cash on Delivery'
+                        : userData.payment_method}
+                    </p>
+                  </div>
                 </div>
+
+                {/* Order Summary */}
+                <div style={styles.orderSummary}>
+                  <div style={styles.summaryRow}>
+                    <span style={styles.summaryLabel}>Subtotal:</span>
+                    <span style={styles.summaryValue}>₱{getSubtotal().toFixed(2)}</span>
+                  </div>
+                  <div style={styles.summaryRow}>
+                    <span style={styles.summaryLabel}>Delivery Fee:</span>
+                    <span style={styles.summaryValue}>₱{deliveryFee.toFixed(2)}</span>
+                  </div>
+                  <div style={styles.cartTotal}>
+                    <span style={styles.totalLabel}>Total:</span>
+                    <span style={styles.totalAmount}>₱{getGrandTotal().toFixed(2)}</span>
+                  </div>
+                </div>
+
                 <button 
                   style={styles.checkoutBtn}
                   onClick={() => alert('Checkout feature coming soon! Complete your order at our counter or contact us.')}
@@ -490,7 +587,7 @@ const styles = {
     marginTop: 0,
   },
   cartItems: {
-    maxHeight: '400px',
+    maxHeight: '250px',
     overflowY: 'auto',
     marginBottom: '16px',
   },
@@ -544,13 +641,86 @@ const styles = {
     fontSize: '14px',
     marginLeft: 'auto',
   },
+  checkoutDetails: {
+    backgroundColor: '#0a0a0a',
+    border: '1px solid #2a2a2a',
+    borderRadius: '8px',
+    padding: '16px',
+    marginBottom: '16px',
+  },
+  checkoutTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#ffc107',
+    margin: 0,
+    marginBottom: '12px',
+  },
+  detailSection: {
+    marginBottom: '12px',
+    paddingBottom: '12px',
+    borderBottom: '1px solid #2a2a2a',
+  },
+  detailHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    marginBottom: '6px',
+  },
+  detailIcon: {
+    fontSize: '14px',
+  },
+  detailLabel: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#999',
+  },
+  detailContent: {
+    paddingLeft: '20px',
+  },
+  detailText: {
+    fontSize: '13px',
+    color: '#ccc',
+    margin: 0,
+    marginBottom: '2px',
+    lineHeight: '1.4',
+  },
+  detailTextMissing: {
+    fontSize: '12px',
+    color: '#666',
+    fontStyle: 'italic',
+    margin: 0,
+    paddingLeft: '20px',
+  },
+  link: {
+    color: '#ffc107',
+    textDecoration: 'underline',
+    cursor: 'pointer',
+  },
+  orderSummary: {
+    paddingTop: '12px',
+    marginBottom: '16px',
+  },
+  summaryRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '8px',
+  },
+  summaryLabel: {
+    fontSize: '13px',
+    color: '#999',
+  },
+  summaryValue: {
+    fontSize: '13px',
+    color: '#ccc',
+  },
   cartTotal: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: '16px',
+    paddingTop: '12px',
     borderTop: '2px solid #ffc107',
-    marginBottom: '16px',
+    marginBottom: '0',
   },
   totalLabel: {
     fontSize: '16px',
