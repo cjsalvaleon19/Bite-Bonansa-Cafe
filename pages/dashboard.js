@@ -40,7 +40,7 @@ export default function Dashboard() {
           .from('users')
           .select('role')
           .eq('id', session.user.id)
-          .single();
+          .maybeSingle();
 
         if (!mounted) return;
 
@@ -91,7 +91,7 @@ export default function Dashboard() {
               .from('users')
               .select('role')
               .eq('id', session.user.id)
-              .single();
+              .maybeSingle();
             if (userData?.role) {
               setUserRole(userData.role);
             }

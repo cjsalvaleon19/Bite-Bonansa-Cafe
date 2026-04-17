@@ -48,7 +48,7 @@ export default async function handler(req, res) {
       .from('users')
       .select('id')
       .eq('email', email)
-      .single();
+      .maybeSingle();
 
     if (userExists) {
       return res.status(400).json({ error: 'A user with this email address has already been registered.' });
