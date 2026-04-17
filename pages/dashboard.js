@@ -61,7 +61,7 @@ export default function Dashboard() {
           router.replace('/cashier').catch(console.error);
           return;
         } else if (role === 'rider') {
-          router.replace('/rider/deliveries').catch(console.error);
+          router.replace('/rider/dashboard').catch(console.error);
           return;
         }
         // Admin stays on dashboard

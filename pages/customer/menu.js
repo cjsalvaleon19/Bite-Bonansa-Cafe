@@ -58,7 +58,7 @@ export default function CustomerMenu() {
           } else if (role === 'cashier') {
             router.replace('/cashier').catch(console.error);
           } else if (role === 'rider') {
-            router.replace('/rider/deliveries').catch(console.error);
+            router.replace('/rider/dashboard').catch(console.error);
           }
           return;
         }
