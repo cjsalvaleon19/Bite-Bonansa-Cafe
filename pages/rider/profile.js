@@ -14,12 +14,21 @@ export default function RiderProfile() {
   const [profile, setProfile] = useState({
     full_name: '',
     phone: '',
+    driver_id: '',
+    cellphone_number: '',
     vehicle_type: '',
     vehicle_plate: '',
     emergency_contact: '',
     emergency_phone: '',
     is_available: true,
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [updatingPassword, setUpdatingPassword] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -104,6 +113,8 @@ export default function RiderProfile() {
         setProfile({
           full_name: userData?.full_name || '',
           phone: userData?.phone || '',
+          driver_id: riderData?.driver_id || '',
+          cellphone_number: riderData?.cellphone_number || '',
           vehicle_type: riderData?.vehicle_type || '',
           vehicle_plate: riderData?.vehicle_plate || '',
           emergency_contact: riderData?.emergency_contact || '',
@@ -155,6 +166,11 @@ export default function RiderProfile() {
     try {
       if (!supabase) throw new Error('Supabase not available');
 
+      // Validate driver_id is provided
+      if (!profile.driver_id || profile.driver_id.trim() === '') {
+        throw new Error('Driver ID is required');
+      }
+
       // Update users table
       const { error: userError } = await supabase
         .from('users')
@@ -171,6 +187,8 @@ export default function RiderProfile() {
         .from('riders')
         .upsert({
           user_id: user.id,
+          driver_id: profile.driver_id,
+          cellphone_number: profile.cellphone_number,
           vehicle_type: profile.vehicle_type,
           vehicle_plate: profile.vehicle_plate,
           emergency_contact: profile.emergency_contact,
@@ -188,6 +206,45 @@ export default function RiderProfile() {
       setSaveStatus('error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    setUpdatingPassword(true);
+    setSaveStatus(null);
+
+    try {
+      if (!supabase) throw new Error('Supabase not available');
+
+      // Validate password fields
+      if (!passwordData.newPassword || passwordData.newPassword.length < 6) {
+        throw new Error('New password must be at least 6 characters');
+      }
+
+      if (passwordData.newPassword !== passwordData.confirmPassword) {
+        throw new Error('Passwords do not match');
+      }
+
+      // Update password using Supabase auth
+      const { error } = await supabase.auth.updateUser({
+        password: passwordData.newPassword
+      });
+
+      if (error) throw error;
+
+      // Clear password fields
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      setShowPassword(false);
+      setSaveStatus('password-success');
+    } catch (err) {
+      console.error('[RiderProfile] Failed to update password:', err?.message ?? err);
+      setSaveStatus('password-error');
+    } finally {
+      setUpdatingPassword(false);
     }
   };
 
@@ -248,18 +305,55 @@ export default function RiderProfile() {
             </div>
           )}
 
+          {saveStatus === 'password-success' && (
+            <div style={styles.successMessage}>
+              ✅ Password updated successfully!
+            </div>
+          )}
+
+          {saveStatus === 'password-error' && (
+            <div style={styles.errorMessage}>
+              ❌ Failed to update password. Please check your input and try again.
+            </div>
+          )}
+
           <div style={styles.content}>
             <div style={styles.formSection}>
               <h3 style={styles.sectionTitle}>Personal Information</h3>
               <div style={styles.formGrid}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Full Name</label>
+                  <label style={styles.label}>Driver's Name <span style={styles.required}>*</span></label>
                   <input
                     type="text"
                     value={profile.full_name}
                     onChange={(e) => handleInputChange('full_name', e.target.value)}
                     style={styles.input}
                     placeholder="Enter your full name"
+                    required
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Driver ID Number <span style={styles.required}>*</span></label>
+                  <input
+                    type="text"
+                    value={profile.driver_id}
+                    onChange={(e) => handleInputChange('driver_id', e.target.value)}
+                    style={styles.input}
+                    placeholder="Enter unique driver ID"
+                    required
+                  />
+                  <small style={styles.fieldHelp}>This must be a unique identifier</small>
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Cellphone Number</label>
+                  <input
+                    type="tel"
+                    value={profile.cellphone_number}
+                    onChange={(e) => handleInputChange('cellphone_number', e.target.value)}
+                    style={styles.input}
+                    placeholder="Enter your cellphone number"
                   />
                 </div>
 
@@ -270,7 +364,7 @@ export default function RiderProfile() {
                     value={profile.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
                     style={styles.input}
-                    placeholder="Enter your phone number"
+                    placeholder="Enter alternate phone number"
                   />
                 </div>
 
@@ -305,7 +399,7 @@ export default function RiderProfile() {
                 </div>
 
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Vehicle Plate Number</label>
+                  <label style={styles.label}>Plate Number</label>
                   <input
                     type="text"
                     value={profile.vehicle_plate}
@@ -363,6 +457,54 @@ export default function RiderProfile() {
                     ? '✅ You will receive new delivery assignments'
                     : '⏸️ You will not receive new delivery assignments'}
                 </p>
+              </div>
+            </div>
+
+            <div style={styles.formSection}>
+              <h3 style={styles.sectionTitle}>Password Management</h3>
+              <div style={styles.passwordSection}>
+                <button
+                  type="button"
+                  style={styles.togglePasswordBtn}
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? '🔒 Hide Password Section' : '🔓 Change Password'}
+                </button>
+
+                {showPassword && (
+                  <div style={styles.passwordForm}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>New Password</label>
+                      <input
+                        type="password"
+                        value={passwordData.newPassword}
+                        onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                        style={styles.input}
+                        placeholder="Enter new password (min 6 characters)"
+                      />
+                    </div>
+
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={passwordData.confirmPassword}
+                        onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                        style={styles.input}
+                        placeholder="Confirm new password"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      style={styles.updatePasswordBtn}
+                      onClick={handleUpdatePassword}
+                      disabled={updatingPassword}
+                    >
+                      {updatingPassword ? '⏳ Updating...' : '🔑 Update Password'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -562,5 +704,55 @@ const styles = {
     marginBottom: '24px',
     border: '1px solid #ff6b6b',
     textAlign: 'center',
+  },
+  required: {
+    color: '#ff6b6b',
+    marginLeft: '4px',
+  },
+  fieldHelp: {
+    fontSize: '12px',
+    color: '#888',
+    marginTop: '4px',
+    display: 'block',
+  },
+  passwordSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  togglePasswordBtn: {
+    padding: '10px 20px',
+    backgroundColor: '#333',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s ease',
+    alignSelf: 'flex-start',
+  },
+  passwordForm: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+    padding: '16px',
+    backgroundColor: '#0a0a0a',
+    borderRadius: '8px',
+    border: '1px solid #333',
+  },
+  updatePasswordBtn: {
+    padding: '10px 24px',
+    backgroundColor: '#ffc107',
+    color: '#0a0a0a',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s ease',
+    alignSelf: 'flex-start',
   },
 };

@@ -197,11 +197,16 @@ export default function RiderDashboard() {
               <div style={styles.statValue}>{stats.activeDeliveries}</div>
               <div style={styles.statLabel}>Active Deliveries</div>
             </div>
-            <div style={styles.statCard}>
+            <Link 
+              href="/rider/reports" 
+              style={{ ...styles.statCard, ...styles.statCardClickable, textDecoration: 'none' }}
+              title="Click to view billing portal"
+            >
               <div style={styles.statIcon}>✅</div>
               <div style={styles.statValue}>{stats.completedToday}</div>
               <div style={styles.statLabel}>Completed Today</div>
-            </div>
+              <div style={styles.statHint}>💡 Click to bill cashier</div>
+            </Link>
             <div style={styles.statCard}>
               <div style={styles.statIcon}>💰</div>
               <div style={styles.statValue}>₱{stats.totalEarnings.toFixed(2)}</div>
@@ -323,6 +328,17 @@ const styles = {
   statLabel: {
     fontSize: '14px',
     color: '#ccc',
+  },
+  statCardClickable: {
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
+    position: 'relative',
+  },
+  statHint: {
+    fontSize: '11px',
+    color: '#ffc107',
+    marginTop: '8px',
+    fontWeight: '500',
   },
   navGrid: {
     display: 'grid',
