@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { generateCustomerId } from '../../utils/loyaltyUtils';
+import { getRoleForEmail } from '../../utils/roleMapping';
 
 // Validate environment variables and create the admin client lazily so that
 // a missing/invalid NEXT_PUBLIC_SUPABASE_URL does not throw an unhandled
@@ -68,6 +69,10 @@ export default async function handler(req, res) {
 
     // Generate a unique loyalty customer ID and persist the user profile
     const customerId = generateCustomerId();
+    
+    // Determine role based on email (fixed roles for specific accounts, customer for others)
+    const userRole = getRoleForEmail(email);
+    
     await supabaseAdmin.from('users').insert([{
       id: data.user.id,
       email,
@@ -76,7 +81,7 @@ export default async function handler(req, res) {
       address: address || null,
       customer_id: customerId,
       loyalty_balance: 0,
-      role: 'customer',
+      role: userRole,
     }]);
 
     return res.status(200).json({ success: true, customerId, user: data.user });
