@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
+
+const DEFAULT_DELIVERY_FEE = 50;
 
 export default function RiderDeliveries() {
   const router = useRouter();
@@ -9,6 +12,8 @@ export default function RiderDeliveries() {
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deliveries, setDeliveries] = useState([]);
+  const [filter, setFilter] = useState('active'); // 'active', 'completed', 'all'
+  const [updatingStatus, setUpdatingStatus] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -64,15 +69,35 @@ export default function RiderDeliveries() {
           return;
         }
 
+        // Fetch deliveries from database
+        await fetchDeliveries(session.user.id);
         setLoading(false);
-        // TODO: Fetch deliveries from database
-        // For now, showing empty state
       } catch (err) {
         console.error('[RiderDeliveries] Session check failed:', err?.message ?? err);
         if (mounted) {
           setLoading(false);
           router.replace('/login').catch(console.error);
         }
+      }
+    }
+
+    async function fetchDeliveries(userId) {
+      if (!supabase) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('deliveries')
+          .select('*, orders(id, total, customer_name, customer_phone)')
+          .eq('rider_id', userId)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('[RiderDeliveries] Failed to fetch deliveries:', error.message);
+        } else {
+          setDeliveries(data || []);
+        }
+      } catch (err) {
+        console.error('[RiderDeliveries] Failed to fetch deliveries:', err?.message ?? err);
       }
     }
 
@@ -91,7 +116,67 @@ export default function RiderDeliveries() {
       mounted = false;
       subscription?.unsubscribe();
     };
-  }, [router]);
+  }, [router, filter]);
+
+  useEffect(() => {
+    if (user) {
+      fetchDeliveriesWithFilter(user.id);
+    }
+  }, [filter, user]);
+
+  const fetchDeliveriesWithFilter = async (userId) => {
+    if (!supabase) return;
+
+    try {
+      let query = supabase
+        .from('deliveries')
+        .select('*, orders(id, total, customer_name, customer_phone)')
+        .eq('rider_id', userId);
+
+      if (filter === 'active') {
+        query = query.in('status', ['pending', 'in_progress']);
+      } else if (filter === 'completed') {
+        query = query.eq('status', 'completed');
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[RiderDeliveries] Failed to fetch deliveries:', error.message);
+      } else {
+        setDeliveries(data || []);
+      }
+    } catch (err) {
+      console.error('[RiderDeliveries] Failed to fetch deliveries:', err?.message ?? err);
+    }
+  };
+
+  const handleUpdateStatus = async (deliveryId, newStatus) => {
+    setUpdatingStatus(deliveryId);
+
+    try {
+      if (!supabase) throw new Error('Supabase not available');
+
+      const updateData = { status: newStatus };
+      if (newStatus === 'completed') {
+        updateData.completed_at = new Date().toISOString();
+      }
+
+      const { error } = await supabase
+        .from('deliveries')
+        .update(updateData)
+        .eq('id', deliveryId);
+
+      if (error) throw error;
+
+      // Refresh deliveries
+      await fetchDeliveriesWithFilter(user.id);
+    } catch (err) {
+      console.error('[RiderDeliveries] Failed to update status:', err?.message ?? err);
+    } finally {
+      setUpdatingStatus(null);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -103,6 +188,25 @@ export default function RiderDeliveries() {
     }
     localStorage.removeItem('token');
     router.replace('/login').catch(console.error);
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'pending':
+        return '#ffc107';
+      case 'in_progress':
+        return '#2196f3';
+      case 'completed':
+        return '#4caf50';
+      case 'cancelled':
+        return '#f44336';
+      default:
+        return '#999';
+    }
+  };
+
+  const getFilteredDeliveries = () => {
+    return deliveries;
   };
 
   if (loading) {
@@ -118,7 +222,7 @@ export default function RiderDeliveries() {
   return (
     <>
       <Head>
-        <title>My Deliveries - Bite Bonansa Cafe</title>
+        <title>Order Portal - Bite Bonansa Cafe</title>
         <meta name="description" content="Rider delivery management portal" />
       </Head>
       <div style={styles.page}>
@@ -132,25 +236,128 @@ export default function RiderDeliveries() {
           </button>
         </header>
 
+        <nav style={styles.nav}>
+          <Link href="/rider/dashboard" style={styles.navLink}>
+            🏠 Dashboard
+          </Link>
+          <Link href="/rider/deliveries" style={{ ...styles.navLink, ...styles.navLinkActive }}>
+            🚚 Deliveries
+          </Link>
+          <Link href="/rider/reports" style={styles.navLink}>
+            📊 Reports
+          </Link>
+          <Link href="/rider/profile" style={styles.navLink}>
+            👤 Profile
+          </Link>
+        </nav>
+
         <main style={styles.main}>
-          <h2 style={styles.title}>🚴 My Deliveries</h2>
+          <h2 style={styles.title}>🚚 Order Portal</h2>
+
+          {/* Filter Tabs */}
+          <div style={styles.filterTabs}>
+            <button
+              style={{
+                ...styles.filterTab,
+                ...(filter === 'active' ? styles.filterTabActive : {}),
+              }}
+              onClick={() => setFilter('active')}
+            >
+              🔵 Active Deliveries
+            </button>
+            <button
+              style={{
+                ...styles.filterTab,
+                ...(filter === 'completed' ? styles.filterTabActive : {}),
+              }}
+              onClick={() => setFilter('completed')}
+            >
+              ✅ Completed
+            </button>
+            <button
+              style={{
+                ...styles.filterTab,
+                ...(filter === 'all' ? styles.filterTabActive : {}),
+              }}
+              onClick={() => setFilter('all')}
+            >
+              📋 All Deliveries
+            </button>
+          </div>
           
           <div style={styles.content}>
-            {deliveries.length === 0 ? (
+            {getFilteredDeliveries().length === 0 ? (
               <div style={styles.emptyState}>
                 <span style={styles.emptyIcon}>📦</span>
-                <p style={styles.emptyText}>No deliveries assigned yet</p>
+                <p style={styles.emptyText}>
+                  {filter === 'active' && 'No active deliveries'}
+                  {filter === 'completed' && 'No completed deliveries'}
+                  {filter === 'all' && 'No deliveries assigned yet'}
+                </p>
                 <p style={styles.emptySubtext}>
                   New delivery assignments will appear here
                 </p>
               </div>
             ) : (
               <div style={styles.deliveryList}>
-                {deliveries.map((delivery) => (
+                {getFilteredDeliveries().map((delivery) => (
                   <div key={delivery.id} style={styles.deliveryCard}>
-                    <h3>{delivery.customer}</h3>
-                    <p>{delivery.address}</p>
-                    <span style={styles.status}>{delivery.status}</span>
+                    <div style={styles.deliveryHeader}>
+                      <h3 style={styles.deliveryTitle}>
+                        Order #{delivery.order_id}
+                      </h3>
+                      <span
+                        style={{
+                          ...styles.status,
+                          backgroundColor: getStatusColor(delivery.status),
+                        }}
+                      >
+                        {delivery.status.replace('_', ' ').toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div style={styles.deliveryBody}>
+                      <div style={styles.deliveryInfo}>
+                        <p style={styles.infoItem}>
+                          <strong>Customer:</strong> {delivery.customer_name || 'N/A'}
+                        </p>
+                        <p style={styles.infoItem}>
+                          <strong>Phone:</strong> {delivery.customer_phone || 'N/A'}
+                        </p>
+                        <p style={styles.infoItem}>
+                          <strong>Address:</strong> {delivery.customer_address || 'N/A'}
+                        </p>
+                        <p style={styles.infoItem}>
+                          <strong>Delivery Fee:</strong> ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
+                        </p>
+                        <p style={styles.infoItem}>
+                          <strong>Order Total:</strong> ₱{delivery.orders?.total || 0}
+                        </p>
+                      </div>
+
+                      {delivery.status !== 'completed' && delivery.status !== 'cancelled' && (
+                        <div style={styles.actions}>
+                          {delivery.status === 'pending' && (
+                            <button
+                              style={styles.actionBtn}
+                              onClick={() => handleUpdateStatus(delivery.id, 'in_progress')}
+                              disabled={updatingStatus === delivery.id}
+                            >
+                              {updatingStatus === delivery.id ? '⏳' : '🚀'} Start Delivery
+                            </button>
+                          )}
+                          {delivery.status === 'in_progress' && (
+                            <button
+                              style={{ ...styles.actionBtn, ...styles.actionBtnSuccess }}
+                              onClick={() => handleUpdateStatus(delivery.id, 'completed')}
+                              disabled={updatingStatus === delivery.id}
+                            >
+                              {updatingStatus === delivery.id ? '⏳' : '✅'} Mark as Completed
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -206,6 +413,27 @@ const styles = {
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
   },
+  nav: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '24px',
+    padding: '20px 32px',
+    backgroundColor: '#0a0a0a',
+    borderBottom: '1px solid #333',
+  },
+  navLink: {
+    color: '#ccc',
+    textDecoration: 'none',
+    fontSize: '16px',
+    padding: '8px 16px',
+    borderRadius: '6px',
+    transition: 'all 0.3s ease',
+  },
+  navLinkActive: {
+    color: '#ffc107',
+    backgroundColor: '#1a1a1a',
+    fontWeight: '600',
+  },
   main: {
     padding: '40px 32px',
     maxWidth: '1200px',
@@ -217,6 +445,30 @@ const styles = {
     color: '#ffc107',
     marginBottom: '32px',
     textAlign: 'center',
+  },
+  filterTabs: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '12px',
+    marginBottom: '32px',
+    flexWrap: 'wrap',
+  },
+  filterTab: {
+    padding: '10px 24px',
+    backgroundColor: '#1a1a1a',
+    color: '#ccc',
+    border: '1px solid #333',
+    borderRadius: '8px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s ease',
+  },
+  filterTabActive: {
+    backgroundColor: '#ffc107',
+    color: '#0a0a0a',
+    borderColor: '#ffc107',
+    fontWeight: '600',
   },
   content: {
     minHeight: '400px',
@@ -246,24 +498,73 @@ const styles = {
   },
   deliveryList: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
     gap: '20px',
   },
   deliveryCard: {
     backgroundColor: '#1a1a1a',
     border: '1px solid #ffc107',
     borderRadius: '12px',
-    padding: '20px',
+    padding: '24px',
     boxShadow: '0 4px 12px rgba(255,193,7,0.15)',
+  },
+  deliveryHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
+    paddingBottom: '16px',
+    borderBottom: '1px solid #333',
+  },
+  deliveryTitle: {
+    fontSize: '20px',
+    color: '#ffc107',
+    margin: 0,
+    fontWeight: '600',
   },
   status: {
     display: 'inline-block',
-    padding: '4px 12px',
-    backgroundColor: '#ffc107',
-    color: '#0a0a0a',
-    borderRadius: '4px',
+    padding: '6px 16px',
+    color: '#fff',
+    borderRadius: '6px',
     fontSize: '12px',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  deliveryBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '20px',
+  },
+  deliveryInfo: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: '12px',
+  },
+  infoItem: {
+    fontSize: '14px',
+    color: '#ccc',
+    margin: 0,
+  },
+  actions: {
+    display: 'flex',
+    gap: '12px',
+    justifyContent: 'flex-end',
+    paddingTop: '12px',
+    borderTop: '1px solid #333',
+  },
+  actionBtn: {
+    padding: '10px 24px',
+    backgroundColor: '#2196f3',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
     fontWeight: '600',
-    marginTop: '12px',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s ease',
+  },
+  actionBtnSuccess: {
+    backgroundColor: '#4caf50',
   },
 };

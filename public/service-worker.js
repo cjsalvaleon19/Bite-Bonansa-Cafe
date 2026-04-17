@@ -28,6 +28,10 @@ const PRECACHE_URLS = [
   '/',
   '/login',
   '/dashboard',
+  '/rider/dashboard',
+  '/rider/deliveries',
+  '/rider/reports',
+  '/rider/profile',
   '/offline',
   '/favicon.svg',
 ];
