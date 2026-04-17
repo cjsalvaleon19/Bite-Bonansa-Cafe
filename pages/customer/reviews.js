@@ -146,8 +146,11 @@ export default function ShareReview() {
     try {
       const customerName = userData?.full_name || user?.email?.split('@')[0] || 'Anonymous';
 
-      // For now, we'll store image data as base64 in a JSON field
-      // In production, you'd want to upload to storage and store URLs
+      // TODO: For production, upload images to Supabase Storage and store URLs instead of base64
+      // Base64 storage is temporary and not recommended for production use due to:
+      // - Database bloat and performance issues
+      // - Inefficient storage and retrieval
+      // - No CDN benefits for image delivery
       const imageData = images.map(img => ({
         name: img.name,
         data: img.preview,

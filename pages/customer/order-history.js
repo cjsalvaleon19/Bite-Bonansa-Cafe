@@ -140,7 +140,10 @@ export default function OrderHistory() {
             const itemName = item.name;
             const quantity = item.quantity || 1;
 
-            if (!itemId || !itemName) return;
+            if (!itemId || !itemName) {
+              console.error('[OrderHistory] Invalid item in order:', order.id, item);
+              return;
+            }
 
             if (!itemFrequency[itemId]) {
               itemFrequency[itemId] = 0;
@@ -311,7 +314,10 @@ export default function OrderHistory() {
                   <span style={styles.totalLabel}>Total:</span>
                   <span style={styles.totalAmount}>₱{getTotalPrice().toFixed(2)}</span>
                 </div>
-                <button style={styles.checkoutBtn}>
+                <button 
+                  style={styles.checkoutBtn}
+                  onClick={() => alert('Checkout feature coming soon! Complete your order at our counter or contact us.')}
+                >
                   Proceed to Checkout
                 </button>
               </div>

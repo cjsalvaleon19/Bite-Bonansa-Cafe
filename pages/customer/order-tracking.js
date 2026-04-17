@@ -218,11 +218,7 @@ export default function OrderTracking() {
                   {order.items && (
                     <div style={styles.orderItems}>
                       <p style={styles.itemsLabel}>Items:</p>
-                      <p style={styles.itemsList}>
-                        {typeof order.items === 'string' 
-                          ? order.items 
-                          : JSON.stringify(order.items)}
-                      </p>
+                      <OrderItemsList items={order.items} />
                     </div>
                   )}
 
@@ -269,6 +265,36 @@ export default function OrderTracking() {
         </main>
       </div>
     </>
+  );
+}
+
+function OrderItemsList({ items }) {
+  let parsedItems = [];
+  
+  try {
+    if (typeof items === 'string') {
+      parsedItems = JSON.parse(items);
+    } else if (Array.isArray(items)) {
+      parsedItems = items;
+    }
+  } catch (e) {
+    return <p style={styles.itemsList}>Unable to parse order items</p>;
+  }
+
+  if (!Array.isArray(parsedItems) || parsedItems.length === 0) {
+    return <p style={styles.itemsList}>No items</p>;
+  }
+
+  return (
+    <ul style={styles.itemsList}>
+      {parsedItems.map((item, index) => (
+        <li key={index} style={styles.orderItem}>
+          <span>{item.name || 'Unknown Item'}</span>
+          {item.quantity && <span style={styles.itemQty}> × {item.quantity}</span>}
+          {item.price && <span style={styles.itemPrice}> ₱{(item.price * (item.quantity || 1)).toFixed(2)}</span>}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -447,12 +473,30 @@ const styles = {
     fontSize: '13px',
     color: '#999',
     margin: 0,
-    marginBottom: '4px',
+    marginBottom: '8px',
   },
   itemsList: {
     fontSize: '14px',
     color: '#ccc',
     margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
+  orderItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '4px 0',
+    fontSize: '14px',
+    color: '#ccc',
+  },
+  itemQty: {
+    color: '#999',
+    marginLeft: '8px',
+  },
+  itemPrice: {
+    color: '#ffc107',
+    marginLeft: 'auto',
+    paddingLeft: '12px',
   },
   orderFooter: {
     display: 'flex',

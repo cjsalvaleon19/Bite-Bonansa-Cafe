@@ -147,12 +147,19 @@ export default function MyProfile() {
 
       // Update password if provided
       if (newPassword.trim()) {
+        // Validate password length
+        if (newPassword.length < 8) {
+          alert('Password must be at least 8 characters long');
+          setSaving(false);
+          return;
+        }
+
         const { error: passwordError } = await supabase.auth.updateUser({
           password: newPassword,
         });
 
         if (passwordError) {
-          console.error('Failed to update password:', passwordError);
+          console.error('Failed to update password');
           alert('Profile updated but password change failed. Please try again.');
           setSaving(false);
           return;
