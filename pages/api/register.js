@@ -44,13 +44,13 @@ export default async function handler(req, res) {
 
   try {
     // Check if the user already exists
-    const { data: userExists } = await supabaseAdmin
+    const { data: existingUser } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('email', email)
       .maybeSingle();
 
-    if (userExists) {
+    if (existingUser) {
       return res.status(400).json({ error: 'A user with this email address has already been registered.' });
     }
 
