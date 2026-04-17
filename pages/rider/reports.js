@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 
 const DEFAULT_DELIVERY_FEE = 50;
+const MIN_PASSWORD_LENGTH = 6;
 const RIDER_COMMISSION_RATE = 0.60; // 60% of delivery fee goes to rider
 const BUSINESS_REVENUE_RATE = 0.40; // 40% of delivery fee is business revenue
 
@@ -14,9 +15,11 @@ export default function RiderReports() {
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [completedDeliveries, setCompletedDeliveries] = useState([]);
+  const [submittedReports, setSubmittedReports] = useState([]);
   const [selectedDeliveries, setSelectedDeliveries] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null);
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'submitted'
 
   useEffect(() => {
     let mounted = true;
@@ -74,6 +77,7 @@ export default function RiderReports() {
 
         // Fetch completed deliveries without submitted reports
         await fetchCompletedDeliveries(session.user.id);
+        await fetchSubmittedReports(session.user.id);
         setLoading(false);
       } catch (err) {
         console.error('[RiderReports] Session check failed:', err?.message ?? err);
@@ -88,11 +92,16 @@ export default function RiderReports() {
       if (!supabase) return;
 
       try {
+        // Get today's date at start of day
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
         const { data, error } = await supabase
           .from('deliveries')
           .select('*, orders(id, total)')
           .eq('rider_id', userId)
           .eq('status', 'completed')
+          .gte('completed_at', today.toISOString())
           .or('report_submitted.is.null,report_submitted.eq.false')
           .order('completed_at', { ascending: false });
 
@@ -103,6 +112,27 @@ export default function RiderReports() {
         }
       } catch (err) {
         console.error('[RiderReports] Failed to fetch deliveries:', err?.message ?? err);
+      }
+    }
+
+    async function fetchSubmittedReports(userId) {
+      if (!supabase) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('delivery_reports')
+          .select('*')
+          .eq('rider_id', userId)
+          .order('submitted_at', { ascending: false })
+          .limit(10);
+
+        if (error) {
+          console.error('[RiderReports] Failed to fetch submitted reports:', error.message);
+        } else {
+          setSubmittedReports(data || []);
+        }
+      } catch (err) {
+        console.error('[RiderReports] Failed to fetch submitted reports:', err?.message ?? err);
       }
     }
 
@@ -200,18 +230,14 @@ export default function RiderReports() {
       setSubmitStatus('success');
       setSelectedDeliveries([]);
       
-      // Refresh the list
-      const { data, error: fetchError } = await supabase
-        .from('deliveries')
-        .select('*, orders(id, total)')
-        .eq('rider_id', user.id)
-        .eq('status', 'completed')
-        .or('report_submitted.is.null,report_submitted.eq.false')
-        .order('completed_at', { ascending: false });
-
-      if (!fetchError) {
-        setCompletedDeliveries(data || []);
-      }
+      // Refresh both lists
+      await fetchCompletedDeliveries(user.id);
+      await fetchSubmittedReports(user.id);
+      
+      // Switch to submitted reports tab
+      setTimeout(() => {
+        setActiveTab('submitted');
+      }, 1500);
     } catch (err) {
       console.error('[RiderReports] Failed to submit report:', err?.message ?? err);
       setSubmitStatus('error');
@@ -263,14 +289,14 @@ export default function RiderReports() {
         </nav>
 
         <main style={styles.main}>
-          <h2 style={styles.title}>📊 Delivery Reports</h2>
+          <h2 style={styles.title}>📊 Billing Portal</h2>
           <p style={styles.subtitle}>
-            Select completed deliveries to submit your report. You earn 60% commission from each delivery fee.
+            Select completed deliveries from today to submit your billing report. You earn 60% commission from each delivery fee.
           </p>
 
           {submitStatus === 'success' && (
             <div style={styles.successMessage}>
-              ✅ Report submitted successfully! Your earnings have been recorded.
+              ✅ Report submitted successfully! Cashier has been notified and will process payment.
             </div>
           )}
 
@@ -280,82 +306,171 @@ export default function RiderReports() {
             </div>
           )}
 
+          {/* Tab Navigation */}
+          <div style={styles.tabContainer}>
+            <button
+              style={{
+                ...styles.tab,
+                ...(activeTab === 'pending' ? styles.tabActive : {}),
+              }}
+              onClick={() => setActiveTab('pending')}
+            >
+              📋 Pending Deliveries ({completedDeliveries.length})
+            </button>
+            <button
+              style={{
+                ...styles.tab,
+                ...(activeTab === 'submitted' ? styles.tabActive : {}),
+              }}
+              onClick={() => setActiveTab('submitted')}
+            >
+              ✅ Submitted Reports ({submittedReports.length})
+            </button>
+          </div>
+
           <div style={styles.content}>
-            {completedDeliveries.length === 0 ? (
-              <div style={styles.emptyState}>
-                <span style={styles.emptyIcon}>📄</span>
-                <p style={styles.emptyText}>No pending reports</p>
-                <p style={styles.emptySubtext}>
-                  All completed deliveries have been reported
-                </p>
-              </div>
-            ) : (
-              <>
-                <div style={styles.deliveryList}>
-                  {completedDeliveries.map((delivery) => (
-                    <div
-                      key={delivery.id}
-                      style={{
-                        ...styles.deliveryCard,
-                        ...(selectedDeliveries.includes(delivery.id) ? styles.deliveryCardSelected : {}),
-                      }}
-                      onClick={() => toggleDeliverySelection(delivery.id)}
-                    >
-                      <div style={styles.checkboxContainer}>
-                        <input
-                          type="checkbox"
-                          checked={selectedDeliveries.includes(delivery.id)}
-                          onChange={() => toggleDeliverySelection(delivery.id)}
-                          style={styles.checkbox}
-                        />
-                      </div>
-                      <div style={styles.deliveryInfo}>
-                        <h3 style={styles.deliveryTitle}>
-                          Order #{delivery.order_id}
-                        </h3>
-                        <p style={styles.deliveryDetail}>
-                          📍 {delivery.customer_address || 'Address not available'}
-                        </p>
-                        <p style={styles.deliveryDetail}>
-                          📅 {new Date(delivery.completed_at || delivery.created_at).toLocaleDateString()}
-                        </p>
-                        <div style={styles.deliveryFee}>
-                          Delivery Fee: ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
+            {activeTab === 'pending' ? (
+              // Pending deliveries tab
+              completedDeliveries.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <span style={styles.emptyIcon}>📄</span>
+                  <p style={styles.emptyText}>No deliveries for today</p>
+                  <p style={styles.emptySubtext}>
+                    Completed deliveries from today will appear here for billing
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div style={styles.deliveryList}>
+                    {completedDeliveries.map((delivery) => (
+                      <div
+                        key={delivery.id}
+                        style={{
+                          ...styles.deliveryCard,
+                          ...(selectedDeliveries.includes(delivery.id) ? styles.deliveryCardSelected : {}),
+                        }}
+                        onClick={() => toggleDeliverySelection(delivery.id)}
+                      >
+                        <div style={styles.checkboxContainer}>
+                          <input
+                            type="checkbox"
+                            checked={selectedDeliveries.includes(delivery.id)}
+                            onChange={() => toggleDeliverySelection(delivery.id)}
+                            style={styles.checkbox}
+                          />
                         </div>
+                        <div style={styles.deliveryInfo}>
+                          <h3 style={styles.deliveryTitle}>
+                            Order #{delivery.order_id}
+                          </h3>
+                          <p style={styles.deliveryDetail}>
+                            📍 {delivery.customer_address || 'Address not available'}
+                          </p>
+                          <p style={styles.deliveryDetail}>
+                            📅 {new Date(delivery.completed_at).toLocaleString()}
+                          </p>
+                          <div style={styles.deliveryFee}>
+                            Delivery Fee: ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {selectedDeliveries.length > 0 && (
+                    <div style={styles.submitSection}>
+                      <div style={styles.breakdownContainer}>
+                        <div style={styles.breakdownRow}>
+                          <span style={styles.breakdownLabel}>Total Deliveries:</span>
+                          <span style={styles.breakdownValue}>{selectedDeliveries.length} {selectedDeliveries.length === 1 ? 'delivery' : 'deliveries'}</span>
+                        </div>
+                        <div style={styles.breakdownRow}>
+                          <span style={styles.breakdownLabel}>Total Delivery Fees:</span>
+                          <span style={styles.breakdownValue}>₱{calculateTotalFees().toFixed(2)}</span>
+                        </div>
+                        <div style={styles.breakdownRow}>
+                          <span style={styles.breakdownLabel}>Business Revenue (40%):</span>
+                          <span style={styles.breakdownHighlight}>₱{calculateBusinessRevenue().toFixed(2)}</span>
+                        </div>
+                        <div style={styles.breakdownRow}>
+                          <span style={styles.breakdownLabel}>Billable Rider's Fee (60%):</span>
+                          <span style={styles.breakdownEarnings}>₱{calculateRiderEarnings().toFixed(2)}</span>
+                        </div>
+                        <div style={styles.breakdownNote}>
+                          <small>💡 You earn 60% commission from each delivery fee</small>
+                        </div>
+                      </div>
+                      <button
+                        style={styles.submitBtn}
+                        onClick={handleSubmitReport}
+                        disabled={submitting}
+                      >
+                        {submitting ? '⏳ Submitting...' : '💵 Bill to Cashier'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )
+            ) : (
+              // Submitted reports tab
+              submittedReports.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <span style={styles.emptyIcon}>📊</span>
+                  <p style={styles.emptyText}>No submitted reports yet</p>
+                  <p style={styles.emptySubtext}>
+                    Your submitted billing reports will appear here
+                  </p>
+                </div>
+              ) : (
+                <div style={styles.reportList}>
+                  {submittedReports.map((report) => (
+                    <div key={report.id} style={styles.reportCard}>
+                      <div style={styles.reportHeader}>
+                        <h3 style={styles.reportTitle}>
+                          Report #{report.id.substring(0, 8)}
+                        </h3>
+                        <span
+                          style={{
+                            ...styles.reportStatus,
+                            ...(report.status === 'paid' ? styles.reportStatusPaid : styles.reportStatusPending),
+                          }}
+                        >
+                          {report.status === 'paid' ? '✅ PAID' : '⏳ PENDING'}
+                        </span>
+                      </div>
+                      <div style={styles.reportBody}>
+                        <p style={styles.reportDetail}>
+                          <strong>Submitted:</strong> {new Date(report.submitted_at).toLocaleString()}
+                        </p>
+                        {report.paid_at && (
+                          <p style={styles.reportDetail}>
+                            <strong>Paid:</strong> {new Date(report.paid_at).toLocaleString()}
+                          </p>
+                        )}
+                        <p style={styles.reportDetail}>
+                          <strong>Deliveries:</strong> {report.delivery_ids?.length || 0}
+                        </p>
+                        <p style={styles.reportDetail}>
+                          <strong>Total Fees:</strong> ₱{report.total_delivery_fees?.toFixed(2) || '0.00'}
+                        </p>
+                        <p style={styles.reportEarnings}>
+                          <strong>Your Earnings (60%):</strong> ₱{report.rider_earnings?.toFixed(2) || '0.00'}
+                        </p>
+                        {report.status === 'pending' && (
+                          <div style={styles.pendingNote}>
+                            ⏳ Waiting for cashier to process payment
+                          </div>
+                        )}
+                        {report.status === 'paid' && (
+                          <div style={styles.paidNote}>
+                            🔒 This report has been paid. Details can no longer be edited.
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
                 </div>
-
-                {selectedDeliveries.length > 0 && (
-                  <div style={styles.submitSection}>
-                    <div style={styles.breakdownContainer}>
-                      <div style={styles.breakdownRow}>
-                        <span style={styles.breakdownLabel}>Total Delivery Fees:</span>
-                        <span style={styles.breakdownValue}>₱{calculateTotalFees().toFixed(2)}</span>
-                      </div>
-                      <div style={styles.breakdownRow}>
-                        <span style={styles.breakdownLabel}>Business Revenue (40%):</span>
-                        <span style={styles.breakdownHighlight}>₱{calculateBusinessRevenue().toFixed(2)}</span>
-                      </div>
-                      <div style={styles.breakdownRow}>
-                        <span style={styles.breakdownLabel}>Your Earnings (60%):</span>
-                        <span style={styles.breakdownEarnings}>₱{calculateRiderEarnings().toFixed(2)}</span>
-                      </div>
-                      <div style={styles.breakdownNote}>
-                        <small>💡 You earn 60% commission from each delivery fee</small>
-                      </div>
-                    </div>
-                    <button
-                      style={styles.submitBtn}
-                      onClick={handleSubmitReport}
-                      disabled={submitting}
-                    >
-                      {submitting ? '⏳ Submitting...' : '📤 Submit Report to Cashier'}
-                    </button>
-                  </div>
-                )}
-              </>
+              )
             )}
           </div>
         </main>
@@ -614,5 +729,101 @@ const styles = {
     marginBottom: '24px',
     border: '1px solid #ff6b6b',
     textAlign: 'center',
+  },
+  tabContainer: {
+    display: 'flex',
+    gap: '12px',
+    marginBottom: '32px',
+    justifyContent: 'center',
+  },
+  tab: {
+    padding: '12px 24px',
+    backgroundColor: '#1a1a1a',
+    color: '#ccc',
+    border: '2px solid #333',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s ease',
+  },
+  tabActive: {
+    backgroundColor: '#ffc107',
+    color: '#0a0a0a',
+    borderColor: '#ffc107',
+  },
+  reportList: {
+    display: 'grid',
+    gap: '20px',
+  },
+  reportCard: {
+    backgroundColor: '#1a1a1a',
+    border: '2px solid #333',
+    borderRadius: '12px',
+    padding: '20px',
+  },
+  reportHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
+    paddingBottom: '16px',
+    borderBottom: '1px solid #333',
+  },
+  reportTitle: {
+    fontSize: '18px',
+    color: '#ffc107',
+    margin: 0,
+    fontWeight: '600',
+  },
+  reportStatus: {
+    display: 'inline-block',
+    padding: '6px 16px',
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontWeight: '700',
+  },
+  reportStatusPaid: {
+    backgroundColor: '#4caf50',
+    color: '#fff',
+  },
+  reportStatusPending: {
+    backgroundColor: '#ff9800',
+    color: '#fff',
+  },
+  reportBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  reportDetail: {
+    fontSize: '14px',
+    color: '#ccc',
+    margin: 0,
+  },
+  reportEarnings: {
+    fontSize: '16px',
+    color: '#4caf50',
+    fontWeight: '700',
+    margin: '8px 0',
+  },
+  pendingNote: {
+    backgroundColor: '#1f1f1f',
+    color: '#ff9800',
+    padding: '12px',
+    borderRadius: '6px',
+    fontSize: '13px',
+    marginTop: '12px',
+    border: '1px solid #ff9800',
+  },
+  paidNote: {
+    backgroundColor: '#1a4d1a',
+    color: '#90ee90',
+    padding: '12px',
+    borderRadius: '6px',
+    fontSize: '13px',
+    marginTop: '12px',
+    border: '1px solid #90ee90',
   },
 };

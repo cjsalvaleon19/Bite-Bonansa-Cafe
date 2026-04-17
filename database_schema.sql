@@ -1,5 +1,6 @@
 -- ============================================================================
--- Customer Portal Database Schema
+-- Bite Bonansa Cafe Database Schema
+-- Customer Portal & Rider Portal
 -- ============================================================================
 
 -- 1. Enhanced users table (assuming it exists, just showing required columns)
@@ -281,3 +282,337 @@ CREATE POLICY "Staff can view all transactions" ON loyalty_transactions
       AND users.role IN ('admin', 'cashier')
     )
   );
+
+-- ============================================================================
+-- Rider Portal Database Schema
+-- ============================================================================
+
+-- 13. Riders table - Driver information and profile
+CREATE TABLE IF NOT EXISTS riders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  
+  -- Driver identification
+  driver_id VARCHAR(50) UNIQUE NOT NULL, -- Unique driver ID number
+  
+  -- Vehicle information
+  vehicle_type VARCHAR(50), -- 'motorcycle', 'scooter', 'bicycle', 'car'
+  vehicle_plate VARCHAR(20), -- Plate number
+  
+  -- Contact information
+  cellphone_number VARCHAR(20),
+  emergency_contact VARCHAR(255),
+  emergency_phone VARCHAR(20),
+  
+  -- Status and tracking
+  is_available BOOLEAN DEFAULT true,
+  total_earnings DECIMAL(10,2) DEFAULT 0,
+  deliveries_completed INT DEFAULT 0,
+  
+  -- Timestamps
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_riders_user_id ON riders(user_id);
+CREATE INDEX IF NOT EXISTS idx_riders_driver_id ON riders(driver_id);
+CREATE INDEX IF NOT EXISTS idx_riders_available ON riders(is_available);
+
+-- 14. Deliveries table - Delivery assignments and tracking
+CREATE TABLE IF NOT EXISTS deliveries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+  rider_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  
+  -- Customer information (denormalized for quick access)
+  customer_name VARCHAR(255),
+  customer_phone VARCHAR(20),
+  customer_address TEXT NOT NULL,
+  customer_latitude DECIMAL(10,8),
+  customer_longitude DECIMAL(11,8),
+  
+  -- Delivery details
+  delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 50,
+  distance_meters INT, -- Distance in meters from store to customer
+  
+  -- Status tracking
+  status VARCHAR(50) NOT NULL DEFAULT 'pending',
+  -- Status values: 'pending', 'accepted', 'in_progress', 'completed', 'cancelled'
+  
+  -- Report tracking
+  report_submitted BOOLEAN DEFAULT false,
+  report_submitted_at TIMESTAMP,
+  report_paid BOOLEAN DEFAULT false,
+  report_paid_at TIMESTAMP,
+  
+  -- Timestamps
+  created_at TIMESTAMP DEFAULT NOW(),
+  accepted_at TIMESTAMP,
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP,
+  
+  -- Notes
+  delivery_notes TEXT,
+  special_instructions TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_deliveries_rider_id ON deliveries(rider_id);
+CREATE INDEX IF NOT EXISTS idx_deliveries_order_id ON deliveries(order_id);
+CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status);
+CREATE INDEX IF NOT EXISTS idx_deliveries_created_at ON deliveries(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_deliveries_report_submitted ON deliveries(report_submitted, rider_id);
+
+-- 15. Delivery Reports table - Billing and payment tracking
+CREATE TABLE IF NOT EXISTS delivery_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rider_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  
+  -- Report details
+  report_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  delivery_ids UUID[] NOT NULL, -- Array of delivery IDs included in this report
+  
+  -- Financial details
+  total_delivery_fees DECIMAL(10,2) NOT NULL DEFAULT 0, -- Total delivery fees collected
+  rider_earnings DECIMAL(10,2) NOT NULL DEFAULT 0, -- 60% commission for rider
+  business_revenue DECIMAL(10,2) NOT NULL DEFAULT 0, -- 40% revenue for business
+  
+  -- Status and payment
+  status VARCHAR(50) NOT NULL DEFAULT 'pending', -- 'pending', 'paid', 'cancelled'
+  submitted_at TIMESTAMP DEFAULT NOW(),
+  paid_at TIMESTAMP,
+  paid_by UUID REFERENCES users(id), -- Cashier who processed payment
+  
+  -- Metadata
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_delivery_reports_rider_id ON delivery_reports(rider_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_reports_status ON delivery_reports(status);
+CREATE INDEX IF NOT EXISTS idx_delivery_reports_date ON delivery_reports(report_date DESC);
+
+-- 16. Function to update rider earnings when report is paid
+CREATE OR REPLACE FUNCTION update_rider_earnings()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- When a report is marked as paid, update rider's total earnings
+  IF NEW.status = 'paid' AND OLD.status != 'paid' THEN
+    UPDATE riders
+    SET total_earnings = total_earnings + NEW.rider_earnings,
+        updated_at = NOW()
+    WHERE user_id = NEW.rider_id;
+    
+    -- Mark the deliveries as paid
+    UPDATE deliveries
+    SET report_paid = true,
+        report_paid_at = NOW()
+    WHERE id = ANY(NEW.delivery_ids);
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 17. Trigger to update rider earnings
+DROP TRIGGER IF EXISTS trigger_update_rider_earnings ON delivery_reports;
+CREATE TRIGGER trigger_update_rider_earnings
+  AFTER UPDATE OF status ON delivery_reports
+  FOR EACH ROW
+  WHEN (NEW.status = 'paid')
+  EXECUTE FUNCTION update_rider_earnings();
+
+-- 18. Function to update delivery count when delivery is completed
+CREATE OR REPLACE FUNCTION update_delivery_count()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- When a delivery is marked as completed, increment rider's delivery count
+  IF NEW.status = 'completed' AND OLD.status != 'completed' THEN
+    UPDATE riders
+    SET deliveries_completed = deliveries_completed + 1,
+        updated_at = NOW()
+    WHERE user_id = NEW.rider_id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 19. Trigger to update delivery count
+DROP TRIGGER IF EXISTS trigger_update_delivery_count ON deliveries;
+CREATE TRIGGER trigger_update_delivery_count
+  AFTER UPDATE OF status ON deliveries
+  FOR EACH ROW
+  WHEN (NEW.status = 'completed')
+  EXECUTE FUNCTION update_delivery_count();
+
+-- 20. Row Level Security (RLS) policies for rider tables
+
+-- Enable RLS on rider tables
+ALTER TABLE riders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deliveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_reports ENABLE ROW LEVEL SECURITY;
+
+-- Riders table policies
+CREATE POLICY "Riders can view their own profile" ON riders
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Riders can update their own profile" ON riders
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Staff can view all rider profiles" ON riders
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'cashier')
+    )
+  );
+
+CREATE POLICY "Admin can manage riders" ON riders
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role = 'admin'
+    )
+  );
+
+-- Deliveries table policies
+CREATE POLICY "Riders can view their own deliveries" ON deliveries
+  FOR SELECT USING (auth.uid() = rider_id);
+
+CREATE POLICY "Riders can update their own deliveries" ON deliveries
+  FOR UPDATE USING (
+    auth.uid() = rider_id 
+    AND report_paid = false -- Cannot edit after payment
+  );
+
+CREATE POLICY "Staff can view all deliveries" ON deliveries
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'cashier')
+    )
+  );
+
+CREATE POLICY "Staff can manage deliveries" ON deliveries
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'cashier')
+    )
+  );
+
+-- Delivery reports table policies
+CREATE POLICY "Riders can view their own reports" ON delivery_reports
+  FOR SELECT USING (auth.uid() = rider_id);
+
+CREATE POLICY "Riders can create reports" ON delivery_reports
+  FOR INSERT WITH CHECK (auth.uid() = rider_id);
+
+CREATE POLICY "Riders cannot update paid reports" ON delivery_reports
+  FOR UPDATE USING (
+    auth.uid() = rider_id 
+    AND status = 'pending' -- Can only update pending reports
+  );
+
+CREATE POLICY "Staff can view all reports" ON delivery_reports
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'cashier')
+    )
+  );
+
+CREATE POLICY "Cashier can update report status" ON delivery_reports
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'cashier')
+    )
+  );
+
+-- 21. Notifications table for cashier alerts
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  
+  -- Notification details
+  type VARCHAR(50) NOT NULL, -- 'delivery_report', 'order_ready', etc.
+  title VARCHAR(255) NOT NULL,
+  message TEXT NOT NULL,
+  
+  -- Related entities
+  related_id UUID, -- ID of related entity (report_id, order_id, etc.)
+  related_type VARCHAR(50), -- 'delivery_report', 'order', etc.
+  
+  -- Status
+  is_read BOOLEAN DEFAULT false,
+  read_at TIMESTAMP,
+  
+  -- Timestamps
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+
+-- Enable RLS on notifications
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- Notifications policies
+CREATE POLICY "Users can view their own notifications" ON notifications
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own notifications" ON notifications
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "System can create notifications" ON notifications
+  FOR INSERT WITH CHECK (true);
+
+-- 22. Function to create notification for all cashiers when report is submitted
+CREATE OR REPLACE FUNCTION notify_cashiers_on_report()
+RETURNS TRIGGER AS $$
+DECLARE
+  cashier_record RECORD;
+  rider_name TEXT;
+BEGIN
+  -- Only create notifications for new reports
+  IF TG_OP = 'INSERT' THEN
+    -- Get rider name
+    SELECT full_name INTO rider_name
+    FROM users
+    WHERE id = NEW.rider_id;
+    
+    -- Create notification for each cashier
+    FOR cashier_record IN 
+      SELECT id FROM users WHERE role = 'cashier'
+    LOOP
+      INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
+      VALUES (
+        cashier_record.id,
+        'delivery_report',
+        '💵 New Delivery Report',
+        COALESCE(rider_name, 'Rider') || ' has submitted a delivery report for ₱' || 
+        NEW.rider_earnings::TEXT || ' (60% of ₱' || NEW.total_delivery_fees::TEXT || ')',
+        NEW.id,
+        'delivery_report'
+      );
+    END LOOP;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 23. Trigger to notify cashiers
+DROP TRIGGER IF EXISTS trigger_notify_cashiers ON delivery_reports;
+CREATE TRIGGER trigger_notify_cashiers
+  AFTER INSERT ON delivery_reports
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_cashiers_on_report();

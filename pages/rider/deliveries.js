@@ -3,8 +3,17 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
+import { STORE_LOCATION } from '../../utils/deliveryCalculator';
 
 const DEFAULT_DELIVERY_FEE = 50;
+
+// Helper function to format distance
+const formatDistance = (meters) => {
+  if (!meters) return 'N/A';
+  return meters < 1000 
+    ? `${meters} m` 
+    : `${(meters / 1000).toFixed(2)} km`;
+};
 
 export default function RiderDeliveries() {
   const router = useRouter();
@@ -158,7 +167,13 @@ export default function RiderDeliveries() {
       if (!supabase) throw new Error('Supabase not available');
 
       const updateData = { status: newStatus };
-      if (newStatus === 'completed') {
+      
+      // Update timestamps based on status
+      if (newStatus === 'accepted') {
+        updateData.accepted_at = new Date().toISOString();
+      } else if (newStatus === 'in_progress') {
+        updateData.started_at = new Date().toISOString();
+      } else if (newStatus === 'completed') {
         updateData.completed_at = new Date().toISOString();
       }
 
@@ -168,6 +183,35 @@ export default function RiderDeliveries() {
         .eq('id', deliveryId);
 
       if (error) throw error;
+
+      // If marking as completed, also update the order status
+      if (newStatus === 'completed') {
+        // Get the order_id from the delivery
+        const delivery = deliveries.find(d => d.id === deliveryId);
+        if (delivery && delivery.order_id) {
+          await supabase
+            .from('orders')
+            .update({ 
+              status: 'order_delivered',
+              delivered_at: new Date().toISOString()
+            })
+            .eq('id', delivery.order_id);
+        }
+      }
+
+      // If accepting order, update order status to out_for_delivery
+      if (newStatus === 'accepted' || newStatus === 'in_progress') {
+        const delivery = deliveries.find(d => d.id === deliveryId);
+        if (delivery && delivery.order_id) {
+          await supabase
+            .from('orders')
+            .update({ 
+              status: 'out_for_delivery',
+              out_for_delivery_at: new Date().toISOString()
+            })
+            .eq('id', delivery.order_id);
+        }
+      }
 
       // Refresh deliveries
       await fetchDeliveriesWithFilter(user.id);
@@ -194,8 +238,10 @@ export default function RiderDeliveries() {
     switch (status) {
       case 'pending':
         return '#ffc107';
-      case 'in_progress':
+      case 'accepted':
         return '#2196f3';
+      case 'in_progress':
+        return '#ff9800';
       case 'completed':
         return '#4caf50';
       case 'cancelled':
@@ -203,6 +249,17 @@ export default function RiderDeliveries() {
       default:
         return '#999';
     }
+  };
+
+  const getGoogleMapsUrl = (delivery) => {
+    if (!delivery.customer_latitude || !delivery.customer_longitude) {
+      return null;
+    }
+    
+    // Create a Google Maps directions URL from store to customer location
+    const origin = `${STORE_LOCATION.latitude},${STORE_LOCATION.longitude}`;
+    const destination = `${delivery.customer_latitude},${delivery.customer_longitude}`;
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
   };
 
   const getFilteredDeliveries = () => {
@@ -300,66 +357,111 @@ export default function RiderDeliveries() {
               </div>
             ) : (
               <div style={styles.deliveryList}>
-                {getFilteredDeliveries().map((delivery) => (
-                  <div key={delivery.id} style={styles.deliveryCard}>
-                    <div style={styles.deliveryHeader}>
-                      <h3 style={styles.deliveryTitle}>
-                        Order #{delivery.order_id}
-                      </h3>
-                      <span
-                        style={{
-                          ...styles.status,
-                          backgroundColor: getStatusColor(delivery.status),
-                        }}
-                      >
-                        {delivery.status.replace('_', ' ').toUpperCase()}
-                      </span>
-                    </div>
-
-                    <div style={styles.deliveryBody}>
-                      <div style={styles.deliveryInfo}>
-                        <p style={styles.infoItem}>
-                          <strong>Customer:</strong> {delivery.customer_name || 'N/A'}
-                        </p>
-                        <p style={styles.infoItem}>
-                          <strong>Phone:</strong> {delivery.customer_phone || 'N/A'}
-                        </p>
-                        <p style={styles.infoItem}>
-                          <strong>Address:</strong> {delivery.customer_address || 'N/A'}
-                        </p>
-                        <p style={styles.infoItem}>
-                          <strong>Delivery Fee:</strong> ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
-                        </p>
-                        <p style={styles.infoItem}>
-                          <strong>Order Total:</strong> ₱{delivery.orders?.total || 0}
-                        </p>
+                {getFilteredDeliveries().map((delivery) => {
+                  const mapsUrl = getGoogleMapsUrl(delivery);
+                  const isLocked = delivery.status === 'completed' && delivery.report_paid;
+                  
+                  return (
+                    <div 
+                      key={delivery.id} 
+                      style={{
+                        ...styles.deliveryCard,
+                        ...(isLocked ? styles.deliveryCardLocked : {}),
+                      }}
+                    >
+                      <div style={styles.deliveryHeader}>
+                        <h3 style={styles.deliveryTitle}>
+                          Order #{delivery.order_id}
+                        </h3>
+                        <span
+                          style={{
+                            ...styles.status,
+                            backgroundColor: getStatusColor(delivery.status),
+                          }}
+                        >
+                          {delivery.status.replace('_', ' ').toUpperCase()}
+                        </span>
                       </div>
 
-                      {delivery.status !== 'completed' && delivery.status !== 'cancelled' && (
-                        <div style={styles.actions}>
-                          {delivery.status === 'pending' && (
-                            <button
-                              style={styles.actionBtn}
-                              onClick={() => handleUpdateStatus(delivery.id, 'in_progress')}
-                              disabled={updatingStatus === delivery.id}
-                            >
-                              {updatingStatus === delivery.id ? '⏳' : '🚀'} Start Delivery
-                            </button>
+                      <div style={styles.deliveryBody}>
+                        <div style={styles.deliveryInfo}>
+                          <p style={styles.infoItem}>
+                            <strong>Customer:</strong> {delivery.customer_name || 'N/A'}
+                          </p>
+                          <p style={styles.infoItem}>
+                            <strong>Phone:</strong> {delivery.customer_phone || 'N/A'}
+                          </p>
+                          <p style={styles.infoItem}>
+                            <strong>Address:</strong> {delivery.customer_address || 'N/A'}
+                          </p>
+                          {mapsUrl && (
+                            <p style={styles.infoItem}>
+                              <a 
+                                href={mapsUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                style={styles.mapsLink}
+                              >
+                                📍 Open in Google Maps (Directions)
+                              </a>
+                            </p>
                           )}
-                          {delivery.status === 'in_progress' && (
-                            <button
-                              style={{ ...styles.actionBtn, ...styles.actionBtnSuccess }}
-                              onClick={() => handleUpdateStatus(delivery.id, 'completed')}
-                              disabled={updatingStatus === delivery.id}
-                            >
-                              {updatingStatus === delivery.id ? '⏳' : '✅'} Mark as Completed
-                            </button>
+                          {delivery.distance_meters && (
+                            <p style={styles.infoItem}>
+                              <strong>Distance:</strong> {formatDistance(delivery.distance_meters)}
+                            </p>
+                          )}
+                          <p style={styles.infoItem}>
+                            <strong>Delivery Fee:</strong> ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
+                          </p>
+                          {delivery.special_instructions && (
+                            <p style={styles.infoItem}>
+                              <strong>Special Instructions:</strong> {delivery.special_instructions}
+                            </p>
                           )}
                         </div>
-                      )}
+
+                        {isLocked && (
+                          <div style={styles.lockedBanner}>
+                            🔒 This delivery has been billed and paid. Details can no longer be edited.
+                          </div>
+                        )}
+
+                        {!isLocked && delivery.status !== 'completed' && delivery.status !== 'cancelled' && (
+                          <div style={styles.actions}>
+                            {delivery.status === 'pending' && (
+                              <button
+                                style={styles.actionBtn}
+                                onClick={() => handleUpdateStatus(delivery.id, 'accepted')}
+                                disabled={updatingStatus === delivery.id}
+                              >
+                                {updatingStatus === delivery.id ? '⏳' : '✅'} Accept Order
+                              </button>
+                            )}
+                            {delivery.status === 'accepted' && (
+                              <button
+                                style={{ ...styles.actionBtn, ...styles.actionBtnOrange }}
+                                onClick={() => handleUpdateStatus(delivery.id, 'in_progress')}
+                                disabled={updatingStatus === delivery.id}
+                              >
+                                {updatingStatus === delivery.id ? '⏳' : '🚀'} Start Delivery
+                              </button>
+                            )}
+                            {delivery.status === 'in_progress' && (
+                              <button
+                                style={{ ...styles.actionBtn, ...styles.actionBtnSuccess }}
+                                onClick={() => handleUpdateStatus(delivery.id, 'completed')}
+                                disabled={updatingStatus === delivery.id}
+                              >
+                                {updatingStatus === delivery.id ? '⏳' : '📦'} Order Delivered
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -566,5 +668,31 @@ const styles = {
   },
   actionBtnSuccess: {
     backgroundColor: '#4caf50',
+  },
+  actionBtnOrange: {
+    backgroundColor: '#ff9800',
+  },
+  deliveryCardLocked: {
+    opacity: 0.7,
+    borderColor: '#666',
+  },
+  lockedBanner: {
+    backgroundColor: '#1a1a1a',
+    border: '1px solid #666',
+    borderRadius: '6px',
+    padding: '12px',
+    color: '#ccc',
+    fontSize: '14px',
+    marginTop: '12px',
+    textAlign: 'center',
+  },
+  mapsLink: {
+    color: '#2196f3',
+    textDecoration: 'none',
+    fontWeight: '600',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    transition: 'color 0.3s ease',
   },
 };
