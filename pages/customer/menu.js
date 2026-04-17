@@ -38,7 +38,7 @@ export default function CustomerMenu() {
           .from('users')
           .select('role')
           .eq('id', session.user.id)
-          .single();
+          .maybeSingle();
 
         if (!mounted) return;
 

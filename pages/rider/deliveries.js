@@ -39,7 +39,7 @@ export default function RiderDeliveries() {
           .from('users')
           .select('role')
           .eq('id', session.user.id)
-          .single();
+          .maybeSingle();
 
         if (!mounted) return;
 
