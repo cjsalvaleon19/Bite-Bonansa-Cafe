@@ -16,7 +16,6 @@ export default function CustomerProfile() {
     created_at: '',
     loyalty_balance: 0
   });
-  const [showPassword, setShowPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -266,15 +265,12 @@ export default function CustomerProfile() {
                 <label style={styles.fieldLabel}>Password</label>
                 <div style={styles.passwordField}>
                   <div style={styles.passwordValue}>
-                    {showPassword ? '••••••••' : '••••••••'}
+                    ••••••••
                   </div>
-                  <button
-                    style={styles.passwordBtn}
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? '🙈 Hide' : '👁️ View'}
-                  </button>
                 </div>
+                <p style={styles.passwordNote}>
+                  For security reasons, passwords cannot be viewed. Use "Update Password" to change your password.
+                </p>
                 <button
                   style={styles.updatePasswordBtn}
                   onClick={() => setShowPasswordModal(true)}
@@ -489,15 +485,11 @@ const styles = {
     backgroundColor: '#1a1a1a',
     borderRadius: '6px',
   },
-  passwordBtn: {
-    padding: '12px 20px',
-    backgroundColor: '#444',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '14px',
-    cursor: 'pointer',
-    fontFamily: "'Poppins', sans-serif",
+  passwordNote: {
+    fontSize: '12px',
+    color: '#999',
+    marginTop: '8px',
+    fontStyle: 'italic',
   },
   updatePasswordBtn: {
     marginTop: '12px',

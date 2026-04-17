@@ -122,7 +122,7 @@ CREATE OR REPLACE FUNCTION calculate_earnings_percentage(order_subtotal DECIMAL)
 RETURNS DECIMAL AS $$
 BEGIN
   -- 2% if total cost is below 500.00
-  -- 5% if 501.00 and above
+  -- 5% if 500.00 and above
   IF order_subtotal < 500.00 THEN
     RETURN 2.00;
   ELSE

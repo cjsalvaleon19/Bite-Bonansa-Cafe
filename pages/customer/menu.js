@@ -155,13 +155,9 @@ export default function CustomerMenu() {
     return (subtotal * percentage) / 100;
   };
 
-  const calculateVAT = () => {
-    return 0; // VAT disabled as per requirements
-  };
-
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
-    const vat = calculateVAT();
+    const vat = 0; // VAT disabled as per requirements
     const total = subtotal + deliveryFee + vat;
     return Math.max(0, total - pointsToUse);
   };
@@ -220,7 +216,7 @@ export default function CustomerMenu() {
     setSubmittingOrder(true);
     try {
       const subtotal = calculateSubtotal();
-      const vat = calculateVAT();
+      const vat = 0; // VAT disabled as per requirements
       const total = calculateTotal();
       const earnings = calculateEarnings(subtotal);
       const earningsPercentage = subtotal < 500 ? 2 : 5;
@@ -325,7 +321,7 @@ export default function CustomerMenu() {
   }
 
   const subtotal = calculateSubtotal();
-  const vat = calculateVAT();
+  const vat = 0; // VAT disabled as per requirements
   const total = calculateTotal();
   const maxPointsToUse = Math.min(userProfile?.loyalty_balance || 0, total);
 
