@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 
 const DEFAULT_DELIVERY_FEE = 50;
+const MIN_PASSWORD_LENGTH = 6;
 const RIDER_COMMISSION_RATE = 0.60; // 60% of delivery fee goes to rider
 const BUSINESS_REVENUE_RATE = 0.40; // 40% of delivery fee is business revenue
 
@@ -366,7 +367,7 @@ export default function RiderReports() {
                             📍 {delivery.customer_address || 'Address not available'}
                           </p>
                           <p style={styles.deliveryDetail}>
-                            📅 {new Date(delivery.completed_at || delivery.created_at).toLocaleString()}
+                            📅 {new Date(delivery.completed_at).toLocaleString()}
                           </p>
                           <div style={styles.deliveryFee}>
                             Delivery Fee: ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}

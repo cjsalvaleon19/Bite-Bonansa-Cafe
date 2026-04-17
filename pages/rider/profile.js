@@ -11,6 +11,7 @@ export default function RiderProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
+  const MIN_PASSWORD_LENGTH = 6;
   const [profile, setProfile] = useState({
     full_name: '',
     phone: '',
@@ -217,8 +218,8 @@ export default function RiderProfile() {
       if (!supabase) throw new Error('Supabase not available');
 
       // Validate password fields
-      if (!passwordData.newPassword || passwordData.newPassword.length < 6) {
-        throw new Error('New password must be at least 6 characters');
+      if (!passwordData.newPassword || passwordData.newPassword.length < MIN_PASSWORD_LENGTH) {
+        throw new Error(`New password must be at least ${MIN_PASSWORD_LENGTH} characters`);
       }
 
       if (passwordData.newPassword !== passwordData.confirmPassword) {

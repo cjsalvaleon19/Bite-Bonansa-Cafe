@@ -7,6 +7,14 @@ import { STORE_LOCATION } from '../../utils/deliveryCalculator';
 
 const DEFAULT_DELIVERY_FEE = 50;
 
+// Helper function to format distance
+const formatDistance = (meters) => {
+  if (!meters) return 'N/A';
+  return meters < 1000 
+    ? `${meters} m` 
+    : `${(meters / 1000).toFixed(2)} km`;
+};
+
 export default function RiderDeliveries() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -400,9 +408,7 @@ export default function RiderDeliveries() {
                           )}
                           {delivery.distance_meters && (
                             <p style={styles.infoItem}>
-                              <strong>Distance:</strong> {delivery.distance_meters < 1000 
-                                ? `${delivery.distance_meters} m` 
-                                : `${(delivery.distance_meters / 1000).toFixed(2)} km`}
+                              <strong>Distance:</strong> {formatDistance(delivery.distance_meters)}
                             </p>
                           )}
                           <p style={styles.infoItem}>
