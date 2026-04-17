@@ -16,7 +16,6 @@ export default function CustomerProfile() {
     created_at: '',
     loyalty_balance: 0
   });
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswordModal, setShowPasswordModal] = useState(false);

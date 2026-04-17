@@ -256,7 +256,7 @@ export default function CustomerDashboard() {
               </p>
               <p style={{...styles.cardDesc, fontSize: '11px', marginTop: '8px'}}>
                 Earn 2% on orders below ₱500<br/>
-                Earn 5% on orders ₱501 and above
+                Earn 5% on orders ₱500 and above
               </p>
             </div>
           </div>
