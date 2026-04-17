@@ -31,6 +31,37 @@ export default function CashierPage() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!mounted) return;
         if (!session) { router.replace('/login'); return; }
+        
+        // Check user role
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        
+        if (!mounted) return;
+        
+        if (userError) {
+          console.error('[CashierPage] Failed to fetch user role:', userError.message);
+          setAuthLoading(false);
+          router.replace('/login');
+          return;
+        }
+        
+        const role = userData?.role || 'customer';
+        
+        // Redirect non-cashier users to their appropriate portal
+        if (role !== 'cashier') {
+          if (role === 'admin') {
+            router.replace('/dashboard');
+          } else if (role === 'rider') {
+            router.replace('/rider/dashboard');
+          } else {
+            router.replace('/customer/dashboard');
+          }
+          return;
+        }
+        
         setAuthLoading(false);
       } catch {
         if (mounted) { setAuthLoading(false); router.replace('/login'); }
