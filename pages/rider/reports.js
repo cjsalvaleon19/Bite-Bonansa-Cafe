@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 
 const DEFAULT_DELIVERY_FEE = 50;
+const CASHIER_BILLING_RATE = 0.60; // 60% of delivery fee goes to cashier
+const RIDER_COMMISSION_RATE = 0.40; // 40% of delivery fee goes to rider
 
 export default function RiderReports() {
   const router = useRouter();
@@ -147,6 +149,16 @@ export default function RiderReports() {
       .reduce((sum, d) => sum + (d.delivery_fee || DEFAULT_DELIVERY_FEE), 0);
   };
 
+  const calculateCashierBilling = () => {
+    const totalFees = calculateTotalFees();
+    return totalFees * CASHIER_BILLING_RATE;
+  };
+
+  const calculateRiderEarnings = () => {
+    const totalFees = calculateTotalFees();
+    return totalFees * RIDER_COMMISSION_RATE;
+  };
+
   const handleSubmitReport = async () => {
     if (selectedDeliveries.length === 0) {
       setSubmitStatus('error');
@@ -176,7 +188,9 @@ export default function RiderReports() {
         .insert({
           rider_id: user.id,
           delivery_ids: selectedDeliveries,
-          total_fees: calculateTotalFees(),
+          total_delivery_fees: calculateTotalFees(),
+          cashier_billing_amount: calculateCashierBilling(),
+          rider_earnings: calculateRiderEarnings(),
           status: 'pending',
           submitted_at: new Date().toISOString(),
         });
@@ -251,7 +265,7 @@ export default function RiderReports() {
         <main style={styles.main}>
           <h2 style={styles.title}>📊 Delivery Reports</h2>
           <p style={styles.subtitle}>
-            Select completed deliveries to submit delivery fee billing to the cashier
+            Select completed deliveries to submit billing to the cashier. You bill 60% and earn 40% commission.
           </p>
 
           {submitStatus === 'success' && (
@@ -315,9 +329,22 @@ export default function RiderReports() {
 
                 {selectedDeliveries.length > 0 && (
                   <div style={styles.submitSection}>
-                    <div style={styles.totalSection}>
-                      <span style={styles.totalLabel}>Total Delivery Fees:</span>
-                      <span style={styles.totalAmount}>₱{calculateTotalFees()}</span>
+                    <div style={styles.breakdownContainer}>
+                      <div style={styles.breakdownRow}>
+                        <span style={styles.breakdownLabel}>Total Delivery Fees:</span>
+                        <span style={styles.breakdownValue}>₱{calculateTotalFees().toFixed(2)}</span>
+                      </div>
+                      <div style={styles.breakdownRow}>
+                        <span style={styles.breakdownLabel}>Cashier Billing (60%):</span>
+                        <span style={styles.breakdownHighlight}>₱{calculateCashierBilling().toFixed(2)}</span>
+                      </div>
+                      <div style={styles.breakdownRow}>
+                        <span style={styles.breakdownLabel}>Your Earnings (40%):</span>
+                        <span style={styles.breakdownEarnings}>₱{calculateRiderEarnings().toFixed(2)}</span>
+                      </div>
+                      <div style={styles.breakdownNote}>
+                        <small>💡 You bill the cashier 60% of the delivery fee and keep 40% as commission</small>
+                      </div>
                     </div>
                     <button
                       style={styles.submitBtn}
@@ -500,10 +527,48 @@ const styles = {
     borderRadius: '12px',
     padding: '24px',
     display: 'flex',
+    flexDirection: 'column',
+    gap: '20px',
+  },
+  breakdownContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    width: '100%',
+  },
+  breakdownRow: {
+    display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: '16px',
+    padding: '8px 0',
+    borderBottom: '1px solid #333',
+  },
+  breakdownLabel: {
+    fontSize: '16px',
+    color: '#ccc',
+  },
+  breakdownValue: {
+    fontSize: '18px',
+    color: '#fff',
+    fontWeight: '600',
+  },
+  breakdownHighlight: {
+    fontSize: '20px',
+    color: '#ffc107',
+    fontWeight: '700',
+  },
+  breakdownEarnings: {
+    fontSize: '20px',
+    color: '#4caf50',
+    fontWeight: '700',
+  },
+  breakdownNote: {
+    backgroundColor: '#0a0a0a',
+    padding: '12px',
+    borderRadius: '6px',
+    textAlign: 'center',
+    color: '#999',
+    marginTop: '8px',
   },
   totalSection: {
     display: 'flex',
@@ -530,6 +595,7 @@ const styles = {
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
     transition: 'all 0.3s ease',
+    width: '100%',
   },
   successMessage: {
     backgroundColor: '#1a4d1a',
