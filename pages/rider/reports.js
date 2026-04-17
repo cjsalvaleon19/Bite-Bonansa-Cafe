@@ -88,11 +88,16 @@ export default function RiderReports() {
       if (!supabase) return;
 
       try {
+        // Get today's date at start of day
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
         const { data, error } = await supabase
           .from('deliveries')
           .select('*, orders(id, total)')
           .eq('rider_id', userId)
           .eq('status', 'completed')
+          .gte('completed_at', today.toISOString())
           .or('report_submitted.is.null,report_submitted.eq.false')
           .order('completed_at', { ascending: false });
 
@@ -263,9 +268,9 @@ export default function RiderReports() {
         </nav>
 
         <main style={styles.main}>
-          <h2 style={styles.title}>📊 Delivery Reports</h2>
+          <h2 style={styles.title}>📊 Billing Portal</h2>
           <p style={styles.subtitle}>
-            Select completed deliveries to submit your report. You earn 60% commission from each delivery fee.
+            Select completed deliveries from today to submit your billing report. You earn 60% commission from each delivery fee.
           </p>
 
           {submitStatus === 'success' && (
@@ -284,9 +289,9 @@ export default function RiderReports() {
             {completedDeliveries.length === 0 ? (
               <div style={styles.emptyState}>
                 <span style={styles.emptyIcon}>📄</span>
-                <p style={styles.emptyText}>No pending reports</p>
+                <p style={styles.emptyText}>No deliveries for today</p>
                 <p style={styles.emptySubtext}>
-                  All completed deliveries have been reported
+                  Completed deliveries from today will appear here for billing
                 </p>
               </div>
             ) : (
@@ -331,6 +336,10 @@ export default function RiderReports() {
                   <div style={styles.submitSection}>
                     <div style={styles.breakdownContainer}>
                       <div style={styles.breakdownRow}>
+                        <span style={styles.breakdownLabel}>Total Deliveries:</span>
+                        <span style={styles.breakdownValue}>{selectedDeliveries.length} {selectedDeliveries.length === 1 ? 'delivery' : 'deliveries'}</span>
+                      </div>
+                      <div style={styles.breakdownRow}>
                         <span style={styles.breakdownLabel}>Total Delivery Fees:</span>
                         <span style={styles.breakdownValue}>₱{calculateTotalFees().toFixed(2)}</span>
                       </div>
@@ -339,7 +348,7 @@ export default function RiderReports() {
                         <span style={styles.breakdownHighlight}>₱{calculateBusinessRevenue().toFixed(2)}</span>
                       </div>
                       <div style={styles.breakdownRow}>
-                        <span style={styles.breakdownLabel}>Your Earnings (60%):</span>
+                        <span style={styles.breakdownLabel}>Billable Rider's Fee (60%):</span>
                         <span style={styles.breakdownEarnings}>₱{calculateRiderEarnings().toFixed(2)}</span>
                       </div>
                       <div style={styles.breakdownNote}>
@@ -351,7 +360,7 @@ export default function RiderReports() {
                       onClick={handleSubmitReport}
                       disabled={submitting}
                     >
-                      {submitting ? '⏳ Submitting...' : '📤 Submit Report to Cashier'}
+                      {submitting ? '⏳ Submitting...' : '💵 Bill to Cashier'}
                     </button>
                   </div>
                 )}
