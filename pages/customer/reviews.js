@@ -1,19 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 
-export default function ShareReview() {
+export default function CustomerReviews() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [userData, setUserData] = useState(null);
-  const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState('');
-  const [images, setImages] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingReview, setEditingReview] = useState(null);
+  const [form, setForm] = useState({
+    title: '',
+    review_text: '',
+    star_rating: 5
+  });
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -39,24 +43,22 @@ export default function ShareReview() {
 
         setUser(session.user);
 
-        // Fetch user role and data
-        const { data: userDataResult, error: userError } = await supabase
+        // Fetch user role
+        const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('role, full_name, email')
+          .select('role')
           .eq('id', session.user.id)
           .maybeSingle();
 
         if (!mounted) return;
 
         if (userError) {
-          console.error('[ShareReview] Failed to fetch user role:', userError.message);
+          console.error('[CustomerReviews] Failed to fetch user role:', userError.message);
           setLoading(false);
           return;
         }
 
-        const role = userDataResult?.role || 'customer';
-        setUserRole(role);
-        setUserData(userDataResult);
+        const role = userData?.role || 'customer';
 
         // Redirect if not a customer
         if (role !== 'customer') {
@@ -70,9 +72,12 @@ export default function ShareReview() {
           return;
         }
 
+        // Fetch customer reviews
+        await fetchReviews(session.user.id);
+
         setLoading(false);
       } catch (err) {
-        console.error('[ShareReview] Session check failed:', err?.message ?? err);
+        console.error('[CustomerReviews] Session check failed:', err?.message ?? err);
         if (mounted) {
           setLoading(false);
           router.replace('/login').catch(console.error);
@@ -97,95 +102,153 @@ export default function ShareReview() {
     };
   }, [router]);
 
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length + images.length > 5) {
-      alert('You can only upload up to 5 images');
+  async function fetchReviews(userId) {
+    try {
+      const { data, error } = await supabase
+        .from('customer_reviews')
+        .select('*')
+        .eq('customer_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setReviews(data || []);
+    } catch (err) {
+      console.error('[CustomerReviews] Failed to fetch reviews:', err);
+    }
+  }
+
+  const handleOpenCreateModal = () => {
+    setEditingReview(null);
+    setForm({
+      title: '',
+      review_text: '',
+      star_rating: 5
+    });
+    setFormError('');
+    setShowCreateModal(true);
+  };
+
+  const handleOpenEditModal = (review) => {
+    setEditingReview(review);
+    setForm({
+      title: review.title || '',
+      review_text: review.review_text || '',
+      star_rating: review.star_rating || 5
+    });
+    setFormError('');
+    setShowCreateModal(true);
+  };
+
+  const handleSubmitReview = async () => {
+    setFormError('');
+
+    // Validation
+    if (!form.review_text.trim()) {
+      setFormError('Please write your review');
       return;
     }
 
-    // Convert files to base64 for preview
-    const readers = files.map(file => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          resolve({
-            file,
-            preview: e.target.result,
-            name: file.name,
-          });
-        };
-        reader.readAsDataURL(file);
-      });
-    });
-
-    Promise.all(readers).then(newImages => {
-      setImages([...images, ...newImages]);
-    });
-  };
-
-  const removeImage = (index) => {
-    setImages(images.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (rating === 0) {
-      alert('Please select a rating');
-      return;
-    }
-
-    if (!comment.trim()) {
-      alert('Please write a comment');
+    if (!form.star_rating || form.star_rating < 1 || form.star_rating > 5) {
+      setFormError('Please select a star rating (1-5)');
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const customerName = userData?.full_name || user?.email?.split('@')[0] || 'Anonymous';
+      const reviewData = {
+        customer_id: user.id,
+        title: form.title.trim() || null,
+        review_text: form.review_text.trim(),
+        star_rating: parseInt(form.star_rating),
+        status: 'pending'
+      };
 
-      // TODO: For production, upload images to Supabase Storage and store URLs instead of base64
-      // Base64 storage is temporary and not recommended for production use due to:
-      // - Database bloat and performance issues
-      // - Inefficient storage and retrieval
-      // - No CDN benefits for image delivery
-      const imageData = images.map(img => ({
-        name: img.name,
-        data: img.preview,
-      }));
+      if (editingReview) {
+        // Update existing review
+        const { error } = await supabase
+          .from('customer_reviews')
+          .update({
+            ...reviewData,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingReview.id);
 
-      const { error } = await supabase
-        .from('reviews')
-        .insert([{
-          customer_name: customerName,
-          user_id: user.id,
-          rating,
-          comment: comment.trim(),
-          images: imageData.length > 0 ? JSON.stringify(imageData) : null,
-          created_at: new Date().toISOString(),
-        }]);
-
-      if (error) {
-        console.error('Failed to submit review:', error);
-        alert('Failed to submit review. Please try again.');
+        if (error) throw error;
+        alert('Review updated successfully!');
       } else {
-        setSuccess(true);
-        setRating(0);
-        setComment('');
-        setImages([]);
-        
-        setTimeout(() => {
-          setSuccess(false);
-        }, 3000);
+        // Create new review
+        const { error } = await supabase
+          .from('customer_reviews')
+          .insert(reviewData);
+
+        if (error) throw error;
+        alert('Review submitted successfully! Admin will review it before publishing.');
       }
+
+      // Refresh reviews list
+      await fetchReviews(user.id);
+      setShowCreateModal(false);
+      setForm({ title: '', review_text: '', star_rating: 5 });
     } catch (err) {
-      console.error('Error submitting review:', err);
-      alert('An error occurred. Please try again.');
+      console.error('[CustomerReviews] Failed to submit review:', err);
+      setFormError('Failed to submit review. Please try again.');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleLogout = async () => {
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (err) {
+      console.warn('[CustomerReviews] Sign out failed:', err?.message ?? err);
+    }
+    localStorage.removeItem('token');
+    router.replace('/login').catch(console.error);
+  };
+
+  const renderStars = (rating, interactive = false, onChange = null) => {
+    return (
+      <div style={styles.starsContainer}>
+        {[1, 2, 3, 4, 5].map(star => (
+          <span
+            key={star}
+            style={{
+              ...styles.star,
+              color: star <= rating ? '#ffc107' : '#444',
+              cursor: interactive ? 'pointer' : 'default'
+            }}
+            onClick={() => interactive && onChange && onChange(star)}
+          >
+            ★
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  const getStatusInfo = (status) => {
+    const statusMap = {
+      'pending': { label: 'Pending Review', color: '#ffc107', icon: '⏳' },
+      'published': { label: 'Published', color: '#4caf50', icon: '✓' },
+      'archived': { label: 'Archived', color: '#999', icon: '📦' }
+    };
+    return statusMap[status] || { label: status, color: '#999', icon: '?' };
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   if (loading) {
@@ -202,133 +265,154 @@ export default function ShareReview() {
     <>
       <Head>
         <title>Share Review - Bite Bonansa Cafe</title>
-        <meta name="description" content="Share your experience with us" />
+        <meta name="description" content="Share your favorite bites with us" />
       </Head>
       <div style={styles.page}>
         <header style={styles.header}>
-          <button style={styles.backBtn} onClick={() => router.push('/customer/dashboard')}>
-            ← Back
+          <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
+          <nav style={styles.nav}>
+            <Link href="/customer/dashboard" style={styles.navLink}>Dashboard</Link>
+            <Link href="/customer/menu" style={styles.navLink}>Order Portal</Link>
+            <Link href="/customer/orders" style={styles.navLink}>Order Tracking</Link>
+            <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
+            <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>
+          </nav>
+          <button style={styles.logoutBtn} onClick={handleLogout}>
+            Logout
           </button>
-          <h1 style={styles.logo}>⭐ Share Review</h1>
-          <div style={{ width: '80px' }}></div>
         </header>
 
         <main style={styles.main}>
-          <div style={styles.formContainer}>
-            <p style={styles.subtitle}>
-              We'd love to hear about your experience!
-            </p>
+          <div style={styles.titleContainer}>
+            <h2 style={styles.title}>⭐ Share Your Favorite Bites</h2>
+            <button style={styles.createBtn} onClick={handleOpenCreateModal}>
+              ✍️ Write a Review
+            </button>
+          </div>
+          
+          {reviews.length > 0 ? (
+            <div style={styles.reviewsGrid}>
+              {reviews.map(review => {
+                const statusInfo = getStatusInfo(review.status);
+                return (
+                  <div key={review.id} style={styles.reviewCard}>
+                    <div style={styles.reviewHeader}>
+                      <div>
+                        {renderStars(review.star_rating)}
+                        {review.title && (
+                          <h3 style={styles.reviewTitle}>{review.title}</h3>
+                        )}
+                        <p style={styles.reviewDate}>{formatDate(review.created_at)}</p>
+                      </div>
+                      <div style={{...styles.statusBadge, backgroundColor: statusInfo.color}}>
+                        {statusInfo.icon} {statusInfo.label}
+                      </div>
+                    </div>
 
-            {success && (
-              <div style={styles.successMessage}>
-                ✓ Thank you! Your review has been submitted successfully.
-              </div>
-            )}
+                    <p style={styles.reviewText}>{review.review_text}</p>
 
-            <form onSubmit={handleSubmit} style={styles.form}>
-              {/* Rating */}
+                    {review.published_at && (
+                      <p style={styles.publishedDate}>
+                        Published on {formatDate(review.published_at)}
+                      </p>
+                    )}
+
+                    <div style={styles.reviewActions}>
+                      <button
+                        style={styles.editBtn}
+                        onClick={() => handleOpenEditModal(review)}
+                      >
+                        ✏️ Edit
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={styles.emptyState}>
+              <span style={styles.emptyIcon}>⭐</span>
+              <p style={styles.emptyText}>No reviews yet</p>
+              <p style={styles.emptySubtext}>Share your experience with us!</p>
+              <button style={styles.createBtnLarge} onClick={handleOpenCreateModal}>
+                ✍️ Write Your First Review
+              </button>
+            </div>
+          )}
+        </main>
+
+        {/* Create/Edit Review Modal */}
+        {showCreateModal && (
+          <div style={styles.modalOverlay} onClick={() => !submitting && setShowCreateModal(false)}>
+            <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+              <h3 style={styles.modalTitle}>
+                {editingReview ? 'Edit Review' : 'Write a Review'}
+              </h3>
+              
               <div style={styles.formGroup}>
-                <label style={styles.label}>Rating *</label>
-                <div style={styles.starsContainer}>
-                  {[1, 2, 3, 4, 5].map(star => (
-                    <button
-                      key={star}
-                      type="button"
-                      style={styles.starBtn}
-                      onClick={() => setRating(star)}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'scale(1.2)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'scale(1)';
-                      }}
-                    >
-                      {star <= rating ? '★' : '☆'}
-                    </button>
-                  ))}
-                  {rating > 0 && (
-                    <span style={styles.ratingText}>
-                      {rating} star{rating !== 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
+                <label style={styles.label}>Star Rating *</label>
+                {renderStars(form.star_rating, true, (rating) => setForm({...form, star_rating: rating}))}
               </div>
 
-              {/* Comment */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Title (Optional)</label>
+                <input
+                  type="text"
+                  style={styles.input}
+                  value={form.title}
+                  onChange={(e) => setForm({...form, title: e.target.value})}
+                  placeholder="Give your review a title"
+                  maxLength={255}
+                />
+              </div>
+
               <div style={styles.formGroup}>
                 <label style={styles.label}>Your Review *</label>
                 <textarea
                   style={styles.textarea}
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Tell us about your experience..."
-                  rows={5}
-                  maxLength={1000}
+                  value={form.review_text}
+                  onChange={(e) => setForm({...form, review_text: e.target.value})}
+                  placeholder="Share your experience with us..."
+                  rows={6}
                 />
-                <span style={styles.charCount}>
-                  {comment.length}/1000 characters
-                </span>
-              </div>
-
-              {/* Image Upload */}
-              <div style={styles.formGroup}>
-                <label style={styles.label}>
-                  Add Photos (Optional)
-                </label>
-                <p style={styles.hint}>
-                  Share photos of your experience (up to 5 images)
+                <p style={styles.helperText}>
+                  Tell us about your favorite bites! What did you love most?
                 </p>
-                
-                {images.length < 5 && (
-                  <label style={styles.uploadBtn}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handleImageUpload}
-                      style={styles.fileInput}
-                    />
-                    📷 Choose Images
-                  </label>
-                )}
-
-                {images.length > 0 && (
-                  <div style={styles.imagePreviewContainer}>
-                    {images.map((img, index) => (
-                      <div key={index} style={styles.imagePreview}>
-                        <img 
-                          src={img.preview} 
-                          alt={`Preview ${index + 1}`}
-                          style={styles.previewImg}
-                        />
-                        <button
-                          type="button"
-                          style={styles.removeImageBtn}
-                          onClick={() => removeImage(index)}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
 
-              {/* Submit Button */}
-              <button 
-                type="submit" 
-                style={{
-                  ...styles.submitBtn,
-                  opacity: submitting ? 0.6 : 1,
-                  cursor: submitting ? 'not-allowed' : 'pointer',
-                }}
-                disabled={submitting}
-              >
-                {submitting ? 'Submitting...' : 'Submit Review'}
-              </button>
-            </form>
+              {formError && (
+                <div style={styles.errorMessage}>{formError}</div>
+              )}
+
+              <div style={styles.infoBox}>
+                <p style={styles.infoText}>
+                  📢 Your review will be submitted to the admin for approval before it's published on our website.
+                </p>
+              </div>
+
+              <div style={styles.modalActions}>
+                <button
+                  style={styles.modalBtnCancel}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setForm({ title: '', review_text: '', star_rating: 5 });
+                    setFormError('');
+                  }}
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  style={styles.modalBtnConfirm}
+                  onClick={handleSubmitReview}
+                  disabled={submitting}
+                >
+                  {submitting ? 'Submitting...' : (editingReview ? 'Update Review' : 'Submit Review')}
+                </button>
+              </div>
+            </div>
           </div>
-        </main>
+        )}
       </div>
     </>
   );
@@ -355,16 +439,29 @@ const styles = {
     padding: '16px 32px',
     backgroundColor: '#1a1a1a',
     borderBottom: '1px solid #ffc107',
+    flexWrap: 'wrap',
+    gap: '12px',
   },
   logo: {
     fontSize: '22px',
     fontFamily: "'Playfair Display', serif",
     color: '#ffc107',
     margin: 0,
-    flex: 1,
-    textAlign: 'center',
   },
-  backBtn: {
+  nav: {
+    display: 'flex',
+    gap: '20px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  navLink: {
+    color: '#ccc',
+    textDecoration: 'none',
+    fontSize: '14px',
+    transition: 'color 0.3s',
+    cursor: 'pointer',
+  },
+  logoutBtn: {
     padding: '8px 18px',
     backgroundColor: 'transparent',
     color: '#ffc107',
@@ -375,147 +472,257 @@ const styles = {
     fontFamily: "'Poppins', sans-serif",
   },
   main: {
-    padding: '32px',
-    maxWidth: '700px',
+    padding: '40px 32px',
+    maxWidth: '1200px',
     margin: '0 auto',
   },
-  formContainer: {
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #2a2a2a',
-    borderRadius: '12px',
-    padding: '32px',
-  },
-  subtitle: {
-    fontSize: '16px',
-    color: '#ccc',
-    marginBottom: '24px',
-    textAlign: 'center',
-  },
-  successMessage: {
-    backgroundColor: 'rgba(76, 175, 80, 0.2)',
-    color: '#4caf50',
-    padding: '12px 16px',
-    borderRadius: '8px',
-    marginBottom: '24px',
-    textAlign: 'center',
-    border: '1px solid rgba(76, 175, 80, 0.3)',
-  },
-  form: {
+  titleContainer: {
     display: 'flex',
-    flexDirection: 'column',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '32px',
+    flexWrap: 'wrap',
+    gap: '16px',
+  },
+  title: {
+    fontSize: '32px',
+    fontFamily: "'Playfair Display', serif",
+    color: '#ffc107',
+    margin: 0,
+  },
+  createBtn: {
+    padding: '12px 24px',
+    backgroundColor: '#ffc107',
+    color: '#000',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  createBtnLarge: {
+    padding: '14px 32px',
+    backgroundColor: '#ffc107',
+    color: '#000',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    marginTop: '24px',
+  },
+  reviewsGrid: {
+    display: 'grid',
     gap: '24px',
   },
-  formGroup: {
+  reviewCard: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: '12px',
+    padding: '24px',
+    border: '1px solid #444',
+  },
+  reviewHeader: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-  },
-  label: {
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#ffc107',
-  },
-  hint: {
-    fontSize: '12px',
-    color: '#666',
-    margin: 0,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: '16px',
   },
   starsContainer: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
+    gap: '4px',
+    marginBottom: '8px',
   },
-  starBtn: {
-    fontSize: '32px',
-    background: 'none',
-    border: 'none',
-    color: '#ffc107',
-    cursor: 'pointer',
-    padding: 0,
-    transition: 'transform 0.2s',
+  star: {
+    fontSize: '24px',
+    transition: 'color 0.2s',
   },
-  ratingText: {
+  reviewTitle: {
+    fontSize: '18px',
+    fontWeight: 'bold',
+    color: '#fff',
+    margin: '8px 0 4px 0',
+  },
+  reviewDate: {
+    fontSize: '12px',
+    color: '#999',
+    margin: 0,
+  },
+  statusBadge: {
+    padding: '8px 16px',
+    borderRadius: '20px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    color: '#000',
+    whiteSpace: 'nowrap',
+  },
+  reviewText: {
     fontSize: '14px',
     color: '#ccc',
-    marginLeft: '8px',
+    lineHeight: '1.6',
+    marginBottom: '16px',
   },
-  textarea: {
-    backgroundColor: '#0a0a0a',
-    border: '1px solid #2a2a2a',
-    borderRadius: '8px',
-    padding: '12px',
-    fontSize: '14px',
-    color: '#fff',
-    fontFamily: "'Poppins', sans-serif",
-    resize: 'vertical',
-    outline: 'none',
-  },
-  charCount: {
+  publishedDate: {
     fontSize: '12px',
-    color: '#666',
-    textAlign: 'right',
+    color: '#4caf50',
+    marginBottom: '16px',
+    fontStyle: 'italic',
   },
-  uploadBtn: {
-    display: 'inline-block',
-    padding: '10px 20px',
-    backgroundColor: '#2a2a2a',
+  reviewActions: {
+    display: 'flex',
+    gap: '12px',
+    borderTop: '1px solid #444',
+    paddingTop: '16px',
+  },
+  editBtn: {
+    padding: '8px 16px',
+    backgroundColor: 'transparent',
     color: '#ffc107',
-    border: '1px solid #444',
-    borderRadius: '8px',
+    border: '1px solid #ffc107',
+    borderRadius: '6px',
     fontSize: '14px',
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
-    width: 'fit-content',
-    transition: 'all 0.2s',
+    fontWeight: 'bold',
   },
-  fileInput: {
-    display: 'none',
+  emptyState: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '80px 20px',
+    textAlign: 'center',
   },
-  imagePreviewContainer: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-    gap: '12px',
-    marginTop: '12px',
+  emptyIcon: {
+    fontSize: '80px',
+    marginBottom: '20px',
+    opacity: 0.5,
   },
-  imagePreview: {
-    position: 'relative',
-    aspectRatio: '1',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    border: '1px solid #2a2a2a',
+  emptyText: {
+    fontSize: '20px',
+    color: '#ccc',
+    marginBottom: '8px',
+    fontWeight: '600',
   },
-  previewImg: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
+  emptySubtext: {
+    fontSize: '14px',
+    color: '#888',
   },
-  removeImageBtn: {
-    position: 'absolute',
-    top: '4px',
-    right: '4px',
-    width: '24px',
-    height: '24px',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '50%',
-    fontSize: '18px',
-    cursor: 'pointer',
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 0,
+    zIndex: 1000,
+    overflowY: 'auto',
+    padding: '20px',
   },
-  submitBtn: {
-    padding: '14px',
-    backgroundColor: '#ffc107',
-    color: '#0a0a0a',
-    border: 'none',
+  modal: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: '12px',
+    padding: '32px',
+    maxWidth: '600px',
+    width: '100%',
+    border: '1px solid #ffc107',
+    maxHeight: '90vh',
+    overflowY: 'auto',
+  },
+  modalTitle: {
+    fontSize: '24px',
+    color: '#ffc107',
+    margin: '0 0 24px 0',
+    textAlign: 'center',
+  },
+  formGroup: {
+    marginBottom: '20px',
+  },
+  label: {
+    display: 'block',
+    fontSize: '14px',
+    color: '#ccc',
+    marginBottom: '8px',
+    fontWeight: 'bold',
+  },
+  input: {
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    border: '1px solid #444',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  textarea: {
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    border: '1px solid #444',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
+    resize: 'vertical',
+  },
+  helperText: {
+    fontSize: '12px',
+    color: '#999',
+    marginTop: '4px',
+    fontStyle: 'italic',
+  },
+  infoBox: {
+    backgroundColor: '#1a1a1a',
+    border: '1px solid #ffc107',
     borderRadius: '8px',
-    fontSize: '16px',
-    fontWeight: '700',
+    padding: '16px',
+    marginBottom: '20px',
+  },
+  infoText: {
+    fontSize: '13px',
+    color: '#ffc107',
+    margin: 0,
+    lineHeight: '1.5',
+  },
+  errorMessage: {
+    padding: '12px',
+    backgroundColor: '#f443361a',
+    color: '#f44336',
+    borderRadius: '6px',
+    marginBottom: '20px',
+    fontSize: '14px',
+    textAlign: 'center',
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '12px',
+  },
+  modalBtnCancel: {
+    flex: 1,
+    padding: '12px',
+    backgroundColor: 'transparent',
+    color: '#ccc',
+    border: '1px solid #444',
+    borderRadius: '6px',
+    fontSize: '14px',
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
-    transition: 'all 0.2s',
+  },
+  modalBtnConfirm: {
+    flex: 1,
+    padding: '12px',
+    backgroundColor: '#ffc107',
+    color: '#000',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
   },
 };

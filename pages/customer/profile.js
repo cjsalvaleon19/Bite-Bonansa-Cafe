@@ -1,26 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 
-export default function MyProfile() {
+export default function CustomerProfile() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [userData, setUserData] = useState(null);
-  const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({
+  const [profile, setProfile] = useState({
     full_name: '',
-    email: '',
-    phone: '',
+    customer_id: '',
     address: '',
-    city: '',
-    postal_code: '',
+    email: '',
+    created_at: '',
+    loyalty_balance: 0
   });
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -46,34 +46,22 @@ export default function MyProfile() {
 
         setUser(session.user);
 
-        // Fetch user role and data
-        const { data: userDataResult, error: userError } = await supabase
+        // Fetch user profile
+        const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('*')
+          .select('role, full_name, customer_id, address, email, created_at, loyalty_balance')
           .eq('id', session.user.id)
           .maybeSingle();
 
         if (!mounted) return;
 
         if (userError) {
-          console.error('[MyProfile] Failed to fetch user data:', userError.message);
+          console.error('[CustomerProfile] Failed to fetch user profile:', userError.message);
           setLoading(false);
           return;
         }
 
-        const role = userDataResult?.role || 'customer';
-        setUserRole(role);
-        setUserData(userDataResult);
-
-        // Initialize form data
-        setFormData({
-          full_name: userDataResult?.full_name || '',
-          email: userDataResult?.email || '',
-          phone: userDataResult?.phone || '',
-          address: userDataResult?.address || '',
-          city: userDataResult?.city || '',
-          postal_code: userDataResult?.postal_code || '',
-        });
+        const role = userData?.role || 'customer';
 
         // Redirect if not a customer
         if (role !== 'customer') {
@@ -87,9 +75,18 @@ export default function MyProfile() {
           return;
         }
 
+        setProfile({
+          full_name: userData.full_name || '',
+          customer_id: userData.customer_id || '',
+          address: userData.address || '',
+          email: userData.email || session.user.email,
+          created_at: userData.created_at || '',
+          loyalty_balance: userData.loyalty_balance || 0
+        });
+
         setLoading(false);
       } catch (err) {
-        console.error('[MyProfile] Session check failed:', err?.message ?? err);
+        console.error('[CustomerProfile] Session check failed:', err?.message ?? err);
         if (mounted) {
           setLoading(false);
           router.replace('/login').catch(console.error);
@@ -114,99 +111,68 @@ export default function MyProfile() {
     };
   }, [router]);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
+  const handleUpdatePassword = async () => {
+    setPasswordError('');
 
-  const handleSave = async () => {
-    setSaving(true);
+    // Validation
+    if (!newPassword || !confirmPassword) {
+      setPasswordError('Please fill in all fields');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+
+    setUpdatingPassword(true);
 
     try {
-      // Update user data in database
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({
-          full_name: formData.full_name,
-          phone: formData.phone,
-          address: formData.address,
-          city: formData.city,
-          postal_code: formData.postal_code,
-        })
-        .eq('id', user.id);
+      // Update password
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
 
-      if (updateError) {
-        console.error('Failed to update profile:', updateError);
-        alert('Failed to update profile. Please try again.');
-        setSaving(false);
-        return;
-      }
+      if (error) throw error;
 
-      // Update password if provided
-      if (newPassword.trim()) {
-        // Validate password length
-        if (newPassword.length < 8) {
-          alert('Password must be at least 8 characters long');
-          setSaving(false);
-          return;
-        }
-
-        const { error: passwordError } = await supabase.auth.updateUser({
-          password: newPassword,
-        });
-
-        if (passwordError) {
-          console.error('Failed to update password - validation or service error occurred');
-          alert('Profile updated but password change failed. Please try again.');
-          setSaving(false);
-          return;
-        }
-        setNewPassword('');
-      }
-
-      // Refresh user data
-      const { data: refreshedData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (refreshedData) {
-        setUserData(refreshedData);
-      }
-
-      setEditing(false);
-      alert('Profile updated successfully!');
+      // Clear form and close modal
+      setNewPassword('');
+      setConfirmPassword('');
+      setCurrentPassword('');
+      setShowPasswordModal(false);
+      alert('Password updated successfully!');
     } catch (err) {
-      console.error('Error updating profile:', err);
-      alert('An error occurred. Please try again.');
+      console.error('[CustomerProfile] Failed to update password:', err);
+      setPasswordError(err.message || 'Failed to update password');
     } finally {
-      setSaving(false);
+      setUpdatingPassword(false);
     }
   };
 
-  const handleCancel = () => {
-    setFormData({
-      full_name: userData?.full_name || '',
-      email: userData?.email || '',
-      phone: userData?.phone || '',
-      address: userData?.address || '',
-      city: userData?.city || '',
-      postal_code: userData?.postal_code || '',
-    });
-    setNewPassword('');
-    setEditing(false);
+  const handleLogout = async () => {
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (err) {
+      console.warn('[CustomerProfile] Sign out failed:', err?.message ?? err);
+    }
+    localStorage.removeItem('token');
+    router.replace('/login').catch(console.error);
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
-      day: 'numeric',
+      day: 'numeric'
     });
   };
 
@@ -224,209 +190,155 @@ export default function MyProfile() {
     <>
       <Head>
         <title>My Profile - Bite Bonansa Cafe</title>
-        <meta name="description" content="Manage your profile" />
+        <meta name="description" content="Customer profile" />
       </Head>
       <div style={styles.page}>
         <header style={styles.header}>
-          <button style={styles.backBtn} onClick={() => router.push('/customer/dashboard')}>
-            ← Back
+          <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
+          <nav style={styles.nav}>
+            <Link href="/customer/dashboard" style={styles.navLink}>Dashboard</Link>
+            <Link href="/customer/menu" style={styles.navLink}>Order Portal</Link>
+            <Link href="/customer/orders" style={styles.navLink}>Order Tracking</Link>
+            <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
+            <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>
+          </nav>
+          <button style={styles.logoutBtn} onClick={handleLogout}>
+            Logout
           </button>
-          <h1 style={styles.logo}>👤 My Profile</h1>
-          <div style={{ width: '80px' }}></div>
         </header>
 
         <main style={styles.main}>
-          <div style={styles.profileContainer}>
-            {/* Profile Header */}
+          <h2 style={styles.title}>👤 My Profile</h2>
+          
+          <div style={styles.profileCard}>
             <div style={styles.profileHeader}>
               <div style={styles.avatar}>
-                {(formData.full_name || formData.email)?.[0]?.toUpperCase() || '?'}
+                {profile.full_name?.charAt(0)?.toUpperCase() || '?'}
               </div>
               <div>
-                <h2 style={styles.profileName}>
-                  {formData.full_name || formData.email?.split('@')[0] || 'Customer'}
-                </h2>
-                <p style={styles.profileEmail}>{formData.email}</p>
+                <h3 style={styles.profileName}>{profile.full_name || 'No Name'}</h3>
+                <p style={styles.customerId}>{profile.customer_id}</p>
               </div>
             </div>
 
-            {/* Account Information */}
-            <div style={styles.section}>
+            <div style={styles.profileSection}>
               <h3 style={styles.sectionTitle}>Account Information</h3>
-              <div style={styles.infoGrid}>
-                <InfoItem 
-                  label="Customer ID" 
-                  value={userData?.customer_id || 'N/A'}
-                  highlight={true}
-                />
-                <InfoItem 
-                  label="Date of Membership" 
-                  value={formatDate(userData?.created_at)}
-                />
-                <InfoItem 
-                  label="Account Status" 
-                  value="Active"
-                  statusColor="#4caf50"
-                />
-                <InfoItem 
-                  label="Loyalty Points" 
-                  value={userData?.loyalty_balance || 0}
-                />
-              </div>
-            </div>
-
-            {/* Personal Information */}
-            <div style={styles.section}>
-              <div style={styles.sectionHeader}>
-                <h3 style={styles.sectionTitle}>Personal Information</h3>
-                {!editing && (
-                  <button style={styles.editBtn} onClick={() => setEditing(true)}>
-                    Edit
-                  </button>
-                )}
+              
+              <div style={styles.fieldGroup}>
+                <label style={styles.fieldLabel}>Complete Name</label>
+                <div style={styles.fieldValue}>{profile.full_name || 'Not provided'}</div>
               </div>
 
-              <div style={styles.formGrid}>
-                <FormField
-                  label="Full Name"
-                  name="full_name"
-                  value={formData.full_name}
-                  onChange={handleInputChange}
-                  disabled={!editing}
-                />
-                <FormField
-                  label="Email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  disabled={true}
-                  hint="Email cannot be changed"
-                />
-                <FormField
-                  label="Phone"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  disabled={!editing}
-                  placeholder="+63 XXX XXX XXXX"
-                />
-                <FormField
-                  label="Address"
-                  name="address"
-                  value={formData.address}
-                  onChange={handleInputChange}
-                  disabled={!editing}
-                  fullWidth={true}
-                />
-                <FormField
-                  label="City"
-                  name="city"
-                  value={formData.city}
-                  onChange={handleInputChange}
-                  disabled={!editing}
-                />
-                <FormField
-                  label="Postal Code"
-                  name="postal_code"
-                  value={formData.postal_code}
-                  onChange={handleInputChange}
-                  disabled={!editing}
-                />
+              <div style={styles.fieldGroup}>
+                <label style={styles.fieldLabel}>Customer ID Number</label>
+                <div style={styles.fieldValue}>{profile.customer_id || 'Not assigned'}</div>
               </div>
-            </div>
 
-            {/* Password Section */}
-            {editing && (
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>Change Password (Optional)</h3>
-                <div style={styles.passwordField}>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter new password"
-                    style={styles.input}
-                  />
-                  <button
-                    type="button"
-                    style={styles.togglePasswordBtn}
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? '🙈' : '👁️'}
-                  </button>
+              <div style={styles.fieldGroup}>
+                <label style={styles.fieldLabel}>Email Address</label>
+                <div style={styles.fieldValue}>{profile.email || 'Not provided'}</div>
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.fieldLabel}>Delivery Address</label>
+                <div style={styles.fieldValue}>{profile.address || 'Not provided'}</div>
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.fieldLabel}>Date of Membership</label>
+                <div style={styles.fieldValue}>{formatDate(profile.created_at)}</div>
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.fieldLabel}>Loyalty Balance</label>
+                <div style={{...styles.fieldValue, color: '#4caf50', fontWeight: 'bold'}}>
+                  ₱{profile.loyalty_balance.toFixed(2)}
                 </div>
-                <p style={styles.hint}>
-                  Leave blank to keep current password
-                </p>
               </div>
-            )}
+            </div>
 
-            {/* Action Buttons */}
-            {editing && (
-              <div style={styles.actions}>
-                <button 
-                  style={styles.cancelBtn} 
-                  onClick={handleCancel}
-                  disabled={saving}
+            <div style={styles.profileSection}>
+              <h3 style={styles.sectionTitle}>Security</h3>
+              
+              <div style={styles.fieldGroup}>
+                <label style={styles.fieldLabel}>Password</label>
+                <div style={styles.passwordField}>
+                  <div style={styles.passwordValue}>
+                    ••••••••
+                  </div>
+                </div>
+                <p style={styles.passwordNote}>
+                  For security reasons, passwords cannot be viewed. Use "Update Password" to change your password.
+                </p>
+                <button
+                  style={styles.updatePasswordBtn}
+                  onClick={() => setShowPasswordModal(true)}
+                >
+                  Update Password
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* Password Update Modal */}
+        {showPasswordModal && (
+          <div style={styles.modalOverlay} onClick={() => !updatingPassword && setShowPasswordModal(false)}>
+            <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+              <h3 style={styles.modalTitle}>Update Password</h3>
+              
+              <div style={styles.formGroup}>
+                <label style={styles.label}>New Password</label>
+                <input
+                  type="password"
+                  style={styles.input}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password (min 6 characters)"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Confirm New Password</label>
+                <input
+                  type="password"
+                  style={styles.input}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter new password"
+                />
+              </div>
+
+              {passwordError && (
+                <div style={styles.errorMessage}>{passwordError}</div>
+              )}
+
+              <div style={styles.modalActions}>
+                <button
+                  style={styles.modalBtnCancel}
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setNewPassword('');
+                    setConfirmPassword('');
+                    setPasswordError('');
+                  }}
+                  disabled={updatingPassword}
                 >
                   Cancel
                 </button>
-                <button 
-                  style={{
-                    ...styles.saveBtn,
-                    opacity: saving ? 0.6 : 1,
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                  }}
-                  onClick={handleSave}
-                  disabled={saving}
+                <button
+                  style={styles.modalBtnConfirm}
+                  onClick={handleUpdatePassword}
+                  disabled={updatingPassword}
                 >
-                  {saving ? 'Saving...' : 'Save Changes'}
+                  {updatingPassword ? 'Updating...' : 'Save Password'}
                 </button>
               </div>
-            )}
+            </div>
           </div>
-        </main>
+        )}
       </div>
     </>
-  );
-}
-
-function InfoItem({ label, value, highlight, statusColor }) {
-  return (
-    <div style={styles.infoItem}>
-      <span style={styles.infoLabel}>{label}</span>
-      <span 
-        style={{
-          ...styles.infoValue,
-          color: statusColor || (highlight ? '#ffc107' : '#fff'),
-          fontWeight: highlight ? '700' : '600',
-        }}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function FormField({ label, name, value, onChange, disabled, placeholder, hint, fullWidth }) {
-  return (
-    <div style={{ ...styles.formField, gridColumn: fullWidth ? '1 / -1' : 'auto' }}>
-      <label style={styles.label}>{label}</label>
-      <input
-        type="text"
-        name={name}
-        value={value}
-        onChange={onChange}
-        disabled={disabled}
-        placeholder={placeholder}
-        style={{
-          ...styles.input,
-          opacity: disabled ? 0.6 : 1,
-          cursor: disabled ? 'not-allowed' : 'text',
-        }}
-      />
-      {hint && <span style={styles.hint}>{hint}</span>}
-    </div>
   );
 }
 
@@ -451,16 +363,29 @@ const styles = {
     padding: '16px 32px',
     backgroundColor: '#1a1a1a',
     borderBottom: '1px solid #ffc107',
+    flexWrap: 'wrap',
+    gap: '12px',
   },
   logo: {
     fontSize: '22px',
     fontFamily: "'Playfair Display', serif",
     color: '#ffc107',
     margin: 0,
-    flex: 1,
-    textAlign: 'center',
   },
-  backBtn: {
+  nav: {
+    display: 'flex',
+    gap: '20px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  navLink: {
+    color: '#ccc',
+    textDecoration: 'none',
+    fontSize: '14px',
+    transition: 'color 0.3s',
+    cursor: 'pointer',
+  },
+  logoutBtn: {
     padding: '8px 18px',
     backgroundColor: 'transparent',
     color: '#ffc107',
@@ -471,162 +396,190 @@ const styles = {
     fontFamily: "'Poppins', sans-serif",
   },
   main: {
-    padding: '32px',
-    maxWidth: '900px',
+    padding: '40px 32px',
+    maxWidth: '800px',
     margin: '0 auto',
   },
-  profileContainer: {
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #2a2a2a',
+  title: {
+    fontSize: '32px',
+    fontFamily: "'Playfair Display', serif",
+    color: '#ffc107',
+    marginBottom: '32px',
+    textAlign: 'center',
+  },
+  profileCard: {
+    backgroundColor: '#2a2a2a',
     borderRadius: '12px',
     padding: '32px',
+    border: '1px solid #444',
   },
   profileHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: '20px',
+    gap: '24px',
     marginBottom: '32px',
-    paddingBottom: '32px',
-    borderBottom: '1px solid #2a2a2a',
+    paddingBottom: '24px',
+    borderBottom: '1px solid #444',
   },
   avatar: {
     width: '80px',
     height: '80px',
     borderRadius: '50%',
     backgroundColor: '#ffc107',
-    color: '#0a0a0a',
+    color: '#000',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '32px',
-    fontWeight: '700',
+    fontSize: '36px',
+    fontWeight: 'bold',
   },
   profileName: {
     fontSize: '24px',
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#fff',
-    margin: 0,
-    marginBottom: '4px',
+    margin: '0 0 4px 0',
   },
-  profileEmail: {
+  customerId: {
     fontSize: '14px',
     color: '#999',
     margin: 0,
   },
-  section: {
+  profileSection: {
     marginBottom: '32px',
-  },
-  sectionHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px',
   },
   sectionTitle: {
     fontSize: '18px',
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#ffc107',
-    margin: 0,
-    marginBottom: '16px',
+    marginBottom: '20px',
   },
-  editBtn: {
-    padding: '6px 16px',
+  fieldGroup: {
+    marginBottom: '20px',
+  },
+  fieldLabel: {
+    display: 'block',
+    fontSize: '13px',
+    color: '#999',
+    marginBottom: '8px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  },
+  fieldValue: {
+    fontSize: '16px',
+    color: '#fff',
+    padding: '12px',
+    backgroundColor: '#1a1a1a',
+    borderRadius: '6px',
+  },
+  passwordField: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  passwordValue: {
+    flex: 1,
+    fontSize: '16px',
+    color: '#fff',
+    padding: '12px',
+    backgroundColor: '#1a1a1a',
+    borderRadius: '6px',
+  },
+  passwordNote: {
+    fontSize: '12px',
+    color: '#999',
+    marginTop: '8px',
+    fontStyle: 'italic',
+  },
+  updatePasswordBtn: {
+    marginTop: '12px',
+    padding: '10px 20px',
     backgroundColor: 'transparent',
     color: '#ffc107',
     border: '1px solid #ffc107',
     borderRadius: '6px',
-    fontSize: '13px',
+    fontSize: '14px',
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
+    fontWeight: 'bold',
   },
-  infoGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '16px',
-  },
-  infoItem: {
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
   },
-  infoLabel: {
-    fontSize: '12px',
-    color: '#666',
+  modal: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: '12px',
+    padding: '32px',
+    maxWidth: '500px',
+    width: '90%',
+    border: '1px solid #ffc107',
   },
-  infoValue: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#fff',
+  modalTitle: {
+    fontSize: '24px',
+    color: '#ffc107',
+    margin: '0 0 24px 0',
+    textAlign: 'center',
   },
-  formGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '16px',
-  },
-  formField: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px',
+  formGroup: {
+    marginBottom: '20px',
   },
   label: {
-    fontSize: '13px',
-    fontWeight: '500',
+    display: 'block',
+    fontSize: '14px',
     color: '#ccc',
+    marginBottom: '8px',
   },
   input: {
-    backgroundColor: '#0a0a0a',
-    border: '1px solid #2a2a2a',
-    borderRadius: '6px',
-    padding: '10px 12px',
-    fontSize: '14px',
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#1a1a1a',
     color: '#fff',
+    border: '1px solid #444',
+    borderRadius: '6px',
+    fontSize: '14px',
     fontFamily: "'Poppins', sans-serif",
-    outline: 'none',
   },
-  hint: {
-    fontSize: '11px',
-    color: '#666',
+  errorMessage: {
+    padding: '12px',
+    backgroundColor: '#f443361a',
+    color: '#f44336',
+    borderRadius: '6px',
+    marginBottom: '20px',
+    fontSize: '14px',
+    textAlign: 'center',
   },
-  passwordField: {
-    position: 'relative',
-    maxWidth: '400px',
-  },
-  togglePasswordBtn: {
-    position: 'absolute',
-    right: '10px',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: '18px',
-    padding: '4px',
-  },
-  actions: {
+  modalActions: {
     display: 'flex',
-    justifyContent: 'flex-end',
     gap: '12px',
-    paddingTop: '24px',
-    borderTop: '1px solid #2a2a2a',
   },
-  cancelBtn: {
-    padding: '10px 20px',
+  modalBtnCancel: {
+    flex: 1,
+    padding: '12px',
     backgroundColor: 'transparent',
     color: '#ccc',
-    border: '1px solid #555',
+    border: '1px solid #444',
     borderRadius: '6px',
     fontSize: '14px',
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
   },
-  saveBtn: {
-    padding: '10px 20px',
+  modalBtnConfirm: {
+    flex: 1,
+    padding: '12px',
     backgroundColor: '#ffc107',
-    color: '#0a0a0a',
+    color: '#000',
     border: 'none',
     borderRadius: '6px',
     fontSize: '14px',
-    fontWeight: '700',
+    fontWeight: 'bold',
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
   },
