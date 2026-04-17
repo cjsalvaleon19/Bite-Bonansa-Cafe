@@ -3,9 +3,10 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../utils/supabaseClient';
 
-export default function CustomerMenu() {
+export default function CustomerDashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [userData, setUserData] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -33,23 +34,24 @@ export default function CustomerMenu() {
 
         setUser(session.user);
 
-        // Fetch user role
-        const { data: userData, error: userError } = await supabase
+        // Fetch user role and data
+        const { data: userDataResult, error: userError } = await supabase
           .from('users')
-          .select('role')
+          .select('role, full_name, email, customer_id, created_at')
           .eq('id', session.user.id)
           .maybeSingle();
 
         if (!mounted) return;
 
         if (userError) {
-          console.error('[CustomerMenu] Failed to fetch user role:', userError.message);
+          console.error('[CustomerDashboard] Failed to fetch user role:', userError.message);
           setLoading(false);
           return;
         }
 
-        const role = userData?.role || 'customer';
+        const role = userDataResult?.role || 'customer';
         setUserRole(role);
+        setUserData(userDataResult);
 
         // Redirect if not a customer
         if (role !== 'customer') {
@@ -63,11 +65,9 @@ export default function CustomerMenu() {
           return;
         }
 
-        // Redirect customers to their dashboard
-        router.replace('/customer/dashboard').catch(console.error);
-        return;
+        setLoading(false);
       } catch (err) {
-        console.error('[CustomerMenu] Session check failed:', err?.message ?? err);
+        console.error('[CustomerDashboard] Session check failed:', err?.message ?? err);
         if (mounted) {
           setLoading(false);
           router.replace('/login').catch(console.error);
@@ -98,10 +98,14 @@ export default function CustomerMenu() {
         await supabase.auth.signOut();
       }
     } catch (err) {
-      console.warn('[CustomerMenu] Sign out failed:', err?.message ?? err);
+      console.warn('[CustomerDashboard] Sign out failed:', err?.message ?? err);
     }
     localStorage.removeItem('token');
     router.replace('/login').catch(console.error);
+  };
+
+  const navigateTo = (path) => {
+    router.push(path).catch(console.error);
   };
 
   if (loading) {
@@ -114,17 +118,19 @@ export default function CustomerMenu() {
     );
   }
 
+  const customerName = userData?.full_name || user?.email?.split('@')[0] || 'Customer';
+
   return (
     <>
       <Head>
-        <title>Menu - Bite Bonansa Cafe</title>
-        <meta name="description" content="Browse our menu and place orders" />
+        <title>Dashboard - Bite Bonansa Cafe</title>
+        <meta name="description" content="Customer Dashboard" />
       </Head>
       <div style={styles.page}>
         <header style={styles.header}>
           <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
           <span style={styles.welcome}>
-            Welcome, {user?.email ?? 'Customer'}
+            {customerName}
           </span>
           <button style={styles.logoutBtn} onClick={handleLogout}>
             Logout
@@ -132,20 +138,58 @@ export default function CustomerMenu() {
         </header>
 
         <main style={styles.main}>
-          <h2 style={styles.title}>🍽️ Our Menu</h2>
+          <h2 style={styles.title}>Welcome back, {customerName}!</h2>
           
-          <div style={styles.content}>
-            <div style={styles.emptyState}>
-              <span style={styles.emptyIcon}>🍕</span>
-              <p style={styles.emptyText}>Menu items coming soon</p>
-              <p style={styles.emptySubtext}>
-                Check back later to see our delicious offerings
-              </p>
-            </div>
+          <div style={styles.grid}>
+            <NavCard 
+              onClick={() => navigateTo('/customer/order-portal')}
+              icon="🍽️" 
+              label="Order Portal" 
+            />
+            <NavCard 
+              onClick={() => navigateTo('/customer/order-tracking')}
+              icon="📦" 
+              label="Order Tracking" 
+            />
+            <NavCard 
+              onClick={() => navigateTo('/customer/order-history')}
+              icon="📋" 
+              label="Order History" 
+            />
+            <NavCard 
+              onClick={() => navigateTo('/customer/reviews')}
+              icon="⭐" 
+              label="Share Review" 
+            />
+            <NavCard 
+              onClick={() => navigateTo('/customer/profile')}
+              icon="👤" 
+              label="My Profile" 
+            />
           </div>
         </main>
       </div>
     </>
+  );
+}
+
+function NavCard({ onClick, icon, label }) {
+  return (
+    <button
+      onClick={onClick}
+      style={styles.card}
+      onMouseOver={(e) => {
+        e.currentTarget.style.borderColor = '#ffb300';
+        e.currentTarget.style.boxShadow = '0 8px 20px rgba(255,193,7,0.35)';
+      }}
+      onMouseOut={(e) => {
+        e.currentTarget.style.borderColor = '#ffc107';
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(255,193,7,0.15)';
+      }}
+    >
+      <span style={styles.cardIcon}>{icon}</span>
+      <span style={styles.cardLabel}>{label}</span>
+    </button>
   );
 }
 
@@ -205,30 +249,35 @@ const styles = {
     marginBottom: '32px',
     textAlign: 'center',
   },
-  content: {
-    minHeight: '400px',
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+    gap: '24px',
+    maxWidth: '900px',
+    margin: '0 auto',
   },
-  emptyState: {
+  card: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '60px 20px',
-    textAlign: 'center',
+    padding: '32px 16px',
+    backgroundColor: '#1a1a1a',
+    border: '1px solid #ffc107',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(255,193,7,0.15)',
+    transition: 'all 0.2s',
+    color: '#fff',
+    fontFamily: "'Poppins', sans-serif",
   },
-  emptyIcon: {
-    fontSize: '80px',
-    marginBottom: '20px',
-    opacity: 0.5,
+  cardIcon: {
+    fontSize: '40px',
+    marginBottom: '12px',
   },
-  emptyText: {
-    fontSize: '20px',
-    color: '#ccc',
-    marginBottom: '8px',
-    fontWeight: '600',
-  },
-  emptySubtext: {
+  cardLabel: {
     fontSize: '14px',
-    color: '#888',
+    fontWeight: '600',
+    color: '#ffc107',
   },
 };
