@@ -64,7 +64,11 @@ export function useRoleGuard(requiredRole) {
             router.replace('/cashier').catch(console.error);
           } else if (role === 'rider') {
             router.replace('/rider/dashboard').catch(console.error);
+          } else if (role === 'customer') {
+            router.replace('/customer/dashboard').catch(console.error);
           } else {
+            // Handle unexpected role value
+            console.warn(`[useRoleGuard] Unexpected role "${role}" for user ${session.user.id}. Redirecting to customer dashboard.`);
             router.replace('/customer/dashboard').catch(console.error);
           }
           return;
