@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import * as Dialog from '@radix-ui/react-dialog';
 import { supabase } from '../../utils/supabaseClient';
+import { useRoleGuard } from '../../utils/useRoleGuard';
 
 // ─── Admin: Menu Management ───────────────────────────────────────────────────
 // Lists all menu items and lets admins add, edit, and toggle availability.
@@ -11,7 +12,7 @@ const EMPTY_FORM = { name: '', category: '', price: '', available: true };
 
 export default function MenuPage() {
   const router = useRouter();
-  const [authLoading, setAuthLoading] = useState(true);
+  const { loading: authLoading } = useRoleGuard('admin');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -22,26 +23,6 @@ export default function MenuPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  // ── Auth guard ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    let mounted = true;
-    async function checkSession() {
-      if (!supabase) {
-        if (mounted) { setAuthLoading(false); router.replace('/login'); }
-        return;
-      }
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!mounted) return;
-        if (!session) { router.replace('/login'); return; }
-        setAuthLoading(false);
-      } catch {
-        if (mounted) { setAuthLoading(false); router.replace('/login'); }
-      }
-    }
-    checkSession();
-    return () => { mounted = false; };
-  }, [router]);
 
   // ── Fetch menu items ────────────────────────────────────────────────────────
   const fetchItems = useCallback(async () => {

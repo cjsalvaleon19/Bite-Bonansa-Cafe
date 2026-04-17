@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import * as Dialog from '@radix-ui/react-dialog';
 import { supabase } from '../../utils/supabaseClient';
+import { useRoleGuard } from '../../utils/useRoleGuard';
 
 // ─── Admin: Reviews Management ────────────────────────────────────────────────
 // Displays customer reviews. Admins can view and delete inappropriate reviews.
@@ -11,33 +12,12 @@ const STARS = [5, 4, 3, 2, 1];
 
 export default function ReviewsPage() {
   const router = useRouter();
-  const [authLoading, setAuthLoading] = useState(true);
+  const { loading: authLoading } = useRoleGuard('admin');
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(false);
   const [filterStars, setFilterStars] = useState(0); // 0 = all
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
-
-  // ── Auth guard ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    let mounted = true;
-    async function checkSession() {
-      if (!supabase) {
-        if (mounted) { setAuthLoading(false); router.replace('/login'); }
-        return;
-      }
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!mounted) return;
-        if (!session) { router.replace('/login'); return; }
-        setAuthLoading(false);
-      } catch {
-        if (mounted) { setAuthLoading(false); router.replace('/login'); }
-      }
-    }
-    checkSession();
-    return () => { mounted = false; };
-  }, [router]);
 
   // ── Fetch reviews ───────────────────────────────────────────────────────────
   const fetchReviews = useCallback(async () => {

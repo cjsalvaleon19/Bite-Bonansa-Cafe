@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../utils/supabaseClient';
 import useCartStore from '../../store/useCartStore';
+import { useRoleGuard } from '../../utils/useRoleGuard';
 
 // ─── Cashier / POS Page ───────────────────────────────────────────────────────
 // Allows cashier staff to browse menu items, build an order in the cart, and
@@ -9,7 +10,7 @@ import useCartStore from '../../store/useCartStore';
 
 export default function CashierPage() {
   const router = useRouter();
-  const [authLoading, setAuthLoading] = useState(true);
+  const { loading: authLoading } = useRoleGuard('cashier');
   const [menuItems, setMenuItems] = useState([]);
   const [menuLoading, setMenuLoading] = useState(false);
   const [orderStatus, setOrderStatus] = useState(null); // 'success' | 'error' | null
@@ -18,27 +19,6 @@ export default function CashierPage() {
 
   const { items, addItem, removeItem, updateQuantity, clearCart, getTotalPrice } =
     useCartStore();
-
-  // ── Auth guard ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    let mounted = true;
-    async function checkSession() {
-      if (!supabase) {
-        if (mounted) { setAuthLoading(false); router.replace('/login'); }
-        return;
-      }
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!mounted) return;
-        if (!session) { router.replace('/login'); return; }
-        setAuthLoading(false);
-      } catch {
-        if (mounted) { setAuthLoading(false); router.replace('/login'); }
-      }
-    }
-    checkSession();
-    return () => { mounted = false; };
-  }, [router]);
 
   // ── Fetch menu items from Supabase ──────────────────────────────────────────
   const fetchMenu = useCallback(async () => {
