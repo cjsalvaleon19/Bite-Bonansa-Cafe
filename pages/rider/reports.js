@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 
 const DEFAULT_DELIVERY_FEE = 50;
-const CASHIER_BILLING_RATE = 0.60; // 60% of delivery fee goes to cashier
-const RIDER_COMMISSION_RATE = 0.40; // 40% of delivery fee goes to rider
+const RIDER_COMMISSION_RATE = 0.60; // 60% of delivery fee goes to rider
+const BUSINESS_REVENUE_RATE = 0.40; // 40% of delivery fee is business revenue
 
 export default function RiderReports() {
   const router = useRouter();
@@ -149,9 +149,9 @@ export default function RiderReports() {
       .reduce((sum, d) => sum + (d.delivery_fee || DEFAULT_DELIVERY_FEE), 0);
   };
 
-  const calculateCashierBilling = () => {
+  const calculateBusinessRevenue = () => {
     const totalFees = calculateTotalFees();
-    return totalFees * CASHIER_BILLING_RATE;
+    return totalFees * BUSINESS_REVENUE_RATE;
   };
 
   const calculateRiderEarnings = () => {
@@ -189,7 +189,7 @@ export default function RiderReports() {
           rider_id: user.id,
           delivery_ids: selectedDeliveries,
           total_delivery_fees: calculateTotalFees(),
-          cashier_billing_amount: calculateCashierBilling(),
+          business_revenue: calculateBusinessRevenue(),
           rider_earnings: calculateRiderEarnings(),
           status: 'pending',
           submitted_at: new Date().toISOString(),
@@ -265,12 +265,12 @@ export default function RiderReports() {
         <main style={styles.main}>
           <h2 style={styles.title}>📊 Delivery Reports</h2>
           <p style={styles.subtitle}>
-            Select completed deliveries to submit billing to the cashier. You bill 60% and earn 40% commission.
+            Select completed deliveries to submit your report. You earn 60% commission from each delivery fee.
           </p>
 
           {submitStatus === 'success' && (
             <div style={styles.successMessage}>
-              ✅ Report submitted successfully! The cashier will review your submission.
+              ✅ Report submitted successfully! Your earnings have been recorded.
             </div>
           )}
 
@@ -335,15 +335,15 @@ export default function RiderReports() {
                         <span style={styles.breakdownValue}>₱{calculateTotalFees().toFixed(2)}</span>
                       </div>
                       <div style={styles.breakdownRow}>
-                        <span style={styles.breakdownLabel}>Cashier Billing (60%):</span>
-                        <span style={styles.breakdownHighlight}>₱{calculateCashierBilling().toFixed(2)}</span>
+                        <span style={styles.breakdownLabel}>Business Revenue (40%):</span>
+                        <span style={styles.breakdownHighlight}>₱{calculateBusinessRevenue().toFixed(2)}</span>
                       </div>
                       <div style={styles.breakdownRow}>
-                        <span style={styles.breakdownLabel}>Your Earnings (40%):</span>
+                        <span style={styles.breakdownLabel}>Your Earnings (60%):</span>
                         <span style={styles.breakdownEarnings}>₱{calculateRiderEarnings().toFixed(2)}</span>
                       </div>
                       <div style={styles.breakdownNote}>
-                        <small>💡 You bill the cashier 60% of the delivery fee and keep 40% as commission</small>
+                        <small>💡 You earn 60% commission from each delivery fee</small>
                       </div>
                     </div>
                     <button
