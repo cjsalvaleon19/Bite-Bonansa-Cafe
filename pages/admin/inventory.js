@@ -81,8 +81,6 @@ export default function InventoryPage() {
     checkSession();
     return () => { mounted = false; };
   }, [router]);
-    return () => { mounted = false; };
-  }, [router]);
 
   // ── Fetch inventory ─────────────────────────────────────────────────────────
   const fetchInventory = useCallback(async () => {
