@@ -21,6 +21,11 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState({ totalOrders: 0, totalRevenue: 0, avgOrder: 0 });
   const [chartData, setChartData] = useState([]);
+  const [deliveryFeeSummary, setDeliveryFeeSummary] = useState({
+    totalDeliveryFees: 0,
+    riderFees: 0,
+    netDeliveryFee: 0,
+  });
 
   // ── Auth guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -82,6 +87,25 @@ export default function ReportsPage() {
             revenue: Math.round(revenue * 100) / 100,
           })),
       );
+
+      // Fetch delivery fee data from delivery_reports
+      const { data: deliveryReports, error: deliveryError } = await supabase
+        .from('delivery_reports')
+        .select('total_delivery_fees, rider_earnings, business_revenue')
+        .gte('submitted_at', since.toISOString());
+
+      if (!deliveryError && deliveryReports) {
+        const totalDeliveryFees = deliveryReports.reduce(
+          (sum, r) => sum + (Number(r.total_delivery_fees) || 0), 0
+        );
+        const riderFees = deliveryReports.reduce(
+          (sum, r) => sum + (Number(r.rider_earnings) || 0), 0
+        );
+        const netDeliveryFee = deliveryReports.reduce(
+          (sum, r) => sum + (Number(r.business_revenue) || 0), 0
+        );
+        setDeliveryFeeSummary({ totalDeliveryFees, riderFees, netDeliveryFee });
+      }
     } catch { /* non-fatal */ } finally {
       setLoading(false);
     }
@@ -121,6 +145,29 @@ export default function ReportsPage() {
           <SummaryCard label="Total Orders (30d)" value={summary.totalOrders} />
           <SummaryCard label="Total Revenue (30d)" value={`₱${summary.totalRevenue.toFixed(2)}`} />
           <SummaryCard label="Average Order Value" value={`₱${summary.avgOrder.toFixed(2)}`} />
+        </div>
+
+        {/* ── Income Statement: Delivery Fee Profit Center ────────────────── */}
+        <div style={styles.incomeStatementBox}>
+          <h2 style={styles.incomeStatementTitle}>💰 Delivery Fee Profit Center (30d)</h2>
+          <div style={styles.incomeStatementTable}>
+            <div style={styles.incomeRow}>
+              <span style={styles.incomeLabel}>Delivery Fee</span>
+              <span style={styles.incomeValue}>₱{deliveryFeeSummary.totalDeliveryFees.toFixed(2)}</span>
+            </div>
+            <div style={styles.incomeRowSubtraction}>
+              <span style={styles.incomeLabelIndent}>Less: Rider's Fee (60%)</span>
+              <span style={styles.incomeValueNegative}>(₱{deliveryFeeSummary.riderFees.toFixed(2)})</span>
+            </div>
+            <div style={styles.incomeDivider} />
+            <div style={styles.incomeRowTotal}>
+              <span style={styles.incomeLabelBold}>Net Delivery Fee (40%)</span>
+              <span style={styles.incomeValueTotal}>₱{deliveryFeeSummary.netDeliveryFee.toFixed(2)}</span>
+            </div>
+          </div>
+          <p style={styles.incomeNote}>
+            📝 The net delivery fee represents the business revenue from deliveries after rider commissions.
+          </p>
         </div>
 
         {/* ── Bar chart ──────────────────────────────────────────────────── */}
@@ -264,5 +311,90 @@ const styles = {
     marginBottom: '20px',
     fontFamily: "'Poppins', sans-serif",
     fontWeight: '600',
+  },
+  incomeStatementBox: {
+    backgroundColor: '#1a1a1a',
+    border: '2px solid #4caf50',
+    borderRadius: '12px',
+    padding: '24px',
+    marginBottom: '32px',
+  },
+  incomeStatementTitle: {
+    fontSize: '18px',
+    color: '#4caf50',
+    marginTop: 0,
+    marginBottom: '20px',
+    fontFamily: "'Poppins', sans-serif",
+    fontWeight: '700',
+  },
+  incomeStatementTable: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  incomeRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 0',
+  },
+  incomeRowSubtraction: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 0',
+  },
+  incomeRowTotal: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 0',
+  },
+  incomeLabel: {
+    fontSize: '15px',
+    color: '#ccc',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  incomeLabelIndent: {
+    fontSize: '15px',
+    color: '#aaa',
+    fontFamily: "'Poppins', sans-serif",
+    paddingLeft: '24px',
+  },
+  incomeLabelBold: {
+    fontSize: '16px',
+    color: '#4caf50',
+    fontFamily: "'Poppins', sans-serif",
+    fontWeight: '700',
+  },
+  incomeValue: {
+    fontSize: '16px',
+    color: '#fff',
+    fontFamily: "'Poppins', sans-serif",
+    fontWeight: '600',
+  },
+  incomeValueNegative: {
+    fontSize: '16px',
+    color: '#ff5252',
+    fontFamily: "'Poppins', sans-serif",
+    fontWeight: '600',
+  },
+  incomeValueTotal: {
+    fontSize: '20px',
+    color: '#4caf50',
+    fontFamily: "'Playfair Display', serif",
+    fontWeight: '700',
+  },
+  incomeDivider: {
+    height: '2px',
+    backgroundColor: '#333',
+    margin: '8px 0',
+  },
+  incomeNote: {
+    fontSize: '13px',
+    color: '#888',
+    marginTop: '16px',
+    marginBottom: 0,
+    fontStyle: 'italic',
   },
 };
