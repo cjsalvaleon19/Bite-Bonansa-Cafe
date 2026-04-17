@@ -536,3 +536,83 @@ CREATE POLICY "Cashier can update report status" ON delivery_reports
       AND users.role IN ('admin', 'cashier')
     )
   );
+
+-- 21. Notifications table for cashier alerts
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  
+  -- Notification details
+  type VARCHAR(50) NOT NULL, -- 'delivery_report', 'order_ready', etc.
+  title VARCHAR(255) NOT NULL,
+  message TEXT NOT NULL,
+  
+  -- Related entities
+  related_id UUID, -- ID of related entity (report_id, order_id, etc.)
+  related_type VARCHAR(50), -- 'delivery_report', 'order', etc.
+  
+  -- Status
+  is_read BOOLEAN DEFAULT false,
+  read_at TIMESTAMP,
+  
+  -- Timestamps
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+
+-- Enable RLS on notifications
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- Notifications policies
+CREATE POLICY "Users can view their own notifications" ON notifications
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own notifications" ON notifications
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "System can create notifications" ON notifications
+  FOR INSERT WITH CHECK (true);
+
+-- 22. Function to create notification for all cashiers when report is submitted
+CREATE OR REPLACE FUNCTION notify_cashiers_on_report()
+RETURNS TRIGGER AS $$
+DECLARE
+  cashier_record RECORD;
+  rider_name TEXT;
+BEGIN
+  -- Only create notifications for new reports
+  IF TG_OP = 'INSERT' THEN
+    -- Get rider name
+    SELECT full_name INTO rider_name
+    FROM users
+    WHERE id = NEW.rider_id;
+    
+    -- Create notification for each cashier
+    FOR cashier_record IN 
+      SELECT id FROM users WHERE role = 'cashier'
+    LOOP
+      INSERT INTO notifications (user_id, type, title, message, related_id, related_type)
+      VALUES (
+        cashier_record.id,
+        'delivery_report',
+        '💵 New Delivery Report',
+        COALESCE(rider_name, 'Rider') || ' has submitted a delivery report for ₱' || 
+        NEW.rider_earnings::TEXT || ' (60% of ₱' || NEW.total_delivery_fees::TEXT || ')',
+        NEW.id,
+        'delivery_report'
+      );
+    END LOOP;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 23. Trigger to notify cashiers
+DROP TRIGGER IF EXISTS trigger_notify_cashiers ON delivery_reports;
+CREATE TRIGGER trigger_notify_cashiers
+  AFTER INSERT ON delivery_reports
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_cashiers_on_report();
