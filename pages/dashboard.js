@@ -55,7 +55,7 @@ export default function Dashboard() {
 
         // Role-based redirect
         if (role === 'customer') {
-          router.replace('/customer/menu').catch(console.error);
+          router.replace('/customer/dashboard').catch(console.error);
           return;
         } else if (role === 'cashier') {
           router.replace('/cashier').catch(console.error);
