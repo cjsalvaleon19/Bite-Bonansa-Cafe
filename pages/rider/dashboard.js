@@ -67,7 +67,7 @@ export default function RiderDashboard() {
           } else if (role === 'cashier') {
             router.replace('/cashier').catch(console.error);
           } else {
-            router.replace('/customer/menu').catch(console.error);
+            router.replace('/customer/dashboard').catch(console.error);
           }
           return;
         }
