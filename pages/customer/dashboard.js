@@ -107,7 +107,7 @@ export default function CustomerDashboard() {
         .from('orders')
         .select('id, status, total_amount, created_at')
         .eq('customer_id', userId)
-        .not('status', 'in', '("order_delivered","cancelled")')
+        .not('status', 'in', '(order_delivered,cancelled)')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
