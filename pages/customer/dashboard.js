@@ -103,15 +103,18 @@ export default function CustomerDashboard() {
   async function fetchDashboardData(userId) {
     try {
       // Get current order (most recent non-delivered order)
-      const { data: currentOrderData } = await supabase
+      const { data: currentOrderData, error: orderError } = await supabase
         .from('orders')
         .select('id, status, total_amount, created_at')
         .eq('customer_id', userId)
-        .not('status', 'eq', 'order_delivered')
-        .not('status', 'eq', 'cancelled')
+        .not('status', 'in', '("order_delivered","cancelled")')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      if (orderError) {
+        console.error('[CustomerDashboard] Failed to fetch current order:', orderError);
+      }
 
       // Calculate loyalty balance from loyalty_transactions
       const { data: allTransactions, error: transError } = await supabase
@@ -119,21 +122,29 @@ export default function CustomerDashboard() {
         .select('amount')
         .eq('customer_id', userId);
 
+      if (transError && transError.code !== 'PGRST116') {
+        console.error('[CustomerDashboard] Failed to fetch loyalty transactions:', transError);
+      }
+
       const loyaltyBalance = (!transError && allTransactions) 
         ? allTransactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) 
         : 0;
 
       // Get total earnings
-      const { data: earningsData } = await supabase
+      const { data: earningsData, error: earningsError } = await supabase
         .from('loyalty_transactions')
         .select('amount')
         .eq('customer_id', userId)
         .eq('transaction_type', 'earned');
 
+      if (earningsError && earningsError.code !== 'PGRST116') {
+        console.error('[CustomerDashboard] Failed to fetch earnings:', earningsError);
+      }
+
       const totalEarnings = earningsData?.reduce((sum, t) => sum + parseFloat(t.amount), 0) || 0;
 
       // Get most purchased items (top 5)
-      const { data: purchasesData } = await supabase
+      const { data: purchasesData, error: purchasesError } = await supabase
         .from('customer_item_purchases')
         .select(`
           menu_item_id,
@@ -144,9 +155,13 @@ export default function CustomerDashboard() {
         .order('purchase_count', { ascending: false })
         .limit(5);
 
+      if (purchasesError && purchasesError.code !== 'PGRST116') {
+        console.error('[CustomerDashboard] Failed to fetch purchases:', purchasesError);
+      }
+
       setDashboardData({
         loyaltyBalance,
-        currentOrder: currentOrderData,
+        currentOrder: currentOrderData || null,
         totalEarnings,
         mostPurchasedItems: purchasesData || []
       });
