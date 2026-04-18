@@ -80,7 +80,6 @@ export default async function handler(req, res) {
       phone: phone || null,
       address: address || null,
       customer_id: customerId,
-      loyalty_balance: 0,
       role: userRole,
     }]);
 

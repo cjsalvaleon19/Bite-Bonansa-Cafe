@@ -43,7 +43,7 @@ export default function CustomerDashboard() {
         // Fetch user role and profile
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('role, full_name, loyalty_balance, customer_id')
+          .select('role, full_name, customer_id')
           .eq('id', session.user.id)
           .maybeSingle();
 
@@ -71,7 +71,7 @@ export default function CustomerDashboard() {
         }
 
         // Fetch dashboard data
-        await fetchDashboardData(session.user.id, userData.loyalty_balance);
+        await fetchDashboardData(session.user.id);
 
         setLoading(false);
       } catch (err) {
@@ -100,7 +100,7 @@ export default function CustomerDashboard() {
     };
   }, [router]);
 
-  async function fetchDashboardData(userId, loyaltyBalance) {
+  async function fetchDashboardData(userId) {
     try {
       // Get current order (most recent non-delivered order)
       const { data: currentOrderData } = await supabase
@@ -112,6 +112,16 @@ export default function CustomerDashboard() {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      // Calculate loyalty balance from loyalty_transactions
+      const { data: allTransactions, error: transError } = await supabase
+        .from('loyalty_transactions')
+        .select('amount')
+        .eq('customer_id', userId);
+
+      const loyaltyBalance = (!transError && allTransactions) 
+        ? allTransactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) 
+        : 0;
 
       // Get total earnings
       const { data: earningsData } = await supabase
@@ -135,7 +145,7 @@ export default function CustomerDashboard() {
         .limit(5);
 
       setDashboardData({
-        loyaltyBalance: loyaltyBalance || 0,
+        loyaltyBalance,
         currentOrder: currentOrderData,
         totalEarnings,
         mostPurchasedItems: purchasesData || []
@@ -193,7 +203,7 @@ export default function CustomerDashboard() {
           <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
           <nav style={styles.nav}>
             <Link href="/customer/dashboard" style={styles.navLink}>Dashboard</Link>
-            <Link href="/customer/menu" style={styles.navLink}>Order Portal</Link>
+            <Link href="/customer/order-portal" style={styles.navLink}>Order Portal</Link>
             <Link href="/customer/orders" style={styles.navLink}>Order Tracking</Link>
             <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
             <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>
@@ -219,7 +229,7 @@ export default function CustomerDashboard() {
           {/* Quick Action Cards */}
           <div style={styles.cardsGrid}>
             {/* Order Now */}
-            <Link href="/customer/menu" style={styles.actionCard}>
+            <Link href="/customer/order-portal" style={styles.actionCard}>
               <span style={styles.cardIcon}>🍽️</span>
               <h3 style={styles.cardTitle}>Order Now</h3>
               <p style={styles.cardDesc}>Browse menu and place order</p>
@@ -284,7 +294,7 @@ export default function CustomerDashboard() {
                       </p>
                       <button
                         style={styles.addToCartBtn}
-                        onClick={() => router.push('/customer/menu').catch(console.error)}
+                        onClick={() => router.push('/customer/order-portal').catch(console.error)}
                       >
                         🛒 Add to Cart
                       </button>

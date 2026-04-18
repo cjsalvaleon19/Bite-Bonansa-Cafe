@@ -49,7 +49,7 @@ export default function CustomerProfile() {
         // Fetch user profile
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('role, full_name, customer_id, address, email, created_at, loyalty_balance')
+          .select('role, full_name, customer_id, address, email, created_at')
           .eq('id', session.user.id)
           .maybeSingle();
 
@@ -75,13 +75,23 @@ export default function CustomerProfile() {
           return;
         }
 
+        // Fetch loyalty balance from transactions
+        const { data: transactions, error: transError } = await supabase
+          .from('loyalty_transactions')
+          .select('amount')
+          .eq('customer_id', session.user.id);
+
+        const loyaltyBalance = (!transError && transactions) 
+          ? transactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) 
+          : 0;
+
         setProfile({
           full_name: userData.full_name || '',
           customer_id: userData.customer_id || '',
           address: userData.address || '',
           email: userData.email || session.user.email,
           created_at: userData.created_at || '',
-          loyalty_balance: userData.loyalty_balance || 0
+          loyalty_balance: loyaltyBalance
         });
 
         setLoading(false);
@@ -197,7 +207,7 @@ export default function CustomerProfile() {
           <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
           <nav style={styles.nav}>
             <Link href="/customer/dashboard" style={styles.navLink}>Dashboard</Link>
-            <Link href="/customer/menu" style={styles.navLink}>Order Portal</Link>
+            <Link href="/customer/order-portal" style={styles.navLink}>Order Portal</Link>
             <Link href="/customer/orders" style={styles.navLink}>Order Tracking</Link>
             <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
             <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>

@@ -72,13 +72,23 @@ export default function CashierPOS() {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('full_name, phone, address, loyalty_balance')
+        .select('id, full_name, phone, address')
         .eq('customer_id', customerId)
         .maybeSingle();
 
       if (error) throw error;
 
       if (data) {
+        // Fetch loyalty balance from transactions
+        const { data: transactions, error: transError } = await supabase
+          .from('loyalty_transactions')
+          .select('amount')
+          .eq('customer_id', data.id);
+
+        const loyaltyBalance = (!transError && transactions) 
+          ? transactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) 
+          : 0;
+
         setCustomerInfo({
           ...customerInfo,
           customerId: customerId,
@@ -86,7 +96,7 @@ export default function CashierPOS() {
           address: data.address || '',
           contactNumber: data.phone || '',
         });
-        setCustomerPointsBalance(parseFloat(data.loyalty_balance || 0));
+        setCustomerPointsBalance(loyaltyBalance);
       }
     } catch (err) {
       console.error('[POS] Failed to fetch customer data:', err?.message ?? err);
