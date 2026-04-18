@@ -63,9 +63,7 @@ export default function CustomerMenu() {
           return;
         }
 
-        // Redirect customers to their dashboard
-        router.replace('/customer/dashboard').catch(console.error);
-        return;
+        setLoading(false);
       } catch (err) {
         console.error('[CustomerMenu] Session check failed:', err?.message ?? err);
         if (mounted) {

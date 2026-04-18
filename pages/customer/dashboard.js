@@ -201,7 +201,7 @@ export default function CustomerDashboard() {
           <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
           <nav style={styles.nav}>
             <Link href="/customer/dashboard" style={styles.navLink}>Dashboard</Link>
-            <Link href="/customer/menu" style={styles.navLink}>Order Portal</Link>
+            <Link href="/customer/order-portal" style={styles.navLink}>Order Portal</Link>
             <Link href="/customer/orders" style={styles.navLink}>Order Tracking</Link>
             <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
             <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>
@@ -227,7 +227,7 @@ export default function CustomerDashboard() {
           {/* Quick Action Cards */}
           <div style={styles.cardsGrid}>
             {/* Order Now */}
-            <Link href="/customer/menu" style={styles.actionCard}>
+            <Link href="/customer/order-portal" style={styles.actionCard}>
               <span style={styles.cardIcon}>🍽️</span>
               <h3 style={styles.cardTitle}>Order Now</h3>
               <p style={styles.cardDesc}>Browse menu and place order</p>
@@ -292,7 +292,7 @@ export default function CustomerDashboard() {
                       </p>
                       <button
                         style={styles.addToCartBtn}
-                        onClick={() => router.push('/customer/menu').catch(console.error)}
+                        onClick={() => router.push('/customer/order-portal').catch(console.error)}
                       >
                         🛒 Add to Cart
                       </button>

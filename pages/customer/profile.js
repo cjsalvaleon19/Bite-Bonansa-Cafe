@@ -205,7 +205,7 @@ export default function CustomerProfile() {
           <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
           <nav style={styles.nav}>
             <Link href="/customer/dashboard" style={styles.navLink}>Dashboard</Link>
-            <Link href="/customer/menu" style={styles.navLink}>Order Portal</Link>
+            <Link href="/customer/order-portal" style={styles.navLink}>Order Portal</Link>
             <Link href="/customer/orders" style={styles.navLink}>Order Tracking</Link>
             <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
             <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>
