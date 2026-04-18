@@ -46,7 +46,7 @@ export default async function handler(req, res) {
   // Try fetching the customer
   const { data, error } = await supabaseAdmin
     .from('users')
-    .select('full_name, customer_id, loyalty_balance, role, created_at')
+    .select('id, full_name, customer_id, role, created_at')
     .eq('customer_id', customerId)
     .single();
 
@@ -60,12 +60,20 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Server error. Please try again.' });
   }
 
+  // Fetch loyalty balance from transactions
+  const { data: transactions } = await supabaseAdmin
+    .from('loyalty_transactions')
+    .select('amount')
+    .eq('customer_id', data.id);
+
+  const loyaltyBalance = transactions?.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) || 0;
+
   // Respond with normalized payload
   return res.status(200).json({
     id: data.customer_id,
     name: data.full_name,
     role: data.role,
     created_at: data.created_at,
-    loyaltyBalance: data.loyalty_balance ?? 0,
+    loyaltyBalance,
   });
 }

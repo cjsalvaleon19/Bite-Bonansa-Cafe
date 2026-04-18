@@ -43,7 +43,7 @@ export default function CustomerDashboard() {
         // Fetch user role and profile
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('role, full_name, loyalty_balance, customer_id')
+          .select('role, full_name, customer_id')
           .eq('id', session.user.id)
           .maybeSingle();
 
@@ -71,7 +71,7 @@ export default function CustomerDashboard() {
         }
 
         // Fetch dashboard data
-        await fetchDashboardData(session.user.id, userData.loyalty_balance);
+        await fetchDashboardData(session.user.id);
 
         setLoading(false);
       } catch (err) {
@@ -100,7 +100,7 @@ export default function CustomerDashboard() {
     };
   }, [router]);
 
-  async function fetchDashboardData(userId, loyaltyBalance) {
+  async function fetchDashboardData(userId) {
     try {
       // Get current order (most recent non-delivered order)
       const { data: currentOrderData } = await supabase
@@ -112,6 +112,14 @@ export default function CustomerDashboard() {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      // Calculate loyalty balance from loyalty_transactions
+      const { data: allTransactions } = await supabase
+        .from('loyalty_transactions')
+        .select('amount')
+        .eq('customer_id', userId);
+
+      const loyaltyBalance = allTransactions?.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) || 0;
 
       // Get total earnings
       const { data: earningsData } = await supabase
@@ -135,7 +143,7 @@ export default function CustomerDashboard() {
         .limit(5);
 
       setDashboardData({
-        loyaltyBalance: loyaltyBalance || 0,
+        loyaltyBalance,
         currentOrder: currentOrderData,
         totalEarnings,
         mostPurchasedItems: purchasesData || []
