@@ -80,12 +80,14 @@ export default function CashierPOS() {
 
       if (data) {
         // Fetch loyalty balance from transactions
-        const { data: transactions } = await supabase
+        const { data: transactions, error: transError } = await supabase
           .from('loyalty_transactions')
           .select('amount')
           .eq('customer_id', data.id);
 
-        const loyaltyBalance = transactions?.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) || 0;
+        const loyaltyBalance = (!transError && transactions) 
+          ? transactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) 
+          : 0;
 
         setCustomerInfo({
           ...customerInfo,

@@ -114,12 +114,14 @@ export default function CustomerDashboard() {
         .maybeSingle();
 
       // Calculate loyalty balance from loyalty_transactions
-      const { data: allTransactions } = await supabase
+      const { data: allTransactions, error: transError } = await supabase
         .from('loyalty_transactions')
         .select('amount')
         .eq('customer_id', userId);
 
-      const loyaltyBalance = allTransactions?.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) || 0;
+      const loyaltyBalance = (!transError && allTransactions) 
+        ? allTransactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) 
+        : 0;
 
       // Get total earnings
       const { data: earningsData } = await supabase

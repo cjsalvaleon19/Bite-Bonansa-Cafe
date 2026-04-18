@@ -61,12 +61,14 @@ export default async function handler(req, res) {
   }
 
   // Fetch loyalty balance from transactions
-  const { data: transactions } = await supabaseAdmin
+  const { data: transactions, error: transError } = await supabaseAdmin
     .from('loyalty_transactions')
     .select('amount')
     .eq('customer_id', data.id);
 
-  const loyaltyBalance = transactions?.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) || 0;
+  const loyaltyBalance = (!transError && transactions) 
+    ? transactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) 
+    : 0;
 
   // Respond with normalized payload
   return res.status(200).json({
