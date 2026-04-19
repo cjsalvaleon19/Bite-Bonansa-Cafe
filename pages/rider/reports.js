@@ -212,7 +212,8 @@ export default function RiderReports() {
       if (updateError) throw updateError;
 
       // Create a delivery report record
-      // Use ISO date string directly to avoid timezone conversion issues
+      // Use ISO date string (UTC) for consistency across all riders regardless of timezone
+      // The database constraint UNIQUE(rider_id, report_date) requires consistent date representation
       const reportDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 
       const { error: reportError } = await supabase
