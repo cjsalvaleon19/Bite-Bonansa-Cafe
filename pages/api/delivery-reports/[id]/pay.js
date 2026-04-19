@@ -49,7 +49,8 @@ export default async function handler(req, res) {
     }
 
     // Validate report status
-    // Expected status flow: pending → submitted → paid
+    // Expected status flow: submitted → paid
+    // Riders create reports with 'submitted' status, cashiers mark them as 'paid'
     // Only reports with 'submitted' status can be paid
     if (report.status === 'paid') {
       return res.status(400).json({ error: 'Report has already been paid' });
