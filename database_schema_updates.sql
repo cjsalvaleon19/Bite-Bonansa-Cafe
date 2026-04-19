@@ -289,3 +289,83 @@ FROM orders
 GROUP BY DATE(created_at);
 
 COMMENT ON VIEW cashier_daily_stats IS 'Daily sales statistics for cashier dashboard';
+
+-- 11. Create delivery fee calculator functions
+-- Store location constant (Bite Bonansa Cafe, T'boli, South Cotabato)
+-- Latitude: 6.2178483, Longitude: 124.8221226
+
+-- Function to calculate distance between two coordinates using Haversine formula
+CREATE OR REPLACE FUNCTION calculate_distance_meters(
+  lat1 DECIMAL,
+  lon1 DECIMAL,
+  lat2 DECIMAL,
+  lon2 DECIMAL
+)
+RETURNS INT AS $$
+DECLARE
+  R CONSTANT DECIMAL := 6371.0; -- Earth's radius in kilometers
+  dLat DECIMAL;
+  dLon DECIMAL;
+  a DECIMAL;
+  c DECIMAL;
+  distance_km DECIMAL;
+BEGIN
+  -- Convert degrees to radians
+  dLat := RADIANS(lat2 - lat1);
+  dLon := RADIANS(lon2 - lon1);
+  
+  -- Haversine formula
+  a := SIN(dLat / 2) * SIN(dLat / 2) + 
+       COS(RADIANS(lat1)) * COS(RADIANS(lat2)) * 
+       SIN(dLon / 2) * SIN(dLon / 2);
+  c := 2 * ATAN2(SQRT(a), SQRT(1 - a));
+  distance_km := R * c;
+  
+  -- Convert to meters and round
+  RETURN ROUND(distance_km * 1000)::INT;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+COMMENT ON FUNCTION calculate_distance_meters IS 'Calculate distance in meters between two GPS coordinates using Haversine formula';
+
+-- Function to calculate delivery fee based on distance
+CREATE OR REPLACE FUNCTION calculate_delivery_fee(distance_meters INT)
+RETURNS DECIMAL AS $$
+DECLARE
+  base_fee CONSTANT DECIMAL := 35.00;
+  base_distance CONSTANT INT := 1000; -- 1 km in meters
+  additional_distance INT;
+  additional_fee DECIMAL;
+BEGIN
+  -- Base fee for distances up to 1000 meters
+  IF distance_meters <= base_distance THEN
+    RETURN base_fee;
+  END IF;
+  
+  -- Calculate additional fee: ₱10 per 200 meters after 1km
+  additional_distance := distance_meters - base_distance;
+  additional_fee := CEIL(additional_distance::DECIMAL / 200) * 10;
+  
+  RETURN base_fee + additional_fee;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+COMMENT ON FUNCTION calculate_delivery_fee IS 'Calculate delivery fee: ₱35 base (0-1000m), then +₱10 per 200m';
+
+-- Function to calculate delivery fee from store to customer location
+CREATE OR REPLACE FUNCTION calculate_delivery_fee_from_store(
+  customer_latitude DECIMAL,
+  customer_longitude DECIMAL
+)
+RETURNS DECIMAL AS $$
+DECLARE
+  store_lat CONSTANT DECIMAL := 6.2178483;
+  store_lon CONSTANT DECIMAL := 124.8221226;
+  distance INT;
+BEGIN
+  distance := calculate_distance_meters(store_lat, store_lon, customer_latitude, customer_longitude);
+  RETURN calculate_delivery_fee(distance);
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+COMMENT ON FUNCTION calculate_delivery_fee_from_store IS 'Calculate delivery fee from Bite Bonansa store to customer location';
