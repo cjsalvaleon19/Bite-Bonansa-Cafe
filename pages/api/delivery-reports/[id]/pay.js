@@ -48,8 +48,8 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Report not found' });
     }
 
-    if (report.status !== 'pending') {
-      return res.status(400).json({ error: 'Report has already been processed' });
+    if (report.status !== 'submitted') {
+      return res.status(400).json({ error: 'Report has already been processed or not yet submitted' });
     }
 
     // Update the report status to paid
@@ -58,7 +58,6 @@ export default async function handler(req, res) {
       .update({
         status: 'paid',
         paid_at: new Date().toISOString(),
-        paid_by: user.id,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id);

@@ -205,23 +205,27 @@ export default function RiderReports() {
       const { error: updateError } = await supabase
         .from('deliveries')
         .update({ 
-          report_submitted: true,
-          report_submitted_at: new Date().toISOString()
+          report_submitted: true
         })
         .in('id', selectedDeliveries);
 
       if (updateError) throw updateError;
+
+      // Get today's date for report_date
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
       // Create a delivery report record
       const { error: reportError } = await supabase
         .from('delivery_reports')
         .insert({
           rider_id: user.id,
-          delivery_ids: selectedDeliveries,
+          report_date: today.toISOString().split('T')[0], // YYYY-MM-DD format
+          total_deliveries: selectedDeliveries.length,
           total_delivery_fees: calculateTotalFees(),
           business_revenue: calculateBusinessRevenue(),
           rider_earnings: calculateRiderEarnings(),
-          status: 'pending',
+          status: 'submitted',
           submitted_at: new Date().toISOString(),
         });
 
@@ -448,7 +452,7 @@ export default function RiderReports() {
                           </p>
                         )}
                         <p style={styles.reportDetail}>
-                          <strong>Deliveries:</strong> {report.delivery_ids?.length || 0}
+                          <strong>Deliveries:</strong> {report.total_deliveries || 0}
                         </p>
                         <p style={styles.reportDetail}>
                           <strong>Total Fees:</strong> ₱{report.total_delivery_fees?.toFixed(2) || '0.00'}
@@ -456,7 +460,7 @@ export default function RiderReports() {
                         <p style={styles.reportEarnings}>
                           <strong>Your Earnings (60%):</strong> ₱{report.rider_earnings?.toFixed(2) || '0.00'}
                         </p>
-                        {report.status === 'pending' && (
+                        {(report.status === 'submitted' || report.status === 'pending') && (
                           <div style={styles.pendingNote}>
                             ⏳ Waiting for cashier to process payment
                           </div>
