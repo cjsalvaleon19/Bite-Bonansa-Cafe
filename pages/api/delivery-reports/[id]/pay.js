@@ -48,8 +48,12 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Report not found' });
     }
 
+    if (report.status === 'paid') {
+      return res.status(400).json({ error: 'Report has already been paid' });
+    }
+
     if (report.status !== 'submitted') {
-      return res.status(400).json({ error: 'Report has already been processed or not yet submitted' });
+      return res.status(400).json({ error: 'Report must be submitted before payment can be processed' });
     }
 
     // Update the report status to paid
