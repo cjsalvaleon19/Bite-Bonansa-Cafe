@@ -205,23 +205,27 @@ export default function RiderReports() {
       const { error: updateError } = await supabase
         .from('deliveries')
         .update({ 
-          report_submitted: true,
-          report_submitted_at: new Date().toISOString()
+          report_submitted: true
         })
         .in('id', selectedDeliveries);
 
       if (updateError) throw updateError;
 
       // Create a delivery report record
+      // Use ISO date string (UTC) for consistency across all riders regardless of timezone
+      // The database constraint UNIQUE(rider_id, report_date) requires consistent date representation
+      const reportDate = new Date().toISOString().substring(0, 10); // YYYY-MM-DD format
+
       const { error: reportError } = await supabase
         .from('delivery_reports')
         .insert({
           rider_id: user.id,
-          delivery_ids: selectedDeliveries,
+          report_date: reportDate,
+          total_deliveries: selectedDeliveries.length,
           total_delivery_fees: calculateTotalFees(),
           business_revenue: calculateBusinessRevenue(),
           rider_earnings: calculateRiderEarnings(),
-          status: 'pending',
+          status: 'submitted',
           submitted_at: new Date().toISOString(),
         });
 
@@ -448,7 +452,7 @@ export default function RiderReports() {
                           </p>
                         )}
                         <p style={styles.reportDetail}>
-                          <strong>Deliveries:</strong> {report.delivery_ids?.length || 0}
+                          <strong>Deliveries:</strong> {report.total_deliveries || 0}
                         </p>
                         <p style={styles.reportDetail}>
                           <strong>Total Fees:</strong> ₱{report.total_delivery_fees?.toFixed(2) || '0.00'}
@@ -456,7 +460,7 @@ export default function RiderReports() {
                         <p style={styles.reportEarnings}>
                           <strong>Your Earnings (60%):</strong> ₱{report.rider_earnings?.toFixed(2) || '0.00'}
                         </p>
-                        {report.status === 'pending' && (
+                        {(report.status === 'submitted' || report.status === 'pending') && (
                           <div style={styles.pendingNote}>
                             ⏳ Waiting for cashier to process payment
                           </div>

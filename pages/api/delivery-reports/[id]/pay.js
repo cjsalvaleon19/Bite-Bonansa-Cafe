@@ -48,8 +48,14 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Report not found' });
     }
 
-    if (report.status !== 'pending') {
-      return res.status(400).json({ error: 'Report has already been processed' });
+    // Validate report status
+    // Expected status flow: submitted → paid
+    // Riders create reports with 'submitted' status, cashiers mark them as 'paid'
+    // 'pending' may exist as a legacy status
+    if (report.status === 'paid') {
+      return res.status(400).json({ error: 'Report has already been paid' });
+    } else if (report.status !== 'submitted' && report.status !== 'pending') {
+      return res.status(400).json({ error: 'Report must be submitted before payment can be processed' });
     }
 
     // Update the report status to paid
@@ -58,7 +64,6 @@ export default async function handler(req, res) {
       .update({
         status: 'paid',
         paid_at: new Date().toISOString(),
-        paid_by: user.id,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id);
