@@ -211,16 +211,16 @@ export default function RiderReports() {
 
       if (updateError) throw updateError;
 
-      // Get today's date for report_date (in UTC to ensure consistency)
-      const today = new Date();
-      today.setUTCHours(0, 0, 0, 0);
+      // Get today's date for report_date (in UTC to ensure consistency across timezones)
+      const reportDateUTC = new Date();
+      reportDateUTC.setUTCHours(0, 0, 0, 0);
 
       // Create a delivery report record
       const { error: reportError } = await supabase
         .from('delivery_reports')
         .insert({
           rider_id: user.id,
-          report_date: today.toISOString().split('T')[0], // YYYY-MM-DD format in UTC
+          report_date: reportDateUTC.toISOString().split('T')[0], // YYYY-MM-DD format in UTC
           total_deliveries: selectedDeliveries.length,
           total_delivery_fees: calculateTotalFees(),
           business_revenue: calculateBusinessRevenue(),

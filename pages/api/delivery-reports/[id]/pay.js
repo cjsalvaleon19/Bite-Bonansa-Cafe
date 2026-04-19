@@ -48,6 +48,9 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Report not found' });
     }
 
+    // Validate report status
+    // Expected status flow: pending → submitted → paid
+    // Only reports with 'submitted' status can be paid
     if (report.status === 'paid') {
       return res.status(400).json({ error: 'Report has already been paid' });
     }
