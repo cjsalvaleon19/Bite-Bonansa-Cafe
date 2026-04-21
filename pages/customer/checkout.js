@@ -540,7 +540,7 @@ const styles = {
     border: '1px solid #444',
     borderRadius: '6px',
     fontSize: '14px',
-    fontFamily: "'Poppins', sans-serif',
+    fontFamily: "'Poppins', sans-serif",
     resize: 'vertical',
     boxSizing: 'border-box',
   },
