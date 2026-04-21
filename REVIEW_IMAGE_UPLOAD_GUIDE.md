@@ -102,15 +102,17 @@ Here's how the image upload process works:
 
 ## File Naming Convention
 
-Images are stored with the following naming pattern:
+Images are stored with cryptographically secure random filenames:
 ```
-review-images/{userId}-{timestamp}-{randomString}.{extension}
+review-images/{secureRandomId}.{extension}
 ```
 
 Example:
 ```
-review-images/a1b2c3d4-1713701234567-x9y8z7.jpg
+review-images/a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg
 ```
+
+The filename uses `crypto.randomUUID()` in modern browsers to ensure uniqueness and prevent filename guessing attacks.
 
 ## Security Considerations
 

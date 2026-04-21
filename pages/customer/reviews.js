@@ -536,9 +536,12 @@ export default function CustomerReviews() {
                 {form.previewUrls.length > 0 && (
                   <div style={styles.imagePreviewContainer}>
                     {form.previewUrls.map((url, index) => {
-                      // Get original filename if available
-                      const fileName = form.images[index]?.name || '';
+                      // Get sanitized filename - only use if from File object
+                      const file = form.images[index];
+                      const fileName = file?.name?.replace(/[<>]/g, '') || ''; // Remove potential XSS chars
                       const altText = fileName ? `Preview of ${fileName}` : 'Review image preview';
+                      const ariaLabel = fileName ? `Remove ${fileName}` : `Remove image ${index + 1}`;
+                      
                       return (
                         <div key={index} style={styles.imagePreviewItem}>
                           <img
@@ -550,7 +553,7 @@ export default function CustomerReviews() {
                             style={styles.removeImageBtn}
                             onClick={() => handleRemoveImage(index)}
                             type="button"
-                            aria-label={`Remove ${fileName || `image ${index + 1}`}`}
+                            aria-label={ariaLabel}
                           >
                             ✕
                           </button>

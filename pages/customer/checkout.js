@@ -91,6 +91,11 @@ export default function Checkout() {
             // Clear corrupted cart data
             localStorage.removeItem('cart');
             setError('Your saved cart data was corrupted and has been cleared. Please add items again.');
+            // Redirect to order portal after brief delay
+            setTimeout(() => {
+              router.replace('/customer/order-portal').catch(console.error);
+            }, 3000);
+            return;
           }
         } else {
           // No cart items, redirect to order portal
