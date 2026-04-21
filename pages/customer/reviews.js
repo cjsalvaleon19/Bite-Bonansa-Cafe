@@ -14,7 +14,8 @@ export default function CustomerReviews() {
   const [form, setForm] = useState({
     title: '',
     review_text: '',
-    star_rating: 5
+    star_rating: 5,
+    images: [] // Array to store image files
   });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -122,7 +123,8 @@ export default function CustomerReviews() {
     setForm({
       title: '',
       review_text: '',
-      star_rating: 5
+      star_rating: 5,
+      images: []
     });
     setFormError('');
     setShowCreateModal(true);
@@ -133,10 +135,84 @@ export default function CustomerReviews() {
     setForm({
       title: review.title || '',
       review_text: review.review_text || '',
-      star_rating: review.star_rating || 5
+      star_rating: review.star_rating || 5,
+      images: [] // Don't pre-load existing images for editing
     });
     setFormError('');
     setShowCreateModal(true);
+  };
+
+  const handleImageChange = (e) => {
+    const files = Array.from(e.target.files);
+    
+    // Validate file count (max 5 images)
+    if (files.length + form.images.length > 5) {
+      setFormError('You can upload a maximum of 5 images');
+      return;
+    }
+
+    // Validate file types (only images)
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    const invalidFiles = files.filter(file => !validTypes.includes(file.type));
+    
+    if (invalidFiles.length > 0) {
+      setFormError('Please upload only image files (JPEG, PNG, GIF, WebP)');
+      return;
+    }
+
+    // Validate file sizes (max 5MB per image)
+    const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+    const oversizedFiles = files.filter(file => file.size > maxSize);
+    
+    if (oversizedFiles.length > 0) {
+      setFormError('Each image must be less than 5MB');
+      return;
+    }
+
+    setForm(prev => ({
+      ...prev,
+      images: [...prev.images, ...files]
+    }));
+    setFormError('');
+  };
+
+  const handleRemoveImage = (index) => {
+    setForm(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index)
+    }));
+  };
+
+  const uploadImagesToSupabase = async (images) => {
+    const imageUrls = [];
+    
+    for (const image of images) {
+      try {
+        // Generate unique filename
+        const fileExt = image.name.split('.').pop();
+        const fileName = `${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `review-images/${fileName}`;
+
+        // Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from('reviews')
+          .upload(filePath, image);
+
+        if (uploadError) throw uploadError;
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('reviews')
+          .getPublicUrl(filePath);
+
+        imageUrls.push(publicUrl);
+      } catch (err) {
+        console.error('Failed to upload image:', err);
+        // Continue with other images even if one fails
+      }
+    }
+
+    return imageUrls;
   };
 
   const handleSubmitReview = async () => {
@@ -156,11 +232,18 @@ export default function CustomerReviews() {
     setSubmitting(true);
 
     try {
+      // Upload images if any
+      let imageUrls = [];
+      if (form.images.length > 0) {
+        imageUrls = await uploadImagesToSupabase(form.images);
+      }
+
       const reviewData = {
         customer_id: user.id,
         title: form.title.trim() || null,
         review_text: form.review_text.trim(),
         star_rating: parseInt(form.star_rating),
+        image_urls: imageUrls.length > 0 ? imageUrls : null,
         status: 'pending'
       };
 
@@ -189,7 +272,7 @@ export default function CustomerReviews() {
       // Refresh reviews list
       await fetchReviews(user.id);
       setShowCreateModal(false);
-      setForm({ title: '', review_text: '', star_rating: 5 });
+      setForm({ title: '', review_text: '', star_rating: 5, images: [] });
     } catch (err) {
       console.error('[CustomerReviews] Failed to submit review:', err);
       setFormError('Failed to submit review. Please try again.');
@@ -311,6 +394,20 @@ export default function CustomerReviews() {
 
                     <p style={styles.reviewText}>{review.review_text}</p>
 
+                    {/* Display review images */}
+                    {review.image_urls && review.image_urls.length > 0 && (
+                      <div style={styles.reviewImages}>
+                        {review.image_urls.map((url, index) => (
+                          <img
+                            key={index}
+                            src={url}
+                            alt={`Review image ${index + 1}`}
+                            style={styles.reviewImage}
+                          />
+                        ))}
+                      </div>
+                    )}
+
                     {review.published_at && (
                       <p style={styles.publishedDate}>
                         Published on {formatDate(review.published_at)}
@@ -380,6 +477,42 @@ export default function CustomerReviews() {
                 </p>
               </div>
 
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Upload Photos (Optional)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageChange}
+                  style={styles.fileInput}
+                />
+                <p style={styles.helperText}>
+                  📸 You can upload up to 5 images (max 5MB each). Supported formats: JPEG, PNG, GIF, WebP
+                </p>
+                
+                {/* Image Preview */}
+                {form.images.length > 0 && (
+                  <div style={styles.imagePreviewContainer}>
+                    {form.images.map((image, index) => (
+                      <div key={index} style={styles.imagePreviewItem}>
+                        <img
+                          src={URL.createObjectURL(image)}
+                          alt={`Preview ${index + 1}`}
+                          style={styles.imagePreview}
+                        />
+                        <button
+                          style={styles.removeImageBtn}
+                          onClick={() => handleRemoveImage(index)}
+                          type="button"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {formError && (
                 <div style={styles.errorMessage}>{formError}</div>
               )}
@@ -395,7 +528,7 @@ export default function CustomerReviews() {
                   style={styles.modalBtnCancel}
                   onClick={() => {
                     setShowCreateModal(false);
-                    setForm({ title: '', review_text: '', star_rating: 5 });
+                    setForm({ title: '', review_text: '', star_rating: 5, images: [] });
                     setFormError('');
                   }}
                   disabled={submitting}
@@ -675,6 +808,68 @@ const styles = {
     color: '#999',
     marginTop: '4px',
     fontStyle: 'italic',
+  },
+  fileInput: {
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    border: '1px solid #444',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
+    cursor: 'pointer',
+  },
+  imagePreviewContainer: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+    gap: '12px',
+    marginTop: '12px',
+  },
+  imagePreviewItem: {
+    position: 'relative',
+    width: '100%',
+    paddingTop: '100%',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    border: '1px solid #444',
+  },
+  imagePreview: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: '4px',
+    right: '4px',
+    width: '24px',
+    height: '24px',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '50%',
+    cursor: 'pointer',
+    fontSize: '14px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewImages: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+    gap: '12px',
+    marginTop: '12px',
+  },
+  reviewImage: {
+    width: '100%',
+    height: '150px',
+    objectFit: 'cover',
+    borderRadius: '8px',
+    border: '1px solid #444',
   },
   infoBox: {
     backgroundColor: '#1a1a1a',

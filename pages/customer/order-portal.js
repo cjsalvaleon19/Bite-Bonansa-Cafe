@@ -13,6 +13,18 @@ export default function OrderPortal() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loadingMenu, setLoadingMenu] = useState(false);
 
+  // Load cart from localStorage on mount
+  useEffect(() => {
+    const savedCart = localStorage.getItem('cart');
+    if (savedCart) {
+      try {
+        setCart(JSON.parse(savedCart));
+      } catch (err) {
+        console.error('Failed to parse saved cart:', err);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
@@ -123,28 +135,35 @@ export default function OrderPortal() {
 
   const addToCart = (item) => {
     const existingItem = cart.find(cartItem => cartItem.id === item.id);
+    let updatedCart;
     if (existingItem) {
-      setCart(cart.map(cartItem => 
+      updatedCart = cart.map(cartItem => 
         cartItem.id === item.id 
           ? { ...cartItem, quantity: cartItem.quantity + 1 }
           : cartItem
-      ));
+      );
     } else {
-      setCart([...cart, { ...item, quantity: 1 }]);
+      updatedCart = [...cart, { ...item, quantity: 1 }];
     }
+    setCart(updatedCart);
+    localStorage.setItem('cart', JSON.stringify(updatedCart));
   };
 
   const removeFromCart = (itemId) => {
-    setCart(cart.filter(item => item.id !== itemId));
+    const updatedCart = cart.filter(item => item.id !== itemId);
+    setCart(updatedCart);
+    localStorage.setItem('cart', JSON.stringify(updatedCart));
   };
 
   const updateQuantity = (itemId, newQuantity) => {
     if (newQuantity <= 0) {
       removeFromCart(itemId);
     } else {
-      setCart(cart.map(item => 
+      const updatedCart = cart.map(item => 
         item.id === itemId ? { ...item, quantity: newQuantity } : item
-      ));
+      );
+      setCart(updatedCart);
+      localStorage.setItem('cart', JSON.stringify(updatedCart));
     }
   };
 
@@ -299,7 +318,7 @@ export default function OrderPortal() {
                 </div>
                 <button 
                   style={styles.checkoutBtn}
-                  onClick={() => alert('Checkout feature coming soon! Complete your order at our counter or contact us.')}
+                  onClick={() => router.push('/customer/checkout')}
                 >
                   Proceed to Checkout
                 </button>
