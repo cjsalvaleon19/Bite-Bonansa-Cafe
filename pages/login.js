@@ -34,7 +34,53 @@ const Login = () => {
       }
 
       localStorage.setItem('token', data.session.access_token);
-      await router.push('/dashboard');
+      
+      // Fetch user role from database to redirect appropriately
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', data.user.id)
+        .maybeSingle();
+
+      if (userError) {
+        console.error('[Login] Failed to fetch user role:', userError.message);
+        setError('Failed to retrieve user profile. Please contact support.');
+        setLoading(false);
+        return;
+      }
+
+      if (!userData) {
+        console.error('[Login] User not found in users table:', data.user.id);
+        setError('User profile not found. Please contact support.');
+        setLoading(false);
+        return;
+      }
+
+      if (!userData.role) {
+        console.error('[Login] User has no role assigned:', data.user.id);
+        setError('User role not assigned. Please contact support.');
+        setLoading(false);
+        return;
+      }
+
+      const role = userData.role;
+
+      // Role-based redirect
+      if (role === 'customer') {
+        await router.push('/customer/dashboard');
+      } else if (role === 'cashier') {
+        await router.push('/cashier');
+      } else if (role === 'rider') {
+        await router.push('/rider/dashboard');
+      } else if (role === 'admin') {
+        await router.push('/dashboard');
+      } else {
+        // Unrecognized role - prevent access
+        console.error('[Login] Unrecognized user role:', role);
+        setError('Unrecognized user role. Please contact support.');
+        setLoading(false);
+        return;
+      }
     } catch (err) {
       setError('Login failed. Please try again.');
       setLoading(false);

@@ -119,21 +119,34 @@ export default function CustomerDashboard() {
         .select('amount')
         .eq('customer_id', userId);
 
-      const loyaltyBalance = (!transError && allTransactions) 
-        ? allTransactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) 
-        : 0;
+      // Handle missing table gracefully (PGRST116 = table not found)
+      let loyaltyBalance = 0;
+      if (transError) {
+        if (transError.code !== 'PGRST116') {
+          console.error('[CustomerDashboard] Error fetching loyalty transactions:', transError.message);
+        }
+      } else if (allTransactions) {
+        loyaltyBalance = allTransactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+      }
 
       // Get total earnings
-      const { data: earningsData } = await supabase
+      const { data: earningsData, error: earningsError } = await supabase
         .from('loyalty_transactions')
         .select('amount')
         .eq('customer_id', userId)
         .eq('transaction_type', 'earned');
 
-      const totalEarnings = earningsData?.reduce((sum, t) => sum + parseFloat(t.amount), 0) || 0;
+      let totalEarnings = 0;
+      if (earningsError) {
+        if (earningsError.code !== 'PGRST116') {
+          console.error('[CustomerDashboard] Error fetching earnings:', earningsError.message);
+        }
+      } else if (earningsData) {
+        totalEarnings = earningsData.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+      }
 
       // Get most purchased items (top 5)
-      const { data: purchasesData } = await supabase
+      const { data: purchasesData, error: purchasesError } = await supabase
         .from('customer_item_purchases')
         .select(`
           menu_item_id,
@@ -144,11 +157,21 @@ export default function CustomerDashboard() {
         .order('purchase_count', { ascending: false })
         .limit(5);
 
+      // Handle missing table gracefully
+      let mostPurchasedItems = [];
+      if (purchasesError) {
+        if (purchasesError.code !== 'PGRST116') {
+          console.error('[CustomerDashboard] Error fetching purchase history:', purchasesError.message);
+        }
+      } else if (purchasesData) {
+        mostPurchasedItems = purchasesData;
+      }
+
       setDashboardData({
         loyaltyBalance,
         currentOrder: currentOrderData,
         totalEarnings,
-        mostPurchasedItems: purchasesData || []
+        mostPurchasedItems
       });
     } catch (err) {
       console.error('[CustomerDashboard] Failed to fetch dashboard data:', err);
