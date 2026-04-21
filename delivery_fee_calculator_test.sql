@@ -19,32 +19,47 @@ SELECT calculate_distance_meters(
 SELECT 
   500 AS distance_meters,
   calculate_delivery_fee(500) AS fee,
-  '₱35 (base fee for 0-1000m)' AS description
+  '₱30 (base fare for 0-1000m)' AS description
 UNION ALL
 SELECT 
   1000,
   calculate_delivery_fee(1000),
-  '₱35 (base fee for exactly 1000m)'
+  '₱30 (base fare for exactly 1000m)'
 UNION ALL
 SELECT 
   1200,
   calculate_delivery_fee(1200),
-  '₱45 (₱35 + ₱10 for 1001-1200m)'
+  '₱35 (₱30 + ₱5 for 1001-1500m)'
 UNION ALL
 SELECT 
-  1400,
-  calculate_delivery_fee(1400),
-  '₱55 (₱35 + ₱20 for 1201-1400m)'
+  1500,
+  calculate_delivery_fee(1500),
+  '₱35 (₱30 + ₱5 for 1001-1500m)'
 UNION ALL
 SELECT 
-  1600,
-  calculate_delivery_fee(1600),
-  '₱65 (₱35 + ₱30 for 1401-1600m)'
+  1800,
+  calculate_delivery_fee(1800),
+  '₱40 (₱30 + ₱10 for 1501-2000m)'
 UNION ALL
 SELECT 
   2000,
   calculate_delivery_fee(2000),
-  '₱85 (₱35 + ₱50 for 1601-2000m)';
+  '₱40 (₱30 + ₱10 for 1501-2000m)'
+UNION ALL
+SELECT 
+  3000,
+  calculate_delivery_fee(3000),
+  '₱50 (₱30 + ₱20 for 2501-3000m)'
+UNION ALL
+SELECT 
+  5000,
+  calculate_delivery_fee(5000),
+  '₱66 (₱30 + ₱36 for 4501-5000m)'
+UNION ALL
+SELECT 
+  10000,
+  calculate_delivery_fee(10000),
+  '₱98 (₱30 + ₱68 for 9501-10000m)';
 
 -- Test 3: Calculate delivery fee directly from customer location
 SELECT 
@@ -103,15 +118,28 @@ FROM (
 --   AND order_mode = 'delivery';
 
 -- ============================================================================
--- Expected Delivery Fee Schedule
+-- Expected Delivery Fee Schedule (Range-Based Lookup)
 -- ============================================================================
--- Distance Range        | Fee
--- ---------------------|------
--- 0 – 1,000 m          | ₱35
--- 1,001 – 1,200 m      | ₱45
--- 1,201 – 1,400 m      | ₱55
--- 1,401 – 1,600 m      | ₱65
--- 1,601 – 1,800 m      | ₱75
--- 1,801 – 2,000 m      | ₱85
--- + ₱10 per additional 200m
+-- Distance Range        | Base Fare | Additional | Total Fee
+-- ---------------------|-----------|------------|----------
+-- 0 – 1,000 m          | ₱30       | ₱0         | ₱30
+-- 1,001 – 1,500 m      | ₱30       | ₱5         | ₱35
+-- 1,501 – 2,000 m      | ₱30       | ₱10        | ₱40
+-- 2,001 – 2,500 m      | ₱30       | ₱15        | ₱45
+-- 2,501 – 3,000 m      | ₱30       | ₱20        | ₱50
+-- 3,001 – 3,500 m      | ₱30       | ₱24        | ₱54
+-- 3,501 – 4,000 m      | ₱30       | ₱28        | ₱58
+-- 4,001 – 4,500 m      | ₱30       | ₱32        | ₱62
+-- 4,501 – 5,000 m      | ₱30       | ₱36        | ₱66
+-- 5,001 – 5,500 m      | ₱30       | ₱40        | ₱70
+-- 5,501 – 6,000 m      | ₱30       | ₱44        | ₱74
+-- 6,001 – 6,500 m      | ₱30       | ₱47        | ₱77
+-- 6,501 – 7,000 m      | ₱30       | ₱50        | ₱80
+-- 7,001 – 7,500 m      | ₱30       | ₱53        | ₱83
+-- 7,501 – 8,000 m      | ₱30       | ₱56        | ₱86
+-- 8,001 – 8,500 m      | ₱30       | ₱59        | ₱89
+-- 8,501 – 9,000 m      | ₱30       | ₱62        | ₱92
+-- 9,001 – 9,500 m      | ₱30       | ₱65        | ₱95
+-- 9,501 – 10,000 m     | ₱30       | ₱68        | ₱98
+-- > 10,000 m           | ₱30       | ₱68        | ₱98 (capped)
 -- ============================================================================

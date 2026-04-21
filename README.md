@@ -42,7 +42,25 @@ Bite Bonansa Cafe is a comprehensive online ordering system designed to streamli
 npm install
 ```
 
-### 2. Set up environment variables
+### 2. Set up Supabase database
+
+**IMPORTANT:** Before running the application, you must set up the database schema and storage in Supabase.
+
+Follow the complete guide in **[SUPABASE_SETUP_COMPLETE.md](./SUPABASE_SETUP_COMPLETE.md)** which includes:
+
+1. Running the database migration SQL (`database_complete_migration.sql`)
+2. Creating the `reviews` storage bucket for customer review images
+3. Configuring storage policies
+4. Verifying the setup
+
+**Quick setup:**
+1. Open your Supabase project dashboard
+2. Go to **SQL Editor**
+3. Copy and run the entire `database_complete_migration.sql` file
+4. Go to **Storage** and create a public bucket named `reviews`
+5. Configure storage policies as described in the setup guide
+
+### 3. Set up environment variables
 
 Copy `.env.example` to `.env.local` and fill in your real values:
 
@@ -61,14 +79,14 @@ Edit `.env.local` with the following variables (all are required):
 
 > ⚠️ **Never commit your `.env.local` file or expose `SUPABASE_SERVICE_ROLE_KEY` on the client.**
 
-### 3. Run the development server
+### 4. Run the development server
 ```bash
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 4. Verify configuration
+### 5. Verify configuration
 
 After starting the server, visit [http://localhost:3000/api/health](http://localhost:3000/api/health) to confirm all environment variables are correctly configured:
 

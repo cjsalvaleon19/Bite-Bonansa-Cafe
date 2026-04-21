@@ -1,5 +1,46 @@
 # Quick Database Setup Guide
 
+> ⚠️ **UPDATED:** This guide has been superseded by the comprehensive setup guide. 
+> 
+> **Please use [SUPABASE_SETUP_COMPLETE.md](./SUPABASE_SETUP_COMPLETE.md) instead.**
+>
+> The new guide includes:
+> - Complete database migration in a single SQL file
+> - All missing tables (loyalty_transactions, customer_item_purchases, customer_reviews, etc.)
+> - Storage bucket setup for review images
+> - RLS policies and security configuration
+> - Verification steps and troubleshooting
+
+## Quick Migration (Recommended)
+
+For the fastest setup, follow these steps:
+
+1. **Run the complete migration:**
+   - Open Supabase Dashboard → SQL Editor
+   - Copy entire contents of `database_complete_migration.sql`
+   - Paste and click "Run"
+
+2. **Set up storage bucket:**
+   - Go to Storage → Create bucket
+   - Name: `reviews`
+   - Set to Public
+   - Add storage policies (see [SUPABASE_SETUP_COMPLETE.md](./SUPABASE_SETUP_COMPLETE.md))
+
+3. **Verify:**
+   ```sql
+   SELECT COUNT(*) FROM information_schema.tables 
+   WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
+   -- Should return 11 or more tables
+   ```
+
+For detailed instructions and troubleshooting, see:
+- **[SUPABASE_SETUP_COMPLETE.md](./SUPABASE_SETUP_COMPLETE.md)** - Complete setup guide
+- **[ERROR_REFERENCE.md](./ERROR_REFERENCE.md)** - Quick error reference
+
+---
+
+# Original Guide (Deprecated - Use Above Instead)
+
 This guide will help you complete the database setup in Supabase to fix all remaining issues.
 
 ## Prerequisites

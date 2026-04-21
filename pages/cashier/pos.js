@@ -6,7 +6,7 @@ import { supabase } from '../../utils/supabaseClient';
 import useCartStore from '../../store/useCartStore';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 
-const DELIVERY_FEE_DEFAULT = 50;
+const DELIVERY_FEE_DEFAULT = 30; // Base fare for delivery orders
 const VAT_RATE = 0; // Currently disabled as per requirements
 
 export default function CashierPOS() {
