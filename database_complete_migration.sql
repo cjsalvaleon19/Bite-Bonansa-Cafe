@@ -412,25 +412,37 @@ COMMENT ON FUNCTION calculate_distance_meters IS 'Calculate distance in meters b
 CREATE OR REPLACE FUNCTION calculate_delivery_fee(distance_meters INT)
 RETURNS DECIMAL AS $$
 DECLARE
-  base_fee CONSTANT DECIMAL := 35.00;
-  base_distance CONSTANT INT := 1000; -- 1 km in meters
-  additional_distance INT;
-  additional_fee DECIMAL;
+  base_fare CONSTANT DECIMAL := 30.00;
 BEGIN
-  -- Base fee for distances up to 1000 meters
-  IF distance_meters <= base_distance THEN
-    RETURN base_fee;
-  END IF;
-  
-  -- Calculate additional fee: ₱10 per 200 meters after 1km
-  additional_distance := distance_meters - base_distance;
-  additional_fee := CEIL(additional_distance::DECIMAL / 200) * 10;
-  
-  RETURN base_fee + additional_fee;
+  -- Range-based lookup table for delivery fees
+  -- Base Fare: ₱30 + Additional Fee based on distance range
+  RETURN base_fare + 
+    CASE
+      WHEN distance_meters <= 1000 THEN 0
+      WHEN distance_meters <= 1500 THEN 5
+      WHEN distance_meters <= 2000 THEN 10
+      WHEN distance_meters <= 2500 THEN 15
+      WHEN distance_meters <= 3000 THEN 20
+      WHEN distance_meters <= 3500 THEN 24
+      WHEN distance_meters <= 4000 THEN 28
+      WHEN distance_meters <= 4500 THEN 32
+      WHEN distance_meters <= 5000 THEN 36
+      WHEN distance_meters <= 5500 THEN 40
+      WHEN distance_meters <= 6000 THEN 44
+      WHEN distance_meters <= 6500 THEN 47
+      WHEN distance_meters <= 7000 THEN 50
+      WHEN distance_meters <= 7500 THEN 53
+      WHEN distance_meters <= 8000 THEN 56
+      WHEN distance_meters <= 8500 THEN 59
+      WHEN distance_meters <= 9000 THEN 62
+      WHEN distance_meters <= 9500 THEN 65
+      WHEN distance_meters <= 10000 THEN 68
+      ELSE 68 -- Cap at maximum fee for distances beyond 10km
+    END;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
-COMMENT ON FUNCTION calculate_delivery_fee IS 'Calculate delivery fee: ₱35 base (0-1000m), then +₱10 per 200m';
+COMMENT ON FUNCTION calculate_delivery_fee IS 'Calculate delivery fee: ₱30 base fare + range-based additional fee (₱0-68)';
 
 CREATE OR REPLACE FUNCTION calculate_delivery_fee_from_store(
   customer_latitude DECIMAL,
