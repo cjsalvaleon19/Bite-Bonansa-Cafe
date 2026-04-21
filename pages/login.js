@@ -44,12 +44,19 @@ const Login = () => {
 
       if (userError) {
         console.error('[Login] Failed to fetch user role:', userError.message);
-        // Default to dashboard if role fetch fails
-        await router.push('/dashboard');
+        setError('Failed to retrieve user profile. Please contact support.');
+        setLoading(false);
         return;
       }
 
-      const role = userData?.role || 'customer';
+      if (!userData) {
+        console.error('[Login] User not found in users table:', data.user.id);
+        setError('User profile not found. Please contact support.');
+        setLoading(false);
+        return;
+      }
+
+      const role = userData.role || 'customer';
 
       // Role-based redirect
       if (role === 'customer') {

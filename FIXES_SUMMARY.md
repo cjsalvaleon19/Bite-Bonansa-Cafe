@@ -16,7 +16,7 @@
   - `admin` → `/dashboard`
 
 **Files Modified**:
-- `pages/login.js` (lines 13-42)
+- `pages/login.js` (lines 37-66)
 
 ### 2. 404 Errors from Missing Tables
 **Problem**: Customer dashboard was throwing 404 errors when trying to fetch data from `loyalty_transactions` and `customer_item_purchases` tables that may not exist in the database.

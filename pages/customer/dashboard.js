@@ -142,7 +142,7 @@ export default function CustomerDashboard() {
           console.error('[CustomerDashboard] Error fetching earnings:', earningsError.message);
         }
       } else if (earningsData) {
-        totalEarnings = earningsData.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+        totalEarnings = earningsData.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
       }
 
       // Get most purchased items (top 5)
