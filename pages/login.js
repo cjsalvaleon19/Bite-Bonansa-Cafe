@@ -77,7 +77,7 @@ const Login = () => {
       } else {
         // Unrecognized role - prevent access
         console.error('[Login] Unrecognized user role:', role);
-        setError('Invalid user role. Please contact support.');
+        setError('Unrecognized user role. Please contact support.');
         setLoading(false);
         return;
       }
