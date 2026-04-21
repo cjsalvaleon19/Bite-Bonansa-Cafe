@@ -34,7 +34,36 @@ const Login = () => {
       }
 
       localStorage.setItem('token', data.session.access_token);
-      await router.push('/dashboard');
+      
+      // Fetch user role from database to redirect appropriately
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', data.user.id)
+        .maybeSingle();
+
+      if (userError) {
+        console.error('[Login] Failed to fetch user role:', userError.message);
+        // Default to dashboard if role fetch fails
+        await router.push('/dashboard');
+        return;
+      }
+
+      const role = userData?.role || 'customer';
+
+      // Role-based redirect
+      if (role === 'customer') {
+        await router.push('/customer/dashboard');
+      } else if (role === 'cashier') {
+        await router.push('/cashier');
+      } else if (role === 'rider') {
+        await router.push('/rider/dashboard');
+      } else if (role === 'admin') {
+        await router.push('/dashboard');
+      } else {
+        // Default fallback
+        await router.push('/dashboard');
+      }
     } catch (err) {
       setError('Login failed. Please try again.');
       setLoading(false);
