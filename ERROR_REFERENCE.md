@@ -287,6 +287,7 @@ ORDER BY routine_name;
 -- Expected: All 7 functions listed
 
 -- 5. Test delivery fee calculator
+-- Note: Store is at 6.2178483, 124.8221226; testing with nearby coordinates
 SELECT calculate_delivery_fee_from_store(6.2200000, 124.8250000) as fee;
 -- Expected: A numeric value (e.g., 35.00 or higher)
 
