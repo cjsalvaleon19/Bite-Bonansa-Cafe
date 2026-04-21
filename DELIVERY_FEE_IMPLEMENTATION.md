@@ -14,8 +14,9 @@ Coordinates: 6.2178483, 124.8221226
 ```
 
 ### Fee Structure
-- **Base Fee:** ₱35 (for 0-1,000 meters)
-- **Additional:** +₱10 per 200 meters after 1km
+- **Base Fare:** ₱30 (constant for all distances)
+- **Additional Fee:** Range-based lookup (₱0-68 depending on distance)
+- **Total Delivery Fee:** Base Fare + Additional Fee
 
 ## Files
 
@@ -38,7 +39,7 @@ SELECT calculate_distance_meters(
 ) AS distance;
 
 -- Calculate delivery fee
-SELECT calculate_delivery_fee(1500) AS fee;  -- Returns: 65.00
+SELECT calculate_delivery_fee(1500) AS fee;  -- Returns: 35.00
 
 -- Calculate fee from store location
 SELECT calculate_delivery_fee_from_store(
@@ -84,9 +85,9 @@ Run queries from `delivery_fee_calculator_test.sql` to verify:
 ```sql
 -- Quick test
 SELECT 
-  calculate_delivery_fee(500) AS test_1km,      -- Should be ₱35
-  calculate_delivery_fee(1500) AS test_1_5km,   -- Should be ₱65
-  calculate_delivery_fee(2000) AS test_2km;     -- Should be ₱85
+  calculate_delivery_fee(500) AS test_500m,      -- Should be ₱30
+  calculate_delivery_fee(1500) AS test_1_5km,    -- Should be ₱35
+  calculate_delivery_fee(2000) AS test_2km;      -- Should be ₱40
 ```
 
 ### 3. Verify JavaScript Still Works
@@ -173,13 +174,38 @@ ORDER BY order_date DESC;
 
 | Distance (m) | Fee (₱) | Calculation |
 |-------------|--------|-------------|
-| 500 | 35 | Base fee |
-| 1000 | 35 | Base fee |
-| 1200 | 45 | 35 + (200m × ₱10) |
-| 1400 | 55 | 35 + (400m × ₱10) |
-| 1600 | 65 | 35 + (600m × ₱10) |
-| 1800 | 75 | 35 + (800m × ₱10) |
-| 2000 | 85 | 35 + (1000m × ₱10) |
+| 500 | 30 | Base fare only |
+| 1000 | 30 | Base fare only |
+| 1500 | 35 | 30 + 5 (1001-1500m) |
+| 2000 | 40 | 30 + 10 (1501-2000m) |
+| 3000 | 50 | 30 + 20 (2501-3000m) |
+| 5000 | 66 | 30 + 36 (4501-5000m) |
+| 10000 | 98 | 30 + 68 (9501-10000m) |
+
+### Full Fee Schedule
+
+| Distance Range | Base Fare | Additional | Total Fee |
+|----------------|-----------|------------|-----------|
+| 0 – 1,000 m | ₱30 | ₱0 | ₱30 |
+| 1,001 – 1,500 m | ₱30 | ₱5 | ₱35 |
+| 1,501 – 2,000 m | ₱30 | ₱10 | ₱40 |
+| 2,001 – 2,500 m | ₱30 | ₱15 | ₱45 |
+| 2,501 – 3,000 m | ₱30 | ₱20 | ₱50 |
+| 3,001 – 3,500 m | ₱30 | ₱24 | ₱54 |
+| 3,501 – 4,000 m | ₱30 | ₱28 | ₱58 |
+| 4,001 – 4,500 m | ₱30 | ₱32 | ₱62 |
+| 4,501 – 5,000 m | ₱30 | ₱36 | ₱66 |
+| 5,001 – 5,500 m | ₱30 | ₱40 | ₱70 |
+| 5,501 – 6,000 m | ₱30 | ₱44 | ₱74 |
+| 6,001 – 6,500 m | ₱30 | ₱47 | ₱77 |
+| 6,501 – 7,000 m | ₱30 | ₱50 | ₱80 |
+| 7,001 – 7,500 m | ₱30 | ₱53 | ₱83 |
+| 7,501 – 8,000 m | ₱30 | ₱56 | ₱86 |
+| 8,001 – 8,500 m | ₱30 | ₱59 | ₱89 |
+| 8,501 – 9,000 m | ₱30 | ₱62 | ₱92 |
+| 9,001 – 9,500 m | ₱30 | ₱65 | ₱95 |
+| 9,501 – 10,000 m | ₱30 | ₱68 | ₱98 |
+| > 10,000 m | ₱30 | ₱68 | ₱98 (capped) |
 
 ### Verify Consistency
 
@@ -187,10 +213,10 @@ Both implementations should produce identical results:
 
 ```javascript
 // JavaScript test
-console.log(calculateDeliveryFee(1500)); // 65
+console.log(calculateDeliveryFee(1500)); // 35
 
 // SQL test
-SELECT calculate_delivery_fee(1500); -- 65.00
+SELECT calculate_delivery_fee(1500); -- 35.00
 ```
 
 ## Troubleshooting
@@ -199,7 +225,7 @@ SELECT calculate_delivery_fee(1500); -- 65.00
 - **Solution:** Ensure you've run the SQL from `database_schema_updates.sql` section 11
 
 **Problem:** Different results between JS and SQL
-- **Solution:** Both use the same formula. Check for:
+- **Solution:** Both use the same range-based lookup. Check for:
   - Latitude/longitude order (must be lat, lon)
   - Null values
   - Decimal precision
@@ -208,7 +234,7 @@ SELECT calculate_delivery_fee(1500); -- 65.00
 - **Solution:** Verify:
   - Distance calculation is working (test `calculate_distance_meters`)
   - Coordinates are correct (lat: ~6.21, lon: ~124.82 for T'boli area)
-  - Formula: Base ₱35 + CEIL((distance - 1000) / 200) × ₱10
+  - Fee Structure: Base ₱30 + range-based additional fee (₱0-68)
 
 ## Benefits
 
@@ -228,5 +254,5 @@ SELECT calculate_delivery_fee(1500); -- 65.00
 
 ---
 
-**Last Updated:** 2026-04-19
+**Last Updated:** 2026-04-21
 **Status:** ✅ Complete and Ready for Deployment
