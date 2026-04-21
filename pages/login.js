@@ -56,7 +56,14 @@ const Login = () => {
         return;
       }
 
-      const role = userData.role || 'customer';
+      if (!userData.role) {
+        console.error('[Login] User has no role assigned:', data.user.id);
+        setError('User role not assigned. Please contact support.');
+        setLoading(false);
+        return;
+      }
+
+      const role = userData.role;
 
       // Role-based redirect
       if (role === 'customer') {
@@ -68,8 +75,11 @@ const Login = () => {
       } else if (role === 'admin') {
         await router.push('/dashboard');
       } else {
-        // Default fallback
-        await router.push('/dashboard');
+        // Unrecognized role - prevent access
+        console.error('[Login] Unrecognized user role:', role);
+        setError('Invalid user role. Please contact support.');
+        setLoading(false);
+        return;
       }
     } catch (err) {
       setError('Login failed. Please try again.');
