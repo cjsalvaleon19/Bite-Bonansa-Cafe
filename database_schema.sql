@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS orders (
   delivery_address TEXT NOT NULL,
   delivery_latitude DECIMAL(10,8),
   delivery_longitude DECIMAL(11,8),
-  delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0,
+  delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0, -- Set to 0 initially, calculated by cashier/admin based on GPS coordinates
+  delivery_fee_pending BOOLEAN DEFAULT TRUE, -- Indicates if delivery fee still needs calculation
   
   -- Pricing
   subtotal DECIMAL(10,2) NOT NULL,

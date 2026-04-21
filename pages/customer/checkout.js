@@ -178,7 +178,8 @@ export default function Checkout() {
           quantity: item.quantity
         })),
         delivery_address: formData.deliveryAddress.trim(),
-        delivery_fee: 0, // Will be calculated by cashier/admin
+        delivery_fee: 0, // Will be calculated by cashier/admin based on GPS
+        delivery_fee_pending: true, // Flag to indicate fee needs calculation
         subtotal: subtotal,
         vat_amount: vat,
         total_amount: total,

@@ -14,6 +14,7 @@ BEGIN
     SELECT 1 FROM information_schema.table_constraints 
     WHERE constraint_name = 'users_role_check' 
     AND table_name = 'users'
+    AND table_schema = 'public'
   ) THEN
     ALTER TABLE users ADD CONSTRAINT users_role_check 
     CHECK (role IN ('admin', 'cashier', 'rider', 'customer'));
@@ -62,6 +63,8 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS contact_number VARCHAR(20);
 COMMENT ON COLUMN orders.order_mode IS 'Order type: dine-in, take-out, pick-up, delivery';
 COMMENT ON COLUMN orders.order_number IS 'Unique order number for tracking';
 COMMENT ON COLUMN orders.contact_number IS 'Customer contact number for delivery';
+COMMENT ON COLUMN orders.delivery_fee IS 'Delivery fee (0 initially, calculated by staff based on GPS)';
+COMMENT ON COLUMN orders.delivery_fee_pending IS 'TRUE if delivery fee needs calculation by staff';
 
 -- 4. Create customer_reviews table if it doesn't exist
 CREATE TABLE IF NOT EXISTS customer_reviews (

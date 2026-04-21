@@ -196,15 +196,16 @@ export default function CustomerReviews() {
     }));
   };
 
-  // Cleanup object URLs when component unmounts or modal closes
+  // Cleanup object URLs when modal closes or component unmounts
   useEffect(() => {
-    return () => {
-      // Revoke all object URLs on cleanup
+    if (!showCreateModal && form.previewUrls.length > 0) {
+      // Modal closed, cleanup all preview URLs
       form.previewUrls.forEach(url => {
         if (url) URL.revokeObjectURL(url);
       });
-    };
-  }, [form.previewUrls]);
+      setForm(prev => ({ ...prev, previewUrls: [] }));
+    }
+  }, [showCreateModal]);
 
   const uploadImagesToSupabase = async (images) => {
     const imageUrls = [];
@@ -213,8 +214,17 @@ export default function CustomerReviews() {
       try {
         // Generate cryptographically secure unique filename
         const fileExt = image.name.split('.').pop();
-        const secureId = crypto.randomUUID ? crypto.randomUUID() : 
-          `${user.id}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+        // Use crypto.randomUUID() or fallback to a more secure implementation
+        let secureId;
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+          secureId = crypto.randomUUID();
+        } else {
+          // Fallback: Use multiple random values for better entropy
+          const timestamp = Date.now().toString(36);
+          const random1 = Math.random().toString(36).substring(2, 15);
+          const random2 = Math.random().toString(36).substring(2, 15);
+          secureId = `${user.id}-${timestamp}-${random1}${random2}`;
+        }
         const fileName = `${secureId}.${fileExt}`;
         const filePath = `review-images/${fileName}`;
 
@@ -524,22 +534,27 @@ export default function CustomerReviews() {
                 {/* Image Preview */}
                 {form.previewUrls.length > 0 && (
                   <div style={styles.imagePreviewContainer}>
-                    {form.previewUrls.map((url, index) => (
-                      <div key={index} style={styles.imagePreviewItem}>
-                        <img
-                          src={url}
-                          alt={`Preview ${index + 1}`}
-                          style={styles.imagePreview}
-                        />
-                        <button
-                          style={styles.removeImageBtn}
-                          onClick={() => handleRemoveImage(index)}
-                          type="button"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                    {form.previewUrls.map((url, index) => {
+                      // Create safe alt text
+                      const altText = `Preview ${index + 1}`;
+                      return (
+                        <div key={index} style={styles.imagePreviewItem}>
+                          <img
+                            src={url}
+                            alt={altText}
+                            style={styles.imagePreview}
+                          />
+                          <button
+                            style={styles.removeImageBtn}
+                            onClick={() => handleRemoveImage(index)}
+                            type="button"
+                            aria-label={`Remove image ${index + 1}`}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
