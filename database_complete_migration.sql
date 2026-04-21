@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS customer_reviews (
   title VARCHAR(255),
   review_text TEXT NOT NULL,
   star_rating INT NOT NULL CHECK (star_rating >= 1 AND star_rating <= 5),
-  image_urls TEXT[], -- Array of image URLs from Supabase Storage
+  image_urls TEXT[] CHECK (array_length(image_urls, 1) IS NULL OR array_length(image_urls, 1) <= 5), -- Max 5 images
   status VARCHAR(50) NOT NULL DEFAULT 'pending', -- 'pending', 'published', 'archived'
   published_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
@@ -438,6 +438,9 @@ CREATE OR REPLACE FUNCTION calculate_delivery_fee_from_store(
 )
 RETURNS DECIMAL AS $$
 DECLARE
+  -- Bite Bonansa Cafe store location in T'boli, South Cotabato, Philippines
+  -- Coordinates: 6.2178483°N, 124.8221226°E
+  -- Note: Update these coordinates if the store location changes
   store_lat CONSTANT DECIMAL := 6.2178483;
   store_lon CONSTANT DECIMAL := 124.8221226;
   distance INT;
@@ -447,7 +450,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
-COMMENT ON FUNCTION calculate_delivery_fee_from_store IS 'Calculate delivery fee from Bite Bonansa store to customer location';
+COMMENT ON FUNCTION calculate_delivery_fee_from_store IS 'Calculate delivery fee from Bite Bonansa store (6.2178483, 124.8221226) to customer location';
 
 -- Create view for cashier dashboard stats
 CREATE OR REPLACE VIEW cashier_daily_stats AS

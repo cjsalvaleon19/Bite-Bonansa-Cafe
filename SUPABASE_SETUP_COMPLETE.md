@@ -199,9 +199,10 @@ AND routine_type = 'FUNCTION'
 ORDER BY routine_name;
 -- Should see calculate_distance_meters, calculate_delivery_fee, etc.
 
--- 4. Test delivery fee calculator
+-- 4. Test delivery fee calculator (using nearby coordinates for testing)
+-- Store location: 6.2178483, 124.8221226
 SELECT calculate_delivery_fee_from_store(6.2200000, 124.8250000) as delivery_fee;
--- Should return a calculated fee
+-- Should return a calculated fee (approximately ₱45-50 for this test location)
 
 -- 5. Verify indexes
 SELECT tablename, indexname 
