@@ -83,8 +83,15 @@ export default function Checkout() {
         // Load cart from localStorage
         const savedCart = localStorage.getItem('cart');
         if (savedCart) {
-          const parsedCart = JSON.parse(savedCart);
-          setCart(parsedCart);
+          try {
+            const parsedCart = JSON.parse(savedCart);
+            setCart(parsedCart);
+          } catch (err) {
+            console.error('Failed to parse saved cart:', err);
+            // Clear corrupted cart data
+            localStorage.removeItem('cart');
+            setError('Your saved cart data was corrupted and has been cleared. Please add items again.');
+          }
         } else {
           // No cart items, redirect to order portal
           router.replace('/customer/order-portal').catch(console.error);
@@ -273,7 +280,7 @@ export default function Checkout() {
                 </div>
                 <div style={styles.detailRow}>
                   <span style={styles.detailLabel}>Delivery Fee:</span>
-                  <span style={styles.detailValue}>To be calculated</span>
+                  <span style={styles.detailValue}>To Be Calculated</span>
                 </div>
                 <div style={{...styles.detailRow, ...styles.totalRow}}>
                   <span style={styles.totalLabel}>Total (before delivery):</span>

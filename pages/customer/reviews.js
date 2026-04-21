@@ -205,7 +205,8 @@ export default function CustomerReviews() {
       });
       setForm(prev => ({ ...prev, previewUrls: [] }));
     }
-  }, [showCreateModal]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCreateModal]); // Intentionally omitting form.previewUrls to avoid cleanup on every change
 
   const uploadImagesToSupabase = async (images) => {
     const imageUrls = [];
@@ -535,8 +536,9 @@ export default function CustomerReviews() {
                 {form.previewUrls.length > 0 && (
                   <div style={styles.imagePreviewContainer}>
                     {form.previewUrls.map((url, index) => {
-                      // Create safe alt text
-                      const altText = `Preview ${index + 1}`;
+                      // Get original filename if available
+                      const fileName = form.images[index]?.name || '';
+                      const altText = fileName ? `Preview of ${fileName}` : 'Review image preview';
                       return (
                         <div key={index} style={styles.imagePreviewItem}>
                           <img
@@ -548,7 +550,7 @@ export default function CustomerReviews() {
                             style={styles.removeImageBtn}
                             onClick={() => handleRemoveImage(index)}
                             type="button"
-                            aria-label={`Remove image ${index + 1}`}
+                            aria-label={`Remove ${fileName || `image ${index + 1}`}`}
                           >
                             ✕
                           </button>

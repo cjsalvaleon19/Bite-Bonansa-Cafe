@@ -84,7 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_reviews_customer ON customer_reviews(customer_id)
 CREATE INDEX IF NOT EXISTS idx_reviews_status ON customer_reviews(status);
 
 COMMENT ON TABLE customer_reviews IS 'Customer reviews with optional image attachments';
-COMMENT ON COLUMN customer_reviews.image_urls IS 'Array of URLs to uploaded review images';
+COMMENT ON COLUMN customer_reviews.image_urls IS 'Array of URLs to uploaded review images (max 5 images per review, stored in Supabase Storage)';
 
 -- 5. Enable Row Level Security on all tables
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
