@@ -10,6 +10,7 @@ export default function Checkout() {
   const [cart, setCart] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   
   const [formData, setFormData] = useState({
     deliveryAddress: '',
@@ -198,8 +199,13 @@ export default function Checkout() {
       // Clear cart from localStorage
       localStorage.removeItem('cart');
 
-      alert('Order placed successfully! You can track your order in Order Tracking page.');
-      router.replace('/customer/order-tracking').catch(console.error);
+      // Show success message
+      setSuccessMessage('Order placed successfully! Redirecting to order tracking...');
+      
+      // Redirect after a short delay to allow user to see success message
+      setTimeout(() => {
+        router.replace('/customer/order-tracking').catch(console.error);
+      }, 2000);
     } catch (err) {
       console.error('[Checkout] Failed to submit order:', err);
       setError('Failed to place order. Please try again.');
@@ -365,11 +371,16 @@ export default function Checkout() {
               <div style={styles.errorMessage}>{error}</div>
             )}
 
+            {/* Success Message */}
+            {successMessage && (
+              <div style={styles.successMessage}>{successMessage}</div>
+            )}
+
             {/* Submit Button */}
             <button
               style={styles.submitBtn}
               onClick={handleSubmitOrder}
-              disabled={submitting}
+              disabled={submitting || successMessage}
             >
               {submitting ? 'Placing Order...' : 'Place Order'}
             </button>
@@ -583,6 +594,16 @@ const styles = {
     fontSize: '14px',
     textAlign: 'center',
     border: '1px solid #f44336',
+  },
+  successMessage: {
+    padding: '16px',
+    backgroundColor: '#4caf501a',
+    color: '#4caf50',
+    borderRadius: '8px',
+    fontSize: '14px',
+    textAlign: 'center',
+    border: '1px solid #4caf50',
+    fontWeight: '600',
   },
   submitBtn: {
     width: '100%',

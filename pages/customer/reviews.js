@@ -15,7 +15,8 @@ export default function CustomerReviews() {
     title: '',
     review_text: '',
     star_rating: 5,
-    images: [] // Array to store image files
+    images: [], // Array to store image files
+    previewUrls: [] // Array to store object URLs for preview
   });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -124,7 +125,8 @@ export default function CustomerReviews() {
       title: '',
       review_text: '',
       star_rating: 5,
-      images: []
+      images: [],
+      previewUrls: []
     });
     setFormError('');
     setShowCreateModal(true);
@@ -136,7 +138,8 @@ export default function CustomerReviews() {
       title: review.title || '',
       review_text: review.review_text || '',
       star_rating: review.star_rating || 5,
-      images: [] // Don't pre-load existing images for editing
+      images: [], // Don't pre-load existing images for editing
+      previewUrls: []
     });
     setFormError('');
     setShowCreateModal(true);
@@ -169,28 +172,50 @@ export default function CustomerReviews() {
       return;
     }
 
+    // Create object URLs for preview
+    const newPreviewUrls = files.map(file => URL.createObjectURL(file));
+
     setForm(prev => ({
       ...prev,
-      images: [...prev.images, ...files]
+      images: [...prev.images, ...files],
+      previewUrls: [...prev.previewUrls, ...newPreviewUrls]
     }));
     setFormError('');
   };
 
   const handleRemoveImage = (index) => {
+    // Revoke the object URL to prevent memory leaks
+    if (form.previewUrls[index]) {
+      URL.revokeObjectURL(form.previewUrls[index]);
+    }
+
     setForm(prev => ({
       ...prev,
-      images: prev.images.filter((_, i) => i !== index)
+      images: prev.images.filter((_, i) => i !== index),
+      previewUrls: prev.previewUrls.filter((_, i) => i !== index)
     }));
   };
+
+  // Cleanup object URLs when component unmounts or modal closes
+  useEffect(() => {
+    return () => {
+      // Revoke all object URLs on cleanup
+      form.previewUrls.forEach(url => {
+        if (url) URL.revokeObjectURL(url);
+      });
+    };
+  }, [form.previewUrls]);
 
   const uploadImagesToSupabase = async (images) => {
     const imageUrls = [];
     
     for (const image of images) {
       try {
-        // Generate unique filename
+        // Generate cryptographically secure unique filename
         const fileExt = image.name.split('.').pop();
-        const fileName = `${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const secureId = crypto.randomUUID ? crypto.randomUUID() : 
+          `${user.id}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+        const fileName = `${secureId}.${fileExt}`;
         const filePath = `review-images/${fileName}`;
 
         // Upload to Supabase Storage
@@ -272,7 +297,13 @@ export default function CustomerReviews() {
       // Refresh reviews list
       await fetchReviews(user.id);
       setShowCreateModal(false);
-      setForm({ title: '', review_text: '', star_rating: 5, images: [] });
+      
+      // Cleanup preview URLs before resetting form
+      form.previewUrls.forEach(url => {
+        if (url) URL.revokeObjectURL(url);
+      });
+      
+      setForm({ title: '', review_text: '', star_rating: 5, images: [], previewUrls: [] });
     } catch (err) {
       console.error('[CustomerReviews] Failed to submit review:', err);
       setFormError('Failed to submit review. Please try again.');
@@ -491,12 +522,12 @@ export default function CustomerReviews() {
                 </p>
                 
                 {/* Image Preview */}
-                {form.images.length > 0 && (
+                {form.previewUrls.length > 0 && (
                   <div style={styles.imagePreviewContainer}>
-                    {form.images.map((image, index) => (
+                    {form.previewUrls.map((url, index) => (
                       <div key={index} style={styles.imagePreviewItem}>
                         <img
-                          src={URL.createObjectURL(image)}
+                          src={url}
                           alt={`Preview ${index + 1}`}
                           style={styles.imagePreview}
                         />
@@ -527,8 +558,13 @@ export default function CustomerReviews() {
                 <button
                   style={styles.modalBtnCancel}
                   onClick={() => {
+                    // Cleanup preview URLs
+                    form.previewUrls.forEach(url => {
+                      if (url) URL.revokeObjectURL(url);
+                    });
+                    
                     setShowCreateModal(false);
-                    setForm({ title: '', review_text: '', star_rating: 5, images: [] });
+                    setForm({ title: '', review_text: '', star_rating: 5, images: [], previewUrls: [] });
                     setFormError('');
                   }}
                   disabled={submitting}

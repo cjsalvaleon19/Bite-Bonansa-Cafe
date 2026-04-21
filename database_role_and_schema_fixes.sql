@@ -6,6 +6,20 @@
 -- 1. Ensure users table has all required columns including role
 -- This assumes users table exists (created by Supabase Auth)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'customer';
+
+-- Add check constraint for role values (only if column was just created or constraint doesn't exist)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints 
+    WHERE constraint_name = 'users_role_check' 
+    AND table_name = 'users'
+  ) THEN
+    ALTER TABLE users ADD CONSTRAINT users_role_check 
+    CHECK (role IN ('admin', 'cashier', 'rider', 'customer'));
+  END IF;
+END $$;
+
 ALTER TABLE users ADD COLUMN IF NOT EXISTS loyalty_balance DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50) UNIQUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS cashier_id VARCHAR(50) UNIQUE;
