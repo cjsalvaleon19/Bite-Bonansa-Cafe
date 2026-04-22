@@ -1,7 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Script from 'next/script';
 import { supabase } from '../../utils/supabaseClient';
+
+// Store coordinates - Bite Bonansa Cafe
+const STORE_LOCATION = {
+  lat: 6.2178483,
+  lng: 124.8221226
+};
+
+// Delivery fee constants
+const BASE_DELIVERY_FEE = 30.00;
 
 export default function Checkout() {
   const router = useRouter();
@@ -11,13 +21,23 @@ export default function Checkout() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState('');
+  
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
+  const autocompleteRef = useRef(null);
+  const searchInputRef = useRef(null);
   
   const [formData, setFormData] = useState({
     deliveryAddress: '',
     contactNumber: '',
     paymentMethod: 'cash',
     gcashReference: '',
-    specialRequest: ''
+    specialRequest: '',
+    latitude: null,
+    longitude: null
   });
 
   useEffect(() => {
@@ -138,15 +158,198 @@ export default function Checkout() {
     return subtotal * 0.12; // 12% VAT
   };
 
+  // Calculate delivery fee estimate (will be accurate when coordinates are selected)
+  const calculateDeliveryFee = () => {
+    if (!formData.latitude || !formData.longitude) {
+      return 'Select location';
+    }
+    
+    // Calculate distance using Haversine formula
+    const R = 6371; // Earth's radius in km
+    const dLat = (formData.latitude - STORE_LOCATION.lat) * Math.PI / 180;
+    const dLng = (formData.longitude - STORE_LOCATION.lng) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(STORE_LOCATION.lat * Math.PI / 180) * Math.cos(formData.latitude * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distanceKm = R * c;
+    const distanceMeters = Math.round(distanceKm * 1000);
+
+    // Calculate fee based on distance tiers
+    let additionalFee = 0.00;
+
+    if (distanceMeters <= 1000) {
+      additionalFee = 0;
+    } else if (distanceMeters <= 1500) {
+      additionalFee = 5.00;
+    } else if (distanceMeters <= 2000) {
+      additionalFee = 10.00;
+    } else if (distanceMeters <= 2500) {
+      additionalFee = 15.00;
+    } else if (distanceMeters <= 3000) {
+      additionalFee = 20.00;
+    } else if (distanceMeters <= 3500) {
+      additionalFee = 24.00;
+    } else if (distanceMeters <= 4000) {
+      additionalFee = 28.00;
+    } else if (distanceMeters <= 4500) {
+      additionalFee = 32.00;
+    } else if (distanceMeters <= 5000) {
+      additionalFee = 36.00;
+    } else if (distanceMeters <= 5500) {
+      additionalFee = 40.00;
+    } else if (distanceMeters <= 6000) {
+      additionalFee = 44.00;
+    } else if (distanceMeters <= 6500) {
+      additionalFee = 47.00;
+    } else if (distanceMeters <= 7000) {
+      additionalFee = 50.00;
+    } else if (distanceMeters <= 7500) {
+      additionalFee = 53.00;
+    } else if (distanceMeters <= 8000) {
+      additionalFee = 56.00;
+    } else if (distanceMeters <= 8500) {
+      additionalFee = 59.00;
+    } else if (distanceMeters <= 9000) {
+      additionalFee = 62.00;
+    } else if (distanceMeters <= 9500) {
+      additionalFee = 65.00;
+    } else {
+      additionalFee = 68.00; // Capped
+    }
+
+    return BASE_DELIVERY_FEE + additionalFee;
+  };
+
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
     const vat = calculateVAT(subtotal);
-    return subtotal + vat;
+    const deliveryFee = calculateDeliveryFee();
+    
+    if (typeof deliveryFee === 'string') {
+      return subtotal + vat; // Don't include delivery if not calculated
+    }
+    
+    return subtotal + vat + deliveryFee;
   };
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setError('');
+  };
+
+  // Initialize Google Maps
+  const initializeMap = () => {
+    if (!mapRef.current || !window.google) {
+      setMapError('Google Maps failed to load. Please check your API key configuration.');
+      return;
+    }
+
+    try {
+    const center = formData.latitude && formData.longitude 
+      ? { lat: formData.latitude, lng: formData.longitude }
+      : STORE_LOCATION;
+
+    // Create map
+    const map = new window.google.maps.Map(mapRef.current, {
+      center: center,
+      zoom: 15,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+    });
+
+    mapInstanceRef.current = map;
+
+    // Add marker
+    const marker = new window.google.maps.Marker({
+      position: center,
+      map: map,
+      draggable: true,
+      title: 'Delivery Location'
+    });
+
+    markerRef.current = marker;
+
+    // Update location when marker is dragged
+    marker.addListener('dragend', () => {
+      const position = marker.getPosition();
+      updateLocation(position.lat(), position.lng());
+    });
+
+    // Update location when map is clicked
+    map.addListener('click', (e) => {
+      const lat = e.latLng.lat();
+      const lng = e.latLng.lng();
+      marker.setPosition(e.latLng);
+      updateLocation(lat, lng);
+    });
+
+    // Initialize autocomplete
+    if (searchInputRef.current) {
+      const autocomplete = new window.google.maps.places.Autocomplete(
+        searchInputRef.current,
+        {
+          componentRestrictions: { country: 'ph' },
+          fields: ['formatted_address', 'geometry', 'name']
+        }
+      );
+
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace();
+        
+        if (!place.geometry || !place.geometry.location) {
+          setError('No details available for the selected location');
+          return;
+        }
+
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        const address = place.formatted_address || place.name;
+
+        // Update map and marker
+        map.setCenter({ lat, lng });
+        marker.setPosition({ lat, lng });
+
+        // Update form
+        updateLocation(lat, lng, address);
+      });
+
+      autocompleteRef.current = autocomplete;
+    }
+
+    setMapLoaded(true);
+    } catch (err) {
+      console.error('Error initializing Google Maps:', err);
+      setMapError('Failed to initialize map. Please refresh the page.');
+    }
+  };
+
+  // Update location with reverse geocoding
+  const updateLocation = async (lat, lng, addressOverride = null) => {
+    setFormData(prev => ({
+      ...prev,
+      latitude: lat,
+      longitude: lng,
+      deliveryAddress: addressOverride || prev.deliveryAddress
+    }));
+
+    // If no address provided, do reverse geocoding
+    if (!addressOverride && window.google) {
+      const geocoder = new window.google.maps.Geocoder();
+      try {
+        const response = await geocoder.geocode({ location: { lat, lng } });
+        if (response.results && response.results[0]) {
+          const address = response.results[0].formatted_address;
+          setFormData(prev => ({
+            ...prev,
+            deliveryAddress: address
+          }));
+        }
+      } catch (err) {
+        console.error('Reverse geocoding failed:', err);
+      }
+    }
   };
 
   const handleSubmitOrder = async () => {
@@ -155,6 +358,11 @@ export default function Checkout() {
     // Validation
     if (!formData.deliveryAddress.trim()) {
       setError('Please provide a delivery address');
+      return;
+    }
+
+    if (!formData.latitude || !formData.longitude) {
+      setError('Please select your delivery location on the map');
       return;
     }
 
@@ -178,7 +386,21 @@ export default function Checkout() {
     try {
       const subtotal = calculateSubtotal();
       const vat = calculateVAT(subtotal);
-      const total = calculateTotal();
+      
+      // Calculate delivery fee from coordinates using Supabase function
+      const { data: deliveryFeeData, error: feeError } = await supabase
+        .rpc('calculate_delivery_fee_from_store', {
+          customer_latitude: formData.latitude,
+          customer_longitude: formData.longitude
+        });
+
+      if (feeError) {
+        console.error('Error calculating delivery fee:', feeError);
+        throw new Error('Failed to calculate delivery fee');
+      }
+
+      const deliveryFee = parseFloat(deliveryFeeData) || BASE_DELIVERY_FEE; // Default to base fee if calculation fails
+      const total = subtotal + vat + deliveryFee;
 
       // Prepare order data
       const orderData = {
@@ -190,8 +412,9 @@ export default function Checkout() {
           quantity: item.quantity
         })),
         delivery_address: formData.deliveryAddress.trim(),
-        delivery_fee: 0, // Will be calculated by cashier/admin based on GPS
-        delivery_fee_pending: true, // Flag to indicate fee needs calculation
+        delivery_latitude: formData.latitude,
+        delivery_longitude: formData.longitude,
+        delivery_fee: deliveryFee,
         subtotal: subtotal,
         vat_amount: vat,
         total_amount: total,
@@ -221,7 +444,7 @@ export default function Checkout() {
       }, 2000);
     } catch (err) {
       console.error('[Checkout] Failed to submit order:', err);
-      setError('Failed to place order. Please try again.');
+      setError(err.message || 'Failed to place order. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -239,6 +462,7 @@ export default function Checkout() {
 
   const subtotal = calculateSubtotal();
   const vat = calculateVAT(subtotal);
+  const deliveryFee = calculateDeliveryFee();
   const total = calculateTotal();
 
   return (
@@ -247,6 +471,22 @@ export default function Checkout() {
         <title>Checkout - Bite Bonansa Cafe</title>
         <meta name="description" content="Complete your order" />
       </Head>
+      
+      {/* Load Google Maps API */}
+      {process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
+        <Script
+          src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
+          onLoad={initializeMap}
+          onError={() => setMapError('Failed to load Google Maps. Please check your API key.')}
+          strategy="lazyOnload"
+        />
+      ) : (
+        <Script
+          onReady={() => setMapError('Google Maps API key is not configured. Please add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to your .env.local file.')}
+          strategy="lazyOnload"
+        />
+      )}
+      
       <div style={styles.page}>
         <header style={styles.header}>
           <button style={styles.backBtn} onClick={() => router.push('/customer/order-portal')}>
@@ -285,10 +525,12 @@ export default function Checkout() {
                 </div>
                 <div style={styles.detailRow}>
                   <span style={styles.detailLabel}>Delivery Fee:</span>
-                  <span style={styles.detailValue}>To Be Calculated</span>
+                  <span style={styles.detailValue}>
+                    {typeof deliveryFee === 'number' ? `₱${deliveryFee.toFixed(2)}` : deliveryFee}
+                  </span>
                 </div>
                 <div style={{...styles.detailRow, ...styles.totalRow}}>
-                  <span style={styles.totalLabel}>Total (before delivery):</span>
+                  <span style={styles.totalLabel}>Total:</span>
                   <span style={styles.totalValue}>₱{total.toFixed(2)}</span>
                 </div>
               </div>
@@ -298,15 +540,47 @@ export default function Checkout() {
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>Delivery Information</h2>
               
+              {/* Google Maps Location Search */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Search Location</label>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  style={styles.input}
+                  placeholder="Search for your address..."
+                />
+                <p style={styles.helperText}>
+                  Search for your address or click on the map to pin your exact location
+                </p>
+              </div>
+
+              {/* Google Maps */}
+              <div style={styles.formGroup}>
+                {mapError ? (
+                  <div style={styles.errorMessage}>{mapError}</div>
+                ) : (
+                  <div 
+                    ref={mapRef} 
+                    style={styles.map}
+                    id="google-map"
+                  ></div>
+                )}
+              </div>
+              
               <div style={styles.formGroup}>
                 <label style={styles.label}>Delivery Address *</label>
                 <textarea
                   style={styles.textarea}
                   value={formData.deliveryAddress}
                   onChange={(e) => handleInputChange('deliveryAddress', e.target.value)}
-                  placeholder="Enter your complete delivery address"
+                  placeholder="Your delivery address will appear here (or type manually)"
                   rows={3}
                 />
+                {formData.latitude && formData.longitude && (
+                  <p style={styles.helperText}>
+                    📍 Location: {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
+                  </p>
+                )}
               </div>
 
               <div style={styles.formGroup}>
@@ -573,6 +847,13 @@ const styles = {
     color: '#999',
     marginTop: '4px',
     fontStyle: 'italic',
+  },
+  map: {
+    width: '100%',
+    height: '400px',
+    borderRadius: '8px',
+    border: '1px solid #444',
+    backgroundColor: '#2a2a2a',
   },
   paymentMethods: {
     display: 'flex',
