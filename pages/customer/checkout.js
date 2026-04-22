@@ -10,6 +10,9 @@ const STORE_LOCATION = {
   lng: 124.8221226
 };
 
+// Delivery fee constants
+const BASE_DELIVERY_FEE = 30.00;
+
 export default function Checkout() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -19,6 +22,7 @@ export default function Checkout() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState('');
   
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -172,7 +176,6 @@ export default function Checkout() {
     const distanceMeters = Math.round(distanceKm * 1000);
 
     // Calculate fee based on distance tiers
-    const baseFee = 30.00;
     let additionalFee = 0.00;
 
     if (distanceMeters <= 1000) {
@@ -215,7 +218,7 @@ export default function Checkout() {
       additionalFee = 68.00; // Capped
     }
 
-    return baseFee + additionalFee;
+    return BASE_DELIVERY_FEE + additionalFee;
   };
 
   const calculateTotal = () => {
@@ -237,9 +240,12 @@ export default function Checkout() {
 
   // Initialize Google Maps
   const initializeMap = () => {
-    if (!mapRef.current || !window.google) return;
+    if (!mapRef.current || !window.google) {
+      setMapError('Google Maps failed to load. Please check your API key configuration.');
+      return;
+    }
 
-    // Default center to store location
+    try {
     const center = formData.latitude && formData.longitude 
       ? { lat: formData.latitude, lng: formData.longitude }
       : STORE_LOCATION;
@@ -313,6 +319,10 @@ export default function Checkout() {
     }
 
     setMapLoaded(true);
+    } catch (err) {
+      console.error('Error initializing Google Maps:', err);
+      setMapError('Failed to initialize map. Please refresh the page.');
+    }
   };
 
   // Update location with reverse geocoding
@@ -389,7 +399,7 @@ export default function Checkout() {
         throw new Error('Failed to calculate delivery fee');
       }
 
-      const deliveryFee = parseFloat(deliveryFeeData) || 30.00; // Default to ₱30 if calculation fails
+      const deliveryFee = parseFloat(deliveryFeeData) || BASE_DELIVERY_FEE; // Default to base fee if calculation fails
       const total = subtotal + vat + deliveryFee;
 
       // Prepare order data
@@ -463,11 +473,19 @@ export default function Checkout() {
       </Head>
       
       {/* Load Google Maps API */}
-      <Script
-        src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY_HERE'}&libraries=places`}
-        onLoad={initializeMap}
-        strategy="lazyOnload"
-      />
+      {process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
+        <Script
+          src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
+          onLoad={initializeMap}
+          onError={() => setMapError('Failed to load Google Maps. Please check your API key.')}
+          strategy="lazyOnload"
+        />
+      ) : (
+        <Script
+          onReady={() => setMapError('Google Maps API key is not configured. Please add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to your .env.local file.')}
+          strategy="lazyOnload"
+        />
+      )}
       
       <div style={styles.page}>
         <header style={styles.header}>
@@ -538,11 +556,15 @@ export default function Checkout() {
 
               {/* Google Maps */}
               <div style={styles.formGroup}>
-                <div 
-                  ref={mapRef} 
-                  style={styles.map}
-                  id="google-map"
-                ></div>
+                {mapError ? (
+                  <div style={styles.errorMessage}>{mapError}</div>
+                ) : (
+                  <div 
+                    ref={mapRef} 
+                    style={styles.map}
+                    id="google-map"
+                  ></div>
+                )}
               </div>
               
               <div style={styles.formGroup}>
