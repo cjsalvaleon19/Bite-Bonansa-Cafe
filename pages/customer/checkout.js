@@ -155,7 +155,7 @@ export default function Checkout() {
   };
 
   const calculateVAT = (subtotal) => {
-    return subtotal * 0.12; // 12% VAT
+    return 0; // VAT disabled as per requirements
   };
 
   // Calculate delivery fee estimate (will be accurate when coordinates are selected)
