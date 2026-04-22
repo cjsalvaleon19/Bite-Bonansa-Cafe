@@ -79,8 +79,10 @@ Google Maps features were not linked in the system.
 **File: `.env.local`**
 Added:
 ```
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your-google-maps-api-key-here
 ```
+
+**Note:** You need to replace `your-google-maps-api-key-here` with your actual Google Maps API key from https://console.cloud.google.com/google/maps-apis
 
 **Existing Integration in `pages/customer/checkout.js`:**
 - ✅ Google Maps API is already integrated
@@ -279,18 +281,22 @@ The schema is ready, but you'll need to update the frontend later:
 
 Make sure these are in `.env.local`:
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://bffpcgsevigxpldidxgl.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_QsxoRPGdIRrnhm0VD3ni8Q_sQkh-e96
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url-here
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key-here
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key-here
 NEXT_PUBLIC_API_URL=http://localhost:3000
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your-google-maps-api-key-here
 ```
+
+**Important:** Replace the placeholder values with your actual credentials from:
+- Supabase: Dashboard > Project Settings > API
+- Google Maps: https://console.cloud.google.com/google/maps-apis
 
 ---
 
 ## Notes
 
-1. **Google Maps API Key**: The API key added is a sample. Replace with your actual Google Maps API key for production.
+1. **Google Maps API Key**: You need to obtain your own Google Maps API key from https://console.cloud.google.com/google/maps-apis and add it to `.env.local`.
 
 2. **Database Tables**: The `loyalty_transactions` and `customer_item_purchases` tables must be created in Supabase for the customer dashboard to work fully.
 
