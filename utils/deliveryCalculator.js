@@ -8,27 +8,32 @@ export const STORE_LOCATION = {
 export const calculateDeliveryFee = (distanceInMeters) => {
   const baseFee = 30;
   
-  if (distanceInMeters <= 1000) return baseFee;
-  else if (distanceInMeters <= 1500) return baseFee + 5;
-  else if (distanceInMeters <= 2000) return baseFee + 10;
-  else if (distanceInMeters <= 2500) return baseFee + 15;
-  else if (distanceInMeters <= 3000) return baseFee + 20;
-  else if (distanceInMeters <= 3500) return baseFee + 24;
-  else if (distanceInMeters <= 4000) return baseFee + 28;
-  else if (distanceInMeters <= 4500) return baseFee + 32;
-  else if (distanceInMeters <= 5000) return baseFee + 36;
-  else if (distanceInMeters <= 5500) return baseFee + 40;
-  else if (distanceInMeters <= 6000) return baseFee + 44;
-  else if (distanceInMeters <= 6500) return baseFee + 47;
-  else if (distanceInMeters <= 7000) return baseFee + 50;
-  else if (distanceInMeters <= 7500) return baseFee + 53;
-  else if (distanceInMeters <= 8000) return baseFee + 56;
-  else if (distanceInMeters <= 8500) return baseFee + 59;
-  else if (distanceInMeters <= 9000) return baseFee + 62;
-  else if (distanceInMeters <= 9500) return baseFee + 65;
-  else return baseFee + 68; // Capped at ₱98 for 10km+
+  // Tiered pricing based on distance ranges
+  // Base fare: ₱30 for 0-1000m
+  // Additional fees: varies by tier, capped at ₱98 for 10km+
+  if (distanceInMeters <= 1000) return baseFee; // ₱30
+  else if (distanceInMeters <= 1500) return baseFee + 5; // ₱35
+  else if (distanceInMeters <= 2000) return baseFee + 10; // ₱40
+  else if (distanceInMeters <= 2500) return baseFee + 15; // ₱45
+  else if (distanceInMeters <= 3000) return baseFee + 20; // ₱50
+  else if (distanceInMeters <= 3500) return baseFee + 24; // ₱54
+  else if (distanceInMeters <= 4000) return baseFee + 28; // ₱58
+  else if (distanceInMeters <= 4500) return baseFee + 32; // ₱62
+  else if (distanceInMeters <= 5000) return baseFee + 36; // ₱66
+  else if (distanceInMeters <= 5500) return baseFee + 40; // ₱70
+  else if (distanceInMeters <= 6000) return baseFee + 44; // ₱74
+  else if (distanceInMeters <= 6500) return baseFee + 47; // ₱77
+  else if (distanceInMeters <= 7000) return baseFee + 50; // ₱80
+  else if (distanceInMeters <= 7500) return baseFee + 53; // ₱83
+  else if (distanceInMeters <= 8000) return baseFee + 56; // ₱86
+  else if (distanceInMeters <= 8500) return baseFee + 59; // ₱89
+  else if (distanceInMeters <= 9000) return baseFee + 62; // ₱92
+  else if (distanceInMeters <= 9500) return baseFee + 65; // ₱95
+  else return baseFee + 68; // ₱98 - Capped at 10km+
 };
 
+// Returns delivery rate table for display purposes
+// All fees match the calculateDeliveryFee() function above
 export const getDeliveryRates = () => [
   { range: '0 – 1,000 m', fee: '₱30' },
   { range: '1,001 – 1,500 m', fee: '₱35' },
