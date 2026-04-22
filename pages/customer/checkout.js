@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../utils/supabaseClient';
+import LocationPicker from '../../components/LocationPicker';
 
 export default function Checkout() {
   const router = useRouter();
@@ -11,9 +12,13 @@ export default function Checkout() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [deliveryFee, setDeliveryFee] = useState(null);
+  const [calculatingFee, setCalculatingFee] = useState(false);
   
   const [formData, setFormData] = useState({
     deliveryAddress: '',
+    deliveryLatitude: null,
+    deliveryLongitude: null,
     contactNumber: '',
     paymentMethod: 'cash',
     gcashReference: '',
@@ -141,7 +146,38 @@ export default function Checkout() {
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
     const vat = calculateVAT(subtotal);
-    return subtotal + vat;
+    const fee = deliveryFee || 0;
+    return subtotal + vat + fee;
+  };
+
+  const handleLocationSelect = async (location) => {
+    setFormData(prev => ({
+      ...prev,
+      deliveryAddress: location.address,
+      deliveryLatitude: location.latitude,
+      deliveryLongitude: location.longitude,
+    }));
+    setError('');
+
+    // Calculate delivery fee using Supabase function
+    if (location.latitude && location.longitude) {
+      setCalculatingFee(true);
+      try {
+        const { data, error } = await supabase.rpc('calculate_delivery_fee_from_store', {
+          customer_latitude: location.latitude,
+          customer_longitude: location.longitude,
+        });
+
+        if (error) throw error;
+
+        setDeliveryFee(parseFloat(data) || 0);
+      } catch (err) {
+        console.error('[Checkout] Failed to calculate delivery fee:', err);
+        setError('Failed to calculate delivery fee. Please try again.');
+      } finally {
+        setCalculatingFee(false);
+      }
+    }
   };
 
   const handleInputChange = (field, value) => {
@@ -154,7 +190,12 @@ export default function Checkout() {
 
     // Validation
     if (!formData.deliveryAddress.trim()) {
-      setError('Please provide a delivery address');
+      setError('Please select a delivery location on the map');
+      return;
+    }
+
+    if (!formData.deliveryLatitude || !formData.deliveryLongitude) {
+      setError('Please pin your exact delivery location on the map');
       return;
     }
 
@@ -180,7 +221,7 @@ export default function Checkout() {
       const vat = calculateVAT(subtotal);
       const total = calculateTotal();
 
-      // Prepare order data
+      // Prepare order data with GPS coordinates
       const orderData = {
         customer_id: user.id,
         items: cart.map(item => ({
@@ -190,8 +231,9 @@ export default function Checkout() {
           quantity: item.quantity
         })),
         delivery_address: formData.deliveryAddress.trim(),
-        delivery_fee: 0, // Will be calculated by cashier/admin based on GPS
-        delivery_fee_pending: true, // Flag to indicate fee needs calculation
+        delivery_latitude: formData.deliveryLatitude,
+        delivery_longitude: formData.deliveryLongitude,
+        delivery_fee: deliveryFee || 0,
         subtotal: subtotal,
         vat_amount: vat,
         total_amount: total,
@@ -285,10 +327,12 @@ export default function Checkout() {
                 </div>
                 <div style={styles.detailRow}>
                   <span style={styles.detailLabel}>Delivery Fee:</span>
-                  <span style={styles.detailValue}>To Be Calculated</span>
+                  <span style={styles.detailValue}>
+                    {calculatingFee ? 'Calculating...' : deliveryFee !== null ? `₱${deliveryFee.toFixed(2)}` : 'Select location'}
+                  </span>
                 </div>
                 <div style={{...styles.detailRow, ...styles.totalRow}}>
-                  <span style={styles.totalLabel}>Total (before delivery):</span>
+                  <span style={styles.totalLabel}>Total:</span>
                   <span style={styles.totalValue}>₱{total.toFixed(2)}</span>
                 </div>
               </div>
@@ -299,13 +343,11 @@ export default function Checkout() {
               <h2 style={styles.sectionTitle}>Delivery Information</h2>
               
               <div style={styles.formGroup}>
-                <label style={styles.label}>Delivery Address *</label>
-                <textarea
-                  style={styles.textarea}
-                  value={formData.deliveryAddress}
-                  onChange={(e) => handleInputChange('deliveryAddress', e.target.value)}
-                  placeholder="Enter your complete delivery address"
-                  rows={3}
+                <label style={styles.label}>Delivery Location *</label>
+                <LocationPicker
+                  onLocationSelect={handleLocationSelect}
+                  initialAddress={formData.deliveryAddress}
+                  apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
                 />
               </div>
 
