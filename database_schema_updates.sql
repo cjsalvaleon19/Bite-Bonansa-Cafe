@@ -290,7 +290,105 @@ GROUP BY DATE(created_at);
 
 COMMENT ON VIEW cashier_daily_stats IS 'Daily sales statistics for cashier dashboard';
 
--- 11. Create delivery fee calculator functions
+-- 11. Create loyalty_transactions table for customer points tracking
+CREATE TABLE IF NOT EXISTS loyalty_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+  transaction_type VARCHAR(50) NOT NULL, -- 'earned', 'spent', 'adjustment'
+  amount DECIMAL(10,2) NOT NULL, -- positive for earned, negative for spent
+  balance_after DECIMAL(10,2) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_loyalty_transactions ON loyalty_transactions(customer_id, created_at DESC);
+
+COMMENT ON TABLE loyalty_transactions IS 'Tracks customer loyalty points earnings and spending';
+
+-- 12. Create customer_item_purchases table for purchase history tracking
+CREATE TABLE IF NOT EXISTS customer_item_purchases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  menu_item_id UUID NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+  purchase_count INT NOT NULL DEFAULT 0,
+  last_purchased_at TIMESTAMP DEFAULT NOW(),
+  total_spent DECIMAL(10,2) DEFAULT 0,
+  
+  UNIQUE(customer_id, menu_item_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_purchases ON customer_item_purchases(customer_id, purchase_count DESC);
+
+COMMENT ON TABLE customer_item_purchases IS 'Tracks most purchased items by customers';
+
+-- 13. Create customer_reviews table for customer feedback
+CREATE TABLE IF NOT EXISTS customer_reviews (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title VARCHAR(255),
+  review_text TEXT NOT NULL,
+  star_rating INT NOT NULL CHECK (star_rating >= 1 AND star_rating <= 5),
+  image_urls TEXT[], -- Array of image URLs
+  status VARCHAR(50) NOT NULL DEFAULT 'pending', -- 'pending', 'published', 'archived'
+  published_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviews_customer ON customer_reviews(customer_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_status ON customer_reviews(status);
+
+COMMENT ON TABLE customer_reviews IS 'Customer reviews and ratings';
+
+-- 14. Enable RLS on new tables
+ALTER TABLE loyalty_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customer_item_purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customer_reviews ENABLE ROW LEVEL SECURITY;
+
+-- Loyalty transactions policies
+CREATE POLICY "Customers can view their own loyalty transactions" ON loyalty_transactions
+  FOR SELECT USING (auth.uid() = customer_id);
+
+CREATE POLICY "Staff can view all loyalty transactions" ON loyalty_transactions
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() AND users.role IN ('admin', 'cashier')
+    )
+  );
+
+-- Customer purchases policies
+CREATE POLICY "Customers can view their own purchases" ON customer_item_purchases
+  FOR SELECT USING (auth.uid() = customer_id);
+
+CREATE POLICY "Staff can view all purchases" ON customer_item_purchases
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() AND users.role IN ('admin', 'cashier')
+    )
+  );
+
+-- Reviews policies
+CREATE POLICY "Customers can view their own reviews" ON customer_reviews
+  FOR SELECT USING (auth.uid() = customer_id);
+
+CREATE POLICY "Customers can create reviews" ON customer_reviews
+  FOR INSERT WITH CHECK (auth.uid() = customer_id);
+
+CREATE POLICY "Customers can update their own reviews" ON customer_reviews
+  FOR UPDATE USING (auth.uid() = customer_id);
+
+CREATE POLICY "Staff can view all reviews" ON customer_reviews
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() AND users.role IN ('admin', 'cashier')
+    )
+  );
+
+-- 15. Create delivery fee calculator functions
 -- Store location constant (Bite Bonansa Cafe, T'boli, South Cotabato)
 -- Latitude: 6.2178483, Longitude: 124.8221226
 
@@ -329,28 +427,61 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 COMMENT ON FUNCTION calculate_distance_meters IS 'Calculate distance in meters between two GPS coordinates using Haversine formula';
 
 -- Function to calculate delivery fee based on distance
+-- New pricing scheme: ₱30 base fare + tiered additional fees
 CREATE OR REPLACE FUNCTION calculate_delivery_fee(distance_meters INT)
 RETURNS DECIMAL AS $$
 DECLARE
-  base_fee CONSTANT DECIMAL := 35.00;
-  base_distance CONSTANT INT := 1000; -- 1 km in meters
-  additional_distance INT;
-  additional_fee DECIMAL;
+  base_fee CONSTANT DECIMAL := 30.00;
+  additional_fee DECIMAL := 0.00;
 BEGIN
   -- Base fee for distances up to 1000 meters
-  IF distance_meters <= base_distance THEN
+  IF distance_meters <= 1000 THEN
     RETURN base_fee;
+  -- Distance ranges with fixed additional fees
+  ELSIF distance_meters <= 1500 THEN
+    additional_fee := 5.00;
+  ELSIF distance_meters <= 2000 THEN
+    additional_fee := 10.00;
+  ELSIF distance_meters <= 2500 THEN
+    additional_fee := 15.00;
+  ELSIF distance_meters <= 3000 THEN
+    additional_fee := 20.00;
+  ELSIF distance_meters <= 3500 THEN
+    additional_fee := 24.00;
+  ELSIF distance_meters <= 4000 THEN
+    additional_fee := 28.00;
+  ELSIF distance_meters <= 4500 THEN
+    additional_fee := 32.00;
+  ELSIF distance_meters <= 5000 THEN
+    additional_fee := 36.00;
+  ELSIF distance_meters <= 5500 THEN
+    additional_fee := 40.00;
+  ELSIF distance_meters <= 6000 THEN
+    additional_fee := 44.00;
+  ELSIF distance_meters <= 6500 THEN
+    additional_fee := 47.00;
+  ELSIF distance_meters <= 7000 THEN
+    additional_fee := 50.00;
+  ELSIF distance_meters <= 7500 THEN
+    additional_fee := 53.00;
+  ELSIF distance_meters <= 8000 THEN
+    additional_fee := 56.00;
+  ELSIF distance_meters <= 8500 THEN
+    additional_fee := 59.00;
+  ELSIF distance_meters <= 9000 THEN
+    additional_fee := 62.00;
+  ELSIF distance_meters <= 9500 THEN
+    additional_fee := 65.00;
+  ELSE
+    -- Cap at 10000m (₱30 + ₱68 = ₱98)
+    additional_fee := 68.00;
   END IF;
-  
-  -- Calculate additional fee: ₱10 per 200 meters after 1km
-  additional_distance := distance_meters - base_distance;
-  additional_fee := CEIL(additional_distance::DECIMAL / 200) * 10;
   
   RETURN base_fee + additional_fee;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
-COMMENT ON FUNCTION calculate_delivery_fee IS 'Calculate delivery fee: ₱35 base (0-1000m), then +₱10 per 200m';
+COMMENT ON FUNCTION calculate_delivery_fee IS 'Calculate delivery fee: ₱30 base + tiered additional fees (capped at ₱98 for 10km)';
 
 -- Function to calculate delivery fee from store to customer location
 CREATE OR REPLACE FUNCTION calculate_delivery_fee_from_store(
