@@ -150,6 +150,16 @@ export default function Checkout() {
     return subtotal + vat + fee;
   };
 
+  const getDeliveryFeeDisplay = () => {
+    if (calculatingFee) {
+      return 'Calculating...';
+    }
+    if (deliveryFee !== null) {
+      return `₱${deliveryFee.toFixed(2)}`;
+    }
+    return 'Select location';
+  };
+
   const handleLocationSelect = async (location) => {
     setFormData(prev => ({
       ...prev,
@@ -327,9 +337,7 @@ export default function Checkout() {
                 </div>
                 <div style={styles.detailRow}>
                   <span style={styles.detailLabel}>Delivery Fee:</span>
-                  <span style={styles.detailValue}>
-                    {calculatingFee ? 'Calculating...' : deliveryFee !== null ? `₱${deliveryFee.toFixed(2)}` : 'Select location'}
-                  </span>
+                  <span style={styles.detailValue}>{getDeliveryFeeDisplay()}</span>
                 </div>
                 <div style={{...styles.detailRow, ...styles.totalRow}}>
                   <span style={styles.totalLabel}>Total:</span>
