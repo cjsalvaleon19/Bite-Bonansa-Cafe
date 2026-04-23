@@ -54,7 +54,7 @@ export default function VariantSelectionModal({ item, onConfirm, onCancel }) {
     
     // Build variant description for display
     const variantDescription = Object.entries(selectedVariants).map(([typeId, variant]) => {
-      const variantType = item.variant_types.find(vt => vt.id === typeId);
+      const variantType = item.variant_types.find(type => String(type.id) === String(typeId));
       return `${variantType?.variant_type_name}: ${variant.optionName}`;
     }).join(', ');
 

@@ -30,7 +30,7 @@ export function calcPointsEarned(amount) {
  */
 export function getPointsDisplayText(amount) {
   const points = calcPointsEarned(amount);
-  return `₱${points.toFixed(2)}`;
+  return `₱${points}`;
 }
 
 /**

@@ -170,6 +170,9 @@ export default function OrderPortal() {
   }, [loading]);
 
   const addToCart = (item) => {
+    // Helper to get item price (fallback to base_price if price not set)
+    const getItemPrice = (menuItem) => menuItem.price || menuItem.base_price;
+    
     // Check if item has variants
     if (item.has_variants && item.variant_types && item.variant_types.length > 0) {
       // Show variant selection modal
@@ -186,7 +189,7 @@ export default function OrderPortal() {
             : cartItem
         );
       } else {
-        updatedCart = [...cart, { ...item, quantity: 1, price: item.price || item.base_price }];
+        updatedCart = [...cart, { ...item, quantity: 1, price: getItemPrice(item) }];
       }
       setCart(updatedCart);
       localStorage.setItem('cart', JSON.stringify(updatedCart));
@@ -429,7 +432,10 @@ export default function OrderPortal() {
 }
 
 function MenuItem({ item, onAddToCart }) {
-  const displayPrice = item.base_price || item.price;
+  // Helper to get item price (fallback to base_price if price not set)
+  const getItemPrice = (menuItem) => menuItem.price || menuItem.base_price;
+  
+  const displayPrice = getItemPrice(item);
   const hasVariants = item.has_variants && item.variant_types && item.variant_types.length > 0;
   
   return (
