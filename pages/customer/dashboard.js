@@ -286,10 +286,6 @@ export default function CustomerDashboard() {
               <p style={{...styles.cardDesc, fontSize: '12px'}}>
                 Can be used as payment option
               </p>
-              <p style={{...styles.cardDesc, fontSize: '11px', marginTop: '8px'}}>
-                Earn 2% on orders below ₱500<br/>
-                Earn 5% on orders ₱500 and above
-              </p>
             </div>
           </div>
 
