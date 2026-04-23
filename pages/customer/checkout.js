@@ -409,7 +409,10 @@ export default function Checkout() {
           id: item.id,
           name: item.name,
           price: item.price,
-          quantity: item.quantity
+          quantity: item.quantity,
+          // Include variant information if present
+          variants: item.selectedVariants ? Object.values(item.selectedVariants).map(v => v.optionName).join(', ') : null,
+          variant_description: item.variantDescription || null
         })),
         delivery_address: formData.deliveryAddress.trim(),
         delivery_latitude: formData.latitude,
@@ -502,15 +505,23 @@ export default function Checkout() {
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>Order Summary</h2>
               <div style={styles.orderItems}>
-                {cart.map(item => (
-                  <div key={item.id} style={styles.orderItem}>
-                    <div style={styles.itemInfo}>
-                      <span style={styles.itemName}>{item.name}</span>
-                      <span style={styles.itemQuantity}>x{item.quantity}</span>
+                {cart.map((item, index) => {
+                  const itemKey = item.cartItemId || `${item.id}_${index}`;
+                  return (
+                    <div key={itemKey} style={styles.orderItem}>
+                      <div style={styles.itemInfo}>
+                        <div>
+                          <span style={styles.itemName}>{item.name}</span>
+                          {item.variantDescription && (
+                            <span style={styles.variantDesc}> ({item.variantDescription})</span>
+                          )}
+                        </div>
+                        <span style={styles.itemQuantity}>x{item.quantity}</span>
+                      </div>
+                      <span style={styles.itemPrice}>₱{(item.price * item.quantity).toFixed(2)}</span>
                     </div>
-                    <span style={styles.itemPrice}>₱{(item.price * item.quantity).toFixed(2)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Payment Details */}
@@ -766,6 +777,13 @@ const styles = {
   itemName: {
     fontSize: '14px',
     color: '#fff',
+    lineHeight: '1.4',
+  },
+  variantDesc: {
+    display: 'block',
+    fontSize: '11px',
+    color: '#999',
+    marginTop: '2px',
   },
   itemQuantity: {
     fontSize: '14px',
