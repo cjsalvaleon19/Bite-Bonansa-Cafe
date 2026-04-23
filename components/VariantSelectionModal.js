@@ -74,12 +74,16 @@ export default function VariantSelectionModal({ item, onConfirm, onCancel }) {
 
   const handleConfirm = () => {
     if (isValid()) {
-      // Format selected variants for cart
+      // Format selected variants for cart - create a Map for efficient lookup
+      const variantTypesMap = new Map(
+        item.variant_types.map(type => [type.id, type.variant_type_name])
+      );
+      
       const variantDetails = {};
       Object.entries(selectedVariants).forEach(([typeId, options]) => {
-        const variantType = item.variant_types.find(t => t.id === typeId);
-        if (variantType) {
-          variantDetails[variantType.variant_type_name] = options.map(opt => opt.optionName).join(', ');
+        const variantTypeName = variantTypesMap.get(typeId);
+        if (variantTypeName) {
+          variantDetails[variantTypeName] = options.map(opt => opt.optionName).join(', ');
         }
       });
 

@@ -195,7 +195,14 @@ export default function OrderPortal() {
 
   const handleVariantConfirm = (itemWithVariants) => {
     // Create a unique identifier for this cart item including variants
-    const cartItemId = `${itemWithVariants.id}-${JSON.stringify(itemWithVariants.selectedVariants)}`;
+    // Sort the selectedVariants object to ensure consistent ordering
+    const sortedVariants = Object.keys(itemWithVariants.selectedVariants || {})
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = itemWithVariants.selectedVariants[key];
+        return acc;
+      }, {});
+    const cartItemId = `${itemWithVariants.id}-${JSON.stringify(sortedVariants)}`;
     
     // Check if exact same item with same variants exists
     const existingItemIndex = cart.findIndex(cartItem => {
@@ -367,9 +374,10 @@ export default function OrderPortal() {
               <div style={styles.cartSidebar}>
                 <h3 style={styles.cartTitle}>Your Cart</h3>
                 <div style={styles.cartItems}>
-                  {cart.map((item, index) => {
+                  {cart.map((item) => {
                     const itemPrice = item.finalPrice || item.price || 0;
-                    const uniqueKey = item.cartItemId || `${item.id}-${index}`;
+                    // Use cartItemId as the primary key, fallback to a generated unique key
+                    const uniqueKey = item.cartItemId || `cart-item-${item.id}-${Math.random().toString(36).substr(2, 9)}`;
                     
                     return (
                       <div key={uniqueKey} style={styles.cartItem}>

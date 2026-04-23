@@ -511,9 +511,10 @@ export default function Checkout() {
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>Order Summary</h2>
               <div style={styles.orderItems}>
-                {cart.map((item, index) => {
+                {cart.map((item) => {
                   const itemPrice = item.finalPrice || item.price || 0;
-                  const uniqueKey = item.cartItemId || `${item.id}-${index}`;
+                  // Use cartItemId as the primary key, fallback to a generated unique key
+                  const uniqueKey = item.cartItemId || `checkout-item-${item.id}-${Math.random().toString(36).substr(2, 9)}`;
                   
                   return (
                     <div key={uniqueKey} style={styles.orderItem}>
