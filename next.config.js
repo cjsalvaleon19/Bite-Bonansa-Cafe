@@ -24,11 +24,11 @@ const securityHeaders = [
     // App Router with Next.js middleware.
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://*.vercel.app",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://*.vercel.app https://maps.googleapis.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com https://vercel.live",
-      "img-src 'self' data: blob: https://vercel.live https://vercel.com",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vercel.live https://*.vercel.app wss://*.pusher.com",
+      "img-src 'self' data: blob: https://vercel.live https://vercel.com https://maps.googleapis.com https://maps.gstatic.com https://*.googleapis.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vercel.live https://*.vercel.app wss://*.pusher.com https://maps.googleapis.com",
       "frame-src https://vercel.live https://*.vercel.app",
       "frame-ancestors 'none'",
     ].join('; '),
