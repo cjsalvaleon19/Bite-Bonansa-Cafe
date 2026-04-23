@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../utils/supabaseClient';
+import VariantSelectionModal from '../../components/VariantSelectionModal';
 
 export default function OrderPortal() {
   const router = useRouter();
@@ -12,6 +13,11 @@ export default function OrderPortal() {
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loadingMenu, setLoadingMenu] = useState(false);
+  const [showVariantModal, setShowVariantModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+
+  // Helper to get item price (fallback to base_price if price not set)
+  const getItemPrice = (menuItem) => menuItem.price || menuItem.base_price;
 
   // Load cart from localStorage on mount
   useEffect(() => {
@@ -106,22 +112,55 @@ export default function OrderPortal() {
     };
   }, [router]);
 
-  // Fetch menu items
+  // Fetch menu items from menu_items_base with variants
   useEffect(() => {
     async function fetchMenuItems() {
       if (!supabase || loading) return;
       
       setLoadingMenu(true);
       try {
-        const { data, error } = await supabase
-          .from('menu_items')
-          .select('*')
+        // Try to fetch from menu_items_base (with variants)
+        const { data: baseItemsData, error: baseError } = await supabase
+          .from('menu_items_base')
+          .select(`
+            *,
+            variant_types:menu_item_variant_types(
+              *,
+              options:menu_item_variant_options(*)
+            )
+          `)
           .eq('available', true)
           .order('category', { ascending: true })
           .order('name', { ascending: true });
 
-        if (!error && data) {
-          setMenuItems(data);
+        if (!baseError && baseItemsData && baseItemsData.length > 0) {
+          // Sort variant types and options by display_order
+          const sortedData = baseItemsData.map(item => ({
+            ...item,
+            variant_types: item.variant_types
+              ? item.variant_types
+                  .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+                  .map(vt => ({
+                    ...vt,
+                    options: vt.options
+                      ? vt.options.sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+                      : []
+                  }))
+              : []
+          }));
+          setMenuItems(sortedData);
+        } else {
+          // Fallback to regular menu_items table if base table is empty or doesn't exist
+          const { data, error } = await supabase
+            .from('menu_items')
+            .select('*')
+            .eq('available', true)
+            .order('category', { ascending: true })
+            .order('name', { ascending: true });
+
+          if (!error && data) {
+            setMenuItems(data);
+          }
         }
       } catch (err) {
         console.error('[OrderPortal] Failed to fetch menu:', err);
@@ -134,34 +173,78 @@ export default function OrderPortal() {
   }, [loading]);
 
   const addToCart = (item) => {
-    const existingItem = cart.find(cartItem => cartItem.id === item.id);
+    // Check if item has variants
+    if (item.has_variants && item.variant_types && item.variant_types.length > 0) {
+      // Show variant selection modal
+      setSelectedItem(item);
+      setShowVariantModal(true);
+    } else {
+      // Add directly for items without variants
+      const existingItem = cart.find(cartItem => cartItem.id === item.id && !cartItem.cartItemId);
+      let updatedCart;
+      if (existingItem) {
+        updatedCart = cart.map(cartItem => 
+          cartItem.id === item.id && !cartItem.cartItemId
+            ? { ...cartItem, quantity: cartItem.quantity + 1 }
+            : cartItem
+        );
+      } else {
+        updatedCart = [...cart, { ...item, quantity: 1, price: getItemPrice(item) }];
+      }
+      setCart(updatedCart);
+      localStorage.setItem('cart', JSON.stringify(updatedCart));
+    }
+  };
+
+  const handleVariantConfirm = (configuredItem) => {
+    // Add configured item to cart
+    const existingItem = cart.find(cartItem => cartItem.cartItemId === configuredItem.cartItemId);
     let updatedCart;
+    
     if (existingItem) {
-      updatedCart = cart.map(cartItem => 
-        cartItem.id === item.id 
-          ? { ...cartItem, quantity: cartItem.quantity + 1 }
+      // Update quantity if same variant configuration exists
+      updatedCart = cart.map(cartItem =>
+        cartItem.cartItemId === configuredItem.cartItemId
+          ? { ...cartItem, quantity: cartItem.quantity + configuredItem.quantity }
           : cartItem
       );
     } else {
-      updatedCart = [...cart, { ...item, quantity: 1 }];
+      // Add new configured item
+      updatedCart = [...cart, configuredItem];
     }
+    
+    setCart(updatedCart);
+    localStorage.setItem('cart', JSON.stringify(updatedCart));
+    setShowVariantModal(false);
+    setSelectedItem(null);
+  };
+
+  const handleVariantCancel = () => {
+    setShowVariantModal(false);
+    setSelectedItem(null);
+  };
+
+  const removeFromCart = (itemId, cartItemId = null) => {
+    const updatedCart = cart.filter(item => {
+      if (cartItemId) {
+        return item.cartItemId !== cartItemId;
+      }
+      return item.id !== itemId;
+    });
     setCart(updatedCart);
     localStorage.setItem('cart', JSON.stringify(updatedCart));
   };
 
-  const removeFromCart = (itemId) => {
-    const updatedCart = cart.filter(item => item.id !== itemId);
-    setCart(updatedCart);
-    localStorage.setItem('cart', JSON.stringify(updatedCart));
-  };
-
-  const updateQuantity = (itemId, newQuantity) => {
+  const updateQuantity = (itemId, newQuantity, cartItemId = null) => {
     if (newQuantity <= 0) {
-      removeFromCart(itemId);
+      removeFromCart(itemId, cartItemId);
     } else {
-      const updatedCart = cart.map(item => 
-        item.id === itemId ? { ...item, quantity: newQuantity } : item
-      );
+      const updatedCart = cart.map(item => {
+        if (cartItemId) {
+          return item.cartItemId === cartItemId ? { ...item, quantity: newQuantity } : item;
+        }
+        return item.id === itemId && !item.cartItemId ? { ...item, quantity: newQuantity } : item;
+      });
       setCart(updatedCart);
       localStorage.setItem('cart', JSON.stringify(updatedCart));
     }
@@ -256,7 +339,7 @@ export default function OrderPortal() {
                       <h3 style={styles.categoryTitle}>{category}</h3>
                       <div style={styles.menuGrid}>
                         {groupedItems[category].map(item => (
-                          <MenuItem key={item.id} item={item} onAddToCart={addToCart} />
+                          <MenuItem key={item.id} item={item} onAddToCart={addToCart} getItemPrice={getItemPrice} />
                         ))}
                       </div>
                     </div>
@@ -267,7 +350,7 @@ export default function OrderPortal() {
               {!loadingMenu && selectedCategory !== 'all' && filteredItems.length > 0 && (
                 <div style={styles.menuGrid}>
                   {filteredItems.map(item => (
-                    <MenuItem key={item.id} item={item} onAddToCart={addToCart} />
+                    <MenuItem key={item.id} item={item} onAddToCart={addToCart} getItemPrice={getItemPrice} />
                   ))}
                 </div>
               )}
@@ -282,35 +365,43 @@ export default function OrderPortal() {
               <div style={styles.cartSidebar}>
                 <h3 style={styles.cartTitle}>Your Cart</h3>
                 <div style={styles.cartItems}>
-                  {cart.map(item => (
-                    <div key={item.id} style={styles.cartItem}>
-                      <div style={styles.cartItemInfo}>
-                        <span style={styles.cartItemName}>{item.name}</span>
-                        <span style={styles.cartItemPrice}>₱{item.price.toFixed(2)}</span>
+                  {cart.map((item, index) => {
+                    const itemKey = item.cartItemId || `${item.id}_${index}`;
+                    return (
+                      <div key={itemKey} style={styles.cartItem}>
+                        <div style={styles.cartItemInfo}>
+                          <span style={styles.cartItemName}>
+                            {item.name}
+                            {item.variantDescription && (
+                              <span style={styles.variantDesc}> ({item.variantDescription})</span>
+                            )}
+                          </span>
+                          <span style={styles.cartItemPrice}>₱{item.price.toFixed(2)}</span>
+                        </div>
+                        <div style={styles.cartItemControls}>
+                          <button 
+                            style={styles.quantityBtn}
+                            onClick={() => updateQuantity(item.id, item.quantity - 1, item.cartItemId)}
+                          >
+                            -
+                          </button>
+                          <span style={styles.quantity}>{item.quantity}</span>
+                          <button 
+                            style={styles.quantityBtn}
+                            onClick={() => updateQuantity(item.id, item.quantity + 1, item.cartItemId)}
+                          >
+                            +
+                          </button>
+                          <button 
+                            style={styles.removeBtn}
+                            onClick={() => removeFromCart(item.id, item.cartItemId)}
+                          >
+                            🗑
+                          </button>
+                        </div>
                       </div>
-                      <div style={styles.cartItemControls}>
-                        <button 
-                          style={styles.quantityBtn}
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                        >
-                          -
-                        </button>
-                        <span style={styles.quantity}>{item.quantity}</span>
-                        <button 
-                          style={styles.quantityBtn}
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        >
-                          +
-                        </button>
-                        <button 
-                          style={styles.removeBtn}
-                          onClick={() => removeFromCart(item.id)}
-                        >
-                          🗑
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div style={styles.cartTotal}>
                   <span style={styles.totalLabel}>Total:</span>
@@ -326,26 +417,43 @@ export default function OrderPortal() {
             )}
           </div>
         </main>
+
+        {/* Variant Selection Modal */}
+        {showVariantModal && selectedItem && (
+          <VariantSelectionModal
+            item={selectedItem}
+            onConfirm={handleVariantConfirm}
+            onCancel={handleVariantCancel}
+          />
+        )}
       </div>
     </>
   );
 }
 
-function MenuItem({ item, onAddToCart }) {
+function MenuItem({ item, onAddToCart, getItemPrice }) {
+  const displayPrice = getItemPrice(item);
+  const hasVariants = item.has_variants && item.variant_types && item.variant_types.length > 0;
+  
   return (
     <div style={styles.menuItem}>
       <div style={styles.menuItemHeader}>
         <h4 style={styles.menuItemName}>{item.name}</h4>
-        <span style={styles.menuItemPrice}>₱{item.price?.toFixed(2)}</span>
+        <span style={styles.menuItemPrice}>
+          {hasVariants ? 'From ' : ''}₱{displayPrice?.toFixed(2)}
+        </span>
       </div>
       {item.description && (
         <p style={styles.menuItemDesc}>{item.description}</p>
+      )}
+      {hasVariants && (
+        <p style={styles.customizeText}>🔧 Customizable</p>
       )}
       <button 
         style={styles.addBtn}
         onClick={() => onAddToCart(item)}
       >
-        Add to Cart
+        {hasVariants ? 'Customize & Add' : 'Add to Cart'}
       </button>
     </div>
   );
@@ -480,6 +588,12 @@ const styles = {
     marginBottom: '12px',
     lineHeight: '1.4',
   },
+  customizeText: {
+    fontSize: '12px',
+    color: '#ffc107',
+    fontWeight: '600',
+    marginBottom: '8px',
+  },
   addBtn: {
     padding: '8px 16px',
     backgroundColor: '#ffc107',
@@ -526,6 +640,13 @@ const styles = {
   cartItemName: {
     fontSize: '14px',
     color: '#fff',
+    lineHeight: '1.4',
+  },
+  variantDesc: {
+    display: 'block',
+    fontSize: '11px',
+    color: '#999',
+    marginTop: '2px',
   },
   cartItemPrice: {
     fontSize: '14px',
