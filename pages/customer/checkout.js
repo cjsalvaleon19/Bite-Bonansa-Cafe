@@ -411,7 +411,7 @@ export default function Checkout() {
           price: item.price,
           quantity: item.quantity,
           // Include variant information if present
-          variants: item.selectedVariants ? Object.values(item.selectedVariants).map(v => v.optionName).join(', ') : null,
+          selected_variant_names: item.selectedVariants ? Object.values(item.selectedVariants).map(v => v.optionName).join(', ') : null,
           variant_description: item.variantDescription || null
         })),
         delivery_address: formData.deliveryAddress.trim(),

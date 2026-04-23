@@ -24,9 +24,10 @@ export function calcPointsEarned(amount) {
 
 /**
  * Get customer-facing display text for points earned.
- * Returns only the points amount without showing percentage.
+ * Returns points as currency format without showing percentage.
+ * Note: Loyalty points in this system are monetary value (₱), not abstract points.
  * @param {number} amount - Purchase amount
- * @returns {string} Display text showing points earned
+ * @returns {string} Display text showing points earned as currency
  */
 export function getPointsDisplayText(amount) {
   const points = calcPointsEarned(amount);
@@ -42,5 +43,5 @@ export function getPointsDisplayText(amount) {
 export function getPointsEarnedMessage(amount) {
   const percentage = amount >= 500 ? '0.5%' : '0.2%';
   const points = calcPointsEarned(amount);
-  return `You earned ₱${points.toFixed(2)} (${percentage} of ₱${amount.toFixed(2)})`;
+  return `You earned ₱${points} (${percentage} of ₱${amount.toFixed(2)})`;
 }

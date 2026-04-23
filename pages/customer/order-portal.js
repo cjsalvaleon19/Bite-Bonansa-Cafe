@@ -16,6 +16,9 @@ export default function OrderPortal() {
   const [showVariantModal, setShowVariantModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
+  // Helper to get item price (fallback to base_price if price not set)
+  const getItemPrice = (menuItem) => menuItem.price || menuItem.base_price;
+
   // Load cart from localStorage on mount
   useEffect(() => {
     const savedCart = localStorage.getItem('cart');
@@ -170,9 +173,6 @@ export default function OrderPortal() {
   }, [loading]);
 
   const addToCart = (item) => {
-    // Helper to get item price (fallback to base_price if price not set)
-    const getItemPrice = (menuItem) => menuItem.price || menuItem.base_price;
-    
     // Check if item has variants
     if (item.has_variants && item.variant_types && item.variant_types.length > 0) {
       // Show variant selection modal
@@ -339,7 +339,7 @@ export default function OrderPortal() {
                       <h3 style={styles.categoryTitle}>{category}</h3>
                       <div style={styles.menuGrid}>
                         {groupedItems[category].map(item => (
-                          <MenuItem key={item.id} item={item} onAddToCart={addToCart} />
+                          <MenuItem key={item.id} item={item} onAddToCart={addToCart} getItemPrice={getItemPrice} />
                         ))}
                       </div>
                     </div>
@@ -350,7 +350,7 @@ export default function OrderPortal() {
               {!loadingMenu && selectedCategory !== 'all' && filteredItems.length > 0 && (
                 <div style={styles.menuGrid}>
                   {filteredItems.map(item => (
-                    <MenuItem key={item.id} item={item} onAddToCart={addToCart} />
+                    <MenuItem key={item.id} item={item} onAddToCart={addToCart} getItemPrice={getItemPrice} />
                   ))}
                 </div>
               )}
@@ -431,10 +431,7 @@ export default function OrderPortal() {
   );
 }
 
-function MenuItem({ item, onAddToCart }) {
-  // Helper to get item price (fallback to base_price if price not set)
-  const getItemPrice = (menuItem) => menuItem.price || menuItem.base_price;
-  
+function MenuItem({ item, onAddToCart, getItemPrice }) {
   const displayPrice = getItemPrice(item);
   const hasVariants = item.has_variants && item.variant_types && item.variant_types.length > 0;
   
