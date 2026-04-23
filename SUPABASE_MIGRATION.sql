@@ -10,9 +10,9 @@ CREATE TABLE IF NOT EXISTS loyalty_transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
-  transaction_type VARCHAR(50) NOT NULL, -- 'earned', 'spent', 'adjustment'
-  amount DECIMAL(10,2) NOT NULL, -- positive for earned, negative for spent
-  balance_after DECIMAL(10,2) NOT NULL,
+  transaction_type VARCHAR(50) NOT NULL CHECK (transaction_type IN ('earned', 'spent', 'adjustment')), 
+  amount DECIMAL(10,2) NOT NULL, -- positive for earned, negative for spent (validated at app layer)
+  balance_after DECIMAL(10,2) NOT NULL CHECK (balance_after >= 0),
   description TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
@@ -242,7 +242,7 @@ CREATE OR REPLACE FUNCTION calculate_distance_meters(
 )
 RETURNS INT AS $$
 DECLARE
-  R CONSTANT DECIMAL := 6371.0; -- Earth's radius in kilometers
+  R CONSTANT DECIMAL := 6371.009; -- Earth's radius in kilometers (more precise value)
   dLat DECIMAL;
   dLon DECIMAL;
   a DECIMAL;
