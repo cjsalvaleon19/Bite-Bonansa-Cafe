@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../utils/supabaseClient';
+import VariantSelectionModal from '../../components/VariantSelectionModal';
 
 export default function OrderPortal() {
   const router = useRouter();
@@ -12,6 +13,8 @@ export default function OrderPortal() {
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loadingMenu, setLoadingMenu] = useState(false);
+  const [showVariantModal, setShowVariantModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
 
   // Load cart from localStorage on mount
   useEffect(() => {
@@ -113,15 +116,40 @@ export default function OrderPortal() {
       
       setLoadingMenu(true);
       try {
-        const { data, error } = await supabase
-          .from('menu_items')
-          .select('*')
+        // First try to fetch from menu_items_base with variants
+        const { data: baseItems, error: baseError } = await supabase
+          .from('menu_items_base')
+          .select(`
+            *,
+            variant_types:menu_item_variant_types(
+              *,
+              options:menu_item_variant_options(*)
+            )
+          `)
           .eq('available', true)
           .order('category', { ascending: true })
           .order('name', { ascending: true });
 
-        if (!error && data) {
-          setMenuItems(data);
+        // If menu_items_base doesn't exist or has no data, fall back to menu_items
+        if (baseError || !baseItems || baseItems.length === 0) {
+          const { data: regularItems, error: regularError } = await supabase
+            .from('menu_items')
+            .select('*')
+            .eq('available', true)
+            .order('category', { ascending: true })
+            .order('name', { ascending: true });
+
+          if (!regularError && regularItems) {
+            // Transform regular items to match base items structure
+            setMenuItems(regularItems.map(item => ({
+              ...item,
+              base_price: item.price,
+              has_variants: false,
+              variant_types: []
+            })));
+          }
+        } else {
+          setMenuItems(baseItems);
         }
       } catch (err) {
         console.error('[OrderPortal] Failed to fetch menu:', err);
@@ -134,19 +162,73 @@ export default function OrderPortal() {
   }, [loading]);
 
   const addToCart = (item) => {
-    const existingItem = cart.find(cartItem => cartItem.id === item.id);
+    // Check if item has variants
+    if (item.has_variants && item.variant_types && item.variant_types.length > 0) {
+      setSelectedItem(item);
+      setShowVariantModal(true);
+    } else {
+      // Add directly for items without variants
+      const price = item.base_price || item.price || 0;
+      const existingItem = cart.find(cartItem => 
+        cartItem.id === item.id && !cartItem.selectedVariants
+      );
+      
+      let updatedCart;
+      if (existingItem) {
+        updatedCart = cart.map(cartItem => 
+          cartItem.id === item.id && !cartItem.selectedVariants
+            ? { ...cartItem, quantity: cartItem.quantity + 1 }
+            : cartItem
+        );
+      } else {
+        updatedCart = [...cart, { 
+          ...item, 
+          quantity: 1,
+          price: price,
+          finalPrice: price
+        }];
+      }
+      setCart(updatedCart);
+      localStorage.setItem('cart', JSON.stringify(updatedCart));
+    }
+  };
+
+  const handleVariantConfirm = (itemWithVariants) => {
+    // Create a unique identifier for this cart item including variants
+    const cartItemId = `${itemWithVariants.id}-${JSON.stringify(itemWithVariants.selectedVariants)}`;
+    
+    // Check if exact same item with same variants exists
+    const existingItemIndex = cart.findIndex(cartItem => {
+      if (cartItem.id !== itemWithVariants.id) return false;
+      return JSON.stringify(cartItem.selectedVariants) === JSON.stringify(itemWithVariants.selectedVariants);
+    });
+
     let updatedCart;
-    if (existingItem) {
-      updatedCart = cart.map(cartItem => 
-        cartItem.id === item.id 
-          ? { ...cartItem, quantity: cartItem.quantity + 1 }
+    if (existingItemIndex >= 0) {
+      // Update quantity of existing item
+      updatedCart = cart.map((cartItem, index) => 
+        index === existingItemIndex
+          ? { ...cartItem, quantity: cartItem.quantity + itemWithVariants.quantity }
           : cartItem
       );
     } else {
-      updatedCart = [...cart, { ...item, quantity: 1 }];
+      // Add as new cart item
+      updatedCart = [...cart, {
+        ...itemWithVariants,
+        price: itemWithVariants.finalPrice,
+        cartItemId
+      }];
     }
+
     setCart(updatedCart);
     localStorage.setItem('cart', JSON.stringify(updatedCart));
+    setShowVariantModal(false);
+    setSelectedItem(null);
+  };
+
+  const handleVariantCancel = () => {
+    setShowVariantModal(false);
+    setSelectedItem(null);
   };
 
   const removeFromCart = (itemId) => {
@@ -168,7 +250,10 @@ export default function OrderPortal() {
   };
 
   const getTotalPrice = () => {
-    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+    return cart.reduce((total, item) => {
+      const itemPrice = item.finalPrice || item.price || 0;
+      return total + (itemPrice * item.quantity);
+    }, 0);
   };
 
   // Get unique categories
@@ -282,35 +367,95 @@ export default function OrderPortal() {
               <div style={styles.cartSidebar}>
                 <h3 style={styles.cartTitle}>Your Cart</h3>
                 <div style={styles.cartItems}>
-                  {cart.map(item => (
-                    <div key={item.id} style={styles.cartItem}>
-                      <div style={styles.cartItemInfo}>
-                        <span style={styles.cartItemName}>{item.name}</span>
-                        <span style={styles.cartItemPrice}>₱{item.price.toFixed(2)}</span>
+                  {cart.map((item, index) => {
+                    const itemPrice = item.finalPrice || item.price || 0;
+                    const uniqueKey = item.cartItemId || `${item.id}-${index}`;
+                    
+                    return (
+                      <div key={uniqueKey} style={styles.cartItem}>
+                        <div style={styles.cartItemInfo}>
+                          <div>
+                            <span style={styles.cartItemName}>{item.name}</span>
+                            {item.variantDetails && Object.keys(item.variantDetails).length > 0 && (
+                              <div style={styles.variantDetails}>
+                                {Object.entries(item.variantDetails).map(([type, value]) => (
+                                  <div key={type} style={styles.variantDetail}>
+                                    <span style={styles.variantType}>{type}:</span> {value}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <span style={styles.cartItemPrice}>₱{itemPrice.toFixed(2)}</span>
+                        </div>
+                        <div style={styles.cartItemControls}>
+                          <button 
+                            style={styles.quantityBtn}
+                            onClick={() => {
+                              if (item.cartItemId) {
+                                // For items with variants, find by cartItemId
+                                const itemIndex = cart.findIndex(ci => ci.cartItemId === item.cartItemId);
+                                if (itemIndex >= 0) {
+                                  const newQuantity = cart[itemIndex].quantity - 1;
+                                  if (newQuantity <= 0) {
+                                    const updatedCart = cart.filter((_, i) => i !== itemIndex);
+                                    setCart(updatedCart);
+                                    localStorage.setItem('cart', JSON.stringify(updatedCart));
+                                  } else {
+                                    const updatedCart = cart.map((ci, i) => 
+                                      i === itemIndex ? { ...ci, quantity: newQuantity } : ci
+                                    );
+                                    setCart(updatedCart);
+                                    localStorage.setItem('cart', JSON.stringify(updatedCart));
+                                  }
+                                }
+                              } else {
+                                updateQuantity(item.id, item.quantity - 1);
+                              }
+                            }}
+                          >
+                            -
+                          </button>
+                          <span style={styles.quantity}>{item.quantity}</span>
+                          <button 
+                            style={styles.quantityBtn}
+                            onClick={() => {
+                              if (item.cartItemId) {
+                                // For items with variants, find by cartItemId
+                                const itemIndex = cart.findIndex(ci => ci.cartItemId === item.cartItemId);
+                                if (itemIndex >= 0) {
+                                  const updatedCart = cart.map((ci, i) => 
+                                    i === itemIndex ? { ...ci, quantity: ci.quantity + 1 } : ci
+                                  );
+                                  setCart(updatedCart);
+                                  localStorage.setItem('cart', JSON.stringify(updatedCart));
+                                }
+                              } else {
+                                updateQuantity(item.id, item.quantity + 1);
+                              }
+                            }}
+                          >
+                            +
+                          </button>
+                          <button 
+                            style={styles.removeBtn}
+                            onClick={() => {
+                              if (item.cartItemId) {
+                                // For items with variants, find by cartItemId
+                                const updatedCart = cart.filter(ci => ci.cartItemId !== item.cartItemId);
+                                setCart(updatedCart);
+                                localStorage.setItem('cart', JSON.stringify(updatedCart));
+                              } else {
+                                removeFromCart(item.id);
+                              }
+                            }}
+                          >
+                            🗑
+                          </button>
+                        </div>
                       </div>
-                      <div style={styles.cartItemControls}>
-                        <button 
-                          style={styles.quantityBtn}
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                        >
-                          -
-                        </button>
-                        <span style={styles.quantity}>{item.quantity}</span>
-                        <button 
-                          style={styles.quantityBtn}
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        >
-                          +
-                        </button>
-                        <button 
-                          style={styles.removeBtn}
-                          onClick={() => removeFromCart(item.id)}
-                        >
-                          🗑
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div style={styles.cartTotal}>
                   <span style={styles.totalLabel}>Total:</span>
@@ -326,26 +471,41 @@ export default function OrderPortal() {
             )}
           </div>
         </main>
+
+        {/* Variant Selection Modal */}
+        {showVariantModal && selectedItem && (
+          <VariantSelectionModal
+            item={selectedItem}
+            onConfirm={handleVariantConfirm}
+            onCancel={handleVariantCancel}
+          />
+        )}
       </div>
     </>
   );
 }
 
 function MenuItem({ item, onAddToCart }) {
+  const price = item.base_price || item.price || 0;
+  const hasVariants = item.has_variants && item.variant_types && item.variant_types.length > 0;
+
   return (
     <div style={styles.menuItem}>
       <div style={styles.menuItemHeader}>
         <h4 style={styles.menuItemName}>{item.name}</h4>
-        <span style={styles.menuItemPrice}>₱{item.price?.toFixed(2)}</span>
+        <span style={styles.menuItemPrice}>₱{price.toFixed(2)}</span>
       </div>
       {item.description && (
         <p style={styles.menuItemDesc}>{item.description}</p>
+      )}
+      {hasVariants && (
+        <p style={styles.hasVariantsText}>Customizable options available</p>
       )}
       <button 
         style={styles.addBtn}
         onClick={() => onAddToCart(item)}
       >
-        Add to Cart
+        {hasVariants ? 'Customize & Add' : 'Add to Cart'}
       </button>
     </div>
   );
@@ -480,6 +640,12 @@ const styles = {
     marginBottom: '12px',
     lineHeight: '1.4',
   },
+  hasVariantsText: {
+    fontSize: '12px',
+    color: '#ffc107',
+    fontStyle: 'italic',
+    marginBottom: '12px',
+  },
   addBtn: {
     padding: '8px 16px',
     backgroundColor: '#ffc107',
@@ -522,15 +688,31 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     marginBottom: '8px',
+    alignItems: 'flex-start',
   },
   cartItemName: {
     fontSize: '14px',
     color: '#fff',
+    fontWeight: '600',
+  },
+  variantDetails: {
+    marginTop: '4px',
+    fontSize: '11px',
+    color: '#999',
+  },
+  variantDetail: {
+    marginTop: '2px',
+  },
+  variantType: {
+    color: '#ffc107',
+    fontWeight: '600',
   },
   cartItemPrice: {
     fontSize: '14px',
     color: '#ffc107',
     fontWeight: '600',
+    marginLeft: '8px',
+    flexShrink: 0,
   },
   cartItemControls: {
     display: 'flex',

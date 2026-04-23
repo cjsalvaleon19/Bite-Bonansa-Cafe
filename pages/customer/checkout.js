@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Script from 'next/script';
 import { supabase } from '../../utils/supabaseClient';
+import { calcPointsEarned } from '../../utils/loyaltyUtils';
 
 // Store coordinates - Bite Bonansa Cafe
 const STORE_LOCATION = {
@@ -151,11 +152,19 @@ export default function Checkout() {
   }, [router]);
 
   const calculateSubtotal = () => {
-    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+    return cart.reduce((total, item) => {
+      const itemPrice = item.finalPrice || item.price || 0;
+      return total + (itemPrice * item.quantity);
+    }, 0);
   };
 
   const calculateVAT = (subtotal) => {
     return 0; // VAT disabled as per requirements
+  };
+
+  const calculatePointsEarned = () => {
+    const subtotal = calculateSubtotal();
+    return calcPointsEarned(subtotal);
   };
 
   // Calculate delivery fee estimate (will be accurate when coordinates are selected)
@@ -502,15 +511,31 @@ export default function Checkout() {
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>Order Summary</h2>
               <div style={styles.orderItems}>
-                {cart.map(item => (
-                  <div key={item.id} style={styles.orderItem}>
-                    <div style={styles.itemInfo}>
-                      <span style={styles.itemName}>{item.name}</span>
-                      <span style={styles.itemQuantity}>x{item.quantity}</span>
+                {cart.map((item, index) => {
+                  const itemPrice = item.finalPrice || item.price || 0;
+                  const uniqueKey = item.cartItemId || `${item.id}-${index}`;
+                  
+                  return (
+                    <div key={uniqueKey} style={styles.orderItem}>
+                      <div style={styles.itemInfo}>
+                        <div>
+                          <span style={styles.itemName}>{item.name}</span>
+                          {item.variantDetails && Object.keys(item.variantDetails).length > 0 && (
+                            <div style={styles.variantDetailsCheckout}>
+                              {Object.entries(item.variantDetails).map(([type, value]) => (
+                                <div key={type} style={styles.variantDetailCheckout}>
+                                  {type}: {value}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <span style={styles.itemQuantity}>x{item.quantity}</span>
+                      </div>
+                      <span style={styles.itemPrice}>₱{(itemPrice * item.quantity).toFixed(2)}</span>
                     </div>
-                    <span style={styles.itemPrice}>₱{(item.price * item.quantity).toFixed(2)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Payment Details */}
@@ -532,6 +557,10 @@ export default function Checkout() {
                 <div style={{...styles.detailRow, ...styles.totalRow}}>
                   <span style={styles.totalLabel}>Total:</span>
                   <span style={styles.totalValue}>₱{total.toFixed(2)}</span>
+                </div>
+                <div style={styles.pointsEarnedRow}>
+                  <span style={styles.pointsEarnedLabel}>💰 Points You'll Earn:</span>
+                  <span style={styles.pointsEarnedValue}>₱{calculatePointsEarned().toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -760,12 +789,22 @@ const styles = {
   itemInfo: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: '12px',
     flex: 1,
   },
   itemName: {
     fontSize: '14px',
     color: '#fff',
+    fontWeight: '600',
+  },
+  variantDetailsCheckout: {
+    marginTop: '4px',
+    fontSize: '11px',
+    color: '#999',
+  },
+  variantDetailCheckout: {
+    marginTop: '2px',
   },
   itemQuantity: {
     fontSize: '14px',
@@ -806,6 +845,25 @@ const styles = {
   },
   totalValue: {
     fontSize: '18px',
+    color: '#ffc107',
+    fontWeight: '700',
+  },
+  pointsEarnedRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 16px',
+    backgroundColor: '#0f0f0f',
+    borderRadius: '8px',
+    marginTop: '12px',
+  },
+  pointsEarnedLabel: {
+    fontSize: '14px',
+    color: '#ffc107',
+    fontWeight: '600',
+  },
+  pointsEarnedValue: {
+    fontSize: '16px',
     color: '#ffc107',
     fontWeight: '700',
   },
