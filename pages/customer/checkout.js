@@ -291,14 +291,13 @@ export default function Checkout() {
       const subtotal = calculateSubtotal();
       const vat = calculateVAT(subtotal);
       
-      // Use frontend-calculated delivery fee (same logic as database function)
-      const deliveryFee = calculateDeliveryFee();
-      
-      // Validate that delivery fee was calculated successfully
-      if (typeof deliveryFee === 'string') {
-        // calculateDeliveryFee returns 'Select location' if coordinates are missing
+      // Validate coordinates before calculating delivery fee
+      if (!formData.latitude || !formData.longitude) {
         throw new Error('Please select your delivery location on the map first');
       }
+      
+      // Use frontend-calculated delivery fee (same logic as database function)
+      const deliveryFee = calculateDeliveryFee();
       
       const total = subtotal + vat + deliveryFee;
 
