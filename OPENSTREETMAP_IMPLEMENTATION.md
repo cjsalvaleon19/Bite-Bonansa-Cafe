@@ -9,7 +9,7 @@ The Bite Bonansa Cafe application now uses **OpenStreetMap** with **Nominatim** 
 ```json
 {
   "react-leaflet": "^4.2.1",
-  "leaflet": "latest"
+  "leaflet": "^1.9.4"
 }
 ```
 

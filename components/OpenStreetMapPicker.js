@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import { useMapEvents, useMap } from 'react-leaflet';
 
 // Dynamically import Leaflet components to avoid SSR issues
 const MapContainer = dynamic(
@@ -12,10 +13,6 @@ const TileLayer = dynamic(
 );
 const Marker = dynamic(
   () => import('react-leaflet').then((mod) => mod.Marker),
-  { ssr: false }
-);
-const useMapEvents = dynamic(
-  () => import('react-leaflet').then((mod) => mod.useMapEvents),
   { ssr: false }
 );
 
@@ -35,6 +32,19 @@ function MapClickHandler({ onLocationSelect }) {
   return null;
 }
 
+// Component to update map center without remounting
+function MapCenterUpdater({ center }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (center) {
+      map.setView([center.lat, center.lng], map.getZoom());
+    }
+  }, [center, map]);
+  
+  return null;
+}
+
 // Component to handle marker dragging
 function DraggableMarker({ position, onDragEnd }) {
   const [markerPosition, setMarkerPosition] = useState(position);
@@ -44,7 +54,7 @@ function DraggableMarker({ position, onDragEnd }) {
     setMarkerPosition(position);
   }, [position]);
 
-  const eventHandlers = {
+  const eventHandlers = useMemo(() => ({
     dragend() {
       const marker = markerRef.current;
       if (marker != null) {
@@ -53,13 +63,13 @@ function DraggableMarker({ position, onDragEnd }) {
         onDragEnd(newPos.lat, newPos.lng);
       }
     },
-  };
+  }), [onDragEnd]);
 
   // Only render marker if we have Leaflet loaded
   if (typeof window === 'undefined') return null;
 
   const L = require('leaflet');
-  const icon = L.icon({
+  const icon = useMemo(() => L.icon({
     iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
     iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
     shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
@@ -67,7 +77,7 @@ function DraggableMarker({ position, onDragEnd }) {
     iconAnchor: [12, 41],
     popupAnchor: [1, -34],
     shadowSize: [41, 41]
-  });
+  }), [L]);
 
   return (
     <Marker
@@ -110,6 +120,7 @@ export default function OpenStreetMapPicker({
         {
           headers: {
             'Accept': 'application/json',
+            'User-Agent': 'Bite Bonansa Cafe/1.0',
           }
         }
       );
@@ -154,6 +165,7 @@ export default function OpenStreetMapPicker({
         {
           headers: {
             'Accept': 'application/json',
+            'User-Agent': 'Bite Bonansa Cafe/1.0',
           }
         }
       );
@@ -272,15 +284,15 @@ export default function OpenStreetMapPicker({
       }}>
         {typeof window !== 'undefined' && (
           <MapContainer
-            center={[mapCenter.lat, mapCenter.lng]}
+            center={[position.lat, position.lng]}
             zoom={15}
             style={{ height: '100%', width: '100%' }}
-            key={`${mapCenter.lat}-${mapCenter.lng}`}
           >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
+            <MapCenterUpdater center={mapCenter} />
             <DraggableMarker 
               position={position} 
               onDragEnd={handleLocationSelect}
