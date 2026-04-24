@@ -336,7 +336,6 @@ export default function CustomerOrderPage() {
           <p className="text-muted-foreground">Browse our menu and place your order</p>
         </div>
 
-        {/* Cart Button (Mobile) */}
         <Sheet>
           <SheetTrigger className="relative inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 md:hidden">
             <ShoppingCart className="mr-2 h-5 w-5" />
@@ -379,7 +378,6 @@ export default function CustomerOrderPage() {
         </Sheet>
       </div>
 
-      {/* Order Type Toggle */}
       <div className="flex gap-2 rounded-lg border bg-muted/30 p-1 w-fit">
         <Button
           variant={orderType === 'delivery' ? 'default' : 'ghost'}
@@ -408,7 +406,6 @@ export default function CustomerOrderPage() {
       )}
 
       <div className="flex gap-6">
-        {/* Menu Section */}
         <div className="flex-1 space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -514,7 +511,6 @@ export default function CustomerOrderPage() {
           </div>
         </div>
 
-        {/* Cart Section (Desktop) */}
         <div className="hidden w-96 md:block">
           <Card className="sticky top-4">
             <CardHeader>
@@ -555,7 +551,6 @@ export default function CustomerOrderPage() {
         </div>
       </div>
 
-      {/* Item Customization Dialog */}
       <ItemCustomizationDialog
         item={dialogItem}
         open={showItemDialog}
@@ -563,16 +558,16 @@ export default function CustomerOrderPage() {
         onAddToCart={addToCartWithCustomizations}
       />
 
-      {/* Location Picker — conditionally rendered; closes after a location is picked */}
-      <LocationPicker
-        isOpen={showLocationPicker}
-        onClose={() => setShowLocationPicker(false)}
-        onSelectLocation={(lat: number, lng: number, address: string) => {
-          handleLocationSelect(address, lat, lng)
-        }}
-      />
+      {showLocationPicker && (
+        <LocationPicker
+          onLocationSelect={(address: string, lat: number, lng: number) => {
+            handleLocationSelect(address, lat, lng)
+            setShowLocationPicker(false)
+          }}
+          initialAddress={deliveryAddress}
+        />
+      )}
 
-      {/* GCash Payment Dialog */}
       <GCashDialog
         open={showGcashDialog}
         onOpenChange={setShowGcashDialog}
@@ -601,12 +596,7 @@ interface ItemCustomizationDialogProps {
   ) => void
 }
 
-function ItemCustomizationDialog({
-  item,
-  open,
-  onClose,
-  onAddToCart,
-}: ItemCustomizationDialogProps) {
+function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCustomizationDialogProps) {
   const [selectedVariety, setSelectedVariety] = useState('')
   const [selectedSize, setSelectedSize] = useState<{ name: string; price: number } | null>(null)
   const [selectedAddons, setSelectedAddons] = useState<MenuItemAddon[]>([])
@@ -630,8 +620,7 @@ function ItemCustomizationDialog({
 
   const basePrice = selectedSize?.price ?? item.price
   const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0)
-  const unitPrice = basePrice + addonTotal
-  const lineTotal = unitPrice * quantity
+  const lineTotal = (basePrice + addonTotal) * quantity
 
   const toggleAddon = (addon: MenuItemAddon) => {
     setSelectedAddons(prev =>
@@ -652,46 +641,37 @@ function ItemCustomizationDialog({
         </DialogHeader>
 
         <div className="space-y-5 py-2">
-          {/* Varieties */}
           {varieties.length > 0 && (
             <div className="space-y-2">
-              <Label className="text-sm font-semibold">Variety</Label>
-              <RadioGroup
-                value={selectedVariety}
-                onValueChange={setSelectedVariety}
-                className="space-y-1"
-              >
+              <Label className="text-sm font-semibold">
+                Variety <span className="text-destructive">*</span>
+              </Label>
+              <RadioGroup value={selectedVariety} onValueChange={setSelectedVariety} className="space-y-1">
                 {varieties.map((v: string) => (
                   <div key={v} className="flex items-center gap-2">
                     <RadioGroupItem value={v} id={`variety-${v}`} />
-                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">
-                      {v}
-                    </Label>
+                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">{v}</Label>
                   </div>
                 ))}
               </RadioGroup>
             </div>
           )}
 
-          {/* Sizes */}
           {sizes.length > 0 && (
             <div className="space-y-2">
-              <Label className="text-sm font-semibold">Size</Label>
+              <Label className="text-sm font-semibold">
+                Size <span className="text-destructive">*</span>
+              </Label>
               <RadioGroup
                 value={selectedSize?.name || ''}
-                onValueChange={(name) => {
-                  const s = sizes.find((x: any) => x.name === name)
-                  setSelectedSize(s || null)
-                }}
+                onValueChange={(name) => setSelectedSize(sizes.find((x: any) => x.name === name) || null)}
                 className="space-y-1"
               >
                 {sizes.map((s: any) => (
                   <div key={s.name} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <RadioGroupItem value={s.name} id={`size-${s.name}`} />
-                      <Label htmlFor={`size-${s.name}`} className="cursor-pointer font-normal">
-                        {s.name}
-                      </Label>
+                      <Label htmlFor={`size-${s.name}`} className="cursor-pointer font-normal">{s.name}</Label>
                     </div>
                     <span className="text-sm text-muted-foreground">{formatCurrency(s.price)}</span>
                   </div>
@@ -700,12 +680,10 @@ function ItemCustomizationDialog({
             </div>
           )}
 
-          {/* Add-ons */}
           {addons.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-semibold">
-                Add-ons{' '}
-                <span className="text-muted-foreground font-normal">(optional)</span>
+                Add-ons <span className="text-muted-foreground font-normal">(optional)</span>
               </Label>
               <div className="space-y-1.5">
                 {addons.map((addon: MenuItemAddon) => (
@@ -714,16 +692,14 @@ function ItemCustomizationDialog({
                       <Checkbox
                         id={`addon-${addon.name}`}
                         checked={selectedAddons.some(a => a.name === addon.name)}
-                        onChange={() => toggleAddon(addon)}
+                        onCheckedChange={() => toggleAddon(addon)}
                       />
                       <Label htmlFor={`addon-${addon.name}`} className="cursor-pointer font-normal">
                         {addon.name}
                       </Label>
                     </div>
                     {addon.price > 0 && (
-                      <span className="text-sm text-muted-foreground">
-                        +{formatCurrency(addon.price)}
-                      </span>
+                      <span className="text-sm text-muted-foreground">+{formatCurrency(addon.price)}</span>
                     )}
                   </div>
                 ))}
@@ -731,30 +707,27 @@ function ItemCustomizationDialog({
             </div>
           )}
 
-          {/* Quantity */}
           <div className="flex items-center justify-between pt-1">
             <Label className="text-sm font-semibold">Quantity</Label>
             <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                className="h-8 w-8"
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-              >
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setQuantity(Math.max(1, quantity - 1))}>
                 <Minus className="h-3 w-3" />
               </Button>
               <span className="w-8 text-center font-semibold">{quantity}</span>
-              <Button
-                variant="outline"
-                className="h-8 w-8"
-                onClick={() => setQuantity(quantity + 1)}
-              >
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setQuantity(quantity + 1)}>
                 <Plus className="h-3 w-3" />
               </Button>
             </div>
           </div>
         </div>
 
-        <DialogFooter className="mt-2">
+        <DialogFooter className="mt-2 flex-col gap-2">
+          {varieties.length > 0 && !selectedVariety && (
+            <p className="w-full text-center text-xs text-destructive">Please select a variety to continue.</p>
+          )}
+          {sizes.length > 0 && !selectedSize && (
+            <p className="w-full text-center text-xs text-destructive">Please select a size to continue.</p>
+          )}
           <div className="flex w-full items-center justify-between gap-3">
             <div>
               <p className="text-xs text-muted-foreground">Total</p>
@@ -775,12 +748,6 @@ function ItemCustomizationDialog({
               Add to Cart
             </Button>
           </div>
-          {sizes.length > 0 && !selectedSize && (
-            <p className="w-full text-center text-xs text-destructive mt-1">Please select a size to continue.</p>
-          )}
-          {varieties.length > 0 && !selectedVariety && (
-            <p className="w-full text-center text-xs text-destructive mt-1">Please select a variety to continue.</p>
-          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -799,23 +766,13 @@ interface GCashDialogProps {
   isSubmitting: boolean
 }
 
-function GCashDialog({
-  open,
-  onOpenChange,
-  total,
-  gcashRef,
-  setGcashRef,
-  onConfirm,
-  isSubmitting,
-}: GCashDialogProps) {
+function GCashDialog({ open, onOpenChange, total, gcashRef, setGcashRef, onConfirm, isSubmitting }: GCashDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>GCash Payment</DialogTitle>
-          <DialogDescription>
-            Send the exact amount then enter your reference number below
-          </DialogDescription>
+          <DialogDescription>Send the exact amount then enter your reference number below</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="rounded-lg bg-blue-50 p-4 text-center">
@@ -827,11 +784,7 @@ function GCashDialog({
             <p className="text-sm text-muted-foreground">Amount to send:</p>
             <p className="text-3xl font-bold text-primary">{formatCurrency(total)}</p>
           </div>
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => window.open('https://app.gcash.com', '_blank')}
-          >
+          <Button variant="outline" className="w-full" onClick={() => window.open('https://app.gcash.com', '_blank')}>
             <Smartphone className="mr-2 h-4 w-4" />
             Open GCash App
           </Button>
@@ -846,19 +799,11 @@ function GCashDialog({
               value={gcashRef}
               onChange={(e) => setGcashRef(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
-              Found in your GCash transaction history after the payment is sent.
-            </p>
+            <p className="text-xs text-muted-foreground">Found in your GCash transaction history after payment is sent.</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="flex-1"
-              onClick={onConfirm}
-              disabled={isSubmitting || !gcashRef.trim()}
-            >
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button className="flex-1" onClick={onConfirm} disabled={isSubmitting || !gcashRef.trim()}>
               {isSubmitting ? 'Processing...' : 'Confirm Payment'}
             </Button>
           </div>
@@ -895,30 +840,12 @@ interface CartContentProps {
 }
 
 function CartContent({
-  cart,
-  updateQuantity,
-  removeFromCart,
-  subtotal,
-  deliveryFee,
-  deliveryDistance,
-  deliveryOutOfRange = false,
-  total,
-  earnedPoints,
-  deliveryAddress,
-  setDeliveryAddress,
-  openLocationPicker,
-  paymentMethod,
-  setPaymentMethod,
-  orderNotes,
-  setOrderNotes,
-  cashTendered,
-  setCashTendered,
-  handlePlaceOrder,
-  isSubmitting,
-  orderType = 'delivery',
+  cart, updateQuantity, removeFromCart, subtotal, deliveryFee, deliveryDistance,
+  deliveryOutOfRange = false, total, earnedPoints, deliveryAddress, setDeliveryAddress,
+  openLocationPicker, paymentMethod, setPaymentMethod, orderNotes, setOrderNotes,
+  cashTendered, setCashTendered, handlePlaceOrder, isSubmitting, orderType = 'delivery',
 }: CartContentProps) {
-  const change =
-    paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
+  const change = paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
 
   if (cart.length === 0) {
     return (
@@ -948,19 +875,17 @@ function CartContent({
                       )}
                     </div>
                   )}
-                  <p className="text-sm text-muted-foreground">
-                    {formatCurrency(item.basePrice + item.addonPrice)} each
-                  </p>
+                  <p className="text-sm text-muted-foreground">{formatCurrency(item.basePrice + item.addonPrice)} each</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button variant="outline" className="h-7 w-7" onClick={() => updateQuantity(item.id, -1)}>
+                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, -1)}>
                     <Minus className="h-3 w-3" />
                   </Button>
                   <span className="w-8 text-center font-medium">{item.quantity}</span>
-                  <Button variant="outline" className="h-7 w-7" onClick={() => updateQuantity(item.id, 1)}>
+                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, 1)}>
                     <Plus className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -992,7 +917,7 @@ function CartContent({
             </Button>
             {deliveryOutOfRange && (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <strong>Outside delivery area.</strong> Your pinned location is more than 10 km from our store.
+                <strong>Outside delivery area.</strong> More than 10 km from our store.
               </div>
             )}
           </div>
@@ -1006,112 +931,11 @@ function CartContent({
 
         <div className="mt-4 space-y-3">
           <Label className="font-semibold">Payment Method</Label>
-          <RadioGroup
-            value={paymentMethod}
-            onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}
-            className="flex gap-4"
-          >
+          <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="flex gap-4">
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="gcash" id="gcash" />
               <Label htmlFor="gcash">GCash</Label>
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="cash" id="cash" />
-              <Label htmlFor="cash">
-                {orderType === 'delivery' ? 'Cash on Delivery' : 'Cash'}
-              </Label>
-            </div>
-          </RadioGroup>
-          <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-            <span className="flex items-center gap-1.5 text-amber-700">
-              <Gift className="h-4 w-4" />
-              Points you&apos;ll earn
-            </span>
-            <span className="font-bold text-amber-700">+{earnedPoints} pts</span>
-          </div>
-        </div>
-
-        {paymentMethod === 'cash' && (
-          <div className="mt-4 space-y-2">
-            <Label htmlFor="cashTendered" className="flex items-center gap-2">
-              <Banknote className="h-4 w-4" />
-              Cash to be Tendered
-            </Label>
-            <Input
-              id="cashTendered"
-              type="number"
-              placeholder="Enter amount you will pay"
-              value={cashTendered}
-              onChange={(e) => setCashTendered(e.target.value)}
-              min={total}
-            />
-            {cashTendered && parseFloat(cashTendered) >= total && (
-              <p className="text-sm text-green-600">Change: {formatCurrency(change)}</p>
-            )}
-            {cashTendered && parseFloat(cashTendered) < total && (
-              <p className="text-sm text-red-600">Amount must be at least {formatCurrency(total)}</p>
-            )}
-          </div>
-        )}
-
-        <div className="mt-4 space-y-2">
-          <Label htmlFor="notes">Order Notes (Optional)</Label>
-          <Textarea
-            id="notes"
-            placeholder="Any special instructions?"
-            value={orderNotes}
-            onChange={(e) => setOrderNotes(e.target.value)}
-            className="resize-none"
-            rows={2}
-          />
-        </div>
-      </ScrollArea>
-
-      <div className="mt-4 space-y-2 border-t pt-4">
-        <div className="flex justify-between text-sm">
-          <span>Subtotal</span>
-          <span>{formatCurrency(subtotal)}</span>
-        </div>
-        {orderType === 'delivery' && (
-          <div className="flex justify-between text-sm">
-            <div className="flex flex-col">
-              <span className="flex items-center gap-1">
-                <Truck className="h-3 w-3" />
-                Delivery Fee
-              </span>
-              {deliveryDistance !== null && (
-                <span className="text-xs text-muted-foreground">
-                  Distance: {formatDistance(deliveryDistance)}
-                </span>
-              )}
-            </div>
-            <span>{formatCurrency(deliveryFee)}</span>
-          </div>
-        )}
-        <div className="flex justify-between text-sm text-muted-foreground">
-          <span>VAT</span>
-          <span>₱0.00</span>
-        </div>
-        <Separator />
-        <div className="flex justify-between text-xl font-bold">
-          <span>Total</span>
-          <span>{formatCurrency(total)}</span>
-        </div>
-      </div>
-
-      <Button
-        className="mt-4 w-full"
-        size="lg"
-        onClick={handlePlaceOrder}
-        disabled={
-          isSubmitting ||
-          (orderType === 'delivery' && !deliveryAddress.trim()) ||
-          (orderType === 'delivery' && deliveryOutOfRange) ||
-          (paymentMethod === 'cash' && (!cashTendered || parseFloat(cashTendered) < total))
-        }
-      >
-        {isSubmitting ? 'Placing Order...' : 'Place Order'}
-      </Button>
-    </div>
-  )
-}
+              <Label htmlFor="cash">{order
