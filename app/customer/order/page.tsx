@@ -57,23 +57,19 @@ interface CartItem {
   menuItemId: string
   menuItem: MenuItem
   quantity: number
-  basePrice: number   // unit price (from size or item.price)
-  addonPrice: number  // sum of selected addon prices per unit
-  price: number       // (basePrice + addonPrice) × quantity
+  basePrice: number
+  addonPrice: number
+  price: number
   selectedVariety?: string
   selectedSize?: string
   selectedAddons: MenuItemAddon[]
 }
 
-// GCash details
 const GCASH_OWNER = {
   name: 'Catherine Jean Arclita',
   number: '09514915138',
 }
 
-// Points rate:
-//   subtotal ₱0–₱500    → 0.2% of subtotal
-//   subtotal ₱501+      → 0.35% of subtotal
 function calcEarnedPoints(subtotal: number): number {
   const rate = subtotal <= 500 ? 0.002 : 0.0035
   return Math.floor(subtotal * rate)
@@ -101,8 +97,6 @@ export default function CustomerOrderPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
-
-  // Item customization dialog
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
 
@@ -127,7 +121,9 @@ export default function CustomerOrderPage() {
             category: item.category?.name || '',
             available: item.available,
             preparationTime: item.preparation_time || 0,
-            varieties: item.varieties || [],
+            varieties: Array.isArray(item.varieties)
+              ? item.varieties.map((v: any) => (typeof v === 'string' ? v : v?.name ?? String(v)))
+              : [],
             sizes: item.sizes || [],
             addons: item.addons || [],
             kitchenDepartment: item.kitchen_department || '',
@@ -147,8 +143,6 @@ export default function CustomerOrderPage() {
       selectedCategory === 'all' || item.category === selectedCategory
     return matchesSearch && matchesCategory
   })
-
-  // ── Cart helpers ──────────────────────────────────────────────────────────
 
   const openItemDialog = (item: MenuItem) => {
     const hasOptions =
@@ -170,7 +164,7 @@ export default function CustomerOrderPage() {
     addons: MenuItemAddon[],
     quantity: number
   ) => {
-    const sizeObj = item.sizes?.find((s: any) => s.name === sizeName)
+    const sizeObj = (item.sizes as any[])?.find((s: any) => s.name === sizeName)
     const basePrice = sizeObj?.price ?? item.price
     const addonPrice = addons.reduce((sum, a) => sum + a.price, 0)
     const unitPrice = basePrice + addonPrice
@@ -220,17 +214,12 @@ export default function CustomerOrderPage() {
     setCart(cart.filter((item) => item.id !== itemId))
   }
 
-  // ── Totals ────────────────────────────────────────────────────────────────
-
   const subtotal = cart.reduce((sum, item) => sum + item.price, 0)
   const { fee: deliveryFee, distance: deliveryDistance, outOfRange: deliveryOutOfRange } =
     calculateDeliveryFee(deliveryLat, deliveryLng)
   const appliedDeliveryFee = orderType === 'delivery' ? deliveryFee : 0
-  const tax = 0
-  const total = subtotal + appliedDeliveryFee + tax
+  const total = subtotal + appliedDeliveryFee
   const earnedPoints = calcEarnedPoints(subtotal)
-
-  // ── Order submission ──────────────────────────────────────────────────────
 
   const handlePlaceOrder = async () => {
     if (orderType === 'delivery' && !deliveryAddress.trim()) {
@@ -238,7 +227,7 @@ export default function CustomerOrderPage() {
       return
     }
     if (orderType === 'delivery' && deliveryOutOfRange) {
-      toast.error('Your location is outside our delivery area (max 10 km). Please choose a closer location or switch to Pick-up.')
+      toast.error('Your location is outside our delivery area (max 10 km).')
       return
     }
     if (paymentMethod === 'cash') {
@@ -258,11 +247,9 @@ export default function CustomerOrderPage() {
   const submitOrder = async () => {
     setIsSubmitting(true)
     setShowGcashDialog(false)
-
     try {
       const supabase = createClient()
       const isDelivery = orderType === 'delivery'
-
       let notesStr = orderNotes
       if (paymentMethod === 'cash' && cashTendered) {
         notesStr += ` | Cash tendered: ${formatCurrency(parseFloat(cashTendered))}`
@@ -270,7 +257,6 @@ export default function CustomerOrderPage() {
       if (paymentMethod === 'gcash' && gcashRef) {
         notesStr += ` | GCash ref: ${gcashRef}`
       }
-
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -292,9 +278,7 @@ export default function CustomerOrderPage() {
         })
         .select()
         .single()
-
       if (orderError) throw new Error(orderError.message)
-
       const orderItems = cart.map((item) => {
         const parts: string[] = []
         if (item.selectedVariety) parts.push(item.selectedVariety)
@@ -312,14 +296,11 @@ export default function CustomerOrderPage() {
           subtotal: item.price,
         }
       })
-
       const { error: itemsError } = await supabase.from('order_items').insert(orderItems)
       if (itemsError) throw new Error(itemsError.message)
-
       toast.success(`Order ${order.order_number} placed successfully!`, {
         description: 'You can track your order in the Track Orders page.',
       })
-
       setCart([])
       setOrderNotes('')
       setCashTendered('')
@@ -339,15 +320,13 @@ export default function CustomerOrderPage() {
     setDeliveryLng(lng)
     const { fee, distance, outOfRange } = calculateDeliveryFee(lat, lng)
     if (outOfRange) {
-      toast.error('Your location is outside our delivery area (max 10 km). Please choose a closer location or switch to Pick-up.')
+      toast.error('Your location is outside our delivery area (max 10 km).')
     } else {
       toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance ?? 0)})`)
     }
   }
 
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
-
-  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -454,15 +433,20 @@ export default function CustomerOrderPage() {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredItems.map((item) => {
-              const hasVarieties = item.varieties && item.varieties.length > 0
-              const hasSizes     = item.sizes     && item.sizes.length     > 0
-              const hasAddons    = item.addons    && item.addons.length    > 0
-              const hasOptions   = hasVarieties || hasSizes || hasAddons
+              const varieties = (item.varieties as unknown as string[]) ?? []
+              const sizes = (item.sizes as any[]) ?? []
+              const addons = (item.addons as any[]) ?? []
+              const hasVarieties = varieties.length > 0
+              const hasSizes = sizes.length > 0
+              const hasAddons = addons.length > 0
+              const hasOptions = hasVarieties || hasSizes || hasAddons
 
               const minSizePrice = hasSizes
-                ? Math.min(...(item.sizes as any[]).map((s: any) => s.price))
+                ? Math.min(...sizes.map((s: any) => s.price))
                 : null
-              const priceLabel = minSizePrice !== null ? `from ${formatCurrency(minSizePrice)}` : formatCurrency(item.price)
+              const priceLabel = minSizePrice !== null
+                ? `from ${formatCurrency(minSizePrice)}`
+                : formatCurrency(item.price)
 
               return (
                 <Card
@@ -471,22 +455,19 @@ export default function CustomerOrderPage() {
                   onClick={() => openItemDialog(item)}
                 >
                   <CardContent className="p-4">
-                    {/* Name + price row */}
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold leading-snug">{item.name}</h3>
                       <span className="text-base font-bold text-primary whitespace-nowrap">{priceLabel}</span>
                     </div>
 
-                    {/* Description */}
                     {item.description && (
                       <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
                         {item.description}
                       </p>
                     )}
 
-                    {/* Option hints */}
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {hasVarieties && (item.varieties as unknown as string[]).slice(0, 3).map((v) => (
+                      {hasVarieties && varieties.slice(0, 3).map((v: string) => (
                         <span
                           key={v}
                           className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
@@ -494,12 +475,12 @@ export default function CustomerOrderPage() {
                           {v}
                         </span>
                       ))}
-                      {hasVarieties && (item.varieties as unknown as string[]).length > 3 && (
+                      {hasVarieties && varieties.length > 3 && (
                         <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                          +{(item.varieties as unknown as string[]).length - 3} more
+                          +{varieties.length - 3} more
                         </span>
                       )}
-                      {hasSizes && (item.sizes as any[]).map((s: any) => (
+                      {hasSizes && sizes.map((s: any) => (
                         <span
                           key={s.name}
                           className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
@@ -509,12 +490,10 @@ export default function CustomerOrderPage() {
                       ))}
                     </div>
 
-                    {/* Add-ons hint */}
                     {hasAddons && (
                       <p className="mt-1 text-[11px] text-muted-foreground">+ Add-ons available</p>
                     )}
 
-                    {/* Button */}
                     <div className="mt-3">
                       <Button
                         size="sm"
@@ -584,13 +563,14 @@ export default function CustomerOrderPage() {
         onAddToCart={addToCartWithCustomizations}
       />
 
-      {/* Location Picker */}
-      <LocationPicker
-        open={showLocationPicker}
-        onOpenChange={setShowLocationPicker}
-        onLocationSelect={handleLocationSelect}
-        initialAddress={deliveryAddress}
-      />
+      {/* Location Picker — conditionally rendered to avoid open-prop type error */}
+      {showLocationPicker && (
+        <LocationPicker
+          onOpenChange={setShowLocationPicker}
+          onLocationSelect={handleLocationSelect}
+          initialAddress={deliveryAddress}
+        />
+      )}
 
       {/* GCash Payment Dialog */}
       <GCashDialog
@@ -634,7 +614,8 @@ function ItemCustomizationDialog({
 
   useEffect(() => {
     if (item) {
-      setSelectedVariety(item.varieties?.[0] || '')
+      const vList = (item.varieties as unknown as string[]) ?? []
+      setSelectedVariety(vList[0] || '')
       setSelectedSize((item.sizes as any)?.[0] || null)
       setSelectedAddons([])
       setQuantity(1)
@@ -642,6 +623,10 @@ function ItemCustomizationDialog({
   }, [item])
 
   if (!item) return null
+
+  const varieties = (item.varieties as unknown as string[]) ?? []
+  const sizes = (item.sizes as any[]) ?? []
+  const addons = (item.addons as MenuItemAddon[]) ?? []
 
   const basePrice = selectedSize?.price ?? item.price
   const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0)
@@ -668,7 +653,7 @@ function ItemCustomizationDialog({
 
         <div className="space-y-5 py-2">
           {/* Varieties */}
-          {item.varieties && item.varieties.length > 0 && (
+          {varieties.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Variety</Label>
               <RadioGroup
@@ -676,7 +661,7 @@ function ItemCustomizationDialog({
                 onValueChange={setSelectedVariety}
                 className="space-y-1"
               >
-                {item.varieties.map((v: string) => (
+                {varieties.map((v: string) => (
                   <div key={v} className="flex items-center gap-2">
                     <RadioGroupItem value={v} id={`variety-${v}`} />
                     <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">
@@ -689,18 +674,18 @@ function ItemCustomizationDialog({
           )}
 
           {/* Sizes */}
-          {item.sizes && item.sizes.length > 0 && (
+          {sizes.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Size</Label>
               <RadioGroup
                 value={selectedSize?.name || ''}
                 onValueChange={(name) => {
-                  const s = (item.sizes as any[])?.find((x) => x.name === name)
+                  const s = sizes.find((x: any) => x.name === name)
                   setSelectedSize(s || null)
                 }}
                 className="space-y-1"
               >
-                {(item.sizes as any[]).map((s) => (
+                {sizes.map((s: any) => (
                   <div key={s.name} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <RadioGroupItem value={s.name} id={`size-${s.name}`} />
@@ -716,14 +701,14 @@ function ItemCustomizationDialog({
           )}
 
           {/* Add-ons */}
-          {item.addons && item.addons.length > 0 && (
+          {addons.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-semibold">
                 Add-ons{' '}
                 <span className="text-muted-foreground font-normal">(optional)</span>
               </Label>
               <div className="space-y-1.5">
-                {(item.addons as MenuItemAddon[]).map((addon) => (
+                {addons.map((addon: MenuItemAddon) => (
                   <div key={addon.name} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Checkbox
@@ -731,10 +716,7 @@ function ItemCustomizationDialog({
                         checked={selectedAddons.some(a => a.name === addon.name)}
                         onCheckedChange={() => toggleAddon(addon)}
                       />
-                      <Label
-                        htmlFor={`addon-${addon.name}`}
-                        className="cursor-pointer font-normal"
-                      >
+                      <Label htmlFor={`addon-${addon.name}`} className="cursor-pointer font-normal">
                         {addon.name}
                       </Label>
                     </div>
@@ -783,17 +765,11 @@ function ItemCustomizationDialog({
             <Button
               className="flex-1"
               disabled={
-                (item.varieties && item.varieties.length > 0 && !selectedVariety) ||
-                (item.sizes && item.sizes.length > 0 && !selectedSize)
+                (varieties.length > 0 && !selectedVariety) ||
+                (sizes.length > 0 && !selectedSize)
               }
               onClick={() => {
-                onAddToCart(
-                  item,
-                  selectedVariety,
-                  selectedSize?.name || '',
-                  selectedAddons,
-                  quantity
-                )
+                onAddToCart(item, selectedVariety, selectedSize?.name || '', selectedAddons, quantity)
                 onClose()
               }}
             >
@@ -801,10 +777,10 @@ function ItemCustomizationDialog({
               Add to Cart
             </Button>
           </div>
-          {item.sizes && item.sizes.length > 0 && !selectedSize && (
+          {sizes.length > 0 && !selectedSize && (
             <p className="w-full text-center text-xs text-destructive mt-1">Please select a size to continue.</p>
           )}
-          {item.varieties && item.varieties.length > 0 && !selectedVariety && (
+          {varieties.length > 0 && !selectedVariety && (
             <p className="w-full text-center text-xs text-destructive mt-1">Please select a variety to continue.</p>
           )}
         </DialogFooter>
@@ -998,7 +974,6 @@ function CartContent({
 
         <Separator className="my-4" />
 
-        {/* Delivery Address */}
         {orderType === 'delivery' && (
           <div className="space-y-2">
             <Label htmlFor="address" className="flex items-center gap-2">
@@ -1031,7 +1006,6 @@ function CartContent({
           </div>
         )}
 
-        {/* Payment Method */}
         <div className="mt-4 space-y-3">
           <Label className="font-semibold">Payment Method</Label>
           <RadioGroup
@@ -1050,7 +1024,6 @@ function CartContent({
               </Label>
             </div>
           </RadioGroup>
-
           <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
             <span className="flex items-center gap-1.5 text-amber-700">
               <Gift className="h-4 w-4" />
@@ -1060,7 +1033,6 @@ function CartContent({
           </div>
         </div>
 
-        {/* Cash Tendered */}
         {paymentMethod === 'cash' && (
           <div className="mt-4 space-y-2">
             <Label htmlFor="cashTendered" className="flex items-center gap-2">
@@ -1084,7 +1056,6 @@ function CartContent({
           </div>
         )}
 
-        {/* Order Notes */}
         <div className="mt-4 space-y-2">
           <Label htmlFor="notes">Order Notes (Optional)</Label>
           <Textarea
@@ -1098,7 +1069,6 @@ function CartContent({
         </div>
       </ScrollArea>
 
-      {/* Totals */}
       <div className="mt-4 space-y-2 border-t pt-4">
         <div className="flex justify-between text-sm">
           <span>Subtotal</span>
