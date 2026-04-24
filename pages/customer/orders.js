@@ -200,7 +200,7 @@ export default function CustomerOrders() {
           <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
           <nav style={styles.nav}>
             <Link href="/customer/dashboard" style={styles.navLink}>Dashboard</Link>
-            <Link href="/customer/order-portal" style={styles.navLink}>Order Portal</Link>
+            <Link href="/customer/order" style={styles.navLink}>Order Portal</Link>
             <Link href="/customer/orders" style={styles.navLink}>Order Tracking</Link>
             <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
             <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>
@@ -377,7 +377,7 @@ export default function CustomerOrders() {
               <span style={styles.emptyIcon}>📦</span>
               <p style={styles.emptyText}>No orders yet</p>
               <p style={styles.emptySubtext}>Start by placing your first order!</p>
-              <Link href="/customer/order-portal" style={styles.orderNowBtn}>
+              <Link href="/customer/order" style={styles.orderNowBtn}>
                 Order Now
               </Link>
             </div>
