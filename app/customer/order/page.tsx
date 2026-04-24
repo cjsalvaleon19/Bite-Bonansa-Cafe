@@ -714,7 +714,7 @@ function ItemCustomizationDialog({
                       <Checkbox
                         id={`addon-${addon.name}`}
                         checked={selectedAddons.some(a => a.name === addon.name)}
-                        onCheckedChange={() => toggleAddon(addon)}
+                        onChange={() => toggleAddon(addon)}
                       />
                       <Label htmlFor={`addon-${addon.name}`} className="cursor-pointer font-normal">
                         {addon.name}
