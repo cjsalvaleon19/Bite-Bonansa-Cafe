@@ -471,7 +471,7 @@ export default function OrderPortal() {
                 </div>
                 <button 
                   style={styles.checkoutBtn}
-                  onClick={() => router.push('/customer/checkout')}
+                  onClick={() => router.push('/customer/order')}
                 >
                   Proceed to Checkout
                 </button>
