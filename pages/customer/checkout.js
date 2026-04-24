@@ -1,9 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import Script from 'next/script';
+import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
 import { calcPointsEarned } from '../../utils/loyaltyUtils';
+
+// Dynamically import OpenStreetMap component to avoid SSR issues
+const OpenStreetMapPicker = dynamic(
+  () => import('../../components/OpenStreetMapPicker'),
+  { ssr: false }
+);
 
 // Store coordinates - Bite Bonansa Cafe
 const STORE_LOCATION = {
@@ -22,14 +28,7 @@ export default function Checkout() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [mapLoaded, setMapLoaded] = useState(false);
-  const [mapError, setMapError] = useState('');
-  
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const markerRef = useRef(null);
-  const autocompleteRef = useRef(null);
-  const searchInputRef = useRef(null);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [formData, setFormData] = useState({
     deliveryAddress: '',
@@ -247,118 +246,14 @@ export default function Checkout() {
     setError('');
   };
 
-  // Initialize Google Maps
-  const initializeMap = () => {
-    if (!mapRef.current || !window.google) {
-      setMapError('Google Maps failed to load. Please check your API key configuration.');
-      return;
-    }
-
-    try {
-    const center = formData.latitude && formData.longitude 
-      ? { lat: formData.latitude, lng: formData.longitude }
-      : STORE_LOCATION;
-
-    // Create map
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: center,
-      zoom: 15,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: false,
-    });
-
-    mapInstanceRef.current = map;
-
-    // Add marker
-    const marker = new window.google.maps.Marker({
-      position: center,
-      map: map,
-      draggable: true,
-      title: 'Delivery Location'
-    });
-
-    markerRef.current = marker;
-
-    // Update location when marker is dragged
-    marker.addListener('dragend', () => {
-      const position = marker.getPosition();
-      updateLocation(position.lat(), position.lng());
-    });
-
-    // Update location when map is clicked
-    map.addListener('click', (e) => {
-      const lat = e.latLng.lat();
-      const lng = e.latLng.lng();
-      marker.setPosition(e.latLng);
-      updateLocation(lat, lng);
-    });
-
-    // Initialize autocomplete
-    if (searchInputRef.current) {
-      const autocomplete = new window.google.maps.places.Autocomplete(
-        searchInputRef.current,
-        {
-          componentRestrictions: { country: 'ph' },
-          fields: ['formatted_address', 'geometry', 'name']
-        }
-      );
-
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
-        
-        if (!place.geometry || !place.geometry.location) {
-          setError('No details available for the selected location');
-          return;
-        }
-
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-        const address = place.formatted_address || place.name;
-
-        // Update map and marker
-        map.setCenter({ lat, lng });
-        marker.setPosition({ lat, lng });
-
-        // Update form
-        updateLocation(lat, lng, address);
-      });
-
-      autocompleteRef.current = autocomplete;
-    }
-
-    setMapLoaded(true);
-    } catch (err) {
-      console.error('Error initializing Google Maps:', err);
-      setMapError('Failed to initialize map. Please refresh the page.');
-    }
-  };
-
-  // Update location with reverse geocoding
-  const updateLocation = async (lat, lng, addressOverride = null) => {
+  // Handler for location changes from OpenStreetMap
+  const handleLocationChange = (lat, lng, address) => {
     setFormData(prev => ({
       ...prev,
       latitude: lat,
       longitude: lng,
-      deliveryAddress: addressOverride || prev.deliveryAddress
+      deliveryAddress: address
     }));
-
-    // If no address provided, do reverse geocoding
-    if (!addressOverride && window.google) {
-      const geocoder = new window.google.maps.Geocoder();
-      try {
-        const response = await geocoder.geocode({ location: { lat, lng } });
-        if (response.results && response.results[0]) {
-          const address = response.results[0].formatted_address;
-          setFormData(prev => ({
-            ...prev,
-            deliveryAddress: address
-          }));
-        }
-      } catch (err) {
-        console.error('Reverse geocoding failed:', err);
-      }
-    }
   };
 
   const handleSubmitOrder = async () => {
@@ -479,22 +374,14 @@ export default function Checkout() {
       <Head>
         <title>Checkout - Bite Bonansa Cafe</title>
         <meta name="description" content="Complete your order" />
+        {/* Leaflet CSS for OpenStreetMap */}
+        <link
+          rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossOrigin=""
+        />
       </Head>
-      
-      {/* Load Google Maps API */}
-      {process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
-        <Script
-          src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
-          onLoad={initializeMap}
-          onError={() => setMapError('Failed to load Google Maps. Please check your API key.')}
-          strategy="lazyOnload"
-        />
-      ) : (
-        <Script
-          onReady={() => setMapError('Google Maps API key is not configured. Please add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to your .env.local file.')}
-          strategy="lazyOnload"
-        />
-      )}
       
       <div style={styles.page}>
         <header style={styles.header}>
@@ -570,31 +457,15 @@ export default function Checkout() {
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>Delivery Information</h2>
               
-              {/* Google Maps Location Search */}
+              {/* OpenStreetMap Location Picker */}
               <div style={styles.formGroup}>
-                <label style={styles.label}>Search Location</label>
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  style={styles.input}
-                  placeholder="Search for your address..."
+                <OpenStreetMapPicker
+                  initialLat={formData.latitude}
+                  initialLng={formData.longitude}
+                  onLocationChange={handleLocationChange}
+                  searchQuery={searchQuery}
+                  onSearchQueryChange={setSearchQuery}
                 />
-                <p style={styles.helperText}>
-                  Search for your address or click on the map to pin your exact location
-                </p>
-              </div>
-
-              {/* Google Maps */}
-              <div style={styles.formGroup}>
-                {mapError ? (
-                  <div style={styles.errorMessage}>{mapError}</div>
-                ) : (
-                  <div 
-                    ref={mapRef} 
-                    style={styles.map}
-                    id="google-map"
-                  ></div>
-                )}
               </div>
               
               <div style={styles.formGroup}>
