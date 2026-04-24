@@ -516,9 +516,25 @@ export default function CustomerOrderPage() {
                       </p>
                     )}
 
-                    {/* Option chips */}
+                    {/* Option chips - show new variant types or old varieties/sizes */}
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {hasVarieties && (item.varieties as string[]).slice(0, 3).map((v) => (
+                      {!hasNewVariants && hasVarieties && (item.varieties as string[]).slice(0, 3).map((v) => (
+                      {/* New variant system */}
+                      {hasNewVariants && item.variant_types?.slice(0, 3).map((vt) => (
+                        <span
+                          key={vt.id}
+                          className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
+                        >
+                          {vt.variant_type_name}
+                        </span>
+                      ))}
+                      {hasNewVariants && item.variant_types && item.variant_types.length > 3 && (
+                        <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                          +{item.variant_types.length - 3} more
+                        </span>
+                      )}
+                      {/* Old variant system */}
+                      {!hasNewVariants && hasVarieties && (item.varieties as string[]).slice(0, 3).map((v) => (
                         <span
                           key={v}
                           className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
@@ -526,12 +542,12 @@ export default function CustomerOrderPage() {
                           {v}
                         </span>
                       ))}
-                      {hasVarieties && (item.varieties as string[]).length > 3 && (
+                      {!hasNewVariants && hasVarieties && (item.varieties as string[]).length > 3 && (
                         <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
                           +{(item.varieties as string[]).length - 3} more
                         </span>
                       )}
-                      {hasSizes && (item.sizes as any[]).map((s: any) => (
+                      {!hasNewVariants && hasSizes && (item.sizes as any[]).map((s: any) => (
                         <span
                           key={s.name}
                           className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
