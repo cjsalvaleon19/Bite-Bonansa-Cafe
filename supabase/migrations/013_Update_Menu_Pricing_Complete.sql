@@ -273,8 +273,7 @@ UNION ALL
 SELECT id, 'Cheese', 20, true, 3 FROM addon_type;
 
 -- ----------------------------------------------------------------------------
--- 9. SAMYANG CARBONARA SOLO (₱134-139) - Spice Level and Add Ons variants
--- Note: Base price ₱134, Cheese add-on makes it ₱139
+-- 9. SAMYANG CARBONARA SOLO (₱134 base) - Spice Level and Add Ons variants
 -- ----------------------------------------------------------------------------
 INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
 VALUES ('Samyang Carbonara Solo', 'Noodles', 134.00, true, 'Spicy carbonara noodles', true);
