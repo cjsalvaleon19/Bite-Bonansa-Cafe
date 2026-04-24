@@ -25,7 +25,7 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://*.vercel.app",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
       "font-src 'self' https://fonts.gstatic.com https://vercel.live",
       "img-src 'self' data: blob: https://vercel.live https://vercel.com https://*.tile.openstreetmap.org https://unpkg.com",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vercel.live https://*.vercel.app wss://*.pusher.com https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org",
