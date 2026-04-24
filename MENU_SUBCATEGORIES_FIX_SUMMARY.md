@@ -52,22 +52,22 @@ This will display instructions and create `APPLY_MIGRATION_NOW.md`
 2. Select your project: **Bite Bonansa Cafe**
 3. Click **"SQL Editor"** → **"New Query"**
 
-### Step 3: Run BOTH Migrations (in order)
+### Step 3: Run the Migration
 
-**First Migration: Base Items**
-1. Open: `migrate_menu_variants.sql`
-2. Copy ALL contents
-3. Paste into SQL Editor
-4. Click **"Run"**
-5. Wait for completion
-
-**Second Migration: Complete Variants**
-1. Click "New Query" for a fresh editor
-2. Open: `complete_menu_variants_migration.sql`
-3. Copy ALL contents (960 lines)
+**✨ NEW: Use the Combined Migration (Easiest)**
+1. Click "New Query" in SQL Editor
+2. Open: `supabase/migrations/012_Seed_Bite_Bonanza_Menu_Variants.sql`
+3. Copy ALL contents (1,437 lines)
 4. Paste into SQL Editor
 5. Click **"Run"**
-6. Wait for completion
+6. Wait for completion (5-10 seconds)
+
+**Alternative: Run Separate Files**
+If you prefer the original two-file approach:
+- First: `migrate_menu_variants.sql` (creates base items)
+- Second: `complete_menu_variants_migration.sql` (completes variants)
+
+**📝 Note:** The new 012 migration combines both files into one for convenience.
 
 ### Step 4: Verify
 Run this query:

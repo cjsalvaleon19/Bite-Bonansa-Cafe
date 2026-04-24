@@ -13,15 +13,16 @@ Run 2 SQL migration files in your Supabase database.
 ### 1️⃣ Open Supabase Dashboard
 Go to: https://supabase.com/dashboard → Select your project → SQL Editor
 
-### 2️⃣ Run First Migration
+### 2️⃣ Run Migration
 - Click: "New Query"
-- Open file: `migrate_menu_variants.sql`
-- Copy ALL → Paste → Click "Run" ✅
+- Open file: `supabase/migrations/012_Seed_Bite_Bonanza_Menu_Variants.sql`
+- Copy ALL (1,437 lines) → Paste → Click "Run" ✅
 
-### 3️⃣ Run Second Migration
-- Click: "New Query" again
-- Open file: `complete_menu_variants_migration.sql`
-- Copy ALL → Paste → Click "Run" ✅
+**Alternative:** You can also run the older separate files in sequence:
+- First: `migrate_menu_variants.sql` 
+- Then: `complete_menu_variants_migration.sql`
+
+**Recommended:** Use the new combined migration file (012_Seed_Bite_Bonanza_Menu_Variants.sql)
 
 ### 4️⃣ Test
 Go to `/customer/order-portal` and click any menu item.
@@ -78,11 +79,12 @@ A: This is safe to ignore (migrations use ON CONFLICT DO NOTHING)
 
 ---
 
-## 📂 Files You Need
+## 📂 Migration File
 
-✅ `migrate_menu_variants.sql` - First migration (base items)  
-✅ `complete_menu_variants_migration.sql` - Second migration (complete variants)  
-✅ Both files already exist in your repository
+✅ **New (Recommended):** `supabase/migrations/012_Seed_Bite_Bonanza_Menu_Variants.sql` - Complete all-in-one migration  
+✅ **Legacy:** `migrate_menu_variants.sql` + `complete_menu_variants_migration.sql` - Two separate files  
+
+**Use the new 012 migration file for easiest setup!**
 
 ---
 
