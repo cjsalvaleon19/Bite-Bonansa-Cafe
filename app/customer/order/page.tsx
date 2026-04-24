@@ -341,7 +341,7 @@ export default function CustomerOrderPage() {
     if (outOfRange) {
       toast.error('Your location is outside our delivery area (max 10 km). Please choose a closer location or switch to Pick-up.')
     } else {
-      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance)})`)
+      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance ?? 0)})`)
     }
   }
 
