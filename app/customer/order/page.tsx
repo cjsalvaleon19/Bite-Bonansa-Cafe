@@ -560,11 +560,11 @@ export default function CustomerOrderPage() {
 
       {showLocationPicker && (
         <LocationPicker
-          onLocationSelect={(address: string, lat: number, lng: number) => {
+          isOpen={showLocationPicker}
+          onClose={() => setShowLocationPicker(false)}
+          onSelectLocation={(lat: number, lng: number, address: string) => {
             handleLocationSelect(address, lat, lng)
-            setShowLocationPicker(false)
           }}
-          initialAddress={deliveryAddress}
         />
       )}
 
@@ -692,7 +692,7 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
                       <Checkbox
                         id={`addon-${addon.name}`}
                         checked={selectedAddons.some(a => a.name === addon.name)}
-                        onCheckedChange={() => toggleAddon(addon)}
+                        onChange={() => toggleAddon(addon)}
                       />
                       <Label htmlFor={`addon-${addon.name}`} className="cursor-pointer font-normal">
                         {addon.name}
@@ -710,11 +710,11 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
           <div className="flex items-center justify-between pt-1">
             <Label className="text-sm font-semibold">Quantity</Label>
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setQuantity(Math.max(1, quantity - 1))}>
+              <Button variant="outline" size="sm" className="h-8 w-8" onClick={() => setQuantity(Math.max(1, quantity - 1))}>
                 <Minus className="h-3 w-3" />
               </Button>
               <span className="w-8 text-center font-semibold">{quantity}</span>
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setQuantity(quantity + 1)}>
+              <Button variant="outline" size="sm" className="h-8 w-8" onClick={() => setQuantity(quantity + 1)}>
                 <Plus className="h-3 w-3" />
               </Button>
             </div>
@@ -878,14 +878,14 @@ function CartContent({
                   <p className="text-sm text-muted-foreground">{formatCurrency(item.basePrice + item.addonPrice)} each</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, -1)}>
+                  <Button variant="outline" size="sm" className="h-7 w-7" onClick={() => updateQuantity(item.id, -1)}>
                     <Minus className="h-3 w-3" />
                   </Button>
                   <span className="w-8 text-center font-medium">{item.quantity}</span>
-                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, 1)}>
+                  <Button variant="outline" size="sm" className="h-7 w-7" onClick={() => updateQuantity(item.id, 1)}>
                     <Plus className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -938,4 +938,101 @@ function CartContent({
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="cash" id="cash" />
-              <Label htmlFor="cash">{order
+              <Label htmlFor="cash">
+                {orderType === 'delivery' ? 'Cash on Delivery' : 'Cash'}
+              </Label>
+            </div>
+          </RadioGroup>
+          <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+            <span className="flex items-center gap-1.5 text-amber-700">
+              <Gift className="h-4 w-4" />
+              Points you&apos;ll earn
+            </span>
+            <span className="font-bold text-amber-700">+{earnedPoints} pts</span>
+          </div>
+        </div>
+
+        {paymentMethod === 'cash' && (
+          <div className="mt-4 space-y-2">
+            <Label htmlFor="cashTendered" className="flex items-center gap-2">
+              <Banknote className="h-4 w-4" />
+              Cash to be Tendered
+            </Label>
+            <Input
+              id="cashTendered"
+              type="number"
+              placeholder="Enter amount you will pay"
+              value={cashTendered}
+              onChange={(e) => setCashTendered(e.target.value)}
+              min={total}
+            />
+            {cashTendered && parseFloat(cashTendered) >= total && (
+              <p className="text-sm text-green-600">Change: {formatCurrency(change)}</p>
+            )}
+            {cashTendered && parseFloat(cashTendered) < total && (
+              <p className="text-sm text-red-600">Amount must be at least {formatCurrency(total)}</p>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 space-y-2">
+          <Label htmlFor="notes">Order Notes (Optional)</Label>
+          <Textarea
+            id="notes"
+            placeholder="Any special instructions?"
+            value={orderNotes}
+            onChange={(e) => setOrderNotes(e.target.value)}
+            className="resize-none"
+            rows={2}
+          />
+        </div>
+      </ScrollArea>
+
+      <div className="mt-4 space-y-2 border-t pt-4">
+        <div className="flex justify-between text-sm">
+          <span>Subtotal</span>
+          <span>{formatCurrency(subtotal)}</span>
+        </div>
+        {orderType === 'delivery' && (
+          <div className="flex justify-between text-sm">
+            <div className="flex flex-col">
+              <span className="flex items-center gap-1">
+                <Truck className="h-3 w-3" />
+                Delivery Fee
+              </span>
+              {deliveryDistance !== null && (
+                <span className="text-xs text-muted-foreground">
+                  Distance: {formatDistance(deliveryDistance)}
+                </span>
+              )}
+            </div>
+            <span>{formatCurrency(deliveryFee)}</span>
+          </div>
+        )}
+        <div className="flex justify-between text-sm text-muted-foreground">
+          <span>VAT</span>
+          <span>₱0.00</span>
+        </div>
+        <Separator />
+        <div className="flex justify-between text-xl font-bold">
+          <span>Total</span>
+          <span>{formatCurrency(total)}</span>
+        </div>
+      </div>
+
+      <Button
+        className="mt-4 w-full"
+        size="lg"
+        onClick={handlePlaceOrder}
+        disabled={
+          isSubmitting ||
+          (orderType === 'delivery' && !deliveryAddress.trim()) ||
+          (orderType === 'delivery' && deliveryOutOfRange) ||
+          (paymentMethod === 'cash' && (!cashTendered || parseFloat(cashTendered) < total))
+        }
+      >
+        {isSubmitting ? 'Placing Order...' : 'Place Order'}
+      </Button>
+    </div>
+  )
+}
