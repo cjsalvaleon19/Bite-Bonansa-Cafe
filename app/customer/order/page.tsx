@@ -1,4 +1,5 @@
 'use client'
+
 import { useState, useEffect } from 'react'
 import {
   Search,
@@ -48,29 +49,37 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface CartItem {
   id: string
   comboKey: string
   menuItemId: string
   menuItem: MenuItem
   quantity: number
-  basePrice: number
-  addonPrice: number
-  price: number
+  basePrice: number   // unit price (from size or item.price)
+  addonPrice: number  // sum of selected addon prices per unit
+  price: number       // (basePrice + addonPrice) × quantity
   selectedVariety?: string
   selectedSize?: string
   selectedAddons: MenuItemAddon[]
 }
 
+// GCash details
 const GCASH_OWNER = {
   name: 'Catherine Jean Arclita',
   number: '09514915138',
 }
 
+// Points rate:
+//   subtotal ₱0–₱500    → 0.2% of subtotal
+//   subtotal ₱501+      → 0.35% of subtotal
 function calcEarnedPoints(subtotal: number): number {
   const rate = subtotal <= 500 ? 0.002 : 0.0035
   return Math.floor(subtotal * rate)
 }
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function CustomerOrderPage() {
   const { user } = useAuth()
@@ -92,6 +101,8 @@ export default function CustomerOrderPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
+
+  // Item customization dialog
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
 
@@ -116,9 +127,9 @@ export default function CustomerOrderPage() {
             category: item.category?.name || '',
             available: item.available,
             preparationTime: item.preparation_time || 0,
-            varieties: Array.isArray(item.varieties) ? item.varieties : [],
-            sizes: Array.isArray(item.sizes) ? item.sizes : [],
-            addons: Array.isArray(item.addons) ? item.addons : [],
+            varieties: item.varieties || [],
+            sizes: item.sizes || [],
+            addons: item.addons || [],
             kitchenDepartment: item.kitchen_department || '',
           }))
         )
@@ -131,11 +142,13 @@ export default function CustomerOrderPage() {
   const filteredItems = menuItems.filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.description ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+      item.description.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory =
       selectedCategory === 'all' || item.category === selectedCategory
     return matchesSearch && matchesCategory
   })
+
+  // ── Cart helpers ──────────────────────────────────────────────────────────
 
   const openItemDialog = (item: MenuItem) => {
     const hasOptions =
@@ -162,6 +175,7 @@ export default function CustomerOrderPage() {
     const addonPrice = addons.reduce((sum, a) => sum + a.price, 0)
     const unitPrice = basePrice + addonPrice
     const comboKey = `${item.id}|${variety}|${sizeName}|${addons.map(a => a.name).sort().join(',')}`
+
     setCart(prev => {
       const existing = prev.find(c => c.comboKey === comboKey)
       if (existing) {
@@ -206,6 +220,8 @@ export default function CustomerOrderPage() {
     setCart(cart.filter((item) => item.id !== itemId))
   }
 
+  // ── Totals ────────────────────────────────────────────────────────────────
+
   const subtotal = cart.reduce((sum, item) => sum + item.price, 0)
   const { fee: deliveryFee, distance: deliveryDistance, outOfRange: deliveryOutOfRange } =
     calculateDeliveryFee(deliveryLat, deliveryLng)
@@ -213,6 +229,8 @@ export default function CustomerOrderPage() {
   const tax = 0
   const total = subtotal + appliedDeliveryFee + tax
   const earnedPoints = calcEarnedPoints(subtotal)
+
+  // ── Order submission ──────────────────────────────────────────────────────
 
   const handlePlaceOrder = async () => {
     if (orderType === 'delivery' && !deliveryAddress.trim()) {
@@ -240,9 +258,11 @@ export default function CustomerOrderPage() {
   const submitOrder = async () => {
     setIsSubmitting(true)
     setShowGcashDialog(false)
+
     try {
       const supabase = createClient()
       const isDelivery = orderType === 'delivery'
+
       let notesStr = orderNotes
       if (paymentMethod === 'cash' && cashTendered) {
         notesStr += ` | Cash tendered: ${formatCurrency(parseFloat(cashTendered))}`
@@ -250,6 +270,7 @@ export default function CustomerOrderPage() {
       if (paymentMethod === 'gcash' && gcashRef) {
         notesStr += ` | GCash ref: ${gcashRef}`
       }
+
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -271,7 +292,9 @@ export default function CustomerOrderPage() {
         })
         .select()
         .single()
+
       if (orderError) throw new Error(orderError.message)
+
       const orderItems = cart.map((item) => {
         const parts: string[] = []
         if (item.selectedVariety) parts.push(item.selectedVariety)
@@ -289,11 +312,14 @@ export default function CustomerOrderPage() {
           subtotal: item.price,
         }
       })
+
       const { error: itemsError } = await supabase.from('order_items').insert(orderItems)
       if (itemsError) throw new Error(itemsError.message)
+
       toast.success(`Order ${order.order_number} placed successfully!`, {
         description: 'You can track your order in the Track Orders page.',
       })
+
       setCart([])
       setOrderNotes('')
       setCashTendered('')
@@ -315,11 +341,13 @@ export default function CustomerOrderPage() {
     if (outOfRange) {
       toast.error('Your location is outside our delivery area (max 10 km). Please choose a closer location or switch to Pick-up.')
     } else {
-      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance ?? 0)})`)
+      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance)})`)
     }
   }
 
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -328,8 +356,10 @@ export default function CustomerOrderPage() {
           <h1 className="text-3xl font-bold tracking-tight">Order Now</h1>
           <p className="text-muted-foreground">Browse our menu and place your order</p>
         </div>
+
+        {/* Cart Button (Mobile) */}
         <Sheet>
-          <SheetTrigger>
+          <SheetTrigger asChild>
             <Button className="relative md:hidden">
               <ShoppingCart className="mr-2 h-5 w-5" />
               Cart
@@ -372,6 +402,7 @@ export default function CustomerOrderPage() {
         </Sheet>
       </div>
 
+      {/* Order Type Toggle */}
       <div className="flex gap-2 rounded-lg border bg-muted/30 p-1 w-fit">
         <Button
           variant={orderType === 'delivery' ? 'default' : 'ghost'}
@@ -400,6 +431,7 @@ export default function CustomerOrderPage() {
       )}
 
       <div className="flex gap-6">
+        {/* Menu Section */}
         <div className="flex-1 space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -428,12 +460,12 @@ export default function CustomerOrderPage() {
               const hasSizes     = item.sizes     && item.sizes.length     > 0
               const hasAddons    = item.addons    && item.addons.length    > 0
               const hasOptions   = hasVarieties || hasSizes || hasAddons
+
               const minSizePrice = hasSizes
                 ? Math.min(...(item.sizes as any[]).map((s: any) => s.price))
                 : null
-              const priceLabel = minSizePrice !== null
-                ? `from ${formatCurrency(minSizePrice)}`
-                : formatCurrency(item.price)
+              const priceLabel = minSizePrice !== null ? `from ${formatCurrency(minSizePrice)}` : formatCurrency(item.price)
+
               return (
                 <Card
                   key={item.id}
@@ -441,17 +473,22 @@ export default function CustomerOrderPage() {
                   onClick={() => openItemDialog(item)}
                 >
                   <CardContent className="p-4">
+                    {/* Name + price row */}
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold leading-snug">{item.name}</h3>
                       <span className="text-base font-bold text-primary whitespace-nowrap">{priceLabel}</span>
                     </div>
+
+                    {/* Description */}
                     {item.description && (
                       <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
                         {item.description}
                       </p>
                     )}
+
+                    {/* Option hints */}
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {hasVarieties && (item.varieties as unknown as string[]).slice(0, 3).map((v) => (
+                      {hasVarieties && (item.varieties as string[]).slice(0, 3).map((v) => (
                         <span
                           key={v}
                           className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
@@ -459,9 +496,9 @@ export default function CustomerOrderPage() {
                           {v}
                         </span>
                       ))}
-                      {hasVarieties && (item.varieties as unknown as string[]).length > 3 && (
+                      {hasVarieties && (item.varieties as string[]).length > 3 && (
                         <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                          +{(item.varieties as unknown as string[]).length - 3} more
+                          +{(item.varieties as string[]).length - 3} more
                         </span>
                       )}
                       {hasSizes && (item.sizes as any[]).map((s: any) => (
@@ -473,9 +510,13 @@ export default function CustomerOrderPage() {
                         </span>
                       ))}
                     </div>
+
+                    {/* Add-ons hint */}
                     {hasAddons && (
                       <p className="mt-1 text-[11px] text-muted-foreground">+ Add-ons available</p>
                     )}
+
+                    {/* Button */}
                     <div className="mt-3">
                       <Button
                         size="sm"
@@ -496,6 +537,7 @@ export default function CustomerOrderPage() {
           </div>
         </div>
 
+        {/* Cart Section (Desktop) */}
         <div className="hidden w-96 md:block">
           <Card className="sticky top-4">
             <CardHeader>
@@ -536,18 +578,23 @@ export default function CustomerOrderPage() {
         </div>
       </div>
 
+      {/* Item Customization Dialog */}
       <ItemCustomizationDialog
         item={dialogItem}
         open={showItemDialog}
         onClose={() => setShowItemDialog(false)}
         onAddToCart={addToCartWithCustomizations}
       />
+
+      {/* Location Picker */}
       <LocationPicker
         open={showLocationPicker}
         onOpenChange={setShowLocationPicker}
         onLocationSelect={handleLocationSelect}
         initialAddress={deliveryAddress}
       />
+
+      {/* GCash Payment Dialog */}
       <GCashDialog
         open={showGcashDialog}
         onOpenChange={setShowGcashDialog}
@@ -576,7 +623,12 @@ interface ItemCustomizationDialogProps {
   ) => void
 }
 
-function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCustomizationDialogProps) {
+function ItemCustomizationDialog({
+  item,
+  open,
+  onClose,
+  onAddToCart,
+}: ItemCustomizationDialogProps) {
   const [selectedVariety, setSelectedVariety] = useState('')
   const [selectedSize, setSelectedSize] = useState<{ name: string; price: number } | null>(null)
   const [selectedAddons, setSelectedAddons] = useState<MenuItemAddon[]>([])
@@ -595,7 +647,8 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
 
   const basePrice = selectedSize?.price ?? item.price
   const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0)
-  const lineTotal = (basePrice + addonTotal) * quantity
+  const unitPrice = basePrice + addonTotal
+  const lineTotal = unitPrice * quantity
 
   const toggleAddon = (addon: MenuItemAddon) => {
     setSelectedAddons(prev =>
@@ -604,9 +657,6 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
         : [...prev, addon]
     )
   }
-
-  const sizeRequired = !!(item.sizes && item.sizes.length > 0 && !selectedSize)
-  const varietyRequired = !!(item.varieties && item.varieties.length > 0 && !selectedVariety)
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -617,31 +667,33 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
             <DialogDescription>{item.description}</DialogDescription>
           )}
         </DialogHeader>
+
         <div className="space-y-5 py-2">
+          {/* Varieties */}
           {item.varieties && item.varieties.length > 0 && (
             <div className="space-y-2">
-              <Label className="text-sm font-semibold">
-                Variety <span className="text-destructive">*</span>
-              </Label>
+              <Label className="text-sm font-semibold">Variety</Label>
               <RadioGroup
                 value={selectedVariety}
                 onValueChange={setSelectedVariety}
                 className="space-y-1"
               >
-                {(item.varieties as unknown as string[]).map((v) => (
+                {item.varieties.map((v: string) => (
                   <div key={v} className="flex items-center gap-2">
                     <RadioGroupItem value={v} id={`variety-${v}`} />
-                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">{v}</Label>
+                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">
+                      {v}
+                    </Label>
                   </div>
                 ))}
               </RadioGroup>
             </div>
           )}
+
+          {/* Sizes */}
           {item.sizes && item.sizes.length > 0 && (
             <div className="space-y-2">
-              <Label className="text-sm font-semibold">
-                Size <span className="text-destructive">*</span>
-              </Label>
+              <Label className="text-sm font-semibold">Size</Label>
               <RadioGroup
                 value={selectedSize?.name || ''}
                 onValueChange={(name) => {
@@ -654,7 +706,9 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
                   <div key={s.name} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <RadioGroupItem value={s.name} id={`size-${s.name}`} />
-                      <Label htmlFor={`size-${s.name}`} className="cursor-pointer font-normal">{s.name}</Label>
+                      <Label htmlFor={`size-${s.name}`} className="cursor-pointer font-normal">
+                        {s.name}
+                      </Label>
                     </div>
                     <span className="text-sm text-muted-foreground">{formatCurrency(s.price)}</span>
                   </div>
@@ -662,10 +716,13 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
               </RadioGroup>
             </div>
           )}
+
+          {/* Add-ons */}
           {item.addons && item.addons.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-semibold">
-                Add-ons <span className="text-muted-foreground font-normal">(optional)</span>
+                Add-ons{' '}
+                <span className="text-muted-foreground font-normal">(optional)</span>
               </Label>
               <div className="space-y-1.5">
                 {(item.addons as MenuItemAddon[]).map((addon) => (
@@ -676,39 +733,50 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
                         checked={selectedAddons.some(a => a.name === addon.name)}
                         onCheckedChange={() => toggleAddon(addon)}
                       />
-                      <Label htmlFor={`addon-${addon.name}`} className="cursor-pointer font-normal">
+                      <Label
+                        htmlFor={`addon-${addon.name}`}
+                        className="cursor-pointer font-normal"
+                      >
                         {addon.name}
                       </Label>
                     </div>
                     {addon.price > 0 && (
-                      <span className="text-sm text-muted-foreground">+{formatCurrency(addon.price)}</span>
+                      <span className="text-sm text-muted-foreground">
+                        +{formatCurrency(addon.price)}
+                      </span>
                     )}
                   </div>
                 ))}
               </div>
             </div>
           )}
+
+          {/* Quantity */}
           <div className="flex items-center justify-between pt-1">
             <Label className="text-sm font-semibold">Quantity</Label>
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="icon" className="h-8 w-8"
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+              >
                 <Minus className="h-3 w-3" />
               </Button>
               <span className="w-8 text-center font-semibold">{quantity}</span>
-              <Button variant="outline" size="icon" className="h-8 w-8"
-                onClick={() => setQuantity(quantity + 1)}>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setQuantity(quantity + 1)}
+              >
                 <Plus className="h-3 w-3" />
               </Button>
             </div>
           </div>
         </div>
-        <DialogFooter className="mt-2 flex-col gap-2">
-          {(varietyRequired || sizeRequired) && (
-            <p className="w-full text-center text-xs text-destructive">
-              {varietyRequired ? 'Please select a variety.' : 'Please select a size.'}
-            </p>
-          )}
+
+        <DialogFooter className="mt-2">
           <div className="flex w-full items-center justify-between gap-3">
             <div>
               <p className="text-xs text-muted-foreground">Total</p>
@@ -716,9 +784,18 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
             </div>
             <Button
               className="flex-1"
-              disabled={sizeRequired || varietyRequired}
+              disabled={
+                (item.varieties && item.varieties.length > 0 && !selectedVariety) ||
+                (item.sizes && item.sizes.length > 0 && !selectedSize)
+              }
               onClick={() => {
-                onAddToCart(item, selectedVariety, selectedSize?.name || '', selectedAddons, quantity)
+                onAddToCart(
+                  item,
+                  selectedVariety,
+                  selectedSize?.name || '',
+                  selectedAddons,
+                  quantity
+                )
                 onClose()
               }}
             >
@@ -726,6 +803,12 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
               Add to Cart
             </Button>
           </div>
+          {item.sizes && item.sizes.length > 0 && !selectedSize && (
+            <p className="w-full text-center text-xs text-destructive mt-1">Please select a size to continue.</p>
+          )}
+          {item.varieties && item.varieties.length > 0 && !selectedVariety && (
+            <p className="w-full text-center text-xs text-destructive mt-1">Please select a variety to continue.</p>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -744,13 +827,23 @@ interface GCashDialogProps {
   isSubmitting: boolean
 }
 
-function GCashDialog({ open, onOpenChange, total, gcashRef, setGcashRef, onConfirm, isSubmitting }: GCashDialogProps) {
+function GCashDialog({
+  open,
+  onOpenChange,
+  total,
+  gcashRef,
+  setGcashRef,
+  onConfirm,
+  isSubmitting,
+}: GCashDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>GCash Payment</DialogTitle>
-          <DialogDescription>Send the exact amount then enter your reference number below</DialogDescription>
+          <DialogDescription>
+            Send the exact amount then enter your reference number below
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="rounded-lg bg-blue-50 p-4 text-center">
@@ -762,8 +855,11 @@ function GCashDialog({ open, onOpenChange, total, gcashRef, setGcashRef, onConfi
             <p className="text-sm text-muted-foreground">Amount to send:</p>
             <p className="text-3xl font-bold text-primary">{formatCurrency(total)}</p>
           </div>
-          <Button variant="outline" className="w-full"
-            onClick={() => window.open('https://app.gcash.com', '_blank')}>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => window.open('https://app.gcash.com', '_blank')}
+          >
             <Smartphone className="mr-2 h-4 w-4" />
             Open GCash App
           </Button>
@@ -783,8 +879,14 @@ function GCashDialog({ open, onOpenChange, total, gcashRef, setGcashRef, onConfi
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button className="flex-1" onClick={onConfirm} disabled={isSubmitting || !gcashRef.trim()}>
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={onConfirm}
+              disabled={isSubmitting || !gcashRef.trim()}
+            >
               {isSubmitting ? 'Processing...' : 'Confirm Payment'}
             </Button>
           </div>
@@ -821,12 +923,30 @@ interface CartContentProps {
 }
 
 function CartContent({
-  cart, updateQuantity, removeFromCart, subtotal, deliveryFee, deliveryDistance,
-  deliveryOutOfRange = false, total, earnedPoints, deliveryAddress, setDeliveryAddress,
-  openLocationPicker, paymentMethod, setPaymentMethod, orderNotes, setOrderNotes,
-  cashTendered, setCashTendered, handlePlaceOrder, isSubmitting, orderType = 'delivery',
+  cart,
+  updateQuantity,
+  removeFromCart,
+  subtotal,
+  deliveryFee,
+  deliveryDistance,
+  deliveryOutOfRange = false,
+  total,
+  earnedPoints,
+  deliveryAddress,
+  setDeliveryAddress,
+  openLocationPicker,
+  paymentMethod,
+  setPaymentMethod,
+  orderNotes,
+  setOrderNotes,
+  cashTendered,
+  setCashTendered,
+  handlePlaceOrder,
+  isSubmitting,
+  orderType = 'delivery',
 }: CartContentProps) {
-  const change = paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
+  const change =
+    paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
 
   if (cart.length === 0) {
     return (
@@ -861,17 +981,14 @@ function CartContent({
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button variant="outline" size="icon" className="h-7 w-7"
-                    onClick={() => updateQuantity(item.id, -1)}>
+                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, -1)}>
                     <Minus className="h-3 w-3" />
                   </Button>
                   <span className="w-8 text-center font-medium">{item.quantity}</span>
-                  <Button variant="outline" size="icon" className="h-7 w-7"
-                    onClick={() => updateQuantity(item.id, 1)}>
+                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, 1)}>
                     <Plus className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive"
-                    onClick={() => removeFromCart(item.id)}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -883,6 +1000,7 @@ function CartContent({
 
         <Separator className="my-4" />
 
+        {/* Delivery Address */}
         {orderType === 'delivery' && (
           <div className="space-y-2">
             <Label htmlFor="address" className="flex items-center gap-2">
@@ -915,6 +1033,7 @@ function CartContent({
           </div>
         )}
 
+        {/* Payment Method */}
         <div className="mt-4 space-y-3">
           <Label className="font-semibold">Payment Method</Label>
           <RadioGroup
@@ -928,9 +1047,12 @@ function CartContent({
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="cash" id="cash" />
-              <Label htmlFor="cash">{orderType === 'delivery' ? 'Cash on Delivery' : 'Cash'}</Label>
+              <Label htmlFor="cash">
+                {orderType === 'delivery' ? 'Cash on Delivery' : 'Cash'}
+              </Label>
             </div>
           </RadioGroup>
+
           <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
             <span className="flex items-center gap-1.5 text-amber-700">
               <Gift className="h-4 w-4" />
@@ -940,6 +1062,7 @@ function CartContent({
           </div>
         </div>
 
+        {/* Cash Tendered */}
         {paymentMethod === 'cash' && (
           <div className="mt-4 space-y-2">
             <Label htmlFor="cashTendered" className="flex items-center gap-2">
@@ -963,6 +1086,7 @@ function CartContent({
           </div>
         )}
 
+        {/* Order Notes */}
         <div className="mt-4 space-y-2">
           <Label htmlFor="notes">Order Notes (Optional)</Label>
           <Textarea
@@ -976,6 +1100,7 @@ function CartContent({
         </div>
       </ScrollArea>
 
+      {/* Totals */}
       <div className="mt-4 space-y-2 border-t pt-4">
         <div className="flex justify-between text-sm">
           <span>Subtotal</span>
@@ -989,7 +1114,9 @@ function CartContent({
                 Delivery Fee
               </span>
               {deliveryDistance !== null && (
-                <span className="text-xs text-muted-foreground">Distance: {formatDistance(deliveryDistance)}</span>
+                <span className="text-xs text-muted-foreground">
+                  Distance: {formatDistance(deliveryDistance)}
+                </span>
               )}
             </div>
             <span>{formatCurrency(deliveryFee)}</span>
