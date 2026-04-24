@@ -1,5 +1,16 @@
 # 🚀 Apply Menu Variants Migration NOW
 
+## ⚠️ IMPORTANT: Two Migration Files Required
+
+You need to run **TWO SQL migration files in order**:
+
+1. **First:** `migrate_menu_variants.sql` - Creates base menu items (Fries, Siomai, Calamares, Chicken, Silog)
+2. **Second:** `complete_menu_variants_migration.sql` - Adds beverages, pasta, and completes all variants
+
+Both files are **required** for the complete menu system with all 24 items.
+
+---
+
 ## Quick Start
 
 You need to run the SQL migration file through the Supabase Dashboard.
@@ -12,15 +23,25 @@ You need to run the SQL migration file through the Supabase Dashboard.
 1. Click **"SQL Editor"** in the left sidebar
 2. Click **"New Query"** button
 
-### Step 3: Run Migration
+### Step 3: Run BOTH Migration Files (in order)
+
+**First, run the base migration:**
+1. Open the file: `migrate_menu_variants.sql`
+2. Copy **ALL** contents
+3. Paste into the SQL Editor
+4. Click **"Run"** button (or press Ctrl+Enter)
+5. Wait for completion
+
+**Then, run the complete migration:**
 1. Open the file: `complete_menu_variants_migration.sql`
 2. Copy **ALL** contents (960 lines)
-3. Paste into the SQL Editor
+3. Paste into the SQL Editor (new query)
 4. Click **"Run"** button (or press Ctrl+Enter)
 
 ### Step 4: Wait for Completion
-- The migration should complete in a few seconds
+- Each migration should complete in a few seconds
 - You'll see success messages in the output
+- Run BOTH migrations in order (migrate_menu_variants.sql FIRST, then complete_menu_variants_migration.sql)
 
 ### Step 5: Verify Success
 Run this query in the SQL Editor:

@@ -38,7 +38,7 @@ I have created comprehensive tooling and documentation to help you apply the mig
 
 ---
 
-## 🚀 How to Apply the Fix (3 Simple Steps)
+## 🚀 How to Apply the Fix (4 Simple Steps)
 
 ### Step 1: Get Instructions
 ```bash
@@ -52,12 +52,22 @@ This will display instructions and create `APPLY_MIGRATION_NOW.md`
 2. Select your project: **Bite Bonansa Cafe**
 3. Click **"SQL Editor"** → **"New Query"**
 
-### Step 3: Run the Migration
-1. Open: `complete_menu_variants_migration.sql`
-2. Copy **ALL** contents (960 lines)
+### Step 3: Run BOTH Migrations (in order)
+
+**First Migration: Base Items**
+1. Open: `migrate_menu_variants.sql`
+2. Copy ALL contents
 3. Paste into SQL Editor
 4. Click **"Run"**
-5. Wait a few seconds for completion
+5. Wait for completion
+
+**Second Migration: Complete Variants**
+1. Click "New Query" for a fresh editor
+2. Open: `complete_menu_variants_migration.sql`
+3. Copy ALL contents (960 lines)
+4. Paste into SQL Editor
+5. Click **"Run"**
+6. Wait for completion
 
 ### Step 4: Verify
 Run this query:
