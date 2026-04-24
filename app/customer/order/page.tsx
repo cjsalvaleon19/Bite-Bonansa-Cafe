@@ -15,17 +15,17 @@ import {
   CheckCircle2,
   Smartphone,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
+import { Input } from '../../../components/ui/input'
+import { Button } from '../../../components/ui/button'
+import { Badge } from '../../../components/ui/badge'
+import { Separator } from '../../../components/ui/separator'
+import { Tabs, TabsList, TabsTrigger } from '../../../components/ui/tabs'
+import { Textarea } from '../../../components/ui/textarea'
+import { Label } from '../../../components/ui/label'
+import { RadioGroup, RadioGroupItem } from '../../../components/ui/radio-group'
+import { ScrollArea } from '../../../components/ui/scroll-area'
+import { Checkbox } from '../../../components/ui/checkbox'
 import {
   Sheet,
   SheetContent,
@@ -33,7 +33,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '@/components/ui/sheet'
+} from '../../../components/ui/sheet'
 import {
   Dialog,
   DialogContent,
@@ -41,13 +41,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog'
-import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '@/lib/store'
-import { createClient } from '@/lib/supabase/client'
-import { LocationPicker } from '@/components/location-picker'
+} from '../../../components/ui/dialog'
+import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '../../../lib/store'
+import { createClient } from '../../../lib/supabase/client'
+import { LocationPicker } from '../../../components/location-picker'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
+import type { MenuItem, MenuItemAddon, PaymentMethod } from '../../../lib/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,24 +109,45 @@ export default function CustomerOrderPage() {
   useEffect(() => {
     async function loadMenu() {
       const supabase = createClient()
-      const [{ data: items }, { data: cats }] = await Promise.all([
-        supabase
-          .from('menu_items')
-          .select('*, category:categories(id, name)')
-          .eq('available', true)
-          .order('name'),
-        supabase.from('categories').select('*').order('sort_order'),
-      ])
+      
+      // Try to fetch from menu_items_base first (new variant system)
+      const { data: baseItems, error: baseError } = await supabase
+        .from('menu_items_base')
+        .select(`
+          *,
+          variant_types:menu_item_variant_types(
+            *,
+            options:menu_item_variant_options(*)
+          )
+        `)
+        .eq('available', true)
+        .order('category')
+        .order('name')
+      
+      // Fall back to old menu_items if base doesn't exist
+      const { data: items } = baseItems && !baseError
+        ? { data: baseItems }
+        : await supabase
+            .from('menu_items')
+            .select('*, category:categories(id, name)')
+            .eq('available', true)
+            .order('name')
+      
+      const { data: cats } = await supabase.from('categories').select('*').order('sort_order')
+      
       if (items) {
         setMenuItems(
           items.map((item: any) => ({
             id: item.id,
             name: item.name,
             description: item.description || '',
-            price: item.price,
-            category: item.category?.name || '',
+            price: item.base_price || item.price,
+            category: item.category?.name || item.category || '',
             available: item.available,
             preparationTime: item.preparation_time || 0,
+            // Support both old and new variant systems
+            has_variants: item.has_variants || false,
+            variant_types: item.variant_types || [],
             varieties: item.varieties || [],
             sizes: item.sizes || [],
             addons: item.addons || [],
@@ -142,7 +163,7 @@ export default function CustomerOrderPage() {
   const filteredItems = menuItems.filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (item.description || '').toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory =
       selectedCategory === 'all' || item.category === selectedCategory
     return matchesSearch && matchesCategory
@@ -151,11 +172,15 @@ export default function CustomerOrderPage() {
   // ── Cart helpers ──────────────────────────────────────────────────────────
 
   const openItemDialog = (item: MenuItem) => {
-    const hasOptions =
+    // Check for new variant system first
+    const hasNewVariants = item.has_variants && item.variant_types && item.variant_types.length > 0
+    // Check for old variant system
+    const hasOldOptions =
       (item.varieties && item.varieties.length > 0) ||
       (item.sizes && item.sizes.length > 0) ||
       (item.addons && item.addons.length > 0)
-    if (hasOptions) {
+    
+    if (hasNewVariants || hasOldOptions) {
       setDialogItem(item)
       setShowItemDialog(true)
     } else {
@@ -341,7 +366,7 @@ export default function CustomerOrderPage() {
     if (outOfRange) {
       toast.error('Your location is outside our delivery area (max 10 km). Please choose a closer location or switch to Pick-up.')
     } else {
-      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance)})`)
+      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)}${distance !== null ? ` (${formatDistance(distance)})` : ''}`)
     }
   }
 
@@ -359,7 +384,7 @@ export default function CustomerOrderPage() {
 
         {/* Cart Button (Mobile) */}
         <Sheet>
-          <SheetTrigger asChild>
+          <SheetTrigger>
             <Button className="relative md:hidden">
               <ShoppingCart className="mr-2 h-5 w-5" />
               Cart
@@ -456,10 +481,13 @@ export default function CustomerOrderPage() {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredItems.map((item) => {
+              // Check for new variant system
+              const hasNewVariants = item.has_variants && item.variant_types && item.variant_types.length > 0
+              // Check for old variant system
               const hasVarieties = item.varieties && item.varieties.length > 0
               const hasSizes     = item.sizes     && item.sizes.length     > 0
               const hasAddons    = item.addons    && item.addons.length    > 0
-              const hasOptions   = hasVarieties || hasSizes || hasAddons
+              const hasOptions   = hasNewVariants || hasVarieties || hasSizes || hasAddons
 
               const minSizePrice = hasSizes
                 ? Math.min(...(item.sizes as any[]).map((s: any) => s.price))
@@ -488,22 +516,37 @@ export default function CustomerOrderPage() {
                       </p>
                     )}
 
-                    {/* Option chips */}
+                    {/* Option chips - show new variant types or old varieties/sizes */}
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {hasVarieties && (item.varieties as string[]).slice(0, 3).map((v) => (
+                      {/* New variant system */}
+                      {hasNewVariants && item.variant_types?.slice(0, 3).map((vt) => (
                         <span
-                          key={v}
+                          key={vt.id}
                           className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
                         >
-                          {v}
+                          {vt.variant_type_name}
                         </span>
                       ))}
-                      {hasVarieties && (item.varieties as string[]).length > 3 && (
+                      {hasNewVariants && item.variant_types && item.variant_types.length > 3 && (
                         <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                          +{(item.varieties as string[]).length - 3} more
+                          +{item.variant_types.length - 3} more
                         </span>
                       )}
-                      {hasSizes && (item.sizes as any[]).map((s: any) => (
+                      {/* Old variant system */}
+                      {!hasNewVariants && hasVarieties && (item.varieties || []).slice(0, 3).map((v) => (
+                        <span
+                          key={typeof v === 'string' ? v : v.name}
+                          className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
+                        >
+                          {typeof v === 'string' ? v : v.name}
+                        </span>
+                      ))}
+                      {!hasNewVariants && hasVarieties && (item.varieties || []).length > 3 && (
+                        <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                          +{(item.varieties || []).length - 3} more
+                        </span>
+                      )}
+                      {!hasNewVariants && hasSizes && (item.sizes as any[]).map((s: any) => (
                         <span
                           key={s.name}
                           className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
@@ -514,8 +557,12 @@ export default function CustomerOrderPage() {
                     </div>
 
                     {/* Add-ons hint */}
-                    {hasAddons && (
-                      <p className="mt-1 text-[11px] text-muted-foreground">+ Add-ons available</p>
+                    {(hasAddons || (item.has_variants && item.variant_types && item.variant_types.length > 0)) && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {item.has_variants && item.variant_types && item.variant_types.length > 0 
+                          ? 'Customizable options available' 
+                          : '+ Add-ons available'}
+                      </p>
                     )}
 
                     {/* Button */}
@@ -590,10 +637,12 @@ export default function CustomerOrderPage() {
 
       {/* Location Picker */}
       <LocationPicker
-        open={showLocationPicker}
-        onOpenChange={setShowLocationPicker}
-        onLocationSelect={handleLocationSelect}
-        initialAddress={deliveryAddress}
+        isOpen={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onSelectLocation={(lat, lng, address) => {
+          handleLocationSelect(address, lat, lng)
+          setShowLocationPicker(false)
+        }}
       />
 
       {/* GCash Payment Dialog */}
@@ -638,7 +687,7 @@ function ItemCustomizationDialog({
 
   useEffect(() => {
     if (item) {
-      setSelectedVariety(item.varieties?.[0] || '')
+      setSelectedVariety(item.varieties?.[0]?.name || '')
       setSelectedSize((item.sizes as any)?.[0] || null)
       setSelectedAddons([])
       setQuantity(1)
@@ -685,14 +734,19 @@ function ItemCustomizationDialog({
                 onValueChange={setSelectedVariety}
                 className="space-y-1"
               >
-                {item.varieties.map((v: string) => (
-                  <div key={v} className="flex items-center gap-2">
-                    <RadioGroupItem value={v} id={`variety-${v}`} />
-                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">
-                      {v}
-                    </Label>
-                  </div>
-                ))}
+                {item.varieties.map((v) => {
+                  const varietyName = typeof v === 'string' ? v : v.name
+                  const varietyPrice = typeof v === 'object' && 'price' in v ? v.price : 0
+                  return (
+                    <div key={varietyName} className="flex items-center gap-2">
+                      <RadioGroupItem value={varietyName} id={`variety-${varietyName}`} />
+                      <Label htmlFor={`variety-${varietyName}`} className="cursor-pointer font-normal">
+                        {varietyName}
+                        {varietyPrice > 0 && <span className="text-xs text-muted-foreground"> (+{formatCurrency(varietyPrice)})</span>}
+                      </Label>
+                    </div>
+                  )
+                })}
               </RadioGroup>
             </div>
           )}
@@ -739,7 +793,7 @@ function ItemCustomizationDialog({
                       <Checkbox
                         id={`addon-${addon.name}`}
                         checked={selectedAddons.some(a => a.name === addon.name)}
-                        onCheckedChange={() => toggleAddon(addon)}
+                        onChange={() => toggleAddon(addon)}
                       />
                       <Label
                         htmlFor={`addon-${addon.name}`}
@@ -765,7 +819,7 @@ function ItemCustomizationDialog({
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
-                size="icon"
+                size="sm"
                 className="h-8 w-8"
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
               >
@@ -774,7 +828,7 @@ function ItemCustomizationDialog({
               <span className="w-8 text-center font-semibold">{quantity}</span>
               <Button
                 variant="outline"
-                size="icon"
+                size="sm"
                 className="h-8 w-8"
                 onClick={() => setQuantity(quantity + 1)}
               >
@@ -995,7 +1049,7 @@ function CartContent({
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
                     variant="outline"
-                    size="icon"
+                    size="sm"
                     className="h-7 w-7"
                     onClick={() => updateQuantity(item.id, -1)}
                   >
@@ -1004,7 +1058,7 @@ function CartContent({
                   <span className="w-8 text-center font-medium">{item.quantity}</span>
                   <Button
                     variant="outline"
-                    size="icon"
+                    size="sm"
                     className="h-7 w-7"
                     onClick={() => updateQuantity(item.id, 1)}
                   >
@@ -1012,7 +1066,7 @@ function CartContent({
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="sm"
                     className="h-7 w-7 text-destructive"
                     onClick={() => removeFromCart(item.id)}
                   >
