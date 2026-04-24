@@ -737,7 +737,6 @@ function ItemCustomizationDialog({
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
-                size="icon"
                 className="h-8 w-8"
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
               >
@@ -746,7 +745,6 @@ function ItemCustomizationDialog({
               <span className="w-8 text-center font-semibold">{quantity}</span>
               <Button
                 variant="outline"
-                size="icon"
                 className="h-8 w-8"
                 onClick={() => setQuantity(quantity + 1)}
               >
@@ -955,14 +953,14 @@ function CartContent({
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, -1)}>
+                  <Button variant="outline" className="h-7 w-7" onClick={() => updateQuantity(item.id, -1)}>
                     <Minus className="h-3 w-3" />
                   </Button>
                   <span className="w-8 text-center font-medium">{item.quantity}</span>
-                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, 1)}>
+                  <Button variant="outline" className="h-7 w-7" onClick={() => updateQuantity(item.id, 1)}>
                     <Plus className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
+                  <Button variant="ghost" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
