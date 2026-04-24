@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createClient } from './supabase/client'
+import { supabase } from './supabase/client'
 
 // Store location constants
 export const STORE_LOCATION = {
@@ -94,8 +94,6 @@ export function useAuth() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const supabase = createClient()
-
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
