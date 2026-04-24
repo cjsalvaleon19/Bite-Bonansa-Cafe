@@ -273,7 +273,7 @@ export default function CustomerOrderPage() {
           discount: 0,
           total,
           notes: notesStr.trim(),
-        })
+        } as any)
         .select()
         .single()
       if (orderError) throw new Error(orderError.message)
@@ -286,7 +286,7 @@ export default function CustomerOrderPage() {
           ? `${item.menuItem.name} (${parts.join(' | ')})`
           : item.menuItem.name
         return {
-          order_id: order.id,
+          order_id: (order as any).id,
           menu_item_id: item.menuItemId,
           name: displayName,
           price: item.basePrice + item.addonPrice,
@@ -294,9 +294,9 @@ export default function CustomerOrderPage() {
           subtotal: item.price,
         }
       })
-      const { error: itemsError } = await supabase.from('order_items').insert(orderItems)
+      const { error: itemsError } = await supabase.from('order_items').insert(orderItems as any)
       if (itemsError) throw new Error(itemsError.message)
-      toast.success(`Order ${order.order_number} placed successfully!`, {
+      toast.success(`Order ${(order as any).order_number} placed successfully!`, {
         description: 'You can track your order in the Track Orders page.',
       })
       setCart([])
