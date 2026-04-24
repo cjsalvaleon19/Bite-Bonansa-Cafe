@@ -486,7 +486,7 @@ export default function CustomerOrderPage() {
 
                     {/* Option hints */}
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {hasVarieties && (item.varieties as string[]).slice(0, 3).map((v) => (
+                      {hasVarieties && (item.varieties as unknown as string[]).slice(0, 3).map((v) => (
                         <span
                           key={v}
                           className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
@@ -494,9 +494,9 @@ export default function CustomerOrderPage() {
                           {v}
                         </span>
                       ))}
-                      {hasVarieties && (item.varieties as string[]).length > 3 && (
+                      {hasVarieties && (item.varieties as unknown as string[]).length > 3 && (
                         <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                          +{(item.varieties as string[]).length - 3} more
+                          +{(item.varieties as unknown as string[]).length - 3} more
                         </span>
                       )}
                       {hasSizes && (item.sizes as any[]).map((s: any) => (
