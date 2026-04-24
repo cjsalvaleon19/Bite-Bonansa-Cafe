@@ -6,8 +6,8 @@ This guide explains the menu pricing update migration (`013_Update_Menu_Pricing_
 ## What's Updated
 
 ### Summary
-- **Total Items**: 21 menu items
-- **Categories**: 4 (Snacks & Bites, Noodles, Chicken, Rice & More)
+- **Total Items**: 27 menu items
+- **Categories**: 5 (Snacks & Bites, Noodles, Chicken, Rice & More, Milktea Series)
 - **Pricing**: All prices updated to match current pricing structure
 - **Variants**: Complete variant system with sizes, flavors, spice levels, add-ons
 
@@ -73,7 +73,7 @@ This guide explains the menu pricing update migration (`013_Update_Menu_Pricing_
 16. **Chicken Burger** - ₱104
     - Variants: Flavor (Honey Butter, Soy Garlic, Sweet & Sour, Sweet & Spicy, Teriyaki, Buffalo, Barbecue, Original)
 
-#### Rice & More (5 items)
+#### Rice & More (7 items)
 17. **Silog Meals** - ₱114
     - Variants: Variety (Luncheonsilog, Tapsilog, Tocilog, Cornsilog, Chicsilog, Hotsilog, Siomaisilog)
     
@@ -89,6 +89,29 @@ This guide explains the menu pricing update migration (`013_Update_Menu_Pricing_
     
 21. **Spam Musubi** - ₱104
     - No variants
+
+22. **Sushi** - ₱104
+    - No variants
+
+23. **Caesar Salad** - ₱104
+    - No variants
+
+#### Milktea Series (4 items)
+24. **Brown Sugar Milktea** - ₱99 (16oz) / ₱114 (22oz)
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+25. **Wintermelon Milktea** - ₱99 (16oz) / ₱114 (22oz)
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+26. **Okinawa Milktea** - ₱99 (16oz) / ₱114 (22oz)
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+27. **Hokkaido Milktea** - ₱99 (16oz) / ₱114 (22oz)
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
 
 ## How to Apply This Migration
 
@@ -146,9 +169,10 @@ The migration works with three tables:
 ## Kitchen Department Assignment
 
 Based on the spreadsheet:
-- **Fryer 1**: Nachos, Fries, Calamares, Spag, Ramyeon, Samyang, Tteokbokki, Chicken items
-- **Fryer 2**: Siomai, Clubhouse, Footlong, Spam Musubi
+- **Fryer 1**: Nachos, Fries, Calamares, Spag, Ramyeon, Samyang, Tteokbokki, Chicken items, Silog Meals
+- **Fryer 2**: Siomai, Clubhouse, Footlong, Spam Musubi, Sushi, Caesar Salad
 - **Pastries**: Waffles
+- **Drinks**: Milktea Series
 
 Note: Kitchen department tracking may require additional implementation beyond this migration.
 

@@ -747,11 +747,197 @@ SELECT id, 'No veggies', 0, true, 1 FROM addon_type;
 INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
 VALUES ('Spam Musubi', 'Rice & More', 104.00, false, 'Japanese-Hawaiian rice and spam snack', true);
 
+-- ----------------------------------------------------------------------------
+-- 22. SUSHI (₱104 base)
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Sushi', 'Rice & More', 104.00, false, 'Fresh sushi', true);
+
+-- ----------------------------------------------------------------------------
+-- 23. CAESAR SALAD (₱104 base)
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Caesar Salad', 'Rice & More', 104.00, false, 'Classic Caesar salad', true);
+
+-- ============================================================================
+-- MILKTEA SERIES CATEGORY
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 24. BROWN SUGAR MILKTEA - Size and Add Ons variants
+-- Base price ₱99 for 16oz, ₱114 for 22oz
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Brown Sugar Milktea', 'Milktea Series', 99.00, true, 'Brown sugar milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Brown Sugar Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id 
+  FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Brown Sugar Milktea' AND vt.variant_type_name = 'Size'
+  LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id 
+  FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Brown Sugar Milktea' AND vt.variant_type_name = 'Add Ons'
+  LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 25. WINTERMELON MILKTEA - Size and Add Ons variants
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Wintermelon Milktea', 'Milktea Series', 99.00, true, 'Wintermelon milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Wintermelon Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id 
+  FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Wintermelon Milktea' AND vt.variant_type_name = 'Size'
+  LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id 
+  FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Wintermelon Milktea' AND vt.variant_type_name = 'Add Ons'
+  LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 26. OKINAWA MILKTEA - Size and Add Ons variants
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Okinawa Milktea', 'Milktea Series', 99.00, true, 'Okinawa milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Okinawa Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id 
+  FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Okinawa Milktea' AND vt.variant_type_name = 'Size'
+  LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id 
+  FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Okinawa Milktea' AND vt.variant_type_name = 'Add Ons'
+  LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 27. HOKKAIDO MILKTEA - Size and Add Ons variants
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Hokkaido Milktea', 'Milktea Series', 99.00, true, 'Hokkaido milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Hokkaido Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id 
+  FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Hokkaido Milktea' AND vt.variant_type_name = 'Size'
+  LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id 
+  FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Hokkaido Milktea' AND vt.variant_type_name = 'Add Ons'
+  LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
 -- ============================================================================
 -- SUMMARY
 -- ============================================================================
--- Total items: 21
--- Categories: Snacks & Bites (4), Noodles (9), Chicken (3), Rice & More (5)
+-- Total items: 27
+-- Categories: Snacks & Bites (4), Noodles (9), Chicken (3), Rice & More (7), Milktea Series (4)
 -- All prices updated according to the spreadsheet
 -- All variants properly configured
+-- Milktea items have Size variants (16oz/22oz) and Add-ons (Pearls, Cream Cheese, Coffee Jelly)
 -- ============================================================================
