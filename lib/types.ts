@@ -10,6 +10,26 @@ export interface MenuItem {
   sizes?: MenuItemSize[]
   addons?: MenuItemAddon[]
   kitchenDepartment?: string
+  // New variant system fields
+  has_variants?: boolean
+  variant_types?: VariantType[]
+}
+
+export interface VariantType {
+  id: string
+  variant_type_name: string
+  is_required: boolean
+  allow_multiple: boolean
+  display_order: number
+  options?: VariantOption[]
+}
+
+export interface VariantOption {
+  id: string
+  option_name: string
+  price_modifier: number
+  available: boolean
+  display_order: number
 }
 
 export interface MenuItemVariety {

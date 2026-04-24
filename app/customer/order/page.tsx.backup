@@ -109,45 +109,24 @@ export default function CustomerOrderPage() {
   useEffect(() => {
     async function loadMenu() {
       const supabase = createClient()
-      
-      // Try to fetch from menu_items_base first (new variant system)
-      const { data: baseItems, error: baseError } = await supabase
-        .from('menu_items_base')
-        .select(`
-          *,
-          variant_types:menu_item_variant_types(
-            *,
-            options:menu_item_variant_options(*)
-          )
-        `)
-        .eq('available', true)
-        .order('category')
-        .order('name')
-      
-      // Fall back to old menu_items if base doesn't exist
-      const { data: items } = baseItems && !baseError
-        ? { data: baseItems }
-        : await supabase
-            .from('menu_items')
-            .select('*, category:categories(id, name)')
-            .eq('available', true)
-            .order('name')
-      
-      const { data: cats } = await supabase.from('categories').select('*').order('sort_order')
-      
+      const [{ data: items }, { data: cats }] = await Promise.all([
+        supabase
+          .from('menu_items')
+          .select('*, category:categories(id, name)')
+          .eq('available', true)
+          .order('name'),
+        supabase.from('categories').select('*').order('sort_order'),
+      ])
       if (items) {
         setMenuItems(
           items.map((item: any) => ({
             id: item.id,
             name: item.name,
             description: item.description || '',
-            price: item.base_price || item.price,
-            category: item.category?.name || item.category || '',
+            price: item.price,
+            category: item.category?.name || '',
             available: item.available,
             preparationTime: item.preparation_time || 0,
-            // Support both old and new variant systems
-            has_variants: item.has_variants || false,
-            variant_types: item.variant_types || [],
             varieties: item.varieties || [],
             sizes: item.sizes || [],
             addons: item.addons || [],
@@ -172,15 +151,11 @@ export default function CustomerOrderPage() {
   // ── Cart helpers ──────────────────────────────────────────────────────────
 
   const openItemDialog = (item: MenuItem) => {
-    // Check for new variant system first
-    const hasNewVariants = item.has_variants && item.variant_types && item.variant_types.length > 0
-    // Check for old variant system
-    const hasOldOptions =
+    const hasOptions =
       (item.varieties && item.varieties.length > 0) ||
       (item.sizes && item.sizes.length > 0) ||
       (item.addons && item.addons.length > 0)
-    
-    if (hasNewVariants || hasOldOptions) {
+    if (hasOptions) {
       setDialogItem(item)
       setShowItemDialog(true)
     } else {
@@ -481,13 +456,10 @@ export default function CustomerOrderPage() {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredItems.map((item) => {
-              // Check for new variant system
-              const hasNewVariants = item.has_variants && item.variant_types && item.variant_types.length > 0
-              // Check for old variant system
               const hasVarieties = item.varieties && item.varieties.length > 0
               const hasSizes     = item.sizes     && item.sizes.length     > 0
               const hasAddons    = item.addons    && item.addons.length    > 0
-              const hasOptions   = hasNewVariants || hasVarieties || hasSizes || hasAddons
+              const hasOptions   = hasVarieties || hasSizes || hasAddons
 
               const minSizePrice = hasSizes
                 ? Math.min(...(item.sizes as any[]).map((s: any) => s.price))
@@ -542,12 +514,8 @@ export default function CustomerOrderPage() {
                     </div>
 
                     {/* Add-ons hint */}
-                    {(hasAddons || (item.has_variants && item.variant_types && item.variant_types.length > 0)) && (
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        {item.has_variants && item.variant_types && item.variant_types.length > 0 
-                          ? 'Customizable options available' 
-                          : '+ Add-ons available'}
-                      </p>
+                    {hasAddons && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">+ Add-ons available</p>
                     )}
 
                     {/* Button */}
