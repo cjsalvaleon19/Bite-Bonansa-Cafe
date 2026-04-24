@@ -359,16 +359,14 @@ export default function CustomerOrderPage() {
 
         {/* Cart Button (Mobile) */}
         <Sheet>
-          <SheetTrigger asChild>
-            <Button className="relative md:hidden">
-              <ShoppingCart className="mr-2 h-5 w-5" />
-              Cart
-              {cartItemCount > 0 && (
-                <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
-                  {cartItemCount}
-                </span>
-              )}
-            </Button>
+          <SheetTrigger className="relative inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 md:hidden">
+            <ShoppingCart className="mr-2 h-5 w-5" />
+            Cart
+            {cartItemCount > 0 && (
+              <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
+                {cartItemCount}
+              </span>
+            )}
           </SheetTrigger>
           <SheetContent className="flex w-full flex-col sm:max-w-lg">
             <SheetHeader>
