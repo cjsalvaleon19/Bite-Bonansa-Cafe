@@ -57,16 +57,21 @@ After applying the fix:
 ## Expected Behavior
 
 ### Without Variants
-- Item: "Blueberry Soda"
+- Item: Regular drinks or items without customization
 - Button: "Add to Cart"
 - Behavior: Immediately adds to cart
+- Example: Items from screenshot that don't have variants
 
 ### With Variants
-- Item: "Chicken Burger — choose your flavor"
+- Item: "Chicken Burger" (description: "Juicy chicken burger — choose your flavor")
 - Button: "Customize & Add"
 - Behavior: Opens modal to select flavor
-- Modal shows: Flavor options (Barbecue, Buffalo Wings, etc.)
-- After selection: Adds to cart with selected variant
+- Modal shows: Flavor options (Barbecue, Buffalo Wings, Honey Butter, Sweet & Sour, Sweet & Spicy, Soy Garlic, Teriyaki, Original)
+- After selection: Adds to cart with selected variant and correct price
+
+### Another Example with Variants
+- Item: "Chicken Meals" (description: "Choose your flavor — 7 variants available")
+- Same variant selection flow as Chicken Burger
 
 ## File Reference
 

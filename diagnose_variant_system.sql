@@ -98,6 +98,7 @@ FROM menu_items
 WHERE available = true;
 
 -- List items in old table
+-- Note: Showing all items to ensure complete visibility during diagnosis
 SELECT 
   id,
   name,
@@ -106,8 +107,7 @@ SELECT
   available
 FROM menu_items
 WHERE available = true
-ORDER BY category, name
-LIMIT 20;
+ORDER BY category, name;
 
 -- ============================================================================
 -- 7. SPECIFIC ITEMS FROM SCREENSHOT
