@@ -81,11 +81,11 @@ This guide explains the menu pricing update migration (`013_Update_Menu_Pricing_
     - Variants: Variety (Biscoff, Strawberry, Oreo, Mallows)
     
 19. **Clubhouse** - ₱104
-    - Add Ons: No vegies, Spam (+₱15)
+    - Add Ons: No veggies, Spam (+₱15)
     
 20. **Footlong** - ₱94
     - Variants: Spice Level (Regular, Spicy)
-    - Add Ons: No vegies
+    - Add Ons: No veggies
     
 21. **Spam Musubi** - ₱104
     - No variants

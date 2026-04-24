@@ -701,7 +701,7 @@ WITH addon_type AS (
   LIMIT 1
 )
 INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
-SELECT id, 'No vegies', 0, true, 1 FROM addon_type
+SELECT id, 'No veggies', 0, true, 1 FROM addon_type
 UNION ALL
 SELECT id, 'Spam', 15, true, 2 FROM addon_type;
 
@@ -739,7 +739,7 @@ WITH addon_type AS (
   LIMIT 1
 )
 INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
-SELECT id, 'No vegies', 0, true, 1 FROM addon_type;
+SELECT id, 'No veggies', 0, true, 1 FROM addon_type;
 
 -- ----------------------------------------------------------------------------
 -- 21. SPAM MUSUBI (₱104 base)
