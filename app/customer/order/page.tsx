@@ -564,15 +564,13 @@ export default function CustomerOrderPage() {
       />
 
       {/* Location Picker — conditionally rendered; closes after a location is picked */}
-      {showLocationPicker && (
-        <LocationPicker
-          onLocationSelect={(address: string, lat: number, lng: number) => {
-            handleLocationSelect(address, lat, lng)
-            setShowLocationPicker(false)
-          }}
-          initialAddress={deliveryAddress}
-        />
-      )}
+      <LocationPicker
+        isOpen={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onSelectLocation={(lat: number, lng: number, address: string) => {
+          handleLocationSelect(address, lat, lng)
+        }}
+      />
 
       {/* GCash Payment Dialog */}
       <GCashDialog
@@ -716,7 +714,7 @@ function ItemCustomizationDialog({
                       <Checkbox
                         id={`addon-${addon.name}`}
                         checked={selectedAddons.some(a => a.name === addon.name)}
-                        onCheckedChange={() => toggleAddon(addon)}
+                        onChange={() => toggleAddon(addon)}
                       />
                       <Label htmlFor={`addon-${addon.name}`} className="cursor-pointer font-normal">
                         {addon.name}
@@ -739,7 +737,6 @@ function ItemCustomizationDialog({
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
-                size="icon"
                 className="h-8 w-8"
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
               >
@@ -748,7 +745,6 @@ function ItemCustomizationDialog({
               <span className="w-8 text-center font-semibold">{quantity}</span>
               <Button
                 variant="outline"
-                size="icon"
                 className="h-8 w-8"
                 onClick={() => setQuantity(quantity + 1)}
               >
@@ -957,14 +953,14 @@ function CartContent({
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, -1)}>
+                  <Button variant="outline" className="h-7 w-7" onClick={() => updateQuantity(item.id, -1)}>
                     <Minus className="h-3 w-3" />
                   </Button>
                   <span className="w-8 text-center font-medium">{item.quantity}</span>
-                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, 1)}>
+                  <Button variant="outline" className="h-7 w-7" onClick={() => updateQuantity(item.id, 1)}>
                     <Plus className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
+                  <Button variant="ghost" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
