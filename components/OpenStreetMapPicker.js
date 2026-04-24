@@ -253,6 +253,7 @@ export default function OpenStreetMapPicker({
                   cursor: 'pointer',
                   borderBottom: index < searchResults.length - 1 ? '1px solid #eee' : 'none',
                   fontSize: '14px',
+                  color: '#000',
                   transition: 'background-color 0.2s'
                 }}
                 onMouseEnter={(e) => e.target.style.backgroundColor = '#f5f5f5'}
