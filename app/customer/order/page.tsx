@@ -563,11 +563,13 @@ export default function CustomerOrderPage() {
         onAddToCart={addToCartWithCustomizations}
       />
 
-      {/* Location Picker — conditionally rendered to avoid open-prop type error */}
+      {/* Location Picker — conditionally rendered; closes after a location is picked */}
       {showLocationPicker && (
         <LocationPicker
-          onOpenChange={setShowLocationPicker}
-          onLocationSelect={handleLocationSelect}
+          onLocationSelect={(address: string, lat: number, lng: number) => {
+            handleLocationSelect(address, lat, lng)
+            setShowLocationPicker(false)
+          }}
           initialAddress={deliveryAddress}
         />
       )}
