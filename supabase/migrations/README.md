@@ -22,6 +22,53 @@ This directory contains SQL migration files for the Bite Bonanza Cafe database.
 - **Sandwiches** (2): Clubhouse, Footlong
 - **Simple Items** (3): Spam Musubi, Sushi, Caesar Salad
 
+### 013_Update_Menu_Pricing_Complete.sql
+**Purpose:** Update menu pricing with complete variant system
+
+**What it does:**
+- Updates pricing for all existing menu items
+- Adds new items with updated pricing structure
+- Includes all variants: sizes, varieties, spice levels, flavors, sauces, add-ons
+
+### 014_Add_Hot_Iced_Drinks.sql
+**Purpose:** Add Hot/Iced drinks category expansion
+
+**What it does:**
+- Adds additional Hot/Iced drinks variations
+- Includes size variants (12oz Hot, 16oz Iced, 22oz Iced)
+- Adds add-ons options (Extra Shot, Coffee Jelly, Pearls, Cream Cheese)
+
+### 015_Add_Extended_Drinks_And_Frappe.sql
+**Purpose:** Add extended drinks and initial Frappe Series
+
+**What it does:**
+- Adds 8 additional hot/iced drinks (Strawberry Latte, Blueberry Latte, Ube Taro Latte, etc.)
+- Adds 4 initial Frappe Series items (Caramel Macchiato, Cookies & Cream, Matcha, Strawberry)
+- All frappes have 16oz/22oz sizes only (no hot option)
+- Add-ons: Coffee Jelly, Pearls, Cream Cheese
+
+### 016_Update_Menu_Multiple_Addons_And_New_Items.sql
+**Purpose:** Enable multiple add-ons selection and add new menu items
+
+**What it does:**
+- Updates all "Add Ons" variant types to allow multiple selection (`allow_multiple = true`)
+- Removes "No Add Ons" option from all menu items
+- Adds "Extra Rice" add-on (₱10) to Silog Meals
+- Removes Add-ons from Nachos
+- Adds 7 new Frappe Series items:
+  - Red Velvet Frappe, Ube Taro Frappe (₱119-₱134)
+  - Dark Chocolate Frappe, Mocha Frappe, Mocha Latte Frappe (₱124-₱139)
+  - Lotus Biscoff Frappe, Mango Graham Frappe (₱134-₱149)
+- Adds 11 new Fruit Soda & Lemonade items (no add-ons):
+  - Strawberry Soda, Green Apple Soda, Blue Lemonade Soda, Lychee Soda (₱54-₱69)
+  - Blueberry Soda (₱64-₱79)
+  - Passion Fruit Soda (₱74-₱89)
+  - Lemonade Juice, Lemon Strawberry Juice, Lemon Blueberry Juice (₱54-₱79)
+  - Lemon Passion Fruit Juice (₱84-₱99)
+  - Lemon Yogurt Slush (₱94-₱109)
+
+**Total items after migration:** 80 menu items
+
 ---
 
 ## How to Run Migrations
@@ -37,7 +84,7 @@ This directory contains SQL migration files for the Bite Bonanza Cafe database.
    - Click "New Query"
 
 3. **Run Migration**
-   - Open: `supabase/migrations/012_Seed_Bite_Bonanza_Menu_Variants.sql`
+   - Open the migration file you want to run (e.g., `supabase/migrations/016_Update_Menu_Multiple_Addons_And_New_Items.sql`)
    - Copy ALL contents
    - Paste into SQL Editor
    - Click "Run" (or Ctrl+Enter / Cmd+Enter)
@@ -45,6 +92,8 @@ This directory contains SQL migration files for the Bite Bonanza Cafe database.
 4. **Wait for Completion**
    - Migration should complete in a few seconds
    - Check for success messages
+
+**Note:** Run migrations in order (012 → 013 → 014 → 015 → 016) if starting fresh.
 
 ### Method 2: Supabase CLI
 
@@ -69,7 +118,7 @@ psql -h <your-db-host> -U postgres -d postgres -f supabase/migrations/012_Seed_B
 
 ## Verification
 
-After running the migration, verify it worked:
+After running migration 016, verify it worked:
 
 ```sql
 -- Check total items created
@@ -79,8 +128,28 @@ FROM menu_items_base;
 ```
 
 **Expected Results:**
-- Total items: 24
-- Items with variants: 21
+- Total items: 80
+- Items with variants: ~75+
+
+```sql
+-- Verify multiple add-ons enabled
+SELECT COUNT(*) as add_ons_with_multiple
+FROM menu_item_variant_types
+WHERE variant_type_name = 'Add Ons' AND allow_multiple = true;
+
+-- Verify "No Add Ons" removed
+SELECT COUNT(*) as no_add_ons_count
+FROM menu_item_variant_options
+WHERE option_name = 'No Add Ons';
+-- Should return 0
+
+-- Verify Extra Rice for Silog Meals
+SELECT mb.name, vo.option_name, vo.price_modifier
+FROM menu_item_variant_options vo
+JOIN menu_item_variant_types vt ON vo.variant_type_id = vt.id
+JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+WHERE mb.name = 'Silog Meals' AND vo.option_name = 'Extra Rice';
+```
 
 ```sql
 -- View all items with variant details
@@ -97,6 +166,12 @@ GROUP BY mb.id, mb.name, mb.category, mb.has_variants
 ORDER BY mb.category, mb.name;
 ```
 
+**Run full test script:**
+```bash
+# Run the test script
+psql -h <your-db-host> -U postgres -d postgres -f test_migration_016.sql
+```
+
 ---
 
 ## Testing in Application
@@ -111,12 +186,34 @@ After migration:
    - Click on items like "Milktea", "Fries", "Chicken Meal"
    - Variant selection modal should appear
    - Required variants marked with red asterisk (*)
-   - Can select multiple add-ons
+   - **Can now select multiple add-ons** (new feature!)
+   - "No Add Ons" option should no longer appear
+
+3. **Test New Frappe Items**
+   - Browse "Frappe Series" category
+   - New items should include: Red Velvet, Ube Taro, Dark Chocolate, Mocha, Mocha Latte, Lotus Biscoff, Mango Graham
+   - Can select multiple add-ons: Coffee Jelly, Pearls, Cream Cheese
+
+4. **Test New Fruit Soda Items**
+   - Browse "Fruit Soda & Lemonade" category
+   - New items should include various sodas and juices
+   - These items should NOT have add-ons options
+
+5. **Test Silog Meals**
+   - Click on "Silog Meals"
+   - Verify "Extra Rice" (₱10) appears as an add-on option
+   - Can select multiple add-ons now
+
+6. **Test Nachos**
+   - Click on "Nachos"
+   - Verify NO add-ons section appears
+   - Only Sauce selection should be available
 
 3. **Verify Functionality**
    - Select variants and add to cart
-   - Check that variants show in cart
-   - Verify prices update with modifiers
+   - **Test selecting multiple add-ons** (e.g., Coffee Jelly + Pearls + Cream Cheese)
+   - Check that all selected variants show in cart
+   - Verify prices update correctly with all modifiers
    - Complete checkout with variant items
 
 ---
@@ -164,10 +261,10 @@ DROP TABLE IF EXISTS menu_items_base CASCADE;
 
 ## Migration Details
 
-**File:** `012_Seed_Bite_Bonanza_Menu_Variants.sql`
-**Size:** ~60KB
-**Lines:** ~1,000+
-**Safe to rerun:** Yes (idempotent)
+**Latest Migration:** `016_Update_Menu_Multiple_Addons_And_New_Items.sql`
+**Total Migrations:** 5 (012 through 016)
+**Total Menu Items:** 80
+**Safe to rerun:** Yes (most migrations are idempotent)
 **Dependencies:** Requires `users` table to exist for RLS policies
 
 ---
