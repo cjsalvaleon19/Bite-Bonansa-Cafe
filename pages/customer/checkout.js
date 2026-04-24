@@ -296,7 +296,8 @@ export default function Checkout() {
       
       // Validate that delivery fee was calculated successfully
       if (typeof deliveryFee === 'string') {
-        throw new Error('Please select a delivery location on the map');
+        // calculateDeliveryFee returns 'Select location' if coordinates are missing
+        throw new Error('Please select your delivery location on the map first');
       }
       
       const total = subtotal + vat + deliveryFee;
