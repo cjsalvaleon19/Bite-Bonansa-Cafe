@@ -3,7 +3,7 @@ import { createClient } from './supabase/client'
 
 // Store location constants
 export const STORE_LOCATION = {
-  name: 'Bite Bonansa',
+  name: 'Bite Bonanza',
   address: "Laconon-Salacafe Rd, Brgy. Poblacion, T'boli, South Cotabato",
   latitude: 6.2178483,
   longitude: 124.8221226,
