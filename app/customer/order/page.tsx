@@ -346,7 +346,7 @@ export default function CustomerOrderPage() {
         </div>
 
         <Sheet>
-          <SheetTrigger asChild>
+          <SheetTrigger>
             <Button className="relative md:hidden">
               <ShoppingCart className="mr-2 h-5 w-5" />
               Cart
