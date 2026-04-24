@@ -291,19 +291,14 @@ export default function Checkout() {
       const subtotal = calculateSubtotal();
       const vat = calculateVAT(subtotal);
       
-      // Calculate delivery fee from coordinates using Supabase function
-      const { data: deliveryFeeData, error: feeError } = await supabase
-        .rpc('calculate_delivery_fee_from_store', {
-          customer_latitude: formData.latitude,
-          customer_longitude: formData.longitude
-        });
-
-      if (feeError) {
-        console.error('Error calculating delivery fee:', feeError);
-        throw new Error('Failed to calculate delivery fee');
+      // Validate coordinates before calculating delivery fee
+      if (!formData.latitude || !formData.longitude) {
+        throw new Error('Please select your delivery location on the map first');
       }
-
-      const deliveryFee = parseFloat(deliveryFeeData) || BASE_DELIVERY_FEE; // Default to base fee if calculation fails
+      
+      // Use frontend-calculated delivery fee (same logic as database function)
+      const deliveryFee = calculateDeliveryFee();
+      
       const total = subtotal + vat + deliveryFee;
 
       // Prepare order data
