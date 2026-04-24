@@ -15,17 +15,17 @@ import {
   CheckCircle2,
   Smartphone,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
+import { Input } from '../../../components/ui/input'
+import { Button } from '../../../components/ui/button'
+import { Badge } from '../../../components/ui/badge'
+import { Separator } from '../../../components/ui/separator'
+import { Tabs, TabsList, TabsTrigger } from '../../../components/ui/tabs'
+import { Textarea } from '../../../components/ui/textarea'
+import { Label } from '../../../components/ui/label'
+import { RadioGroup, RadioGroupItem } from '../../../components/ui/radio-group'
+import { ScrollArea } from '../../../components/ui/scroll-area'
+import { Checkbox } from '../../../components/ui/checkbox'
 import {
   Sheet,
   SheetContent,
@@ -33,7 +33,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '@/components/ui/sheet'
+} from '../../../components/ui/sheet'
 import {
   Dialog,
   DialogContent,
@@ -41,13 +41,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog'
-import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '@/lib/store'
-import { createClient } from '@/lib/supabase/client'
-import { LocationPicker } from '@/components/location-picker'
+} from '../../../components/ui/dialog'
+import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '../../../lib/store'
+import { createClient } from '../../../lib/supabase/client'
+import { LocationPicker } from '../../../components/location-picker'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
+import type { MenuItem, MenuItemAddon, PaymentMethod } from '../../../lib/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -163,7 +163,7 @@ export default function CustomerOrderPage() {
   const filteredItems = menuItems.filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (item.description || '').toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory =
       selectedCategory === 'all' || item.category === selectedCategory
     return matchesSearch && matchesCategory
@@ -366,7 +366,7 @@ export default function CustomerOrderPage() {
     if (outOfRange) {
       toast.error('Your location is outside our delivery area (max 10 km). Please choose a closer location or switch to Pick-up.')
     } else {
-      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance)})`)
+      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)}${distance !== null ? ` (${formatDistance(distance)})` : ''}`)
     }
   }
 
@@ -384,7 +384,7 @@ export default function CustomerOrderPage() {
 
         {/* Cart Button (Mobile) */}
         <Sheet>
-          <SheetTrigger asChild>
+          <SheetTrigger>
             <Button className="relative md:hidden">
               <ShoppingCart className="mr-2 h-5 w-5" />
               Cart
@@ -518,7 +518,6 @@ export default function CustomerOrderPage() {
 
                     {/* Option chips - show new variant types or old varieties/sizes */}
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {!hasNewVariants && hasVarieties && (item.varieties as string[]).slice(0, 3).map((v) => (
                       {/* New variant system */}
                       {hasNewVariants && item.variant_types?.slice(0, 3).map((vt) => (
                         <span
@@ -534,17 +533,17 @@ export default function CustomerOrderPage() {
                         </span>
                       )}
                       {/* Old variant system */}
-                      {!hasNewVariants && hasVarieties && (item.varieties as string[]).slice(0, 3).map((v) => (
+                      {!hasNewVariants && hasVarieties && (item.varieties || []).slice(0, 3).map((v) => (
                         <span
-                          key={v}
+                          key={typeof v === 'string' ? v : v.name}
                           className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
                         >
-                          {v}
+                          {typeof v === 'string' ? v : v.name}
                         </span>
                       ))}
-                      {!hasNewVariants && hasVarieties && (item.varieties as string[]).length > 3 && (
+                      {!hasNewVariants && hasVarieties && (item.varieties || []).length > 3 && (
                         <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                          +{(item.varieties as string[]).length - 3} more
+                          +{(item.varieties || []).length - 3} more
                         </span>
                       )}
                       {!hasNewVariants && hasSizes && (item.sizes as any[]).map((s: any) => (
@@ -638,10 +637,12 @@ export default function CustomerOrderPage() {
 
       {/* Location Picker */}
       <LocationPicker
-        open={showLocationPicker}
-        onOpenChange={setShowLocationPicker}
-        onLocationSelect={handleLocationSelect}
-        initialAddress={deliveryAddress}
+        isOpen={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onSelectLocation={(lat, lng, address) => {
+          handleLocationSelect(address, lat, lng)
+          setShowLocationPicker(false)
+        }}
       />
 
       {/* GCash Payment Dialog */}
@@ -686,7 +687,7 @@ function ItemCustomizationDialog({
 
   useEffect(() => {
     if (item) {
-      setSelectedVariety(item.varieties?.[0] || '')
+      setSelectedVariety(item.varieties?.[0]?.name || '')
       setSelectedSize((item.sizes as any)?.[0] || null)
       setSelectedAddons([])
       setQuantity(1)
@@ -733,14 +734,19 @@ function ItemCustomizationDialog({
                 onValueChange={setSelectedVariety}
                 className="space-y-1"
               >
-                {item.varieties.map((v: string) => (
-                  <div key={v} className="flex items-center gap-2">
-                    <RadioGroupItem value={v} id={`variety-${v}`} />
-                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">
-                      {v}
-                    </Label>
-                  </div>
-                ))}
+                {item.varieties.map((v) => {
+                  const varietyName = typeof v === 'string' ? v : v.name
+                  const varietyPrice = typeof v === 'object' && 'price' in v ? v.price : 0
+                  return (
+                    <div key={varietyName} className="flex items-center gap-2">
+                      <RadioGroupItem value={varietyName} id={`variety-${varietyName}`} />
+                      <Label htmlFor={`variety-${varietyName}`} className="cursor-pointer font-normal">
+                        {varietyName}
+                        {varietyPrice > 0 && <span className="text-xs text-muted-foreground"> (+{formatCurrency(varietyPrice)})</span>}
+                      </Label>
+                    </div>
+                  )
+                })}
               </RadioGroup>
             </div>
           )}
@@ -787,7 +793,7 @@ function ItemCustomizationDialog({
                       <Checkbox
                         id={`addon-${addon.name}`}
                         checked={selectedAddons.some(a => a.name === addon.name)}
-                        onCheckedChange={() => toggleAddon(addon)}
+                        onChange={() => toggleAddon(addon)}
                       />
                       <Label
                         htmlFor={`addon-${addon.name}`}
@@ -813,7 +819,7 @@ function ItemCustomizationDialog({
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
-                size="icon"
+                size="sm"
                 className="h-8 w-8"
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
               >
@@ -822,7 +828,7 @@ function ItemCustomizationDialog({
               <span className="w-8 text-center font-semibold">{quantity}</span>
               <Button
                 variant="outline"
-                size="icon"
+                size="sm"
                 className="h-8 w-8"
                 onClick={() => setQuantity(quantity + 1)}
               >
@@ -1043,7 +1049,7 @@ function CartContent({
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
                     variant="outline"
-                    size="icon"
+                    size="sm"
                     className="h-7 w-7"
                     onClick={() => updateQuantity(item.id, -1)}
                   >
@@ -1052,7 +1058,7 @@ function CartContent({
                   <span className="w-8 text-center font-medium">{item.quantity}</span>
                   <Button
                     variant="outline"
-                    size="icon"
+                    size="sm"
                     className="h-7 w-7"
                     onClick={() => updateQuantity(item.id, 1)}
                   >
@@ -1060,7 +1066,7 @@ function CartContent({
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="sm"
                     className="h-7 w-7 text-destructive"
                     onClick={() => removeFromCart(item.id)}
                   >
