@@ -6,7 +6,7 @@
 --   3. Add "Extra Rice" to Silog Meals add-ons
 --   4. Remove Add-ons from Nachos
 --   5. Add new Frappe Series items (7 items)
---   6. Add new Fruit Soda & Lemonade items (12 items)
+--   6. Add new Fruit Soda & Lemonade items (11 items)
 -- Created: 2026-04-24
 -- ============================================================================
 
@@ -303,6 +303,8 @@ WITH addon_type AS (
   JOIN menu_items_base mb ON vt.menu_item_id = mb.id
   WHERE mb.name = 'Mango Graham Frappe' AND vt.variant_type_name = 'Add Ons' LIMIT 1
 )
+-- Note: Mango Graham Frappe only has Pearls and Cream Cheese add-ons (no Coffee Jelly)
+-- This matches the menu specification provided
 INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
 SELECT id, 'Pearls', 15, true, 1 FROM addon_type
 UNION ALL
