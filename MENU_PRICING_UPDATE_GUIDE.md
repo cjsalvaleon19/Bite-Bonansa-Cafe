@@ -153,7 +153,7 @@ psql -h <your-db-host> -U <your-db-user> -d <your-database> -f supabase/migratio
 - [ ] Test in a development environment first
 
 ### Post-Migration Verification
-1. Verify all 21 items are in the database
+1. Verify all 27 items are in the database
 2. Check that variant types are correctly assigned
 3. Test variant selection in the customer portal
 4. Verify pricing calculations include add-ons correctly
