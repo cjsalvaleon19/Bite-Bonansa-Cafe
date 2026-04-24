@@ -15,17 +15,17 @@ import {
   CheckCircle2,
   Smartphone,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
-import { Input } from '../../../components/ui/input'
-import { Button } from '../../../components/ui/button'
-import { Badge } from '../../../components/ui/badge'
-import { Separator } from '../../../components/ui/separator'
-import { Tabs, TabsList, TabsTrigger } from '../../../components/ui/tabs'
-import { Textarea } from '../../../components/ui/textarea'
-import { Label } from '../../../components/ui/label'
-import { RadioGroup, RadioGroupItem } from '../../../components/ui/radio-group'
-import { ScrollArea } from '../../../components/ui/scroll-area'
-import { Checkbox } from '../../../components/ui/checkbox'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Sheet,
   SheetContent,
@@ -33,7 +33,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '../../../components/ui/sheet'
+} from '@/components/ui/sheet'
 import {
   Dialog,
   DialogContent,
@@ -41,13 +41,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '../../../components/ui/dialog'
-import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '../../../lib/store'
-import { createClient } from '../../../lib/supabase/client'
-import { LocationPicker } from '../../../components/location-picker'
+} from '@/components/ui/dialog'
+import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '@/lib/store'
+import { createClient } from '@/lib/supabase/client'
+import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import type { MenuItem, MenuItemAddon, PaymentMethod } from '../../../lib/types'
+import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,23 +57,19 @@ interface CartItem {
   menuItemId: string
   menuItem: MenuItem
   quantity: number
-  basePrice: number   // unit price (from size or item.price)
-  addonPrice: number  // sum of selected addon prices per unit
-  price: number       // (basePrice + addonPrice) × quantity
+  basePrice: number
+  addonPrice: number
+  price: number
   selectedVariety?: string
   selectedSize?: string
   selectedAddons: MenuItemAddon[]
 }
 
-// GCash details
 const GCASH_OWNER = {
   name: 'Catherine Jean Arclita',
   number: '09514915138',
 }
 
-// Points rate:
-//   subtotal ₱0–₱500    → 0.2% of subtotal
-//   subtotal ₱501+      → 0.35% of subtotal
 function calcEarnedPoints(subtotal: number): number {
   const rate = subtotal <= 500 ? 0.002 : 0.0035
   return Math.floor(subtotal * rate)
@@ -101,56 +97,33 @@ export default function CustomerOrderPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
-
-  // Item customization dialog
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
 
   useEffect(() => {
     async function loadMenu() {
       const supabase = createClient()
-      
-      // Try to fetch from menu_items_base first (new variant system)
-      const { data: baseItems, error: baseError } = await supabase
-        .from('menu_items_base')
-        .select(`
-          *,
-          variant_types:menu_item_variant_types(
-            *,
-            options:menu_item_variant_options(*)
-          )
-        `)
-        .eq('available', true)
-        .order('category')
-        .order('name')
-      
-      // Fall back to old menu_items if base doesn't exist
-      const { data: items } = baseItems && !baseError
-        ? { data: baseItems }
-        : await supabase
-            .from('menu_items')
-            .select('*, category:categories(id, name)')
-            .eq('available', true)
-            .order('name')
-      
-      const { data: cats } = await supabase.from('categories').select('*').order('sort_order')
-      
+      const [{ data: items }, { data: cats }] = await Promise.all([
+        supabase
+          .from('menu_items')
+          .select('*, category:categories(id, name)')
+          .eq('available', true)
+          .order('name'),
+        supabase.from('categories').select('*').order('sort_order'),
+      ])
       if (items) {
         setMenuItems(
           items.map((item: any) => ({
             id: item.id,
             name: item.name,
             description: item.description || '',
-            price: item.base_price || item.price,
-            category: item.category?.name || item.category || '',
+            price: item.price,
+            category: item.category?.name || '',
             available: item.available,
             preparationTime: item.preparation_time || 0,
-            // Support both old and new variant systems
-            has_variants: item.has_variants || false,
-            variant_types: item.variant_types || [],
-            varieties: item.varieties || [],
-            sizes: item.sizes || [],
-            addons: item.addons || [],
+            varieties: Array.isArray(item.varieties) ? item.varieties : [],
+            sizes: Array.isArray(item.sizes) ? item.sizes : [],
+            addons: Array.isArray(item.addons) ? item.addons : [],
             kitchenDepartment: item.kitchen_department || '',
           }))
         )
@@ -163,7 +136,7 @@ export default function CustomerOrderPage() {
   const filteredItems = menuItems.filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+      item.description.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory =
       selectedCategory === 'all' || item.category === selectedCategory
     return matchesSearch && matchesCategory
@@ -172,15 +145,11 @@ export default function CustomerOrderPage() {
   // ── Cart helpers ──────────────────────────────────────────────────────────
 
   const openItemDialog = (item: MenuItem) => {
-    // Check for new variant system first
-    const hasNewVariants = item.has_variants && item.variant_types && item.variant_types.length > 0
-    // Check for old variant system
-    const hasOldOptions =
+    const hasOptions =
       (item.varieties && item.varieties.length > 0) ||
       (item.sizes && item.sizes.length > 0) ||
       (item.addons && item.addons.length > 0)
-    
-    if (hasNewVariants || hasOldOptions) {
+    if (hasOptions) {
       setDialogItem(item)
       setShowItemDialog(true)
     } else {
@@ -245,8 +214,6 @@ export default function CustomerOrderPage() {
     setCart(cart.filter((item) => item.id !== itemId))
   }
 
-  // ── Totals ────────────────────────────────────────────────────────────────
-
   const subtotal = cart.reduce((sum, item) => sum + item.price, 0)
   const { fee: deliveryFee, distance: deliveryDistance, outOfRange: deliveryOutOfRange } =
     calculateDeliveryFee(deliveryLat, deliveryLng)
@@ -254,8 +221,6 @@ export default function CustomerOrderPage() {
   const tax = 0
   const total = subtotal + appliedDeliveryFee + tax
   const earnedPoints = calcEarnedPoints(subtotal)
-
-  // ── Order submission ──────────────────────────────────────────────────────
 
   const handlePlaceOrder = async () => {
     if (orderType === 'delivery' && !deliveryAddress.trim()) {
@@ -366,13 +331,11 @@ export default function CustomerOrderPage() {
     if (outOfRange) {
       toast.error('Your location is outside our delivery area (max 10 km). Please choose a closer location or switch to Pick-up.')
     } else {
-      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)}${distance !== null ? ` (${formatDistance(distance)})` : ''}`)
+      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance)})`)
     }
   }
 
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
-
-  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -382,9 +345,8 @@ export default function CustomerOrderPage() {
           <p className="text-muted-foreground">Browse our menu and place your order</p>
         </div>
 
-        {/* Cart Button (Mobile) */}
         <Sheet>
-          <SheetTrigger>
+          <SheetTrigger asChild>
             <Button className="relative md:hidden">
               <ShoppingCart className="mr-2 h-5 w-5" />
               Cart
@@ -427,7 +389,6 @@ export default function CustomerOrderPage() {
         </Sheet>
       </div>
 
-      {/* Order Type Toggle */}
       <div className="flex gap-2 rounded-lg border bg-muted/30 p-1 w-fit">
         <Button
           variant={orderType === 'delivery' ? 'default' : 'ghost'}
@@ -456,7 +417,6 @@ export default function CustomerOrderPage() {
       )}
 
       <div className="flex gap-6">
-        {/* Menu Section */}
         <div className="flex-1 space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -481,13 +441,10 @@ export default function CustomerOrderPage() {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredItems.map((item) => {
-              // Check for new variant system
-              const hasNewVariants = item.has_variants && item.variant_types && item.variant_types.length > 0
-              // Check for old variant system
               const hasVarieties = item.varieties && item.varieties.length > 0
               const hasSizes     = item.sizes     && item.sizes.length     > 0
               const hasAddons    = item.addons    && item.addons.length    > 0
-              const hasOptions   = hasNewVariants || hasVarieties || hasSizes || hasAddons
+              const hasOptions   = hasVarieties || hasSizes || hasAddons
 
               const minSizePrice = hasSizes
                 ? Math.min(...(item.sizes as any[]).map((s: any) => s.price))
@@ -503,50 +460,32 @@ export default function CustomerOrderPage() {
                   onClick={() => openItemDialog(item)}
                 >
                   <CardContent className="p-4">
-                    {/* Name + price row */}
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold leading-snug">{item.name}</h3>
                       <span className="text-base font-bold text-primary whitespace-nowrap">{priceLabel}</span>
                     </div>
 
-                    {/* Description */}
                     {item.description && (
                       <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
                         {item.description}
                       </p>
                     )}
 
-                    {/* Option chips - show new variant types or old varieties/sizes */}
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {/* New variant system */}
-                      {hasNewVariants && item.variant_types?.slice(0, 3).map((vt) => (
+                      {hasVarieties && (item.varieties as string[]).slice(0, 3).map((v) => (
                         <span
-                          key={vt.id}
+                          key={v}
                           className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
                         >
-                          {vt.variant_type_name}
+                          {v}
                         </span>
                       ))}
-                      {hasNewVariants && item.variant_types && item.variant_types.length > 3 && (
+                      {hasVarieties && (item.varieties as string[]).length > 3 && (
                         <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                          +{item.variant_types.length - 3} more
+                          +{(item.varieties as string[]).length - 3} more
                         </span>
                       )}
-                      {/* Old variant system */}
-                      {!hasNewVariants && hasVarieties && (item.varieties || []).slice(0, 3).map((v) => (
-                        <span
-                          key={typeof v === 'string' ? v : v.name}
-                          className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
-                        >
-                          {typeof v === 'string' ? v : v.name}
-                        </span>
-                      ))}
-                      {!hasNewVariants && hasVarieties && (item.varieties || []).length > 3 && (
-                        <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                          +{(item.varieties || []).length - 3} more
-                        </span>
-                      )}
-                      {!hasNewVariants && hasSizes && (item.sizes as any[]).map((s: any) => (
+                      {hasSizes && (item.sizes as any[]).map((s: any) => (
                         <span
                           key={s.name}
                           className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
@@ -556,16 +495,10 @@ export default function CustomerOrderPage() {
                       ))}
                     </div>
 
-                    {/* Add-ons hint */}
-                    {(hasAddons || (item.has_variants && item.variant_types && item.variant_types.length > 0)) && (
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        {item.has_variants && item.variant_types && item.variant_types.length > 0 
-                          ? 'Customizable options available' 
-                          : '+ Add-ons available'}
-                      </p>
+                    {hasAddons && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">+ Add-ons available</p>
                     )}
 
-                    {/* Button */}
                     <div className="mt-3">
                       <Button
                         size="sm"
@@ -586,7 +519,6 @@ export default function CustomerOrderPage() {
           </div>
         </div>
 
-        {/* Cart Section (Desktop) */}
         <div className="hidden w-96 md:block">
           <Card className="sticky top-4">
             <CardHeader>
@@ -627,7 +559,6 @@ export default function CustomerOrderPage() {
         </div>
       </div>
 
-      {/* Item Customization Dialog */}
       <ItemCustomizationDialog
         item={dialogItem}
         open={showItemDialog}
@@ -635,17 +566,13 @@ export default function CustomerOrderPage() {
         onAddToCart={addToCartWithCustomizations}
       />
 
-      {/* Location Picker */}
       <LocationPicker
-        isOpen={showLocationPicker}
-        onClose={() => setShowLocationPicker(false)}
-        onSelectLocation={(lat, lng, address) => {
-          handleLocationSelect(address, lat, lng)
-          setShowLocationPicker(false)
-        }}
+        open={showLocationPicker}
+        onOpenChange={setShowLocationPicker}
+        onLocationSelect={handleLocationSelect}
+        initialAddress={deliveryAddress}
       />
 
-      {/* GCash Payment Dialog */}
       <GCashDialog
         open={showGcashDialog}
         onOpenChange={setShowGcashDialog}
@@ -674,12 +601,7 @@ interface ItemCustomizationDialogProps {
   ) => void
 }
 
-function ItemCustomizationDialog({
-  item,
-  open,
-  onClose,
-  onAddToCart,
-}: ItemCustomizationDialogProps) {
+function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCustomizationDialogProps) {
   const [selectedVariety, setSelectedVariety] = useState('')
   const [selectedSize, setSelectedSize] = useState<{ name: string; price: number } | null>(null)
   const [selectedAddons, setSelectedAddons] = useState<MenuItemAddon[]>([])
@@ -687,7 +609,7 @@ function ItemCustomizationDialog({
 
   useEffect(() => {
     if (item) {
-      setSelectedVariety(item.varieties?.[0]?.name || '')
+      setSelectedVariety(item.varieties?.[0] || '')
       setSelectedSize((item.sizes as any)?.[0] || null)
       setSelectedAddons([])
       setQuantity(1)
@@ -698,8 +620,7 @@ function ItemCustomizationDialog({
 
   const basePrice = selectedSize?.price ?? item.price
   const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0)
-  const unitPrice = basePrice + addonTotal
-  const lineTotal = unitPrice * quantity
+  const lineTotal = (basePrice + addonTotal) * quantity
 
   const toggleAddon = (addon: MenuItemAddon) => {
     setSelectedAddons(prev =>
@@ -709,8 +630,8 @@ function ItemCustomizationDialog({
     )
   }
 
-  const sizeRequired = item.sizes && item.sizes.length > 0 && !selectedSize
-  const varietyRequired = item.varieties && item.varieties.length > 0 && !selectedVariety
+  const sizeRequired = !!(item.sizes && item.sizes.length > 0 && !selectedSize)
+  const varietyRequired = !!(item.varieties && item.varieties.length > 0 && !selectedVariety)
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -723,7 +644,6 @@ function ItemCustomizationDialog({
         </DialogHeader>
 
         <div className="space-y-5 py-2">
-          {/* Varieties */}
           {item.varieties && item.varieties.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-semibold">
@@ -734,24 +654,16 @@ function ItemCustomizationDialog({
                 onValueChange={setSelectedVariety}
                 className="space-y-1"
               >
-                {item.varieties.map((v) => {
-                  const varietyName = typeof v === 'string' ? v : v.name
-                  const varietyPrice = typeof v === 'object' && 'price' in v ? v.price : 0
-                  return (
-                    <div key={varietyName} className="flex items-center gap-2">
-                      <RadioGroupItem value={varietyName} id={`variety-${varietyName}`} />
-                      <Label htmlFor={`variety-${varietyName}`} className="cursor-pointer font-normal">
-                        {varietyName}
-                        {varietyPrice > 0 && <span className="text-xs text-muted-foreground"> (+{formatCurrency(varietyPrice)})</span>}
-                      </Label>
-                    </div>
-                  )
-                })}
+                {item.varieties.map((v: string) => (
+                  <div key={v} className="flex items-center gap-2">
+                    <RadioGroupItem value={v} id={`variety-${v}`} />
+                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">{v}</Label>
+                  </div>
+                ))}
               </RadioGroup>
             </div>
           )}
 
-          {/* Sizes */}
           {item.sizes && item.sizes.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-semibold">
@@ -769,9 +681,7 @@ function ItemCustomizationDialog({
                   <div key={s.name} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <RadioGroupItem value={s.name} id={`size-${s.name}`} />
-                      <Label htmlFor={`size-${s.name}`} className="cursor-pointer font-normal">
-                        {s.name}
-                      </Label>
+                      <Label htmlFor={`size-${s.name}`} className="cursor-pointer font-normal">{s.name}</Label>
                     </div>
                     <span className="text-sm text-muted-foreground">{formatCurrency(s.price)}</span>
                   </div>
@@ -780,7 +690,6 @@ function ItemCustomizationDialog({
             </div>
           )}
 
-          {/* Add-ons */}
           {item.addons && item.addons.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-semibold">
@@ -793,19 +702,14 @@ function ItemCustomizationDialog({
                       <Checkbox
                         id={`addon-${addon.name}`}
                         checked={selectedAddons.some(a => a.name === addon.name)}
-                        onChange={() => toggleAddon(addon)}
+                        onCheckedChange={() => toggleAddon(addon)}
                       />
-                      <Label
-                        htmlFor={`addon-${addon.name}`}
-                        className="cursor-pointer font-normal"
-                      >
+                      <Label htmlFor={`addon-${addon.name}`} className="cursor-pointer font-normal">
                         {addon.name}
                       </Label>
                     </div>
                     {addon.price > 0 && (
-                      <span className="text-sm text-muted-foreground">
-                        +{formatCurrency(addon.price)}
-                      </span>
+                      <span className="text-sm text-muted-foreground">+{formatCurrency(addon.price)}</span>
                     )}
                   </div>
                 ))}
@@ -813,25 +717,16 @@ function ItemCustomizationDialog({
             </div>
           )}
 
-          {/* Quantity */}
           <div className="flex items-center justify-between pt-1">
             <Label className="text-sm font-semibold">Quantity</Label>
             <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8"
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-              >
+              <Button variant="outline" size="icon" className="h-8 w-8"
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}>
                 <Minus className="h-3 w-3" />
               </Button>
               <span className="w-8 text-center font-semibold">{quantity}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8"
-                onClick={() => setQuantity(quantity + 1)}
-              >
+              <Button variant="outline" size="icon" className="h-8 w-8"
+                onClick={() => setQuantity(quantity + 1)}>
                 <Plus className="h-3 w-3" />
               </Button>
             </div>
@@ -851,15 +746,9 @@ function ItemCustomizationDialog({
             </div>
             <Button
               className="flex-1"
-              disabled={!!sizeRequired || !!varietyRequired}
+              disabled={sizeRequired || varietyRequired}
               onClick={() => {
-                onAddToCart(
-                  item,
-                  selectedVariety,
-                  selectedSize?.name || '',
-                  selectedAddons,
-                  quantity
-                )
+                onAddToCart(item, selectedVariety, selectedSize?.name || '', selectedAddons, quantity)
                 onClose()
               }}
             >
@@ -885,23 +774,13 @@ interface GCashDialogProps {
   isSubmitting: boolean
 }
 
-function GCashDialog({
-  open,
-  onOpenChange,
-  total,
-  gcashRef,
-  setGcashRef,
-  onConfirm,
-  isSubmitting,
-}: GCashDialogProps) {
+function GCashDialog({ open, onOpenChange, total, gcashRef, setGcashRef, onConfirm, isSubmitting }: GCashDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>GCash Payment</DialogTitle>
-          <DialogDescription>
-            Send the exact amount then enter your reference number below
-          </DialogDescription>
+          <DialogDescription>Send the exact amount then enter your reference number below</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="rounded-lg bg-blue-50 p-4 text-center">
@@ -909,21 +788,15 @@ function GCashDialog({
             <p className="text-2xl font-bold text-blue-600">{GCASH_OWNER.number}</p>
             <p className="font-medium">{GCASH_OWNER.name}</p>
           </div>
-
           <div className="rounded-lg bg-muted p-4 text-center">
             <p className="text-sm text-muted-foreground">Amount to send:</p>
             <p className="text-3xl font-bold text-primary">{formatCurrency(total)}</p>
           </div>
-
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => window.open('https://app.gcash.com', '_blank')}
-          >
+          <Button variant="outline" className="w-full"
+            onClick={() => window.open('https://app.gcash.com', '_blank')}>
             <Smartphone className="mr-2 h-4 w-4" />
             Open GCash App
           </Button>
-
           <div className="space-y-2">
             <Label htmlFor="gcashRef" className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -939,20 +812,9 @@ function GCashDialog({
               Found in your GCash transaction history after the payment is sent.
             </p>
           </div>
-
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="flex-1"
-              onClick={onConfirm}
-              disabled={isSubmitting || !gcashRef.trim()}
-            >
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button className="flex-1" onClick={onConfirm} disabled={isSubmitting || !gcashRef.trim()}>
               {isSubmitting ? 'Processing...' : 'Confirm Payment'}
             </Button>
           </div>
@@ -989,30 +851,12 @@ interface CartContentProps {
 }
 
 function CartContent({
-  cart,
-  updateQuantity,
-  removeFromCart,
-  subtotal,
-  deliveryFee,
-  deliveryDistance,
-  deliveryOutOfRange = false,
-  total,
-  earnedPoints,
-  deliveryAddress,
-  setDeliveryAddress,
-  openLocationPicker,
-  paymentMethod,
-  setPaymentMethod,
-  orderNotes,
-  setOrderNotes,
-  cashTendered,
-  setCashTendered,
-  handlePlaceOrder,
-  isSubmitting,
-  orderType = 'delivery',
+  cart, updateQuantity, removeFromCart, subtotal, deliveryFee, deliveryDistance,
+  deliveryOutOfRange = false, total, earnedPoints, deliveryAddress, setDeliveryAddress,
+  openLocationPicker, paymentMethod, setPaymentMethod, orderNotes, setOrderNotes,
+  cashTendered, setCashTendered, handlePlaceOrder, isSubmitting, orderType = 'delivery',
 }: CartContentProps) {
-  const change =
-    paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
+  const change = paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
 
   if (cart.length === 0) {
     return (
@@ -1047,29 +891,17 @@ function CartContent({
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 w-7"
-                    onClick={() => updateQuantity(item.id, -1)}
-                  >
+                  <Button variant="outline" size="icon" className="h-7 w-7"
+                    onClick={() => updateQuantity(item.id, -1)}>
                     <Minus className="h-3 w-3" />
                   </Button>
                   <span className="w-8 text-center font-medium">{item.quantity}</span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 w-7"
-                    onClick={() => updateQuantity(item.id, 1)}
-                  >
+                  <Button variant="outline" size="icon" className="h-7 w-7"
+                    onClick={() => updateQuantity(item.id, 1)}>
                     <Plus className="h-3 w-3" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 text-destructive"
-                    onClick={() => removeFromCart(item.id)}
-                  >
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                    onClick={() => removeFromCart(item.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -1081,7 +913,6 @@ function CartContent({
 
         <Separator className="my-4" />
 
-        {/* Delivery Address */}
         {orderType === 'delivery' && (
           <div className="space-y-2">
             <Label htmlFor="address" className="flex items-center gap-2">
@@ -1096,20 +927,13 @@ function CartContent({
               className="resize-none"
               rows={2}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={openLocationPicker}
-            >
+            <Button type="button" variant="outline" size="sm" className="w-full" onClick={openLocationPicker}>
               <MapPin className="mr-2 h-4 w-4" />
               Search &amp; Pin Location on Map
             </Button>
             {deliveryOutOfRange && (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <strong>Outside delivery area.</strong> Your pinned location is more than 10 km
-                from our store. Please pin a closer location or switch to Pick-up.
+                <strong>Outside delivery area.</strong> Your pinned location is more than 10 km from our store.
               </div>
             )}
           </div>
@@ -1121,7 +945,6 @@ function CartContent({
           </div>
         )}
 
-        {/* Payment Method */}
         <div className="mt-4 space-y-3">
           <Label className="font-semibold">Payment Method</Label>
           <RadioGroup
@@ -1135,9 +958,7 @@ function CartContent({
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="cash" id="cash" />
-              <Label htmlFor="cash">
-                {orderType === 'delivery' ? 'Cash on Delivery' : 'Cash'}
-              </Label>
+              <Label htmlFor="cash">{orderType === 'delivery' ? 'Cash on Delivery' : 'Cash'}</Label>
             </div>
           </RadioGroup>
 
@@ -1150,7 +971,6 @@ function CartContent({
           </div>
         </div>
 
-        {/* Cash Tendered */}
         {paymentMethod === 'cash' && (
           <div className="mt-4 space-y-2">
             <Label htmlFor="cashTendered" className="flex items-center gap-2">
@@ -1169,14 +989,11 @@ function CartContent({
               <p className="text-sm text-green-600">Change: {formatCurrency(change)}</p>
             )}
             {cashTendered && parseFloat(cashTendered) < total && (
-              <p className="text-sm text-red-600">
-                Amount must be at least {formatCurrency(total)}
-              </p>
+              <p className="text-sm text-red-600">Amount must be at least {formatCurrency(total)}</p>
             )}
           </div>
         )}
 
-        {/* Order Notes */}
         <div className="mt-4 space-y-2">
           <Label htmlFor="notes">Order Notes (Optional)</Label>
           <Textarea
@@ -1190,7 +1007,6 @@ function CartContent({
         </div>
       </ScrollArea>
 
-      {/* Totals */}
       <div className="mt-4 space-y-2 border-t pt-4">
         <div className="flex justify-between text-sm">
           <span>Subtotal</span>
@@ -1204,9 +1020,7 @@ function CartContent({
                 Delivery Fee
               </span>
               {deliveryDistance !== null && (
-                <span className="text-xs text-muted-foreground">
-                  Distance: {formatDistance(deliveryDistance)}
-                </span>
+                <span className="text-xs text-muted-foreground">Distance: {formatDistance(deliveryDistance)}</span>
               )}
             </div>
             <span>{formatCurrency(deliveryFee)}</span>
@@ -1231,8 +1045,7 @@ function CartContent({
           isSubmitting ||
           (orderType === 'delivery' && !deliveryAddress.trim()) ||
           (orderType === 'delivery' && deliveryOutOfRange) ||
-          (paymentMethod === 'cash' &&
-            (!cashTendered || parseFloat(cashTendered) < total))
+          (paymentMethod === 'cash' && (!cashTendered || parseFloat(cashTendered) < total))
         }
       >
         {isSubmitting ? 'Placing Order...' : 'Place Order'}
