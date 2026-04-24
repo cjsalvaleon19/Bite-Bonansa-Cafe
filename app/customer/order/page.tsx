@@ -564,15 +564,13 @@ export default function CustomerOrderPage() {
       />
 
       {/* Location Picker — conditionally rendered; closes after a location is picked */}
-      {showLocationPicker && (
-        <LocationPicker
-          onLocationSelect={(address: string, lat: number, lng: number) => {
-            handleLocationSelect(address, lat, lng)
-            setShowLocationPicker(false)
-          }}
-          initialAddress={deliveryAddress}
-        />
-      )}
+      <LocationPicker
+        isOpen={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onSelectLocation={(lat: number, lng: number, address: string) => {
+          handleLocationSelect(address, lat, lng)
+        }}
+      />
 
       {/* GCash Payment Dialog */}
       <GCashDialog
