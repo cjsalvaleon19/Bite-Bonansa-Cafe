@@ -43,7 +43,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '@/lib/store'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase/client'
 import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -102,7 +102,6 @@ export default function CustomerOrderPage() {
 
   useEffect(() => {
     async function loadMenu() {
-      const supabase = createClient()
       const [{ data: items }, { data: cats }] = await Promise.all([
         supabase
           .from('menu_items')
@@ -248,7 +247,6 @@ export default function CustomerOrderPage() {
     setIsSubmitting(true)
     setShowGcashDialog(false)
     try {
-      const supabase = createClient()
       const isDelivery = orderType === 'delivery'
       let notesStr = orderNotes
       if (paymentMethod === 'cash' && cashTendered) {
