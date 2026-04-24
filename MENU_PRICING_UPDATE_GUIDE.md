@@ -6,7 +6,7 @@ This guide explains the menu pricing update migration (`013_Update_Menu_Pricing_
 ## What's Updated
 
 ### Summary
-- **Total Items**: 27 menu items
+- **Total Items**: 39 menu items
 - **Categories**: 5 (Snacks & Bites, Noodles, Chicken, Rice & More, Milktea Series)
 - **Pricing**: All prices updated to match current pricing structure
 - **Variants**: Complete variant system with sizes, flavors, spice levels, add-ons
@@ -96,22 +96,74 @@ This guide explains the menu pricing update migration (`013_Update_Menu_Pricing_
 23. **Caesar Salad** - ₱104
     - No variants
 
-#### Milktea Series (4 items)
-24. **Brown Sugar Milktea** - ₱99 (16oz) / ₱114 (22oz)
+#### Milktea Series (16 items)
+
+**Tier 1: ₱99 (16oz) / ₱114 (22oz)**
+24. **Brown Sugar Milktea**
     - Variants: Size (16oz, 22oz +₱15)
     - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
 
-25. **Wintermelon Milktea** - ₱99 (16oz) / ₱114 (22oz)
+25. **Wintermelon Milktea**
     - Variants: Size (16oz, 22oz +₱15)
     - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
 
-26. **Okinawa Milktea** - ₱99 (16oz) / ₱114 (22oz)
+26. **Okinawa Milktea**
     - Variants: Size (16oz, 22oz +₱15)
     - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
 
-27. **Hokkaido Milktea** - ₱99 (16oz) / ₱114 (22oz)
+27. **Hokkaido Milktea**
     - Variants: Size (16oz, 22oz +₱15)
     - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+28. **Ube Taro Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+29. **Strawberry Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+**Tier 2: ₱104 (16oz) / ₱119 (22oz)**
+30. **Red Velvet Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+31. **Matcha Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+32. **Cookies & Cream Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+33. **Dark Chocolate Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+**Tier 3: ₱109 (16oz) / ₱124 (22oz)**
+34. **Strawberry Matcha Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+35. **Blueberry Matcha Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+36. **Oreo Matcha Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+37. **Mocha Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+38. **Caramel Macchiato Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15)
+
+39. **Brown Sugar Coffee Milktea**
+    - Variants: Size (16oz, 22oz +₱15)
+    - Add Ons: Pearls (+₱15), Cream Cheese (+₱15), Coffee Jelly (+₱15), Extra Shot (+₱15)
 
 ## How to Apply This Migration
 
@@ -153,10 +205,11 @@ psql -h <your-db-host> -U <your-db-user> -d <your-database> -f supabase/migratio
 - [ ] Test in a development environment first
 
 ### Post-Migration Verification
-1. Verify all 27 items are in the database
+1. Verify all 39 items are in the database
 2. Check that variant types are correctly assigned
 3. Test variant selection in the customer portal
 4. Verify pricing calculations include add-ons correctly
+5. Test all three pricing tiers for milktea items
 
 ## Database Schema
 

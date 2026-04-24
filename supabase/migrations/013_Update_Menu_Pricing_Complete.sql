@@ -936,12 +936,474 @@ SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
 UNION ALL
 SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
 
+-- ----------------------------------------------------------------------------
+-- 28. UBE TARO MILKTEA - ₱99/₱114
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Ube Taro Milktea', 'Milktea Series', 99.00, true, 'Ube taro milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Ube Taro Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Ube Taro Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Ube Taro Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 29. RED VELVET MILKTEA - ₱104/₱119
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Red Velvet Milktea', 'Milktea Series', 104.00, true, 'Red velvet milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Red Velvet Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Red Velvet Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Red Velvet Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 30. STRAWBERRY MILKTEA - ₱99/₱114
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Strawberry Milktea', 'Milktea Series', 99.00, true, 'Strawberry milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Strawberry Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Strawberry Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Strawberry Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 31. MATCHA MILKTEA - ₱104/₱119
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Matcha Milktea', 'Milktea Series', 104.00, true, 'Matcha milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Matcha Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Matcha Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Matcha Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 32. COOKIES & CREAM MILKTEA - ₱104/₱119
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Cookies & Cream Milktea', 'Milktea Series', 104.00, true, 'Cookies and cream milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Cookies & Cream Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Cookies & Cream Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Cookies & Cream Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 33. DARK CHOCOLATE MILKTEA - ₱104/₱119
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Dark Chocolate Milktea', 'Milktea Series', 104.00, true, 'Dark chocolate milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Dark Chocolate Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Dark Chocolate Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Dark Chocolate Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 34. STRAWBERRY MATCHA MILKTEA - ₱109/₱124
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Strawberry Matcha Milktea', 'Milktea Series', 109.00, true, 'Strawberry matcha milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Strawberry Matcha Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Strawberry Matcha Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Strawberry Matcha Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 35. BLUEBERRY MATCHA MILKTEA - ₱109/₱124
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Blueberry Matcha Milktea', 'Milktea Series', 109.00, true, 'Blueberry matcha milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Blueberry Matcha Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Blueberry Matcha Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Blueberry Matcha Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 36. OREO MATCHA MILKTEA - ₱109/₱124
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Oreo Matcha Milktea', 'Milktea Series', 109.00, true, 'Oreo matcha milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Oreo Matcha Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Oreo Matcha Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Oreo Matcha Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 37. MOCHA MILKTEA - ₱109/₱124
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Mocha Milktea', 'Milktea Series', 109.00, true, 'Mocha milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Mocha Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Mocha Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Mocha Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 38. CARAMEL MACCHIATO MILKTEA - ₱109/₱124
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Caramel Macchiato Milktea', 'Milktea Series', 109.00, true, 'Caramel macchiato milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Caramel Macchiato Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Caramel Macchiato Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Caramel Macchiato Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type;
+
+-- ----------------------------------------------------------------------------
+-- 39. BROWN SUGAR COFFEE MILKTEA - ₱109/₱124
+-- ----------------------------------------------------------------------------
+INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
+VALUES ('Brown Sugar Coffee Milktea', 'Milktea Series', 109.00, true, 'Brown sugar coffee milktea with your choice of size and add-ons', true);
+
+WITH milktea_item AS (
+  SELECT id FROM menu_items_base WHERE name = 'Brown Sugar Coffee Milktea' AND category = 'Milktea Series' LIMIT 1
+)
+INSERT INTO menu_item_variant_types (menu_item_id, variant_type_name, is_required, allow_multiple, display_order)
+SELECT id, 'Size', true, false, 1 FROM milktea_item
+UNION ALL
+SELECT id, 'Add Ons', false, false, 2 FROM milktea_item;
+
+WITH size_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Brown Sugar Coffee Milktea' AND vt.variant_type_name = 'Size' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, '16oz', 0, true, 1 FROM size_type
+UNION ALL
+SELECT id, '22oz', 15, true, 2 FROM size_type;
+
+WITH addon_type AS (
+  SELECT vt.id FROM menu_item_variant_types vt
+  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
+  WHERE mb.name = 'Brown Sugar Coffee Milktea' AND vt.variant_type_name = 'Add Ons' LIMIT 1
+)
+INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
+SELECT id, 'No Add Ons', 0, true, 0 FROM addon_type
+UNION ALL
+SELECT id, 'Pearls', 15, true, 1 FROM addon_type
+UNION ALL
+SELECT id, 'Cream Cheese', 15, true, 2 FROM addon_type
+UNION ALL
+SELECT id, 'Coffee Jelly', 15, true, 3 FROM addon_type
+UNION ALL
+SELECT id, 'Extra Shot', 15, true, 4 FROM addon_type;
+
 -- ============================================================================
 -- SUMMARY
 -- ============================================================================
--- Total items: 27
--- Categories: Snacks & Bites (4), Noodles (9), Chicken (3), Rice & More (7), Milktea Series (4)
+-- Total items: 39
+-- Categories: Snacks & Bites (4), Noodles (9), Chicken (3), Rice & More (7), Milktea Series (16)
 -- All prices updated according to the spreadsheet
 -- All variants properly configured
--- Milktea items have Size variants (16oz/22oz) and Add-ons (Pearls, Cream Cheese, Coffee Jelly)
+-- Milktea items have Size variants with tiered pricing:
+--   - Tier 1 (₱99/₱114): Brown Sugar, Wintermelon, Okinawa, Hokkaido, Strawberry, Ube Taro
+--   - Tier 2 (₱104/₱119): Red Velvet, Matcha, Cookies & Cream, Dark Chocolate
+--   - Tier 3 (₱109/₱124): Strawberry Matcha, Blueberry Matcha, Oreo Matcha, Mocha, Caramel Macchiato, Brown Sugar Coffee
+-- Add-ons: Pearls, Cream Cheese, Coffee Jelly (+₱15 each), Extra Shot (+₱15 for coffee variants)
 -- ============================================================================
