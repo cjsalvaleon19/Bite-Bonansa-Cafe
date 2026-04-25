@@ -7,7 +7,17 @@ import { toast } from 'sonner'
 import dynamic from 'next/dynamic'
 
 // Dynamically import OpenStreetMapPicker to avoid SSR issues
-const OpenStreetMapPicker = dynamic(() => import('./OpenStreetMapPicker'), { ssr: false })
+const OpenStreetMapPicker = dynamic(() => import('./OpenStreetMapPicker'), { 
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-[400px] bg-muted rounded-lg">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+        <p className="text-sm text-muted-foreground">Loading map...</p>
+      </div>
+    </div>
+  )
+})
 
 interface LocationPickerProps {
   isOpen: boolean

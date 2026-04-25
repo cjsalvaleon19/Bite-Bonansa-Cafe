@@ -622,11 +622,14 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
   // any previously selected size that's excluded for Hot drinks (16oz, 22oz)
   // is automatically cleared, preventing invalid selections.
   // The Set.has() check is efficient as HOT_VARIETY_EXCLUDED_SIZES is a constant.
+  // Note: selectedSize is intentionally not in the dependency array to avoid
+  // potential infinite loops from setSelectedSize(null).
   useEffect(() => {
     if (selectedVariety === 'Hot' && selectedSize && HOT_VARIETY_EXCLUDED_SIZES.has(selectedSize.name)) {
       setSelectedSize(null)
     }
-  }, [selectedVariety, selectedSize])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVariety])
 
   if (!item) return null
 
