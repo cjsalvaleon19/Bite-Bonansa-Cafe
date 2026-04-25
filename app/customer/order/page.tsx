@@ -71,7 +71,7 @@ const GCASH_OWNER = {
 }
 
 // Size restrictions for Hot variety drinks
-const RESTRICTED_HOT_SIZES = ['16oz', '22oz']
+const RESTRICTED_HOT_SIZES = new Set(['16oz', '22oz'])
 
 function calcEarnedPoints(subtotal: number): number {
   const rate = subtotal <= 500 ? 0.002 : 0.0035
@@ -614,7 +614,7 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
 
   // Clear size selection if switching to Hot variety with incompatible size
   useEffect(() => {
-    if (selectedVariety === 'Hot' && selectedSize && RESTRICTED_HOT_SIZES.includes(selectedSize.name)) {
+    if (selectedVariety === 'Hot' && selectedSize && RESTRICTED_HOT_SIZES.has(selectedSize.name)) {
       setSelectedSize(null)
     }
   }, [selectedVariety, selectedSize])
@@ -676,7 +676,7 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
               >
                 {sizes.map((s: any) => {
                   // Disable restricted sizes when Hot variety is selected
-                  const isDisabled = selectedVariety === 'Hot' && RESTRICTED_HOT_SIZES.includes(s.name)
+                  const isDisabled = selectedVariety === 'Hot' && RESTRICTED_HOT_SIZES.has(s.name)
                   return (
                     <div key={s.name} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
