@@ -70,6 +70,14 @@ const GCASH_OWNER = {
   number: '09514915138',
 }
 
+/**
+ * Sizes that are not available for Hot variety drinks.
+ * Hot drinks can only be served in 12oz size due to temperature
+ * and serving guidelines. Larger sizes (16oz, 22oz) are only 
+ * available for Iced varieties.
+ */
+const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz'])
+
 function calcEarnedPoints(subtotal: number): number {
   const rate = subtotal <= 500 ? 0.002 : 0.0035
   return Math.floor(subtotal * rate)
@@ -607,6 +615,20 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
     }
   }, [item])
 
+  // Clear size selection if switching to Hot variety with incompatible size.
+  // This useEffect ensures that when a user changes from Iced to Hot variety,
+  // any previously selected size that's excluded for Hot drinks (16oz, 22oz)
+  // is automatically cleared, preventing invalid selections.
+  // The Set.has() check is efficient as HOT_VARIETY_EXCLUDED_SIZES is a constant.
+  // Note: selectedSize is intentionally not in the dependency array to avoid
+  // potential infinite loops from setSelectedSize(null).
+  useEffect(() => {
+    if (selectedVariety === 'Hot' && selectedSize && HOT_VARIETY_EXCLUDED_SIZES.has(selectedSize.name)) {
+      setSelectedSize(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVariety])
+
   if (!item) return null
 
   const varieties = (item.varieties as unknown as string[]) ?? []
@@ -662,15 +684,31 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
                 onValueChange={(name) => setSelectedSize(sizes.find((x: any) => x.name === name) || null)}
                 className="space-y-1"
               >
-                {sizes.map((s: any) => (
-                  <div key={s.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem value={s.name} id={`size-${s.name}`} />
-                      <Label htmlFor={`size-${s.name}`} className="cursor-pointer font-normal">{s.name}</Label>
+                {sizes.map((s: any) => {
+                  // Disable excluded sizes when Hot variety is selected
+                  const isDisabled = selectedVariety === 'Hot' && HOT_VARIETY_EXCLUDED_SIZES.has(s.name)
+                  return (
+                    <div key={s.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem 
+                          value={s.name} 
+                          id={`size-${s.name}`} 
+                          disabled={isDisabled}
+                          className={isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
+                        />
+                        <Label 
+                          htmlFor={`size-${s.name}`} 
+                          className={isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer font-normal'}
+                        >
+                          {s.name}
+                        </Label>
+                      </div>
+                      <span className={`text-sm ${isDisabled ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
+                        {formatCurrency(s.price)}
+                      </span>
                     </div>
-                    <span className="text-sm text-muted-foreground">{formatCurrency(s.price)}</span>
-                  </div>
-                ))}
+                  )
+                })}
               </RadioGroup>
             </div>
           )}
@@ -893,7 +931,7 @@ function CartContent({
         <Separator className="my-4" />
 
         {orderType === 'delivery' && (
-          <div className="space-y-2">
+          <div className="space-y-2 rounded-lg bg-card border p-3">
             <Label htmlFor="address" className="flex items-center gap-2">
               <MapPin className="h-4 w-4" />
               Delivery Address
@@ -924,7 +962,7 @@ function CartContent({
           </div>
         )}
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-3 rounded-lg bg-card border p-3">
           <Label className="font-semibold">Payment Method</Label>
           <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="flex gap-4">
             <div className="flex items-center space-x-2">
@@ -938,13 +976,14 @@ function CartContent({
               </Label>
             </div>
           </RadioGroup>
-          <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-            <span className="flex items-center gap-1.5 text-amber-700">
-              <Gift className="h-4 w-4" />
-              Points you&apos;ll earn
-            </span>
-            <span className="font-bold text-amber-700">+{earnedPoints} pts</span>
-          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm">
+          <span className="flex items-center gap-1.5 text-primary">
+            <Gift className="h-4 w-4" />
+            Points you&apos;ll earn
+          </span>
+          <span className="font-bold text-primary">+{earnedPoints} pts</span>
         </div>
 
         {paymentMethod === 'cash' && (
@@ -970,7 +1009,7 @@ function CartContent({
           </div>
         )}
 
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 space-y-2 rounded-lg bg-card border p-3">
           <Label htmlFor="notes">Order Notes (Optional)</Label>
           <Textarea
             id="notes"
