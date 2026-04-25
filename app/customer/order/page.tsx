@@ -260,18 +260,17 @@ export default function CustomerOrderPage() {
         .insert({
           customer_id: user?.id,
           customer_name: user?.name || 'Customer',
-          customer_phone: user?.phone || '',
+          contact_number: user?.phone || '',
           customer_address: isDelivery ? deliveryAddress : null,
-          delivery_lat: isDelivery ? deliveryLat : null,
-          delivery_lng: isDelivery ? deliveryLng : null,
+          delivery_latitude: isDelivery ? deliveryLat : null,
+          delivery_longitude: isDelivery ? deliveryLng : null,
           status: 'pending',
-          order_type: isDelivery ? 'delivery' : 'takeout',
+          order_mode: isDelivery ? 'delivery' : 'takeout',
           payment_method: paymentMethod,
           subtotal,
           delivery_fee: isDelivery ? appliedDeliveryFee : 0,
-          discount: 0,
-          total,
-          notes: notesStr.trim(),
+          total_amount: total,
+          special_request: notesStr.trim(),
         } as any)
         .select()
         .single()
