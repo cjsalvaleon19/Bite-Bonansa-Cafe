@@ -14,6 +14,9 @@ import {
   Gift,
   CheckCircle2,
   Smartphone,
+  ArrowLeft,
+  Upload,
+  X,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -99,6 +102,8 @@ export default function CustomerOrderPage() {
   const [orderNotes, setOrderNotes] = useState('')
   const [cashTendered, setCashTendered] = useState('')
   const [gcashRef, setGcashRef] = useState('')
+  const [gcashScreenshot, setGcashScreenshot] = useState<File | null>(null)
+  const [gcashScreenshotPreview, setGcashScreenshotPreview] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showGcashDialog, setShowGcashDialog] = useState(false)
   const [showLocationPicker, setShowLocationPicker] = useState(false)
@@ -257,11 +262,39 @@ export default function CustomerOrderPage() {
     try {
       const isDelivery = orderType === 'delivery'
       let notesStr = orderNotes
+      let gcashProofUrl = ''
+
+      // Upload GCash screenshot if provided
+      if (paymentMethod === 'gcash' && gcashScreenshot) {
+        const fileExt = gcashScreenshot.name.split('.').pop()
+        const fileName = `${user?.id}_${Date.now()}.${fileExt}`
+        const filePath = `payment-proofs/${fileName}`
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('payment-proofs')
+          .upload(filePath, gcashScreenshot)
+
+        if (uploadError) {
+          console.error('Failed to upload GCash screenshot:', uploadError)
+          throw new Error('Failed to upload payment proof. Please try again.')
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('payment-proofs')
+          .getPublicUrl(filePath)
+        
+        gcashProofUrl = urlData.publicUrl
+      }
+
       if (paymentMethod === 'cash' && cashTendered) {
         notesStr += ` | Cash tendered: ${formatCurrency(parseFloat(cashTendered))}`
       }
       if (paymentMethod === 'gcash' && gcashRef) {
         notesStr += ` | GCash ref: ${gcashRef}`
+      }
+      if (paymentMethod === 'gcash' && gcashProofUrl) {
+        notesStr += ` | GCash proof: ${gcashProofUrl}`
       }
       const { data: order, error: orderError } = await supabase
         .from('orders')
@@ -309,6 +342,8 @@ export default function CustomerOrderPage() {
       setOrderNotes('')
       setCashTendered('')
       setGcashRef('')
+      setGcashScreenshot(null)
+      setGcashScreenshotPreview(null)
       router.push('/customer/track')
     } catch (error) {
       console.error('Failed to place order:', error)
@@ -335,9 +370,19 @@ export default function CustomerOrderPage() {
   return (
     <div className="min-h-screen bg-black space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Order Now</h1>
-          <p className="text-muted-foreground">Browse our menu and place your order</p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push('/customer/dashboard')}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Order Now</h1>
+            <p className="text-muted-foreground">Browse our menu and place your order</p>
+          </div>
         </div>
 
         <Sheet>
@@ -578,6 +623,10 @@ export default function CustomerOrderPage() {
         total={total}
         gcashRef={gcashRef}
         setGcashRef={setGcashRef}
+        gcashScreenshot={gcashScreenshot}
+        setGcashScreenshot={setGcashScreenshot}
+        gcashScreenshotPreview={gcashScreenshotPreview}
+        setGcashScreenshotPreview={setGcashScreenshotPreview}
         onConfirm={submitOrder}
         isSubmitting={isSubmitting}
       />
@@ -795,11 +844,55 @@ interface GCashDialogProps {
   total: number
   gcashRef: string
   setGcashRef: (ref: string) => void
+  gcashScreenshot: File | null
+  setGcashScreenshot: (file: File | null) => void
+  gcashScreenshotPreview: string | null
+  setGcashScreenshotPreview: (url: string | null) => void
   onConfirm: () => void
   isSubmitting: boolean
 }
 
-function GCashDialog({ open, onOpenChange, total, gcashRef, setGcashRef, onConfirm, isSubmitting }: GCashDialogProps) {
+function GCashDialog({ 
+  open, 
+  onOpenChange, 
+  total, 
+  gcashRef, 
+  setGcashRef, 
+  gcashScreenshot,
+  setGcashScreenshot,
+  gcashScreenshotPreview,
+  setGcashScreenshotPreview,
+  onConfirm, 
+  isSubmitting 
+}: GCashDialogProps) {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please upload an image file')
+        return
+      }
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Image size must be less than 5MB')
+        return
+      }
+      setGcashScreenshot(file)
+      // Create preview URL
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setGcashScreenshotPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const removeScreenshot = () => {
+    setGcashScreenshot(null)
+    setGcashScreenshotPreview(null)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -834,9 +927,47 @@ function GCashDialog({ open, onOpenChange, total, gcashRef, setGcashRef, onConfi
             />
             <p className="text-xs text-muted-foreground">Found in your GCash transaction history after payment is sent.</p>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="gcashScreenshot" className="flex items-center gap-2">
+              <Upload className="h-4 w-4 text-primary" />
+              Payment Screenshot <span className="text-destructive">*</span>
+            </Label>
+            {!gcashScreenshotPreview ? (
+              <div className="relative">
+                <Input
+                  id="gcashScreenshot"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="cursor-pointer"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Upload a screenshot of your GCash payment confirmation (Required)</p>
+              </div>
+            ) : (
+              <div className="relative rounded-lg border border-border overflow-hidden">
+                <img 
+                  src={gcashScreenshotPreview} 
+                  alt="Payment proof" 
+                  className="w-full h-48 object-cover"
+                />
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  className="absolute top-2 right-2"
+                  onClick={removeScreenshot}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button className="flex-1" onClick={onConfirm} disabled={isSubmitting || !gcashRef.trim()}>
+            <Button 
+              className="flex-1" 
+              onClick={onConfirm} 
+              disabled={isSubmitting || !gcashRef.trim() || !gcashScreenshot}
+            >
               {isSubmitting ? 'Processing...' : 'Confirm Payment'}
             </Button>
           </div>
