@@ -1,31 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Poppins:wght@400;600&display=swap');
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+@layer base {
+  :root {
+    /* Black and Yellow Theme */
+    --background: 0 0% 6%;           /* Dark black background (#0f0f0f) */
+    --foreground: 45 100% 51%;        /* Bright yellow text (#ffc107) */
+    --card: 0 0% 10%;                /* Slightly lighter black for cards (#1a1a1a) */
+    --card-foreground: 45 100% 51%;   /* Yellow text on cards */
+    --popover: 0 0% 8%;              /* Dark popover background */
+    --popover-foreground: 45 100% 51%; /* Yellow text in popovers */
+    --primary: 45 100% 51%;           /* Yellow primary color (#ffc107) */
+    --primary-foreground: 0 0% 0%;    /* Black text on yellow buttons */
+    --secondary: 0 0% 15%;           /* Dark gray for secondary elements */
+    --secondary-foreground: 45 90% 60%; /* Light yellow for secondary text */
+    --muted: 0 0% 15%;               /* Muted dark gray */
+    --muted-foreground: 45 80% 70%;   /* Muted yellow */
+    --accent: 45 93% 47%;            /* Accent yellow (#e6a700) */
+    --accent-foreground: 0 0% 0%;     /* Black text on accent */
+    --destructive: 0 84.2% 60.2%;    /* Red for errors/destructive actions */
+    --destructive-foreground: 0 0% 98%; /* White text on red */
+    --border: 45 50% 30%;            /* Yellow-tinted border */
+    --input: 0 0% 20%;               /* Dark input background */
+    --ring: 45 100% 51%;             /* Yellow focus ring */
+    --radius: 0.5rem;
+  }
 
-html {
-  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-}
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Poppins', sans-serif;
+  }
 
-body {
-  font-family: 'Poppins', sans-serif;
-  background-color: #0a0a0a;
-  color: #333;
-}
-
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Playfair Display', serif;
-  color: #ffc107;
-}
-
-a {
-  color: #ffc107;
-  text-decoration: none;
-}
-
-a:hover {
-  color: #ffb300;
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Playfair Display', serif;
+  }
 }
