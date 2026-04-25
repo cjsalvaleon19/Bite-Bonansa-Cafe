@@ -609,6 +609,13 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
     }
   }, [item])
 
+  // Clear size selection if switching to Hot variety with incompatible size
+  useEffect(() => {
+    if (selectedVariety === 'Hot' && selectedSize && (selectedSize.name === '16oz' || selectedSize.name === '22oz')) {
+      setSelectedSize(null)
+    }
+  }, [selectedVariety, selectedSize])
+
   if (!item) return null
 
   const varieties = (item.varieties as unknown as string[]) ?? []
@@ -664,15 +671,31 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
                 onValueChange={(name) => setSelectedSize(sizes.find((x: any) => x.name === name) || null)}
                 className="space-y-1"
               >
-                {sizes.map((s: any) => (
-                  <div key={s.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem value={s.name} id={`size-${s.name}`} />
-                      <Label htmlFor={`size-${s.name}`} className="cursor-pointer font-normal">{s.name}</Label>
+                {sizes.map((s: any) => {
+                  // Disable 16oz and 22oz when Hot variety is selected
+                  const isDisabled = selectedVariety === 'Hot' && (s.name === '16oz' || s.name === '22oz')
+                  return (
+                    <div key={s.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem 
+                          value={s.name} 
+                          id={`size-${s.name}`} 
+                          disabled={isDisabled}
+                          className={isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
+                        />
+                        <Label 
+                          htmlFor={`size-${s.name}`} 
+                          className={isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer font-normal'}
+                        >
+                          {s.name}
+                        </Label>
+                      </div>
+                      <span className={`text-sm ${isDisabled ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
+                        {formatCurrency(s.price)}
+                      </span>
                     </div>
-                    <span className="text-sm text-muted-foreground">{formatCurrency(s.price)}</span>
-                  </div>
-                ))}
+                  )
+                })}
               </RadioGroup>
             </div>
           )}

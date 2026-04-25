@@ -74,11 +74,12 @@ export function LocationPicker({ isOpen, onClose, onSelectLocation }: LocationPi
             </div>
           </div>
           <div className="text-sm text-gray-600">
-            <p>💡 Tip: You can get your coordinates from Google Maps:</p>
+            <p>💡 Tip: You can get your coordinates from OpenStreetMap:</p>
             <ol className="list-decimal list-inside mt-1 space-y-1">
-              <li>Right-click your location on Google Maps</li>
-              <li>Click on the coordinates at the top</li>
-              <li>Paste them here</li>
+              <li>Visit <a href="https://www.openstreetmap.org/" target="_blank" rel="noopener noreferrer" className="text-primary underline">OpenStreetMap.org</a></li>
+              <li>Search for your location and right-click on the map</li>
+              <li>Click &quot;Show address&quot; to see coordinates</li>
+              <li>Copy and paste them here</li>
             </ol>
           </div>
         </div>
