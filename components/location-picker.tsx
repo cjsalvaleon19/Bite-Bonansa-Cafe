@@ -27,15 +27,18 @@ export function LocationPicker({ isOpen, onClose, onSelectLocation }: LocationPi
     setSelectedAddress(address)
   }
 
+  const resetLocationState = () => {
+    setSearchQuery('')
+    setSelectedLat(null)
+    setSelectedLng(null)
+    setSelectedAddress('')
+  }
+
   const handleConfirm = () => {
     if (selectedLat !== null && selectedLng !== null) {
       onSelectLocation(selectedLat, selectedLng, selectedAddress)
       onClose()
-      // Reset state
-      setSearchQuery('')
-      setSelectedLat(null)
-      setSelectedLng(null)
-      setSelectedAddress('')
+      resetLocationState()
     } else {
       toast.error('Please select a location on the map or search for an address')
     }
@@ -43,11 +46,7 @@ export function LocationPicker({ isOpen, onClose, onSelectLocation }: LocationPi
 
   const handleCancel = () => {
     onClose()
-    // Reset state
-    setSearchQuery('')
-    setSelectedLat(null)
-    setSelectedLng(null)
-    setSelectedAddress('')
+    resetLocationState()
   }
 
   return (

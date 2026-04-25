@@ -617,7 +617,11 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
     }
   }, [item])
 
-  // Clear size selection if switching to Hot variety with incompatible size
+  // Clear size selection if switching to Hot variety with incompatible size.
+  // This useEffect ensures that when a user changes from Iced to Hot variety,
+  // any previously selected size that's excluded for Hot drinks (16oz, 22oz)
+  // is automatically cleared, preventing invalid selections.
+  // The Set.has() check is efficient as HOT_VARIETY_EXCLUDED_SIZES is a constant.
   useEffect(() => {
     if (selectedVariety === 'Hot' && selectedSize && HOT_VARIETY_EXCLUDED_SIZES.has(selectedSize.name)) {
       setSelectedSize(null)
