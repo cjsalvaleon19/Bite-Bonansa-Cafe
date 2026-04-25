@@ -15,13 +15,13 @@
  *    Returns a 503 on cache-miss + network failure instead of throwing, to prevent
  *    the browser error page.
  *
- * BREAKING CHANGE (v5): Cache version bumped to 'bite-bonansa-v5'.
- *  The activate handler purges all older caches ('bite-bonansa-v1', 'bite-bonansa-v2',
- *  'bite-bonansa-v3', 'bite-bonansa-v4', etc.) automatically so stale or corrupt cache entries do not persist.
- *  Updated to cache /customer/order instead of /customer/checkout.
+ * BREAKING CHANGE (v6): Cache version bumped to 'bite-bonansa-v6'.
+ *  The activate handler purges all older caches ('bite-bonansa-v1' through 'bite-bonansa-v5')
+ *  automatically so stale or corrupt cache entries do not persist.
+ *  Migrated from /customer/order-portal to /customer/order route.
  */
 
-const CACHE_NAME = 'bite-bonansa-v5';
+const CACHE_NAME = 'bite-bonansa-v6';
 
 // Key pages and assets to pre-cache on service worker install so they are
 // available offline even on first visit (including the dashboard).
@@ -30,7 +30,6 @@ const PRECACHE_URLS = [
   '/login',
   '/dashboard',
   '/customer/dashboard',
-  '/customer/order-portal',
   '/customer/order',
   '/rider/dashboard',
   '/rider/deliveries',

@@ -254,7 +254,7 @@ export default function OrderHistory() {
                   </p>
                   <button 
                     style={styles.orderBtn}
-                    onClick={() => router.push('/customer/order-portal')}
+                    onClick={() => router.push('/customer/order')}
                   >
                     Browse Menu
                   </button>

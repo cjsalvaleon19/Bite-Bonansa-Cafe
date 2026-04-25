@@ -49,6 +49,15 @@ const securityHeaders = [
 
 const nextConfig = {
   reactStrictMode: true,
+  async redirects() {
+    return [
+      {
+        source: '/customer/order-portal',
+        destination: '/customer/order',
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {
