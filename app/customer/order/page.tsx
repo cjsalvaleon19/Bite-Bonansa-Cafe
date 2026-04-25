@@ -267,7 +267,6 @@ export default function CustomerOrderPage() {
           status: 'pending',
           order_type: isDelivery ? 'delivery' : 'takeout',
           payment_method: paymentMethod,
-          payment_status: paymentMethod === 'gcash' ? 'paid' : 'pending',
           subtotal,
           delivery_fee: isDelivery ? appliedDeliveryFee : 0,
           discount: 0,
