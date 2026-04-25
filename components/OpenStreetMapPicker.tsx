@@ -120,15 +120,24 @@ export default function OpenStreetMapPicker({
   const [searching, setSearching] = useState(false);
   const [mapCenter, setMapCenter] = useState(position);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSearchTimeRef = useRef<number>(0);
 
-  // Nominatim search function
+  // Nominatim search function with rate limiting (1 request per second)
   const searchLocation = async (query: string) => {
     if (!query || query.trim().length < 3) {
       setSearchResults([]);
       return;
     }
 
+    // Ensure minimum 1 second between requests per Nominatim Usage Policy
+    const now = Date.now();
+    const timeSinceLastSearch = now - lastSearchTimeRef.current;
+    if (timeSinceLastSearch < 1000) {
+      await new Promise(resolve => setTimeout(resolve, 1000 - timeSinceLastSearch));
+    }
+
     setSearching(true);
+    lastSearchTimeRef.current = Date.now();
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=ph&limit=5`,
@@ -172,8 +181,16 @@ export default function OpenStreetMapPicker({
     };
   }, [searchQuery]);
 
-  // Reverse geocoding to get address from coordinates
+  // Reverse geocoding to get address from coordinates with rate limiting
   const reverseGeocode = async (lat: number, lng: number) => {
+    // Ensure minimum 1 second between requests per Nominatim Usage Policy
+    const now = Date.now();
+    const timeSinceLastSearch = now - lastSearchTimeRef.current;
+    if (timeSinceLastSearch < 1000) {
+      await new Promise(resolve => setTimeout(resolve, 1000 - timeSinceLastSearch));
+    }
+    
+    lastSearchTimeRef.current = Date.now();
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
