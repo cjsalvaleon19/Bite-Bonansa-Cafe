@@ -70,7 +70,12 @@ const GCASH_OWNER = {
   number: '09514915138',
 }
 
-// Size restrictions for Hot variety drinks
+/**
+ * Sizes that are not available for Hot variety drinks.
+ * Hot drinks can only be served in 12oz size due to temperature
+ * and serving guidelines. Larger sizes (16oz, 22oz) are only 
+ * available for Iced varieties.
+ */
 const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz'])
 
 function calcEarnedPoints(subtotal: number): number {

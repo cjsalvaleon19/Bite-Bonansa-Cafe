@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog'
 import { Button } from './ui/button'
+import { toast } from 'sonner'
 import dynamic from 'next/dynamic'
 
 // Dynamically import OpenStreetMapPicker to avoid SSR issues
@@ -36,7 +37,7 @@ export function LocationPicker({ isOpen, onClose, onSelectLocation }: LocationPi
       setSelectedLng(null)
       setSelectedAddress('')
     } else {
-      alert('Please select a location on the map or search for an address')
+      toast.error('Please select a location on the map or search for an address')
     }
   }
 
