@@ -273,9 +273,15 @@ export default function CustomerOrderPage() {
           return
         }
 
-        // Safe file extension extraction
-        const nameParts = gcashScreenshot.name.split('.')
-        const fileExt = nameParts.length > 1 ? nameParts[nameParts.length - 1] : 'jpg'
+        // Derive safe file extension from MIME type
+        const mimeToExtension: { [key: string]: string } = {
+          'image/jpeg': 'jpg',
+          'image/jpg': 'jpg',
+          'image/png': 'png',
+          'image/webp': 'webp',
+          'image/gif': 'gif',
+        }
+        const fileExt = mimeToExtension[gcashScreenshot.type] || 'jpg'
         const fileName = `${user?.id}_${Date.now()}.${fileExt}`
 
         const { data: uploadData, error: uploadError } = await supabase.storage
@@ -350,6 +356,10 @@ export default function CustomerOrderPage() {
       setOrderNotes('')
       setCashTendered('')
       setGcashRef('')
+      // Clean up object URL before resetting
+      if (gcashScreenshotPreview) {
+        URL.revokeObjectURL(gcashScreenshotPreview)
+      }
       setGcashScreenshot(null)
       setGcashScreenshotPreview(null)
       router.push('/customer/track')
@@ -887,16 +897,18 @@ function GCashDialog({
         return
       }
       setGcashScreenshot(file)
-      // Create preview URL
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setGcashScreenshotPreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
+      
+      // Create preview using URL.createObjectURL for better performance and memory management
+      const previewUrl = URL.createObjectURL(file)
+      setGcashScreenshotPreview(previewUrl)
     }
   }
 
   const removeScreenshot = () => {
+    // Clean up the object URL to prevent memory leak
+    if (gcashScreenshotPreview) {
+      URL.revokeObjectURL(gcashScreenshotPreview)
+    }
     setGcashScreenshot(null)
     setGcashScreenshotPreview(null)
   }
