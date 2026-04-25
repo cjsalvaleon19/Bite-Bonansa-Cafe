@@ -78,7 +78,7 @@ export function LocationPicker({ isOpen, onClose, onSelectLocation }: LocationPi
             <ol className="list-decimal list-inside mt-1 space-y-1">
               <li>Visit <a href="https://www.openstreetmap.org/" target="_blank" rel="noopener noreferrer" className="text-primary underline">OpenStreetMap.org</a></li>
               <li>Search for your location and right-click on the map</li>
-              <li>Click &quot;Show address&quot; to see coordinates</li>
+              <li>The coordinates will appear in the context menu</li>
               <li>Copy and paste them here</li>
             </ol>
           </div>
