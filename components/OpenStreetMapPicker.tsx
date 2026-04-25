@@ -1,20 +1,21 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useMapEvents, useMap } from 'react-leaflet';
+import type { Map as LeafletMap, Icon as LeafletIcon, DragEndEvent } from 'leaflet';
 
 // Dynamically import Leaflet components to avoid SSR issues
 const MapContainer = dynamic(
   () => import('react-leaflet').then((mod) => mod.MapContainer),
   { ssr: false }
-);
+) as any;
 const TileLayer = dynamic(
   () => import('react-leaflet').then((mod) => mod.TileLayer),
   { ssr: false }
-);
+) as any;
 const Marker = dynamic(
   () => import('react-leaflet').then((mod) => mod.Marker),
   { ssr: false }
-);
+) as any;
 
 // Store coordinates - Bite Bonansa Cafe
 const STORE_LOCATION = {
