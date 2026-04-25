@@ -264,15 +264,23 @@ export default function CustomerOrderPage() {
       let notesStr = orderNotes
       let gcashProofUrl = ''
 
-      // Upload GCash screenshot if provided
-      if (paymentMethod === 'gcash' && gcashScreenshot) {
-        const fileExt = gcashScreenshot.name.split('.').pop()
+      // Upload GCash screenshot (required for GCash payments)
+      if (paymentMethod === 'gcash') {
+        if (!gcashScreenshot) {
+          toast.error('Payment screenshot is required for GCash payments')
+          setIsSubmitting(false)
+          setShowGcashDialog(true)
+          return
+        }
+
+        // Safe file extension extraction
+        const nameParts = gcashScreenshot.name.split('.')
+        const fileExt = nameParts.length > 1 ? nameParts[nameParts.length - 1] : 'jpg'
         const fileName = `${user?.id}_${Date.now()}.${fileExt}`
-        const filePath = `payment-proofs/${fileName}`
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('payment-proofs')
-          .upload(filePath, gcashScreenshot)
+          .upload(fileName, gcashScreenshot)
 
         if (uploadError) {
           console.error('Failed to upload GCash screenshot:', uploadError)
@@ -282,7 +290,7 @@ export default function CustomerOrderPage() {
         // Get public URL
         const { data: urlData } = supabase.storage
           .from('payment-proofs')
-          .getPublicUrl(filePath)
+          .getPublicUrl(fileName)
         
         gcashProofUrl = urlData.publicUrl
       }
