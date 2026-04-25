@@ -68,11 +68,11 @@ From the screenshot provided, several UI elements had white backgrounds that did
 Updated three UI component files to use theme-aware Tailwind CSS classes:
 
 **`components/ui/input.tsx`**
-- Changed from: `bg-white`, `text-base`, `border-gray-300`, `placeholder:text-gray-400`
+- Changed from: `bg-white`, `border-gray-300`, `placeholder:text-gray-400`
 - Changed to: `bg-input`, `text-foreground`, `border-border`, `placeholder:text-muted-foreground`
 
 **`components/ui/textarea.tsx`**
-- Changed from: `bg-white`, `text-base`, `border-gray-300`, `placeholder:text-gray-400`
+- Changed from: `bg-white`, `border-gray-300`, `placeholder:text-gray-400`
 - Changed to: `bg-input`, `text-foreground`, `border-border`, `placeholder:text-muted-foreground`
 
 **`components/ui/tabs.tsx`**
