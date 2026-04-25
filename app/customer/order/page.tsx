@@ -44,10 +44,12 @@ import {
 } from '@/components/ui/dialog'
 import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '@/lib/store'
 import { supabase } from '@/lib/supabase/client'
-import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
+import dynamic from 'next/dynamic'
+
+const OpenStreetMapPicker = dynamic(() => import('@/components/OpenStreetMapPicker'), { ssr: false })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,6 +96,7 @@ export default function CustomerOrderPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showGcashDialog, setShowGcashDialog] = useState(false)
   const [showLocationPicker, setShowLocationPicker] = useState(false)
+  const [searchAddressQuery, setSearchAddressQuery] = useState('')
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
@@ -557,13 +560,26 @@ export default function CustomerOrderPage() {
       />
 
       {showLocationPicker && (
-        <LocationPicker
-          isOpen={showLocationPicker}
-          onClose={() => setShowLocationPicker(false)}
-          onSelectLocation={(lat: number, lng: number, address: string) => {
-            handleLocationSelect(address, lat, lng)
-          }}
-        />
+        <Dialog open={showLocationPicker} onOpenChange={setShowLocationPicker}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Select Delivery Location</DialogTitle>
+              <DialogDescription>
+                Search for your address or click on the map to pin your exact location
+              </DialogDescription>
+            </DialogHeader>
+            <OpenStreetMapPicker
+              initialLat={deliveryLat || undefined}
+              initialLng={deliveryLng || undefined}
+              searchQuery={searchAddressQuery}
+              onSearchQueryChange={setSearchAddressQuery}
+              onLocationChange={(lat, lng, address) => {
+                handleLocationSelect(address, lat, lng)
+                setShowLocationPicker(false)
+              }}
+            />
+          </DialogContent>
+        </Dialog>
       )}
 
       <GCashDialog
@@ -773,10 +789,10 @@ function GCashDialog({ open, onOpenChange, total, gcashRef, setGcashRef, onConfi
           <DialogDescription>Send the exact amount then enter your reference number below</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="rounded-lg bg-blue-50 p-4 text-center">
+          <div className="rounded-lg bg-black border border-primary/30 p-4 text-center">
             <p className="text-sm text-muted-foreground">Send to GCash number:</p>
-            <p className="text-2xl font-bold text-blue-600">{GCASH_OWNER.number}</p>
-            <p className="font-medium">{GCASH_OWNER.name}</p>
+            <p className="text-2xl font-bold text-primary">{GCASH_OWNER.number}</p>
+            <p className="font-medium text-foreground">{GCASH_OWNER.name}</p>
           </div>
           <div className="rounded-lg bg-muted p-4 text-center">
             <p className="text-sm text-muted-foreground">Amount to send:</p>
