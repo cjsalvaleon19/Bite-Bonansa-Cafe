@@ -921,7 +921,7 @@ function CartContent({
         <Separator className="my-4" />
 
         {orderType === 'delivery' && (
-          <div className="space-y-2">
+          <div className="space-y-2 rounded-lg bg-card border p-3">
             <Label htmlFor="address" className="flex items-center gap-2">
               <MapPin className="h-4 w-4" />
               Delivery Address
@@ -952,7 +952,7 @@ function CartContent({
           </div>
         )}
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-3 rounded-lg bg-card border p-3">
           <Label className="font-semibold">Payment Method</Label>
           <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="flex gap-4">
             <div className="flex items-center space-x-2">
@@ -966,13 +966,14 @@ function CartContent({
               </Label>
             </div>
           </RadioGroup>
-          <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-            <span className="flex items-center gap-1.5 text-amber-700">
-              <Gift className="h-4 w-4" />
-              Points you&apos;ll earn
-            </span>
-            <span className="font-bold text-amber-700">+{earnedPoints} pts</span>
-          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm">
+          <span className="flex items-center gap-1.5 text-primary">
+            <Gift className="h-4 w-4" />
+            Points you&apos;ll earn
+          </span>
+          <span className="font-bold text-primary">+{earnedPoints} pts</span>
         </div>
 
         {paymentMethod === 'cash' && (
@@ -998,7 +999,7 @@ function CartContent({
           </div>
         )}
 
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 space-y-2 rounded-lg bg-card border p-3">
           <Label htmlFor="notes">Order Notes (Optional)</Label>
           <Textarea
             id="notes"

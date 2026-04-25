@@ -3,8 +3,10 @@
 import React, { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
-import { Label } from './ui/label'
+import dynamic from 'next/dynamic'
+
+// Dynamically import OpenStreetMapPicker to avoid SSR issues
+const OpenStreetMapPicker = dynamic(() => import('./OpenStreetMapPicker'), { ssr: false })
 
 interface LocationPickerProps {
   isOpen: boolean
@@ -13,78 +15,68 @@ interface LocationPickerProps {
 }
 
 export function LocationPicker({ isOpen, onClose, onSelectLocation }: LocationPickerProps) {
-  const [lat, setLat] = useState('')
-  const [lng, setLng] = useState('')
-  const [address, setAddress] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedLat, setSelectedLat] = useState<number | null>(null)
+  const [selectedLng, setSelectedLng] = useState<number | null>(null)
+  const [selectedAddress, setSelectedAddress] = useState('')
+
+  const handleLocationChange = (lat: number, lng: number, address: string) => {
+    setSelectedLat(lat)
+    setSelectedLng(lng)
+    setSelectedAddress(address)
+  }
 
   const handleConfirm = () => {
-    const latitude = parseFloat(lat)
-    const longitude = parseFloat(lng)
-
-    if (isNaN(latitude) || isNaN(longitude)) {
-      alert('Please enter valid coordinates')
-      return
+    if (selectedLat !== null && selectedLng !== null) {
+      onSelectLocation(selectedLat, selectedLng, selectedAddress)
+      onClose()
+      // Reset state
+      setSearchQuery('')
+      setSelectedLat(null)
+      setSelectedLng(null)
+      setSelectedAddress('')
+    } else {
+      alert('Please select a location on the map')
     }
+  }
 
-    onSelectLocation(latitude, longitude, address || `${latitude}, ${longitude}`)
+  const handleCancel = () => {
     onClose()
+    // Reset state
+    setSearchQuery('')
+    setSelectedLat(null)
+    setSelectedLng(null)
+    setSelectedAddress('')
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Select Delivery Location</DialogTitle>
           <DialogDescription>
-            Enter your delivery coordinates or use the map to pin your location.
+            Enter your delivery address or click on the map to pin your location.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="address">Address</Label>
-            <Input
-              id="address"
-              placeholder="Enter your address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
+        <div className="py-4">
+          {isOpen && (
+            <OpenStreetMapPicker
+              initialLat={selectedLat || undefined}
+              initialLng={selectedLng || undefined}
+              onLocationChange={handleLocationChange}
+              searchQuery={searchQuery}
+              onSearchQueryChange={setSearchQuery}
             />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="lat">Latitude</Label>
-              <Input
-                id="lat"
-                type="number"
-                step="any"
-                placeholder="e.g., 6.2178483"
-                value={lat}
-                onChange={(e) => setLat(e.target.value)}
-              />
+          )}
+          {selectedAddress && (
+            <div className="mt-3 p-3 rounded-lg bg-muted border">
+              <p className="text-sm font-medium">Selected Location:</p>
+              <p className="text-sm text-muted-foreground">{selectedAddress}</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="lng">Longitude</Label>
-              <Input
-                id="lng"
-                type="number"
-                step="any"
-                placeholder="e.g., 124.8221226"
-                value={lng}
-                onChange={(e) => setLng(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="text-sm text-gray-600">
-            <p>💡 Tip: You can get your coordinates from OpenStreetMap:</p>
-            <ol className="list-decimal list-inside mt-1 space-y-1">
-              <li>Visit <a href="https://www.openstreetmap.org/" target="_blank" rel="noopener noreferrer" className="text-primary underline">OpenStreetMap.org</a></li>
-              <li>Search for your location and right-click on the map</li>
-              <li>The coordinates will appear in the context menu</li>
-              <li>Copy and paste them here</li>
-            </ol>
-          </div>
+          )}
         </div>
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
+        <div className="flex justify-end gap-2 pt-4 border-t">
+          <Button variant="outline" onClick={handleCancel}>
             Cancel
           </Button>
           <Button onClick={handleConfirm}>Confirm Location</Button>
