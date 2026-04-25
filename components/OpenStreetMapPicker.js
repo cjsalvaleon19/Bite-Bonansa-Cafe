@@ -211,8 +211,10 @@ export default function OpenStreetMapPicker({
             width: '100%',
             padding: '10px',
             borderRadius: '5px',
-            border: '1px solid #ccc',
+            border: '1px solid #ffc107',
             fontSize: '14px',
+            backgroundColor: '#1a1a1a',
+            color: '#ffffff',
           }}
         />
         {searching && (
@@ -222,7 +224,7 @@ export default function OpenStreetMapPicker({
             top: '50%',
             transform: 'translateY(-50%)',
             fontSize: '12px',
-            color: '#666'
+            color: '#ffc107'
           }}>
             Searching...
           </div>
@@ -235,14 +237,14 @@ export default function OpenStreetMapPicker({
             top: '100%',
             left: 0,
             right: 0,
-            backgroundColor: 'white',
-            border: '1px solid #ccc',
+            backgroundColor: '#1a1a1a',
+            border: '1px solid #ffc107',
             borderRadius: '5px',
             marginTop: '2px',
             maxHeight: '200px',
             overflowY: 'auto',
             zIndex: 1000,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+            boxShadow: '0 2px 8px rgba(255, 193, 7, 0.2)'
           }}>
             {searchResults.map((result, index) => (
               <div
@@ -251,13 +253,13 @@ export default function OpenStreetMapPicker({
                 style={{
                   padding: '10px',
                   cursor: 'pointer',
-                  borderBottom: index < searchResults.length - 1 ? '1px solid #eee' : 'none',
+                  borderBottom: index < searchResults.length - 1 ? '1px solid #333' : 'none',
                   fontSize: '14px',
-                  color: '#1a1a1a',
+                  color: '#ffffff',
                   transition: 'background-color 0.2s'
                 }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#f5f5f5'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#2a2a2a'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#1a1a1a'}
               >
                 📍 {result.display_name}
               </div>
@@ -269,7 +271,7 @@ export default function OpenStreetMapPicker({
       {/* Helper Text */}
       <p style={{
         fontSize: '12px',
-        color: '#666',
+        color: '#999',
         marginBottom: '10px'
       }}>
         Search for your address or click on the map to pin your exact location
@@ -281,7 +283,7 @@ export default function OpenStreetMapPicker({
         width: '100%',
         borderRadius: '8px',
         overflow: 'hidden',
-        border: '1px solid #ddd'
+        border: '1px solid #ffc107'
       }}>
         {typeof window !== 'undefined' && (
           <MapContainer

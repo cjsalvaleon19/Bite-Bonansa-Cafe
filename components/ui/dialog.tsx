@@ -88,14 +88,14 @@ const DialogContent = React.forwardRef<
         <div
           ref={ref}
           className={cn(
-            'relative w-full max-w-lg rounded-lg border border-gray-200 bg-white shadow-lg p-6 max-h-[85vh] overflow-y-auto',
+            'relative w-full max-w-lg rounded-lg border border-primary bg-black shadow-lg p-6 max-h-[85vh] overflow-y-auto text-white',
             className
           )}
           {...props}
         >
           <button
             onClick={() => onOpenChange(false)}
-            className="absolute right-4 top-4 rounded-md opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-gray-950 focus:ring-offset-2"
+            className="absolute right-4 top-4 rounded-md opacity-70 text-primary transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-black"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -139,7 +139,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h2
     ref={ref}
-    className={cn('text-lg font-semibold leading-none tracking-tight', className)}
+    className={cn('text-lg font-semibold leading-none tracking-tight text-primary', className)}
     {...props}
   />
 ))
@@ -152,7 +152,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn('text-sm text-gray-500', className)}
+    className={cn('text-sm text-gray-400', className)}
     {...props}
   />
 ))
@@ -165,7 +165,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      'flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-6 pt-6 border-t border-gray-200',
+      'flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-6 pt-6 border-t border-gray-700',
       className
     )}
     {...props}
