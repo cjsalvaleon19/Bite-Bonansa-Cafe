@@ -36,7 +36,7 @@ export function LocationPicker({ isOpen, onClose, onSelectLocation }: LocationPi
       setSelectedLng(null)
       setSelectedAddress('')
     } else {
-      alert('Please select a location on the map')
+      alert('Please select a location on the map or search for an address')
     }
   }
 
