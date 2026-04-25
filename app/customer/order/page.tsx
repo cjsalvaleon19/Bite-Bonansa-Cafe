@@ -373,9 +373,9 @@ export default function CustomerOrderPage() {
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
-            size="icon"
+            size="sm"
             onClick={() => router.push('/customer/dashboard')}
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground h-10 w-10 p-0"
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -952,8 +952,8 @@ function GCashDialog({
                 />
                 <Button
                   variant="destructive"
-                  size="icon"
-                  className="absolute top-2 right-2"
+                  size="sm"
+                  className="absolute top-2 right-2 h-8 w-8 p-0"
                   onClick={removeScreenshot}
                 >
                   <X className="h-4 w-4" />
