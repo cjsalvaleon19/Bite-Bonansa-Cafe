@@ -187,7 +187,11 @@ export default function OrderTracking() {
         status: 'out_for_delivery', 
         icon: isPickup ? '✅' : '🛵' 
       },
-      { label: 'Order Delivered', status: 'order_delivered', icon: '✓' },
+      { 
+        label: isPickup ? 'Order Complete' : 'Order Delivered', 
+        status: 'order_delivered', 
+        icon: '✓' 
+      },
     ];
 
     const statusOrder = ['order_in_queue', 'pending', 'confirmed', 'order_in_process', 'preparing', 'out_for_delivery', 'out for delivery', 'order_delivered', 'delivered', 'completed'];
