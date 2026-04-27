@@ -4,7 +4,10 @@
 -- ============================================================================
 
 -- 1. Ensure cash_drawer_transactions table exists with all required fields
-CREATE TABLE IF NOT EXISTS cash_drawer_transactions (
+-- Drop table if it exists to ensure clean recreation with correct schema
+DROP TABLE IF EXISTS cash_drawer_transactions CASCADE;
+
+CREATE TABLE cash_drawer_transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   cashier_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   transaction_type VARCHAR(50) NOT NULL CHECK (transaction_type IN ('cash-in', 'cash-out', 'pay-bill', 'pay-expense', 'adjustment')),
@@ -37,7 +40,10 @@ CREATE INDEX IF NOT EXISTS idx_cash_drawer_type ON cash_drawer_transactions(tran
 COMMENT ON TABLE cash_drawer_transactions IS 'Tracks all cash drawer transactions for reconciliation';
 
 -- 2. Create chart of accounts for expense categorization
-CREATE TABLE IF NOT EXISTS chart_of_accounts (
+-- Drop table if it exists to ensure clean recreation with correct schema
+DROP TABLE IF EXISTS chart_of_accounts CASCADE;
+
+CREATE TABLE chart_of_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_code VARCHAR(20) UNIQUE NOT NULL,
   account_name VARCHAR(255) NOT NULL,
@@ -55,7 +61,10 @@ CREATE INDEX IF NOT EXISTS idx_coa_active ON chart_of_accounts(is_active);
 COMMENT ON TABLE chart_of_accounts IS 'Chart of accounts for expense and revenue categorization';
 
 -- 3. Create kitchen departments table
-CREATE TABLE IF NOT EXISTS kitchen_departments (
+-- Drop table if it exists to ensure clean recreation with correct schema
+DROP TABLE IF EXISTS kitchen_departments CASCADE;
+
+CREATE TABLE kitchen_departments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   department_name VARCHAR(100) NOT NULL UNIQUE,
   department_code VARCHAR(20) NOT NULL UNIQUE,
