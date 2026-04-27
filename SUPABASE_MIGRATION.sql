@@ -265,7 +265,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
-COMMENT ON FUNCTION calculate_distance_meters IS 'Calculate distance in meters between two GPS coordinates using Haversine formula';
+COMMENT ON FUNCTION calculate_distance_meters(DECIMAL, DECIMAL, DECIMAL, DECIMAL) IS 'Calculate distance in meters between two GPS coordinates using Haversine formula';
 
 -- 13. Function to calculate delivery fee based on distance
 -- Pricing scheme: ₱30 base fare + tiered additional fees (capped at ₱98 for 10km)
@@ -322,7 +322,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
-COMMENT ON FUNCTION calculate_delivery_fee IS 'Calculate delivery fee: ₱30 base + tiered additional fees (capped at ₱98 for 10km)';
+COMMENT ON FUNCTION calculate_delivery_fee(INT) IS 'Calculate delivery fee: ₱30 base + tiered additional fees (capped at ₱98 for 10km)';
 
 -- 14. Function to calculate delivery fee from store to customer location
 CREATE OR REPLACE FUNCTION calculate_delivery_fee_from_store(
@@ -340,7 +340,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
-COMMENT ON FUNCTION calculate_delivery_fee_from_store IS 'Calculate delivery fee from Bite Bonansa store to customer location';
+COMMENT ON FUNCTION calculate_delivery_fee_from_store(DECIMAL, DECIMAL) IS 'Calculate delivery fee from Bite Bonansa store to customer location';
 
 -- ============================================================================
 -- Verification Queries
