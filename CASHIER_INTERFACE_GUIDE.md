@@ -5,10 +5,13 @@ The Cashier Interface is a comprehensive Point of Sale (POS) and cash management
 
 ## Access Control
 
-### Authorized Cashier Account
+### Authorized Cashier Accounts
 - **Email**: `arclitacj@gmail.com`
-- **Role**: Cashier
-- **Access Level**: Cashier portal only (cannot access customer, rider, or admin portals)
+  - **Role**: Cashier
+  - **Access Level**: Cashier portal only (cannot access customer, rider, or admin portals)
+- **Email**: `bantecj@bitebonansacafe.com`
+  - **Role**: Cashier
+  - **Access Level**: Cashier portal only (cannot access customer, rider, or admin portals)
 
 ### Security Features
 1. **Role-Based Access Control**: Implemented via `useRoleGuard` hook
@@ -406,7 +409,7 @@ Added field:
 - **Solution**: Check all transaction types are included in calculation (pay-bill, pay-expense)
 
 **Issue**: Cannot access cashier portal
-- **Solution**: Verify email is arclitacj@gmail.com and role is set correctly in users table
+- **Solution**: Verify email is arclitacj@gmail.com or bantecj@bitebonansacafe.com and role is set correctly in utils/roleMapping.js
 
 ### Database Migration
 

@@ -7,7 +7,7 @@ This implementation provides complete role-based access control and portal featu
 
 ### Fixed Email Roles
 - **Admin**: `cjsalvaleon19@gmail.com`
-- **Cashier**: `arclitacj@gmail.com`
+- **Cashier**: `arclitacj@gmail.com`, `bantecj@bitebonansacafe.com`
 - **Rider**: `johndave0991@gmail.com`
 - **Customer**: All other email addresses
 
@@ -53,7 +53,7 @@ npm start      # Production
 ## Portal Access
 
 ### Cashier Portal (`/cashier`)
-**Email**: arclitacj@gmail.com
+**Emails**: arclitacj@gmail.com, bantecj@bitebonansacafe.com
 
 Features:
 - Dashboard with sales stats
