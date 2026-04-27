@@ -221,7 +221,11 @@ export default function CustomerOrderPage() {
     if (!itemId || menuItems.length === 0) return
     
     // Clean up URL parameter immediately to prevent re-triggering
-    router.replace('/customer/order', { scroll: false })
+    try {
+      router.replace('/customer/order', { scroll: false })
+    } catch (err) {
+      console.error('Failed to clean up URL parameter:', err)
+    }
     
     const item = menuItems.find(m => m.id === itemId)
     if (!item) return
