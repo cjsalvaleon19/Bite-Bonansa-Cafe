@@ -33,7 +33,7 @@ This document summarizes the updates made to the Order Tracking interface and Da
   1. Order in Queue 🕐
   2. Order in Process 👨‍🍳
   3. Out for Delivery 🛵 (or "Ready for Pick-up" ✅ for pick-up orders)
-  4. Order Delivered ✓
+  4. Order Delivered ✓ (or "Order Complete" ✓ for pick-up orders)
 
 - **Visual Indicators:**
   - Completed steps: Green (#4caf50) with checkmark ✓
@@ -169,6 +169,7 @@ For orders with `order_mode='pick-up'`:
 - [x] Order items list displays with quantities
 - [x] Pick-up orders show "Pick-up" badge
 - [x] Pick-up orders show "Ready for Pick-up" instead of "Out for Delivery"
+- [x] Pick-up orders show "Order Complete" instead of "Order Delivered"
 - [x] Payment method displays correctly
 - [x] Total amount is highlighted
 

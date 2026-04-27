@@ -232,13 +232,14 @@ Order #0012                    [ORDER IN QUEUE] [Pick-up]
 Progress:
    ✓          👨‍🍳          ✅           ✓
   ═══        ─────       ─────       ─────
-Order in   Order in   Ready for   Order
- Queue      Process    Pick-up   Delivered
+Order in   Order in   Ready for    Order
+ Queue      Process    Pick-up    Complete
 ```
 
 **Special handling:**
 - Green "Pick-up" badge
 - Step 3 shows "Ready for Pick-up" instead of "Out for Delivery"
+- Step 4 shows "Order Complete" instead of "Order Delivered"
 - Uses ✅ icon instead of 🛵
 - No delivery address shown
 
