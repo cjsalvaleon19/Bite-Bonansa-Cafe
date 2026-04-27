@@ -69,6 +69,7 @@ export default function CashierPOS() {
           category, 
           available,
           has_variants,
+          is_sold_out,
           variant_types:menu_item_variants(
             id,
             variant_type_name,
@@ -94,6 +95,12 @@ export default function CashierPOS() {
   }, []);
 
   const handleAddItem = (item) => {
+    // Check if item is sold out
+    if (item.is_sold_out) {
+      alert('This item is currently sold out and cannot be added to the cart.');
+      return;
+    }
+
     // Check if item has variants
     if (item.has_variants && item.variant_types && item.variant_types.length > 0) {
       setSelectedItem(item);
@@ -503,14 +510,21 @@ export default function CashierPOS() {
               {menuItems.map((item) => (
                 <button
                   key={item.id}
-                  style={styles.menuCard}
+                  style={{
+                    ...styles.menuCard,
+                    ...(item.is_sold_out ? styles.soldOutCard : {})
+                  }}
                   onClick={() => handleAddItem(item)}
+                  disabled={item.is_sold_out}
                 >
                   <span style={styles.menuItemName}>{item.name}</span>
                   <span style={styles.menuItemCategory}>{item.category}</span>
                   <span style={styles.menuItemPrice}>₱{Number(item.price || item.base_price || 0).toFixed(2)}</span>
                   {item.has_variants && (
                     <span style={styles.variantBadge}>Has options</span>
+                  )}
+                  {item.is_sold_out && (
+                    <span style={styles.soldOutBadge}>SOLD OUT</span>
                   )}
                 </button>
               ))}
@@ -776,10 +790,12 @@ const styles = {
   emptyText: { color: '#aaa', fontSize: '14px' },
   menuGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' },
   menuCard: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '16px', backgroundColor: '#1a1a1a', border: '1px solid #ffc107', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.15s', color: '#fff', textAlign: 'left' },
+  soldOutCard: { opacity: 0.5, backgroundColor: '#2a2a2a', border: '1px solid #666', cursor: 'not-allowed' },
   menuItemName: { fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '4px' },
   menuItemCategory: { fontSize: '11px', color: '#888', marginBottom: '8px' },
   menuItemPrice: { fontSize: '15px', fontWeight: '700', color: '#ffc107' },
   variantBadge: { fontSize: '10px', color: '#ffc107', marginTop: '4px', backgroundColor: 'rgba(255, 193, 7, 0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(255, 193, 7, 0.3)' },
+  soldOutBadge: { fontSize: '10px', color: '#fff', marginTop: '4px', backgroundColor: '#d32f2f', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' },
   formGroup: { marginBottom: '16px' },
   label: { display: 'block', fontSize: '12px', color: '#aaa', marginBottom: '6px' },
   input: { width: '100%', padding: '8px 12px', border: '1px solid #444', borderRadius: '6px', backgroundColor: '#2a2a2a', color: '#fff', fontSize: '13px', boxSizing: 'border-box', outline: 'none' },
