@@ -187,7 +187,11 @@ export default function OrderTracking() {
         status: 'out_for_delivery', 
         icon: isPickup ? '✅' : '🛵' 
       },
-      { label: 'Order Delivered', status: 'order_delivered', icon: '✓' },
+      { 
+        label: isPickup ? 'Order Complete' : 'Order Delivered', 
+        status: 'order_delivered', 
+        icon: '✓' 
+      },
     ];
 
     const statusOrder = ['order_in_queue', 'pending', 'confirmed', 'order_in_process', 'preparing', 'out_for_delivery', 'out for delivery', 'order_delivered', 'delivered', 'completed'];
@@ -214,6 +218,13 @@ export default function OrderTracking() {
     // Extract customer notes only (before any | delimiter)
     const parts = specialRequest.split('|');
     return parts[0].trim();
+  };
+
+  const extractDeliveryAddress = (order) => {
+    // Priority: delivery_address > customer_address
+    if (order.delivery_address) return order.delivery_address;
+    if (order.customer_address) return order.customer_address;
+    return 'Not specified';
   };
 
   if (loading) {
@@ -273,78 +284,77 @@ export default function OrderTracking() {
                 const orderNumber = order.order_number || order.id?.slice(0, 8);
                 const customerNotes = extractSpecialRequest(order.special_request);
                 const isPickup = order.order_mode === 'pick-up';
+                const deliveryAddress = extractDeliveryAddress(order);
+                const currentStatus = formatStatus(order.status);
                 
                 return (
                   <div key={order.id} style={styles.orderCard}>
+                    {/* Order Header with Number and Status */}
                     <div style={styles.orderHeader}>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
+                        <div>
                           <h3 style={styles.orderId}>Order #{orderNumber}</h3>
+                          <p style={styles.orderDate}>
+                            {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
+                          </p>
+                        </div>
+                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <span style={{
                             ...styles.statusBadge,
                             backgroundColor: getStatusColor(order.status),
                           }}>
-                            {formatStatus(order.status)}
+                            {currentStatus}
                           </span>
                           {isPickup && (
                             <span style={styles.pickupBadge}>Pick-up</span>
                           )}
                         </div>
-                        <p style={styles.orderDate}>
-                          {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
-                        </p>
                       </div>
                     </div>
 
                     {/* Horizontal Progress Bar */}
-                    <div style={styles.horizontalTimeline}>
-                      {progressSteps.map((step, index) => (
-                        <div key={index} style={styles.progressStep}>
-                          <div style={styles.stepLine}>
-                            {index > 0 && (
+                    <div style={styles.horizontalProgressContainer}>
+                      <div style={styles.horizontalStepsWrapper}>
+                        {progressSteps.map((step, index) => (
+                          <React.Fragment key={index}>
+                            {/* Step */}
+                            <div style={styles.horizontalProgressStep}>
                               <div style={{
-                                ...styles.connectionLine,
-                                backgroundColor: progressSteps[index - 1].isCompleted ? '#4caf50' : '#444'
-                              }} />
-                            )}
-                            <div style={{
-                              ...styles.stepDot,
-                              backgroundColor: step.isCompleted ? '#4caf50' : step.isActive ? '#ffc107' : '#444',
-                              borderColor: step.isCompleted ? '#4caf50' : step.isActive ? '#ffc107' : '#444',
-                            }}>
-                              {step.isCompleted ? '✓' : step.icon}
+                                ...styles.horizontalStepCircle,
+                                backgroundColor: step.isCompleted ? '#4caf50' : step.isActive ? '#ffc107' : '#1a1a1a',
+                                borderColor: step.isCompleted ? '#4caf50' : step.isActive ? '#ffc107' : '#444',
+                              }}>
+                                {step.isCompleted ? '✓' : step.icon}
+                              </div>
+                              <span style={{
+                                ...styles.horizontalStepLabel,
+                                color: step.isActive || step.isCompleted ? '#fff' : '#666',
+                                fontWeight: step.isActive ? '600' : '400'
+                              }}>
+                                {step.label}
+                              </span>
                             </div>
+                            
+                            {/* Connection Line (except after last) */}
                             {index < progressSteps.length - 1 && (
                               <div style={{
-                                ...styles.connectionLine,
+                                ...styles.horizontalConnectionLine,
                                 backgroundColor: step.isCompleted ? '#4caf50' : '#444'
                               }} />
                             )}
-                          </div>
-                          <span style={{
-                            ...styles.stepLabel,
-                            color: step.isActive || step.isCompleted ? '#fff' : '#666',
-                            fontWeight: step.isActive ? '600' : '400'
-                          }}>
-                            {step.label}
-                          </span>
-                        </div>
-                      ))}
+                          </React.Fragment>
+                        ))}
+                      </div>
                     </div>
 
-                    {/* Order Info Summary */}
+                    {/* Order Info Grid */}
                     <div style={styles.orderInfoGrid}>
-                      <div style={styles.infoItem}>
-                        <span style={styles.infoLabel}>
-                          {isPickup ? 'Order Type:' : 'Delivery Address:'}
-                        </span>
-                        <span style={styles.infoValue}>
-                          {isPickup 
-                            ? 'Pick-up' 
-                            : (order.customer_address || order.delivery_address || 'Not specified')
-                          }
-                        </span>
-                      </div>
+                      {!isPickup && (
+                        <div style={styles.infoItem}>
+                          <span style={styles.infoLabel}>Delivery Address:</span>
+                          <span style={styles.infoValue}>{deliveryAddress}</span>
+                        </div>
+                      )}
                       {customerNotes && (
                         <div style={styles.infoItem}>
                           <span style={styles.infoLabel}>Special Request:</span>
@@ -352,8 +362,12 @@ export default function OrderTracking() {
                         </div>
                       )}
                       <div style={styles.infoItem}>
+                        <span style={styles.infoLabel}>Payment Method:</span>
+                        <span style={styles.infoValue}>{order.payment_method || 'N/A'}</span>
+                      </div>
+                      <div style={styles.infoItem}>
                         <span style={styles.infoLabel}>Total Amount:</span>
-                        <span style={{...styles.infoValue, color: '#ffc107', fontWeight: 'bold'}}>
+                        <span style={styles.infoValueHighlight}>
                           ₱{order.total_amount?.toFixed(2) || '0.00'}
                         </span>
                       </div>
@@ -376,11 +390,17 @@ export default function OrderTracking() {
                             <div key={item.id || idx} style={styles.orderItem}>
                               <div style={styles.itemInfo}>
                                 <span style={styles.itemName}>{item.name}</span>
-                                <span style={styles.itemQty}>x{item.quantity}</span>
+                                {/* Item notes: customization requests for individual items (e.g., "extra sugar", "no ice") */}
+                                {item.notes && (
+                                  <span style={styles.itemNotes}>Note: {item.notes}</span>
+                                )}
                               </div>
-                              <span style={styles.itemPrice}>
-                                ₱{(item.subtotal || (item.price && item.quantity ? item.price * item.quantity : 0))?.toFixed(2)}
-                              </span>
+                              <div style={styles.itemPriceInfo}>
+                                <span style={styles.itemQty}>x{item.quantity}</span>
+                                <span style={styles.itemPrice}>
+                                  ₱{(item.subtotal || (item.price && item.quantity ? item.price * item.quantity : 0))?.toFixed(2)}
+                                </span>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -500,17 +520,16 @@ const styles = {
   orderHeader: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: '20px',
+    alignItems: 'center',
+    marginBottom: '24px',
     paddingBottom: '16px',
     borderBottom: '1px solid #2a2a2a',
   },
   orderId: {
-    fontSize: '18px',
+    fontSize: '20px',
     fontWeight: '700',
     color: '#ffc107',
     margin: 0,
-    marginBottom: '4px',
   },
   orderDate: {
     fontSize: '12px',
@@ -519,74 +538,76 @@ const styles = {
   },
   statusBadge: {
     display: 'inline-block',
-    padding: '4px 12px',
-    borderRadius: '12px',
-    fontSize: '11px',
-    fontWeight: '600',
+    padding: '6px 16px',
+    borderRadius: '20px',
+    fontSize: '12px',
+    fontWeight: '700',
     color: '#0a0a0a',
     textTransform: 'uppercase',
+    letterSpacing: '0.5px',
   },
   pickupBadge: {
     display: 'inline-block',
-    padding: '4px 12px',
-    borderRadius: '12px',
-    fontSize: '11px',
-    fontWeight: '600',
+    padding: '6px 16px',
+    borderRadius: '20px',
+    fontSize: '12px',
+    fontWeight: '700',
     color: '#0a0a0a',
     backgroundColor: '#4caf50',
     textTransform: 'uppercase',
+    letterSpacing: '0.5px',
   },
-  horizontalTimeline: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: '24px',
-    padding: '20px 0',
+  horizontalProgressContainer: {
+    marginBottom: '28px',
+    paddingBottom: '20px',
     borderBottom: '1px solid #2a2a2a',
   },
-  progressStep: {
-    flex: 1,
+  horizontalStepsWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  horizontalProgressStep: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    position: 'relative',
+    minWidth: '80px',
   },
-  stepLine: {
-    display: 'flex',
-    alignItems: 'center',
-    width: '100%',
-    marginBottom: '8px',
-  },
-  connectionLine: {
+  horizontalConnectionLine: {
     flex: 1,
-    height: '3px',
+    height: '4px',
+    minWidth: '20px',
     transition: 'background-color 0.3s',
   },
-  stepDot: {
-    width: '36px',
-    height: '36px',
+  horizontalStepCircle: {
+    width: '40px',
+    height: '40px',
     borderRadius: '50%',
     border: '3px solid',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '16px',
+    fontSize: '18px',
     fontWeight: '700',
-    backgroundColor: '#1a1a1a',
     zIndex: 1,
     transition: 'all 0.3s',
-    flexShrink: 0,
+    position: 'relative',
+    marginBottom: '8px',
   },
-  stepLabel: {
+  horizontalStepLabel: {
     fontSize: '11px',
     textAlign: 'center',
-    maxWidth: '90px',
-    lineHeight: '1.2',
+    lineHeight: '1.3',
     transition: 'color 0.3s',
+    wordWrap: 'break-word',
+    maxWidth: '100%',
+    marginTop: '4px',
   },
   orderInfoGrid: {
     display: 'grid',
-    gap: '12px',
-    marginBottom: '16px',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '16px',
+    marginBottom: '20px',
   },
   infoItem: {
     display: 'flex',
@@ -594,28 +615,35 @@ const styles = {
     gap: '4px',
   },
   infoLabel: {
-    fontSize: '11px',
+    fontSize: '12px',
     color: '#999',
     textTransform: 'uppercase',
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: '0.5px',
+    marginBottom: '4px',
   },
   infoValue: {
     fontSize: '14px',
     color: '#ccc',
   },
+  infoValueHighlight: {
+    fontSize: '18px',
+    color: '#ffc107',
+    fontWeight: 'bold',
+  },
   viewDetailsBtn: {
     width: '100%',
-    padding: '10px',
+    padding: '12px',
     backgroundColor: 'transparent',
     color: '#ffc107',
     border: '1px solid #ffc107',
-    borderRadius: '6px',
-    fontSize: '13px',
-    fontWeight: '600',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '700',
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
     transition: 'all 0.3s',
-    marginBottom: '16px',
+    marginBottom: '0',
   },
   orderItemsSection: {
     backgroundColor: '#0f0f0f',
@@ -637,26 +665,38 @@ const styles = {
   orderItem: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '8px',
+    alignItems: 'flex-start',
+    padding: '12px',
     backgroundColor: '#1a1a1a',
-    borderRadius: '4px',
+    borderRadius: '6px',
+    gap: '12px',
   },
   itemInfo: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
+    flexDirection: 'column',
+    gap: '4px',
     flex: 1,
   },
   itemName: {
-    fontSize: '13px',
+    fontSize: '14px',
     color: '#fff',
-    flex: 1,
+    fontWeight: '600',
   },
-  itemQty: {
+  itemNotes: {
     fontSize: '12px',
     color: '#999',
-    fontWeight: '600',
+    fontStyle: 'italic',
+  },
+  itemPriceInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: '4px',
+  },
+  itemQty: {
+    fontSize: '13px',
+    color: '#ccc',
+    fontWeight: '700',
   },
   itemPrice: {
     fontSize: '14px',
