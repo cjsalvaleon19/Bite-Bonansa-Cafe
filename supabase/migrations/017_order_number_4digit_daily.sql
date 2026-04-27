@@ -15,9 +15,19 @@ DECLARE
   max_order_num INT;
   next_num INT;
   order_num_str VARCHAR(4);
+  lock_key BIGINT;
 BEGIN
   -- Get today's date
   today_date := CURRENT_DATE;
+  
+  -- Use advisory lock to prevent race conditions
+  -- Lock key is based on today's date (YYYYMMDD as integer)
+  lock_key := EXTRACT(YEAR FROM today_date) * 10000 + 
+              EXTRACT(MONTH FROM today_date) * 100 + 
+              EXTRACT(DAY FROM today_date);
+  
+  -- Acquire advisory lock (will wait if another transaction has it)
+  PERFORM pg_advisory_xact_lock(lock_key);
   
   -- Find the maximum order number for today
   -- Extract numeric part from order_number where created_at is today
@@ -39,6 +49,7 @@ BEGIN
   order_num_str := LPAD(next_num::TEXT, 4, '0');
   
   RETURN order_num_str;
+  -- Lock will be released automatically at end of transaction
 END;
 $$ LANGUAGE plpgsql;
 

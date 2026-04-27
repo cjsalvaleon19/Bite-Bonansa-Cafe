@@ -267,9 +267,6 @@ export default function CustomerDashboard() {
                     {statusInfo.icon} {statusInfo.label}
                   </p>
                   <p style={styles.cardDesc}>Total: ₱{dashboardData.currentOrder.total_amount}</p>
-                  <p style={styles.viewDetailsLink}>
-                    View Details →
-                  </p>
                 </>
               ) : (
                 <p style={styles.cardDesc}>No Active Orders</p>

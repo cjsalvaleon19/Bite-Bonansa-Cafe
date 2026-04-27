@@ -110,3 +110,7 @@ The UI now extracts only the customer notes part (before the first `|`) for disp
 - Order number will be NULL for existing orders (created before migration)
 - Display falls back to shortened order ID if order_number is not set
 - Both `customer_address` and `delivery_address` fields are checked for backward compatibility
+- **IMPORTANT**: The code uses `customer_id` to filter orders (matching the schema in `fix_orders_and_loyalty_schema.sql`). If your database still uses `user_id`, you'll need to either:
+  1. Add a `customer_id` column to the orders table, OR
+  2. Update the query in `pages/customer/order-tracking.js` line 118 to use `user_id` instead of `customer_id`
+- The database function uses PostgreSQL advisory locks to prevent race conditions when generating sequential order numbers

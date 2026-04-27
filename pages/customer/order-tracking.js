@@ -203,7 +203,7 @@ export default function OrderTracking() {
   };
 
   const extractSpecialRequest = (specialRequest) => {
-    if (!specialRequest) return '';
+    if (!specialRequest || typeof specialRequest !== 'string') return '';
     // Extract customer notes only (before any | delimiter)
     const parts = specialRequest.split('|');
     return parts[0].trim();
@@ -360,7 +360,7 @@ export default function OrderTracking() {
                                 <span style={styles.itemQty}>x{item.quantity}</span>
                               </div>
                               <span style={styles.itemPrice}>
-                                ₱{(item.subtotal || (item.price * item.quantity))?.toFixed(2)}
+                                ₱{((item.subtotal || (item.price * item.quantity) || 0))?.toFixed(2)}
                               </span>
                             </div>
                           ))}
