@@ -215,6 +215,17 @@ const Login = () => {
               }}
               required
             />
+            <div style={{ marginTop: '8px', textAlign: 'right' }}>
+              <Link href="/forgot-password" style={{
+                color: '#ffc107',
+                textDecoration: 'none',
+                fontSize: '13px',
+                fontWeight: '500',
+                transition: 'color 0.3s'
+              }}>
+                Forgot Password?
+              </Link>
+            </div>
           </div>
 
           <button
