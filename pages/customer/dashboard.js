@@ -258,7 +258,7 @@ export default function CustomerDashboard() {
             </Link>
 
             {/* Order Status */}
-            <div style={{...styles.actionCard, cursor: 'default'}}>
+            <Link href="/customer/order-tracking" style={styles.actionCard}>
               <span style={styles.cardIcon}>📦</span>
               <h3 style={styles.cardTitle}>Order Status</h3>
               {dashboardData.currentOrder ? (
@@ -267,14 +267,11 @@ export default function CustomerDashboard() {
                     {statusInfo.icon} {statusInfo.label}
                   </p>
                   <p style={styles.cardDesc}>Total: ₱{dashboardData.currentOrder.total_amount}</p>
-                  <Link href="/customer/orders" style={styles.viewDetailsLink}>
-                    View Details →
-                  </Link>
                 </>
               ) : (
-                <p style={styles.cardDesc}>No active orders</p>
+                <p style={styles.cardDesc}>No Active Orders</p>
               )}
-            </div>
+            </Link>
 
             {/* Total Earnings */}
             <div style={{...styles.actionCard, cursor: 'default'}}>

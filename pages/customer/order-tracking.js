@@ -10,6 +10,7 @@ export default function OrderTracking() {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [expandedOrderId, setExpandedOrderId] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -99,10 +100,22 @@ export default function OrderTracking() {
       
       setLoadingOrders(true);
       try {
+        // Fetch orders with order_items
         const { data, error } = await supabase
           .from('orders')
-          .select('*')
-          .eq('user_id', user.id)
+          .select(`
+            *,
+            order_items (
+              id,
+              menu_item_id,
+              name,
+              price,
+              quantity,
+              subtotal,
+              notes
+            )
+          `)
+          .eq('customer_id', user.id)
           .order('created_at', { ascending: false })
           .limit(20);
 
@@ -122,8 +135,10 @@ export default function OrderTracking() {
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
       case 'pending':
+      case 'order_in_queue':
         return '#ffb300';
       case 'confirmed':
+      case 'order_in_process':
         return '#2196f3';
       case 'preparing':
         return '#9c27b0';
@@ -131,6 +146,7 @@ export default function OrderTracking() {
       case 'out_for_delivery':
         return '#ff9800';
       case 'delivered':
+      case 'order_delivered':
       case 'completed':
         return '#4caf50';
       case 'cancelled':
@@ -142,7 +158,55 @@ export default function OrderTracking() {
 
   const formatStatus = (status) => {
     if (!status) return 'Unknown';
-    return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const formatted = status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    // Map internal status to user-friendly labels
+    const statusMap = {
+      'Pending': 'Order in Queue',
+      'Order In Queue': 'Order in Queue',
+      'Confirmed': 'Order in Process',
+      'Order In Process': 'Order in Process',
+      'Preparing': 'Order in Process',
+      'Out For Delivery': 'Out for Delivery',
+      'Delivered': 'Order Delivered',
+      'Order Delivered': 'Order Delivered',
+      'Completed': 'Order Delivered'
+    };
+    return statusMap[formatted] || formatted;
+  };
+
+  const getProgressSteps = (status) => {
+    const normalizedStatus = status?.toLowerCase();
+    const steps = [
+      { label: 'Order in Queue', status: 'order_in_queue', icon: '🕐' },
+      { label: 'Order in Process', status: 'order_in_process', icon: '👨‍🍳' },
+      { label: 'Out for Delivery', status: 'out_for_delivery', icon: '🛵' },
+      { label: 'Order Delivered', status: 'order_delivered', icon: '✓' },
+    ];
+
+    const statusOrder = ['order_in_queue', 'pending', 'confirmed', 'order_in_process', 'preparing', 'out_for_delivery', 'out for delivery', 'order_delivered', 'delivered', 'completed'];
+    const currentIndex = statusOrder.indexOf(normalizedStatus);
+
+    return steps.map((step, index) => {
+      const stepStatuses = [
+        ['order_in_queue', 'pending'],
+        ['confirmed', 'order_in_process', 'preparing'],
+        ['out_for_delivery', 'out for delivery'],
+        ['order_delivered', 'delivered', 'completed']
+      ];
+      const isCompleted = stepStatuses[index].some(s => {
+        const sIdx = statusOrder.indexOf(s);
+        return sIdx !== -1 && sIdx <= currentIndex && currentIndex > -1;
+      });
+      const isActive = stepStatuses[index].includes(normalizedStatus);
+      return { ...step, isCompleted, isActive };
+    });
+  };
+
+  const extractSpecialRequest = (specialRequest) => {
+    if (!specialRequest || typeof specialRequest !== 'string') return '';
+    // Extract customer notes only (before any | delimiter)
+    const parts = specialRequest.split('|');
+    return parts[0].trim();
   };
 
   if (loading) {
@@ -193,143 +257,124 @@ export default function OrderTracking() {
 
           {!loadingOrders && orders.length > 0 && (
             <div style={styles.ordersList}>
-              {orders.map(order => (
-                <div key={order.id} style={styles.orderCard}>
-                  <div style={styles.orderHeader}>
-                    <div>
-                      <h3 style={styles.orderId}>Order #{order.id?.slice(0, 8)}</h3>
-                      <p style={styles.orderDate}>
-                        {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
-                      </p>
+              {orders.map(order => {
+                const progressSteps = getProgressSteps(order.status);
+                const isExpanded = expandedOrderId === order.id;
+                const orderNumber = order.order_number || order.id?.slice(0, 8);
+                const customerNotes = extractSpecialRequest(order.special_request);
+                
+                return (
+                  <div key={order.id} style={styles.orderCard}>
+                    <div style={styles.orderHeader}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <h3 style={styles.orderId}>Order #{orderNumber}</h3>
+                          <span style={{
+                            ...styles.statusBadge,
+                            backgroundColor: getStatusColor(order.status),
+                          }}>
+                            {formatStatus(order.status)}
+                          </span>
+                        </div>
+                        <p style={styles.orderDate}>
+                          {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
+                        </p>
+                      </div>
                     </div>
-                    <div style={styles.statusBadge}>
-                      <span 
-                        style={{
-                          ...styles.statusDot,
-                          backgroundColor: getStatusColor(order.status)
-                        }}
-                      />
-                      <span style={styles.statusText}>
-                        {formatStatus(order.status)}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {order.items && (
-                    <div style={styles.orderItems}>
-                      <p style={styles.itemsLabel}>Items:</p>
-                      <OrderItemsList items={order.items} />
-                    </div>
-                  )}
 
-                  <div style={styles.orderFooter}>
-                    <span style={styles.totalLabel}>Total:</span>
-                    <span style={styles.totalAmount}>
-                      ₱{order.total_amount?.toFixed(2) || '0.00'}
-                    </span>
-                  </div>
+                    {/* Horizontal Progress Bar */}
+                    <div style={styles.horizontalTimeline}>
+                      {progressSteps.map((step, index) => (
+                        <div key={index} style={styles.progressStep}>
+                          <div style={styles.stepLine}>
+                            {index > 0 && (
+                              <div style={{
+                                ...styles.connectionLine,
+                                backgroundColor: progressSteps[index - 1].isCompleted ? '#4caf50' : '#444'
+                              }} />
+                            )}
+                            <div style={{
+                              ...styles.stepDot,
+                              backgroundColor: step.isCompleted ? '#4caf50' : step.isActive ? '#ffc107' : '#444',
+                              borderColor: step.isCompleted ? '#4caf50' : step.isActive ? '#ffc107' : '#444',
+                            }}>
+                              {step.isCompleted ? '✓' : step.icon}
+                            </div>
+                            {index < progressSteps.length - 1 && (
+                              <div style={{
+                                ...styles.connectionLine,
+                                backgroundColor: step.isCompleted ? '#4caf50' : '#444'
+                              }} />
+                            )}
+                          </div>
+                          <span style={{
+                            ...styles.stepLabel,
+                            color: step.isActive || step.isCompleted ? '#fff' : '#666',
+                            fontWeight: step.isActive ? '600' : '400'
+                          }}>
+                            {step.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
 
-                  {/* Order Timeline */}
-                  <div style={styles.timeline}>
-                    <TimelineItem 
-                      label="Order Placed" 
-                      active={true}
-                      completed={true}
-                    />
-                    <TimelineItem 
-                      label="Confirmed" 
-                      active={['confirmed', 'preparing', 'out for delivery', 'out_for_delivery', 'delivered', 'completed'].includes(order.status?.toLowerCase())}
-                      completed={['preparing', 'out for delivery', 'out_for_delivery', 'delivered', 'completed'].includes(order.status?.toLowerCase())}
-                    />
-                    <TimelineItem 
-                      label="Preparing" 
-                      active={['preparing', 'out for delivery', 'out_for_delivery', 'delivered', 'completed'].includes(order.status?.toLowerCase())}
-                      completed={['out for delivery', 'out_for_delivery', 'delivered', 'completed'].includes(order.status?.toLowerCase())}
-                    />
-                    <TimelineItem 
-                      label="Out for Delivery" 
-                      active={['out for delivery', 'out_for_delivery', 'delivered', 'completed'].includes(order.status?.toLowerCase())}
-                      completed={['delivered', 'completed'].includes(order.status?.toLowerCase())}
-                    />
-                    <TimelineItem 
-                      label="Delivered" 
-                      active={['delivered', 'completed'].includes(order.status?.toLowerCase())}
-                      completed={['delivered', 'completed'].includes(order.status?.toLowerCase())}
-                      isLast={true}
-                    />
+                    {/* Order Info Summary */}
+                    <div style={styles.orderInfoGrid}>
+                      <div style={styles.infoItem}>
+                        <span style={styles.infoLabel}>Delivery Address:</span>
+                        <span style={styles.infoValue}>
+                          {order.customer_address || order.delivery_address || 'Not specified'}
+                        </span>
+                      </div>
+                      {customerNotes && (
+                        <div style={styles.infoItem}>
+                          <span style={styles.infoLabel}>Special Request:</span>
+                          <span style={styles.infoValue}>{customerNotes}</span>
+                        </div>
+                      )}
+                      <div style={styles.infoItem}>
+                        <span style={styles.infoLabel}>Total Amount:</span>
+                        <span style={{...styles.infoValue, color: '#ffc107', fontWeight: 'bold'}}>
+                          ₱{order.total_amount?.toFixed(2) || '0.00'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* View Details Button */}
+                    <button
+                      style={styles.viewDetailsBtn}
+                      onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                    >
+                      {isExpanded ? '▼ Hide Details' : '▶ View Details'}
+                    </button>
+
+                    {/* Order Items (Expandable) */}
+                    {isExpanded && order.order_items && order.order_items.length > 0 && (
+                      <div style={styles.orderItemsSection}>
+                        <h4 style={styles.itemsHeader}>Order Items:</h4>
+                        <div style={styles.itemsList}>
+                          {order.order_items.map((item, idx) => (
+                            <div key={item.id || idx} style={styles.orderItem}>
+                              <div style={styles.itemInfo}>
+                                <span style={styles.itemName}>{item.name}</span>
+                                <span style={styles.itemQty}>x{item.quantity}</span>
+                              </div>
+                              <span style={styles.itemPrice}>
+                                ₱{(item.subtotal || (item.price && item.quantity ? item.price * item.quantity : 0))?.toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </main>
       </div>
     </>
-  );
-}
-
-function OrderItemsList({ items }) {
-  let parsedItems = [];
-  
-  try {
-    if (typeof items === 'string') {
-      parsedItems = JSON.parse(items);
-    } else if (Array.isArray(items)) {
-      parsedItems = items;
-    }
-  } catch (e) {
-    return <p style={styles.itemsList}>Unable to parse order items</p>;
-  }
-
-  if (!Array.isArray(parsedItems) || parsedItems.length === 0) {
-    return <p style={styles.itemsList}>No items</p>;
-  }
-
-  return (
-    <ul style={styles.itemsList}>
-      {parsedItems.map((item, index) => (
-        <li key={index} style={styles.orderItem}>
-          <span>{item.name || 'Unknown Item'}</span>
-          {item.quantity && <span style={styles.itemQty}> × {item.quantity}</span>}
-          {item.price && <span style={styles.itemPrice}> ₱{(item.price * (item.quantity || 1)).toFixed(2)}</span>}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function TimelineItem({ label, active, completed, isLast }) {
-  return (
-    <div style={styles.timelineItem}>
-      <div style={styles.timelineContent}>
-        <div 
-          style={{
-            ...styles.timelineDot,
-            backgroundColor: completed ? '#4caf50' : active ? '#ffc107' : '#444',
-            borderColor: completed ? '#4caf50' : active ? '#ffc107' : '#444',
-          }}
-        >
-          {completed && '✓'}
-        </div>
-        <span 
-          style={{
-            ...styles.timelineLabel,
-            color: active ? '#fff' : '#666',
-            fontWeight: active ? '600' : '400',
-          }}
-        >
-          {label}
-        </span>
-      </div>
-      {!isLast && (
-        <div 
-          style={{
-            ...styles.timelineLine,
-            backgroundColor: completed ? '#4caf50' : '#444',
-          }}
-        />
-      )}
-    </div>
   );
 }
 
@@ -432,7 +477,7 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: '16px',
+    marginBottom: '20px',
     paddingBottom: '16px',
     borderBottom: '1px solid #2a2a2a',
   },
@@ -449,116 +494,139 @@ const styles = {
     margin: 0,
   },
   statusBadge: {
+    display: 'inline-block',
+    padding: '4px 12px',
+    borderRadius: '12px',
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#0a0a0a',
+    textTransform: 'uppercase',
+  },
+  horizontalTimeline: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    marginBottom: '24px',
+    padding: '20px 0',
+    borderBottom: '1px solid #2a2a2a',
+  },
+  progressStep: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  stepLine: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: '6px 12px',
-    backgroundColor: '#2a2a2a',
-    borderRadius: '20px',
-  },
-  statusDot: {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-  },
-  statusText: {
-    fontSize: '12px',
-    fontWeight: '600',
-    color: '#fff',
-  },
-  orderItems: {
-    marginBottom: '16px',
-  },
-  itemsLabel: {
-    fontSize: '13px',
-    color: '#999',
-    margin: 0,
+    width: '100%',
     marginBottom: '8px',
   },
-  itemsList: {
+  connectionLine: {
+    flex: 1,
+    height: '3px',
+    transition: 'background-color 0.3s',
+  },
+  stepDot: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    border: '3px solid',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '16px',
+    fontWeight: '700',
+    backgroundColor: '#1a1a1a',
+    zIndex: 1,
+    transition: 'all 0.3s',
+    flexShrink: 0,
+  },
+  stepLabel: {
+    fontSize: '11px',
+    textAlign: 'center',
+    maxWidth: '90px',
+    lineHeight: '1.2',
+    transition: 'color 0.3s',
+  },
+  orderInfoGrid: {
+    display: 'grid',
+    gap: '12px',
+    marginBottom: '16px',
+  },
+  infoItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  infoLabel: {
+    fontSize: '11px',
+    color: '#999',
+    textTransform: 'uppercase',
+    fontWeight: '600',
+  },
+  infoValue: {
     fontSize: '14px',
     color: '#ccc',
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
+  },
+  viewDetailsBtn: {
+    width: '100%',
+    padding: '10px',
+    backgroundColor: 'transparent',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s',
+    marginBottom: '16px',
+  },
+  orderItemsSection: {
+    backgroundColor: '#0f0f0f',
+    borderRadius: '8px',
+    padding: '16px',
+    marginTop: '16px',
+  },
+  itemsHeader: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#ffc107',
+    margin: '0 0 12px 0',
+  },
+  itemsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
   },
   orderItem: {
     display: 'flex',
     justifyContent: 'space-between',
-    padding: '4px 0',
-    fontSize: '14px',
-    color: '#ccc',
+    alignItems: 'center',
+    padding: '8px',
+    backgroundColor: '#1a1a1a',
+    borderRadius: '4px',
+  },
+  itemInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    flex: 1,
+  },
+  itemName: {
+    fontSize: '13px',
+    color: '#fff',
+    flex: 1,
   },
   itemQty: {
+    fontSize: '12px',
     color: '#999',
-    marginLeft: '8px',
+    fontWeight: '600',
   },
   itemPrice: {
-    color: '#ffc107',
-    marginLeft: 'auto',
-    paddingLeft: '12px',
-  },
-  orderFooter: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: '16px',
-    paddingBottom: '16px',
-    borderTop: '1px solid #2a2a2a',
-    borderBottom: '1px solid #2a2a2a',
-    marginBottom: '20px',
-  },
-  totalLabel: {
     fontSize: '14px',
-    color: '#999',
-  },
-  totalAmount: {
-    fontSize: '20px',
-    fontWeight: '700',
     color: '#ffc107',
-  },
-  timeline: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    paddingTop: '8px',
-  },
-  timelineItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    flex: 1,
-    position: 'relative',
-  },
-  timelineContent: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  timelineDot: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    border: '2px solid',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '14px',
-    color: '#0a0a0a',
-    fontWeight: '700',
-    marginBottom: '8px',
-  },
-  timelineLabel: {
-    fontSize: '11px',
-    textAlign: 'center',
-    maxWidth: '80px',
-  },
-  timelineLine: {
-    position: 'absolute',
-    top: '16px',
-    left: '50%',
-    right: '-50%',
-    height: '2px',
-    zIndex: 0,
+    fontWeight: '600',
   },
 };
