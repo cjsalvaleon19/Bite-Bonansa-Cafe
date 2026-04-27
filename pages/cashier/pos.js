@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import useCartStore from '../../store/useCartStore';
 import { useRoleGuard } from '../../utils/useRoleGuard';
+import VariantSelectionModal from '../../components/VariantSelectionModal';
 
 const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
@@ -16,6 +17,8 @@ export default function CashierPOS() {
   const [menuLoading, setMenuLoading] = useState(false);
   const [orderStatus, setOrderStatus] = useState(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null); // For variant selection
+  const [showVariantModal, setShowVariantModal] = useState(false);
   
   // Order details
   const [orderMode, setOrderMode] = useState('dine-in');
@@ -55,7 +58,28 @@ export default function CashierPOS() {
     try {
       const { data, error } = await supabase
         .from('menu_items')
-        .select('id, name, price, category, available')
+        .select(`
+          id, 
+          name, 
+          price, 
+          base_price,
+          category, 
+          available,
+          has_variants,
+          variant_types:menu_item_variants(
+            id,
+            variant_type_name,
+            is_required,
+            allow_multiple,
+            display_order,
+            options:menu_variant_options(
+              id,
+              option_name,
+              price_modifier,
+              display_order
+            )
+          )
+        `)
         .eq('available', true)
         .order('category');
       if (!error && data) setMenuItems(data);
@@ -65,6 +89,27 @@ export default function CashierPOS() {
       setMenuLoading(false);
     }
   }, []);
+
+  const handleAddItem = (item) => {
+    // Check if item has variants
+    if (item.has_variants && item.variant_types && item.variant_types.length > 0) {
+      setSelectedItem(item);
+      setShowVariantModal(true);
+    } else {
+      // Add item without variants
+      addItem({
+        ...item,
+        finalPrice: parseFloat(item.price || item.base_price || 0),
+        quantity: 1,
+      });
+    }
+  };
+
+  const handleVariantConfirm = (itemWithVariants) => {
+    addItem(itemWithVariants);
+    setShowVariantModal(false);
+    setSelectedItem(null);
+  };
 
   const fetchCustomerData = async (customerId) => {
     if (!supabase || !customerId) return;
@@ -343,11 +388,14 @@ export default function CashierPOS() {
                 <button
                   key={item.id}
                   style={styles.menuCard}
-                  onClick={() => addItem(item)}
+                  onClick={() => handleAddItem(item)}
                 >
                   <span style={styles.menuItemName}>{item.name}</span>
                   <span style={styles.menuItemCategory}>{item.category}</span>
-                  <span style={styles.menuItemPrice}>₱{Number(item.price).toFixed(2)}</span>
+                  <span style={styles.menuItemPrice}>₱{Number(item.price || item.base_price || 0).toFixed(2)}</span>
+                  {item.has_variants && (
+                    <span style={styles.variantBadge}>Has options</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -513,6 +561,18 @@ export default function CashierPOS() {
             </div>
           </section>
         </div>
+
+        {/* Variant Selection Modal */}
+        {showVariantModal && selectedItem && (
+          <VariantSelectionModal
+            item={selectedItem}
+            onConfirm={handleVariantConfirm}
+            onCancel={() => {
+              setShowVariantModal(false);
+              setSelectedItem(null);
+            }}
+          />
+        )}
       </div>
     </>
   );
@@ -537,6 +597,7 @@ const styles = {
   menuItemName: { fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '4px' },
   menuItemCategory: { fontSize: '11px', color: '#888', marginBottom: '8px' },
   menuItemPrice: { fontSize: '15px', fontWeight: '700', color: '#ffc107' },
+  variantBadge: { fontSize: '10px', color: '#ffc107', marginTop: '4px', backgroundColor: 'rgba(255, 193, 7, 0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(255, 193, 7, 0.3)' },
   formGroup: { marginBottom: '16px' },
   label: { display: 'block', fontSize: '12px', color: '#aaa', marginBottom: '6px' },
   input: { width: '100%', padding: '8px 12px', border: '1px solid #444', borderRadius: '6px', backgroundColor: '#2a2a2a', color: '#fff', fontSize: '13px', boxSizing: 'border-box', outline: 'none' },

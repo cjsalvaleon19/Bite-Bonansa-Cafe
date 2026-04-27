@@ -4,10 +4,12 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function CashierDashboard() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
+  const [user, setUser] = useState(null);
   const [stats, setStats] = useState({
     totalSales: 0,
     cashSales: 0,
@@ -23,9 +25,23 @@ export default function CashierDashboard() {
 
   useEffect(() => {
     if (!authLoading) {
-      fetchDashboardStats();
+      initializePage();
     }
   }, [authLoading]);
+
+  const initializePage = async () => {
+    if (!supabase) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setUser(session.user);
+      }
+      fetchDashboardStats();
+    } catch (err) {
+      console.error('[CashierDashboard] Failed to initialize:', err?.message ?? err);
+    }
+  };
 
   const fetchDashboardStats = async () => {
     if (!supabase) return;
@@ -121,12 +137,15 @@ export default function CashierDashboard() {
             <Link href="/cashier/eod-report" style={styles.navLink}>EOD Report</Link>
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
-          <button style={styles.logoutBtn} onClick={async () => {
-            if (supabase) await supabase.auth.signOut();
-            router.replace('/login');
-          }}>
-            Logout
-          </button>
+          <div style={styles.headerActions}>
+            {user && <NotificationBell user={user} />}
+            <button style={styles.logoutBtn} onClick={async () => {
+              if (supabase) await supabase.auth.signOut();
+              router.replace('/login');
+            }}>
+              Logout
+            </button>
+          </div>
         </header>
 
         <main style={styles.main}>
@@ -287,6 +306,11 @@ const styles = {
     borderRadius: '6px',
     backgroundColor: 'rgba(255, 193, 7, 0.1)',
     border: '1px solid #ffc107',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
   },
   logoutBtn: {
     padding: '8px 18px',
