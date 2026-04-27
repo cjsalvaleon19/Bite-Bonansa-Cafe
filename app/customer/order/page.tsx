@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import {
   Search,
   Plus,
@@ -49,7 +49,7 @@ import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '@
 import { supabase } from '@/lib/supabase/client'
 import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -81,6 +81,12 @@ const GCASH_OWNER = {
  */
 const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz'])
 
+/**
+ * Delay to ensure cart has loaded from localStorage before processing URL parameters.
+ * This prevents race conditions where items might be added before the saved cart is restored.
+ */
+const CART_LOAD_DELAY_MS = 100
+
 function calcEarnedPoints(subtotal: number): number {
   const rate = subtotal <= 500 ? 0.002 : 0.0035
   return Math.floor(subtotal * rate)
@@ -88,9 +94,10 @@ function calcEarnedPoints(subtotal: number): number {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function CustomerOrderPage() {
+function CustomerOrderPage() {
   const { user } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
@@ -112,6 +119,28 @@ export default function CustomerOrderPage() {
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
+
+  // Load cart from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedCart = localStorage.getItem('bite-bonanza-cart')
+      if (savedCart) {
+        const parsedCart = JSON.parse(savedCart)
+        setCart(parsedCart)
+      }
+    } catch (error) {
+      console.error('Failed to load cart from localStorage:', error)
+    }
+  }, [])
+
+  // Save cart to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('bite-bonanza-cart', JSON.stringify(cart))
+    } catch (error) {
+      console.error('Failed to save cart to localStorage:', error)
+    }
+  }, [cart])
 
   useEffect(() => {
     async function loadMenu() {
@@ -147,29 +176,7 @@ export default function CustomerOrderPage() {
     loadMenu()
   }, [])
 
-  const filteredItems = menuItems.filter((item) => {
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.description ?? '').toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory =
-      selectedCategory === 'all' || item.category === selectedCategory
-    return matchesSearch && matchesCategory
-  })
-
-  const openItemDialog = (item: MenuItem) => {
-    const hasOptions =
-      (item.varieties && item.varieties.length > 0) ||
-      (item.sizes && item.sizes.length > 0) ||
-      (item.addons && item.addons.length > 0)
-    if (hasOptions) {
-      setDialogItem(item)
-      setShowItemDialog(true)
-    } else {
-      addToCartWithCustomizations(item, '', '', [], 1)
-    }
-  }
-
-  const addToCartWithCustomizations = (
+  const addToCartWithCustomizations = useCallback((
     item: MenuItem,
     variety: string,
     sizeName: string,
@@ -206,6 +213,89 @@ export default function CustomerOrderPage() {
       }]
     })
     toast.success(`Added ${item.name} to cart`)
+  }, [])
+
+  // Handle URL parameter to auto-add items from dashboard
+  useEffect(() => {
+    const itemId = searchParams?.get('addItem')
+    if (!itemId || menuItems.length === 0) return
+    
+    // Clean up URL parameter immediately to prevent re-triggering
+    try {
+      router.replace('/customer/order', { scroll: false })
+    } catch (err) {
+      console.error('Failed to clean up URL parameter:', err)
+    }
+    
+    const item = menuItems.find(m => m.id === itemId)
+    if (!item) return
+    
+    // Delay to ensure cart has loaded from localStorage (see CART_LOAD_DELAY_MS)
+    const timeoutId = setTimeout(() => {
+      // Check if item already exists in cart (checking against current cart state)
+      setCart(prevCart => {
+        const alreadyInCart = prevCart.some(c => c.menuItemId === itemId)
+        if (alreadyInCart) {
+          return prevCart // Item already in cart, no changes
+        }
+        
+        // Auto-add the item to cart
+        const hasOptions =
+          (item.varieties && item.varieties.length > 0) ||
+          (item.sizes && item.sizes.length > 0) ||
+          (item.addons && item.addons.length > 0)
+        
+        if (hasOptions) {
+          // If item has options, open the dialog for user to select
+          setDialogItem(item)
+          setShowItemDialog(true)
+          return prevCart // Don't modify cart yet, wait for dialog
+        } else {
+          // If no options, add directly to cart
+          const basePrice = item.price
+          const comboKey = `${item.id}|||`
+          const newItem: CartItem = {
+            id: String(Date.now()),
+            comboKey,
+            menuItemId: item.id,
+            menuItem: item,
+            quantity: 1,
+            basePrice,
+            addonPrice: 0,
+            price: basePrice,
+            selectedAddons: [],
+          }
+          toast.success(`Added ${item.name} to cart`)
+          return [...prevCart, newItem]
+        }
+      })
+    }, CART_LOAD_DELAY_MS)
+    
+    return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Note: setCart, setDialogItem, setShowItemDialog are stable setState functions and don't need to be in deps
+  }, [menuItems, searchParams, router])
+
+  const filteredItems = menuItems.filter((item) => {
+    const matchesSearch =
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.description ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesCategory =
+      selectedCategory === 'all' || item.category === selectedCategory
+    return matchesSearch && matchesCategory
+  })
+
+  const openItemDialog = (item: MenuItem) => {
+    const hasOptions =
+      (item.varieties && item.varieties.length > 0) ||
+      (item.sizes && item.sizes.length > 0) ||
+      (item.addons && item.addons.length > 0)
+    if (hasOptions) {
+      setDialogItem(item)
+      setShowItemDialog(true)
+    } else {
+      addToCartWithCustomizations(item, '', '', [], 1)
+    }
   }
 
   const updateQuantity = (itemId: string, delta: number) => {
@@ -353,6 +443,7 @@ export default function CustomerOrderPage() {
         description: 'You can track your order in the Track Orders page.',
       })
       setCart([])
+      localStorage.removeItem('bite-bonanza-cart')
       setOrderNotes('')
       setCashTendered('')
       setGcashRef('')
@@ -1219,5 +1310,21 @@ function CartContent({
         {isSubmitting ? 'Placing Order...' : 'Place Order'}
       </Button>
     </div>
+  )
+}
+
+// Wrap the component in Suspense to handle useSearchParams()
+export default function CustomerOrderPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+          <p className="mt-4 text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    }>
+      <CustomerOrderPage />
+    </Suspense>
   )
 }
