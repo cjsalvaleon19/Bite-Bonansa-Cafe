@@ -310,43 +310,37 @@ export default function OrderTracking() {
 
                     {/* Horizontal Progress Bar */}
                     <div style={styles.horizontalProgressContainer}>
-                      {progressSteps.map((step, index) => (
-                        <div key={index} style={styles.horizontalProgressStep}>
-                          {/* Connection Line Before (except first) */}
-                          {index > 0 && (
-                            <div style={{
-                              ...styles.horizontalConnectionLine,
-                              backgroundColor: progressSteps[index - 1].isCompleted ? '#4caf50' : '#444'
-                            }} />
-                          )}
-                          
-                          {/* Step Circle/Icon */}
-                          <div style={{
-                            ...styles.horizontalStepCircle,
-                            backgroundColor: step.isCompleted ? '#4caf50' : step.isActive ? '#ffc107' : '#1a1a1a',
-                            borderColor: step.isCompleted ? '#4caf50' : step.isActive ? '#ffc107' : '#444',
-                          }}>
-                            {step.isCompleted ? '✓' : step.icon}
-                          </div>
-                          
-                          {/* Connection Line After (except last) */}
-                          {index < progressSteps.length - 1 && (
-                            <div style={{
-                              ...styles.horizontalConnectionLine,
-                              backgroundColor: step.isCompleted ? '#4caf50' : '#444'
-                            }} />
-                          )}
-                          
-                          {/* Step Label Below */}
-                          <span style={{
-                            ...styles.horizontalStepLabel,
-                            color: step.isActive || step.isCompleted ? '#fff' : '#666',
-                            fontWeight: step.isActive ? '600' : '400'
-                          }}>
-                            {step.label}
-                          </span>
-                        </div>
-                      ))}
+                      <div style={styles.horizontalStepsWrapper}>
+                        {progressSteps.map((step, index) => (
+                          <React.Fragment key={index}>
+                            {/* Step */}
+                            <div style={styles.horizontalProgressStep}>
+                              <div style={{
+                                ...styles.horizontalStepCircle,
+                                backgroundColor: step.isCompleted ? '#4caf50' : step.isActive ? '#ffc107' : '#1a1a1a',
+                                borderColor: step.isCompleted ? '#4caf50' : step.isActive ? '#ffc107' : '#444',
+                              }}>
+                                {step.isCompleted ? '✓' : step.icon}
+                              </div>
+                              <span style={{
+                                ...styles.horizontalStepLabel,
+                                color: step.isActive || step.isCompleted ? '#fff' : '#666',
+                                fontWeight: step.isActive ? '600' : '400'
+                              }}>
+                                {step.label}
+                              </span>
+                            </div>
+                            
+                            {/* Connection Line (except after last) */}
+                            {index < progressSteps.length - 1 && (
+                              <div style={{
+                                ...styles.horizontalConnectionLine,
+                                backgroundColor: step.isCompleted ? '#4caf50' : '#444'
+                              }} />
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </div>
                     </div>
 
                     {/* Order Info Grid */}
@@ -559,30 +553,26 @@ const styles = {
     letterSpacing: '0.5px',
   },
   horizontalProgressContainer: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
     marginBottom: '28px',
     paddingBottom: '20px',
     borderBottom: '1px solid #2a2a2a',
-    gap: '8px',
+  },
+  horizontalStepsWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   horizontalProgressStep: {
-    flex: 1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    position: 'relative',
-    minWidth: 0,
+    minWidth: '80px',
   },
   horizontalConnectionLine: {
-    position: 'absolute',
-    top: '18px',
-    left: '50%',
-    width: '100%',
+    flex: 1,
     height: '4px',
+    minWidth: '20px',
     transition: 'background-color 0.3s',
-    zIndex: 0,
   },
   horizontalStepCircle: {
     width: '40px',
