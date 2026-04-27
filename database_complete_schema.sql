@@ -60,9 +60,11 @@ ALTER TABLE customer_item_purchases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customer_reviews ENABLE ROW LEVEL SECURITY;
 
 -- 5. RLS Policies for loyalty_transactions
+DROP POLICY IF EXISTS "Customers can view their own loyalty transactions" ON loyalty_transactions;
 CREATE POLICY "Customers can view their own loyalty transactions" ON loyalty_transactions
   FOR SELECT USING (auth.uid() = customer_id);
 
+DROP POLICY IF EXISTS "Staff can view all loyalty transactions" ON loyalty_transactions;
 CREATE POLICY "Staff can view all loyalty transactions" ON loyalty_transactions
   FOR SELECT USING (
     EXISTS (
@@ -71,13 +73,16 @@ CREATE POLICY "Staff can view all loyalty transactions" ON loyalty_transactions
     )
   );
 
+DROP POLICY IF EXISTS "System can insert loyalty transactions" ON loyalty_transactions;
 CREATE POLICY "System can insert loyalty transactions" ON loyalty_transactions
   FOR INSERT WITH CHECK (true);
 
 -- 6. RLS Policies for customer_item_purchases
+DROP POLICY IF EXISTS "Customers can view their own purchases" ON customer_item_purchases;
 CREATE POLICY "Customers can view their own purchases" ON customer_item_purchases
   FOR SELECT USING (auth.uid() = customer_id);
 
+DROP POLICY IF EXISTS "Staff can view all purchases" ON customer_item_purchases;
 CREATE POLICY "Staff can view all purchases" ON customer_item_purchases
   FOR SELECT USING (
     EXISTS (
@@ -86,22 +91,28 @@ CREATE POLICY "Staff can view all purchases" ON customer_item_purchases
     )
   );
 
+DROP POLICY IF EXISTS "System can manage purchase tracking" ON customer_item_purchases;
 CREATE POLICY "System can manage purchase tracking" ON customer_item_purchases
   FOR ALL USING (true);
 
 -- 7. RLS Policies for customer_reviews
+DROP POLICY IF EXISTS "Customers can view their own reviews" ON customer_reviews;
 CREATE POLICY "Customers can view their own reviews" ON customer_reviews
   FOR SELECT USING (auth.uid() = customer_id);
 
+DROP POLICY IF EXISTS "Customers can create reviews" ON customer_reviews;
 CREATE POLICY "Customers can create reviews" ON customer_reviews
   FOR INSERT WITH CHECK (auth.uid() = customer_id);
 
+DROP POLICY IF EXISTS "Customers can update their own reviews" ON customer_reviews;
 CREATE POLICY "Customers can update their own reviews" ON customer_reviews
   FOR UPDATE USING (auth.uid() = customer_id);
 
+DROP POLICY IF EXISTS "Customers can delete their own reviews" ON customer_reviews;
 CREATE POLICY "Customers can delete their own reviews" ON customer_reviews
   FOR DELETE USING (auth.uid() = customer_id);
 
+DROP POLICY IF EXISTS "Staff can view all reviews" ON customer_reviews;
 CREATE POLICY "Staff can view all reviews" ON customer_reviews
   FOR SELECT USING (
     EXISTS (
@@ -110,6 +121,7 @@ CREATE POLICY "Staff can view all reviews" ON customer_reviews
     )
   );
 
+DROP POLICY IF EXISTS "Staff can manage reviews" ON customer_reviews;
 CREATE POLICY "Staff can manage reviews" ON customer_reviews
   FOR ALL USING (
     EXISTS (

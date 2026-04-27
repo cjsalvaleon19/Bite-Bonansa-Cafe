@@ -63,9 +63,11 @@ ALTER TABLE menu_item_variant_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE menu_item_variant_options ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies - anyone can view available items
+DROP POLICY IF EXISTS "Anyone can view available menu items" ON menu_items_base;
 CREATE POLICY "Anyone can view available menu items" ON menu_items_base
   FOR SELECT USING (available = true OR auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Staff can manage menu items" ON menu_items_base;
 CREATE POLICY "Staff can manage menu items" ON menu_items_base
   FOR ALL USING (
     EXISTS (
@@ -74,9 +76,11 @@ CREATE POLICY "Staff can manage menu items" ON menu_items_base
     )
   );
 
+DROP POLICY IF EXISTS "Anyone can view variant types" ON menu_item_variant_types;
 CREATE POLICY "Anyone can view variant types" ON menu_item_variant_types
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Staff can manage variant types" ON menu_item_variant_types;
 CREATE POLICY "Staff can manage variant types" ON menu_item_variant_types
   FOR ALL USING (
     EXISTS (
@@ -85,9 +89,11 @@ CREATE POLICY "Staff can manage variant types" ON menu_item_variant_types
     )
   );
 
+DROP POLICY IF EXISTS "Anyone can view variant options" ON menu_item_variant_options;
 CREATE POLICY "Anyone can view variant options" ON menu_item_variant_options
   FOR SELECT USING (available = true OR auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Staff can manage variant options" ON menu_item_variant_options;
 CREATE POLICY "Staff can manage variant options" ON menu_item_variant_options
   FOR ALL USING (
     EXISTS (
