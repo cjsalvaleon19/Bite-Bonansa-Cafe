@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Search,
   Plus,
@@ -170,60 +170,7 @@ export default function CustomerOrderPage() {
     loadMenu()
   }, [])
 
-  // Handle URL parameter to auto-add items from dashboard
-  useEffect(() => {
-    const itemId = searchParams.get('addItem')
-    if (itemId && menuItems.length > 0) {
-      const item = menuItems.find(m => m.id === itemId)
-      if (item) {
-        // Check if item already exists in cart
-        const alreadyInCart = cart.some(c => c.menuItemId === itemId)
-        if (!alreadyInCart) {
-          // Auto-add the item to cart
-          const hasOptions =
-            (item.varieties && item.varieties.length > 0) ||
-            (item.sizes && item.sizes.length > 0) ||
-            (item.addons && item.addons.length > 0)
-          
-          if (hasOptions) {
-            // If item has options, open the dialog for user to select
-            setDialogItem(item)
-            setShowItemDialog(true)
-          } else {
-            // If no options, add directly to cart
-            addToCartWithCustomizations(item, '', '', [], 1)
-          }
-        }
-        
-        // Clean up URL parameter
-        router.replace('/customer/order', { scroll: false })
-      }
-    }
-  }, [menuItems, searchParams])
-
-  const filteredItems = menuItems.filter((item) => {
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.description ?? '').toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory =
-      selectedCategory === 'all' || item.category === selectedCategory
-    return matchesSearch && matchesCategory
-  })
-
-  const openItemDialog = (item: MenuItem) => {
-    const hasOptions =
-      (item.varieties && item.varieties.length > 0) ||
-      (item.sizes && item.sizes.length > 0) ||
-      (item.addons && item.addons.length > 0)
-    if (hasOptions) {
-      setDialogItem(item)
-      setShowItemDialog(true)
-    } else {
-      addToCartWithCustomizations(item, '', '', [], 1)
-    }
-  }
-
-  const addToCartWithCustomizations = (
+  const addToCartWithCustomizations = useCallback((
     item: MenuItem,
     variety: string,
     sizeName: string,
@@ -260,6 +207,61 @@ export default function CustomerOrderPage() {
       }]
     })
     toast.success(`Added ${item.name} to cart`)
+  }, [])
+
+  // Handle URL parameter to auto-add items from dashboard
+  useEffect(() => {
+    if (!searchParams) return
+    
+    const itemId = searchParams.get('addItem')
+    if (itemId && menuItems.length > 0) {
+      const item = menuItems.find(m => m.id === itemId)
+      if (item) {
+        // Check if item already exists in cart
+        const alreadyInCart = cart.some(c => c.menuItemId === itemId)
+        if (!alreadyInCart) {
+          // Auto-add the item to cart
+          const hasOptions =
+            (item.varieties && item.varieties.length > 0) ||
+            (item.sizes && item.sizes.length > 0) ||
+            (item.addons && item.addons.length > 0)
+          
+          if (hasOptions) {
+            // If item has options, open the dialog for user to select
+            setDialogItem(item)
+            setShowItemDialog(true)
+          } else {
+            // If no options, add directly to cart
+            addToCartWithCustomizations(item, '', '', [], 1)
+          }
+        }
+        
+        // Clean up URL parameter
+        router.replace('/customer/order', { scroll: false })
+      }
+    }
+  }, [menuItems, searchParams, cart, addToCartWithCustomizations, router])
+
+  const filteredItems = menuItems.filter((item) => {
+    const matchesSearch =
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.description ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesCategory =
+      selectedCategory === 'all' || item.category === selectedCategory
+    return matchesSearch && matchesCategory
+  })
+
+  const openItemDialog = (item: MenuItem) => {
+    const hasOptions =
+      (item.varieties && item.varieties.length > 0) ||
+      (item.sizes && item.sizes.length > 0) ||
+      (item.addons && item.addons.length > 0)
+    if (hasOptions) {
+      setDialogItem(item)
+      setShowItemDialog(true)
+    } else {
+      addToCartWithCustomizations(item, '', '', [], 1)
+    }
   }
 
   const updateQuantity = (itemId: string, delta: number) => {
