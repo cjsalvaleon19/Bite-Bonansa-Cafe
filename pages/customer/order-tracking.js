@@ -360,7 +360,7 @@ export default function OrderTracking() {
                                 <span style={styles.itemQty}>x{item.quantity}</span>
                               </div>
                               <span style={styles.itemPrice}>
-                                ₱{((item.subtotal || (item.price * item.quantity) || 0))?.toFixed(2)}
+                                ₱{(item.subtotal || (item.price && item.quantity ? item.price * item.quantity : 0))?.toFixed(2)}
                               </span>
                             </div>
                           ))}
