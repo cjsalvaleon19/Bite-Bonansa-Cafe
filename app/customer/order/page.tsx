@@ -212,33 +212,57 @@ export default function CustomerOrderPage() {
   // Handle URL parameter to auto-add items from dashboard
   useEffect(() => {
     const itemId = searchParams?.get('addItem')
-    if (itemId && menuItems.length > 0) {
-      const item = menuItems.find(m => m.id === itemId)
-      if (item) {
-        // Clean up URL parameter first
-        router.replace('/customer/order', { scroll: false })
-        
-        // Check if item already exists in cart
-        const alreadyInCart = cart.some(c => c.menuItemId === itemId)
-        if (!alreadyInCart) {
-          // Auto-add the item to cart
-          const hasOptions =
-            (item.varieties && item.varieties.length > 0) ||
-            (item.sizes && item.sizes.length > 0) ||
-            (item.addons && item.addons.length > 0)
-          
-          if (hasOptions) {
-            // If item has options, open the dialog for user to select
-            setDialogItem(item)
-            setShowItemDialog(true)
-          } else {
-            // If no options, add directly to cart
-            addToCartWithCustomizations(item, '', '', [], 1)
-          }
+    if (!itemId || menuItems.length === 0) return
+    
+    // Clean up URL parameter immediately to prevent re-triggering
+    router.replace('/customer/order', { scroll: false })
+    
+    const item = menuItems.find(m => m.id === itemId)
+    if (!item) return
+    
+    // Small delay to ensure cart has loaded from localStorage
+    const timeoutId = setTimeout(() => {
+      // Check if item already exists in cart (checking against current cart state)
+      setCart(prevCart => {
+        const alreadyInCart = prevCart.some(c => c.menuItemId === itemId)
+        if (alreadyInCart) {
+          return prevCart // Item already in cart, no changes
         }
-      }
-    }
-  }, [menuItems, searchParams, cart, addToCartWithCustomizations, router])
+        
+        // Auto-add the item to cart
+        const hasOptions =
+          (item.varieties && item.varieties.length > 0) ||
+          (item.sizes && item.sizes.length > 0) ||
+          (item.addons && item.addons.length > 0)
+        
+        if (hasOptions) {
+          // If item has options, open the dialog for user to select
+          setDialogItem(item)
+          setShowItemDialog(true)
+          return prevCart // Don't modify cart yet, wait for dialog
+        } else {
+          // If no options, add directly to cart
+          const basePrice = item.price
+          const comboKey = `${item.id}|||`
+          const newItem: CartItem = {
+            id: String(Date.now()),
+            comboKey,
+            menuItemId: item.id,
+            menuItem: item,
+            quantity: 1,
+            basePrice,
+            addonPrice: 0,
+            price: basePrice,
+            selectedAddons: [],
+          }
+          toast.success(`Added ${item.name} to cart`)
+          return [...prevCart, newItem]
+        }
+      })
+    }, 100)
+    
+    return () => clearTimeout(timeoutId)
+  }, [menuItems, searchParams, router])
 
   const filteredItems = menuItems.filter((item) => {
     const matchesSearch =
