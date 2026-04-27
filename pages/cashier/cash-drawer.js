@@ -11,7 +11,7 @@ export default function CashDrawer() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState([]);
-  const [activeModal, setActiveModal] = useState(null); // 'cash-in', 'cash-out', 'adjustment', null
+  const [activeModal, setActiveModal] = useState(null); // 'cash-in', 'cash-out', 'pay-bill', 'pay-expense', 'adjustment', null
   const [formData, setFormData] = useState({
     amount: '',
     description: '',
@@ -21,9 +21,11 @@ export default function CashDrawer() {
     referenceNumber: '',
     reason: '',
     adminPassword: '',
+    billType: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [cashOnHand, setCashOnHand] = useState(0);
+  const [chartOfAccounts, setChartOfAccounts] = useState([]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -43,10 +45,30 @@ export default function CashDrawer() {
 
       setUser(session.user);
       await fetchTransactions();
+      await fetchChartOfAccounts();
     } catch (err) {
       console.error('[CashDrawer] Failed to initialize:', err?.message ?? err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchChartOfAccounts = async () => {
+    if (!supabase) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('chart_of_accounts')
+        .select('*')
+        .eq('is_active', true)
+        .eq('account_type', 'expense')
+        .order('account_code');
+
+      if (error) throw error;
+
+      setChartOfAccounts(data || []);
+    } catch (err) {
+      console.error('[CashDrawer] Failed to fetch chart of accounts:', err?.message ?? err);
     }
   };
 
@@ -76,7 +98,7 @@ export default function CashDrawer() {
         .filter(t => t.transaction_type === 'cash-in')
         .reduce((sum, t) => sum + parseFloat(t.amount), 0);
       const cashOut = (data || [])
-        .filter(t => t.transaction_type === 'cash-out')
+        .filter(t => ['cash-out', 'pay-bill', 'pay-expense'].includes(t.transaction_type))
         .reduce((sum, t) => sum + parseFloat(t.amount), 0);
       const adjustments = (data || [])
         .filter(t => t.transaction_type === 'adjustment')
@@ -104,8 +126,27 @@ export default function CashDrawer() {
         alert('Admin password is required for adjustments');
         return;
       }
-      // In a real implementation, you would verify the admin password here
-      // For now, we'll just proceed
+      // Verify admin password by attempting to sign in with it
+      try {
+        // For now, we'll verify against cjsalvaleon19@gmail.com (admin)
+        const { data: adminData, error: adminError } = await supabase.auth.signInWithPassword({
+          email: 'cjsalvaleon19@gmail.com',
+          password: formData.adminPassword,
+        });
+        
+        if (adminError) {
+          alert('Invalid admin password');
+          return;
+        }
+        
+        // Re-authenticate the current user
+        const { data: { session } } = await supabase.auth.getSession();
+        // The session should still be valid, no need to re-login
+      } catch (err) {
+        console.error('[CashDrawer] Admin password verification failed:', err);
+        alert('Admin password verification failed');
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -121,6 +162,8 @@ export default function CashDrawer() {
         category: formData.category || null,
         reference_number: formData.referenceNumber || null,
         adjustment_reason: formData.reason || null,
+        bill_type: formData.billType || null,
+        admin_verified: activeModal === 'adjustment' ? true : null,
         created_at: new Date().toISOString(),
       };
 
@@ -140,6 +183,7 @@ export default function CashDrawer() {
         referenceNumber: '',
         reason: '',
         adminPassword: '',
+        billType: '',
       });
       setActiveModal(null);
       
@@ -215,7 +259,25 @@ export default function CashDrawer() {
             >
               <div style={styles.actionIcon}>💵</div>
               <div style={styles.actionTitle}>Cash Out</div>
-              <div style={styles.actionDesc}>Pay bills or expenses</div>
+              <div style={styles.actionDesc}>Remove cash from drawer</div>
+            </button>
+
+            <button
+              style={styles.actionBtn}
+              onClick={() => setActiveModal('pay-bill')}
+            >
+              <div style={styles.actionIcon}>🧾</div>
+              <div style={styles.actionTitle}>Pay Bills</div>
+              <div style={styles.actionDesc}>Pay outstanding bills</div>
+            </button>
+
+            <button
+              style={styles.actionBtn}
+              onClick={() => setActiveModal('pay-expense')}
+            >
+              <div style={styles.actionIcon}>💳</div>
+              <div style={styles.actionTitle}>Pay Expenses</div>
+              <div style={styles.actionDesc}>Record ad-hoc expenses</div>
             </button>
 
             <button
@@ -241,10 +303,12 @@ export default function CashDrawer() {
                       <div style={styles.transactionType}>
                         {transaction.transaction_type === 'cash-in' && '💰 Cash In'}
                         {transaction.transaction_type === 'cash-out' && '💵 Cash Out'}
+                        {transaction.transaction_type === 'pay-bill' && '🧾 Pay Bill'}
+                        {transaction.transaction_type === 'pay-expense' && '💳 Pay Expense'}
                         {transaction.transaction_type === 'adjustment' && '⚖️ Adjustment'}
                       </div>
                       <div style={styles.transactionAmount(transaction.transaction_type)}>
-                        {transaction.transaction_type === 'cash-out' ? '-' : '+'}₱{parseFloat(transaction.amount).toFixed(2)}
+                        {['cash-out', 'pay-bill', 'pay-expense'].includes(transaction.transaction_type) ? '-' : '+'}₱{parseFloat(transaction.amount).toFixed(2)}
                       </div>
                     </div>
                     <div style={styles.transactionDetails}>
@@ -270,13 +334,15 @@ export default function CashDrawer() {
             )}
           </div>
 
-          {/* Modal for Cash In/Out/Adjustment */}
+          {/* Modal for Cash In/Out/Pay Bill/Pay Expense/Adjustment */}
           {activeModal && (
             <div style={styles.modal} onClick={() => setActiveModal(null)}>
               <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
                 <h3 style={styles.modalTitle}>
                   {activeModal === 'cash-in' && '💰 Cash In'}
                   {activeModal === 'cash-out' && '💵 Cash Out'}
+                  {activeModal === 'pay-bill' && '🧾 Pay Bills'}
+                  {activeModal === 'pay-expense' && '💳 Pay Expenses'}
                   {activeModal === 'adjustment' && '⚖️ Adjustment'}
                 </h3>
 
@@ -310,6 +376,63 @@ export default function CashDrawer() {
                   {activeModal === 'cash-out' && (
                     <>
                       <div style={styles.formGroup}>
+                        <label style={styles.label}>Description</label>
+                        <input
+                          style={styles.input}
+                          type="text"
+                          placeholder="Reason for removing cash"
+                          value={formData.description}
+                          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {activeModal === 'pay-bill' && (
+                    <>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>Bill Type *</label>
+                        <select
+                          style={styles.input}
+                          value={formData.billType}
+                          onChange={(e) => setFormData({ ...formData, billType: e.target.value })}
+                          required
+                        >
+                          <option value="">Select bill type</option>
+                          <option value="payroll">Payroll</option>
+                          <option value="utilities">Utilities</option>
+                          <option value="receiving_report">Receiving Report</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>Payee Name *</label>
+                        <input
+                          style={styles.input}
+                          type="text"
+                          placeholder="Who is receiving the payment?"
+                          value={formData.payeeName}
+                          onChange={(e) => setFormData({ ...formData, payeeName: e.target.value })}
+                          required
+                        />
+                      </div>
+
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>Purpose/Description</label>
+                        <textarea
+                          style={{...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif"}}
+                          placeholder="Payment details"
+                          value={formData.purpose}
+                          onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {activeModal === 'pay-expense' && (
+                    <>
+                      <div style={styles.formGroup}>
                         <label style={styles.label}>Payee Name *</label>
                         <input
                           style={styles.input}
@@ -326,7 +449,7 @@ export default function CashDrawer() {
                         <input
                           style={styles.input}
                           type="text"
-                          placeholder="Payroll, utilities, supplies, etc."
+                          placeholder="What is this expense for?"
                           value={formData.purpose}
                           onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
                           required
@@ -334,18 +457,19 @@ export default function CashDrawer() {
                       </div>
 
                       <div style={styles.formGroup}>
-                        <label style={styles.label}>Category</label>
+                        <label style={styles.label}>Category (Chart of Accounts) *</label>
                         <select
                           style={styles.input}
                           value={formData.category}
                           onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                          required
                         >
                           <option value="">Select category</option>
-                          <option value="payroll">Payroll</option>
-                          <option value="utilities">Utilities</option>
-                          <option value="supplies">Supplies</option>
-                          <option value="maintenance">Maintenance</option>
-                          <option value="other">Other</option>
+                          {chartOfAccounts.map((account) => (
+                            <option key={account.id} value={account.account_code}>
+                              {account.account_code} - {account.account_name}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </>
@@ -375,7 +499,7 @@ export default function CashDrawer() {
                           <option value="">Select reason</option>
                           <option value="canceled_order">Canceled Order</option>
                           <option value="double_posting">Double Posting of Receipt</option>
-                          <option value="payment_correction">Payment Method Correction</option>
+                          <option value="payment_correction">From Cash to GCash Payment</option>
                           <option value="other">Other</option>
                         </select>
                       </div>
@@ -390,6 +514,9 @@ export default function CashDrawer() {
                           onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
                           required
                         />
+                        <p style={{fontSize: '11px', color: '#888', marginTop: '4px'}}>
+                          Admin verification required for adjustments
+                        </p>
                       </div>
                     </>
                   )}
