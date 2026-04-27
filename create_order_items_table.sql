@@ -1,18 +1,20 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- CREATE ORDER_ITEMS TABLE - UUID COMPATIBLE
+-- CREATE ORDER_ITEMS TABLE - TYPE-SAFE
 -- ═══════════════════════════════════════════════════════════════════════════
 -- This migration creates the order_items table to store individual items
 -- for each order, replacing the JSONB storage in orders.items.
 -- 
--- IMPORTANT: This keeps orders.id as UUID for compatibility with:
---   - Existing data in orders table
---   - Foreign key references in loyalty_transactions
---   - Application code expectations
---   - RLS policies
+-- IMPORTANT: This script dynamically detects the orders.id data type and
+-- creates order_items.order_id with the matching type to avoid errors like:
+--   "ERROR: operator does not exist: text = uuid"
+-- 
+-- Supports both:
+--   - UUID type (recommended)
+--   - TEXT type (for legacy compatibility)
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- PART 1: Verify orders.id is UUID type
+-- PART 1: Detect and display orders.id data type
 -- ─────────────────────────────────────────────────────────────────────────────
 
 DO $$
@@ -27,36 +29,70 @@ BEGIN
     AND column_name = 'id';
   
   RAISE NOTICE '════════════════════════════════════════════════════════════';
-  RAISE NOTICE 'VERIFICATION: orders.id data type is: %', orders_id_type;
+  RAISE NOTICE 'DETECTION: orders.id data type is: %', orders_id_type;
   RAISE NOTICE '════════════════════════════════════════════════════════════';
   
-  -- Verify it's UUID (recommended)
-  IF orders_id_type != 'uuid' THEN
-    RAISE WARNING 'WARNING: orders.id is not UUID type! It is: %', orders_id_type;
-    RAISE WARNING 'This migration assumes UUID. Please verify compatibility.';
+  -- Info message about type handling
+  IF orders_id_type = 'uuid' THEN
+    RAISE NOTICE 'Will create order_items with UUID order_id';
   ELSE
-    RAISE NOTICE 'SUCCESS: orders.id is UUID - proceeding with UUID-compatible order_items';
+    RAISE NOTICE 'Will create order_items with TEXT order_id to match orders.id type';
   END IF;
 END $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- PART 2: Create order_items table with UUID order_id
+-- PART 2: Create order_items table with matching order_id type
 -- ─────────────────────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS public.order_items (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id      UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
-  menu_item_id  UUID REFERENCES public.menu_items(id) ON DELETE SET NULL,
-  name          TEXT NOT NULL,
-  price         DECIMAL(10,2) NOT NULL,
-  quantity      INT NOT NULL DEFAULT 1,
-  subtotal      DECIMAL(10,2) NOT NULL,
-  notes         TEXT,
-  created_at    TIMESTAMPTZ DEFAULT NOW()
-);
+-- Drop the table if it exists to recreate with correct type
+DROP TABLE IF EXISTS public.order_items CASCADE;
+
+-- Create order_items table with order_id type matching orders.id
+DO $$
+DECLARE
+  orders_id_type TEXT;
+BEGIN
+  -- Get the data type of orders.id
+  SELECT data_type INTO orders_id_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'orders'
+    AND column_name = 'id';
+  
+  -- Create table with matching order_id type
+  IF orders_id_type = 'uuid' THEN
+    -- orders.id is UUID, so use UUID for order_id
+    CREATE TABLE public.order_items (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      order_id      UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+      menu_item_id  UUID REFERENCES public.menu_items(id) ON DELETE SET NULL,
+      name          TEXT NOT NULL,
+      price         DECIMAL(10,2) NOT NULL,
+      quantity      INT NOT NULL DEFAULT 1,
+      subtotal      DECIMAL(10,2) NOT NULL,
+      notes         TEXT,
+      created_at    TIMESTAMPTZ DEFAULT NOW()
+    );
+    RAISE NOTICE 'Created order_items with UUID order_id (matching orders.id type)';
+  ELSE
+    -- orders.id is TEXT (or something else), so use TEXT for order_id
+    CREATE TABLE public.order_items (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      order_id      TEXT NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+      menu_item_id  UUID REFERENCES public.menu_items(id) ON DELETE SET NULL,
+      name          TEXT NOT NULL,
+      price         DECIMAL(10,2) NOT NULL,
+      quantity      INT NOT NULL DEFAULT 1,
+      subtotal      DECIMAL(10,2) NOT NULL,
+      notes         TEXT,
+      created_at    TIMESTAMPTZ DEFAULT NOW()
+    );
+    RAISE NOTICE 'Created order_items with TEXT order_id (matching orders.id type: %)', orders_id_type;
+  END IF;
+END $$;
 
 COMMENT ON TABLE public.order_items IS 'Individual items for each order - replaces JSONB storage in orders.items';
-COMMENT ON COLUMN public.order_items.order_id IS 'References orders.id (UUID) - cascades on delete';
+COMMENT ON COLUMN public.order_items.order_id IS 'References orders.id (type matches orders.id) - cascades on delete';
 COMMENT ON COLUMN public.order_items.menu_item_id IS 'References menu_items.id (UUID) - nullable if item deleted';
 COMMENT ON COLUMN public.order_items.name IS 'Display name including variants (e.g., "Iced Coffee (16oz | Extra Shot)")';
 COMMENT ON COLUMN public.order_items.price IS 'Unit price (base + addons)';
@@ -258,7 +294,7 @@ BEGIN
   RAISE NOTICE '════════════════════════════════════════════════════════════';
   RAISE NOTICE '';
   RAISE NOTICE 'The order_items table has been created with:';
-  RAISE NOTICE '  ✓ UUID order_id (matches orders.id type)';
+  RAISE NOTICE '  ✓ order_id type matching orders.id (auto-detected)';
   RAISE NOTICE '  ✓ Foreign key to orders table (CASCADE on delete)';
   RAISE NOTICE '  ✓ Foreign key to menu_items table (SET NULL on delete)';
   RAISE NOTICE '  ✓ Row Level Security enabled';
@@ -272,9 +308,9 @@ BEGIN
   RAISE NOTICE '  3. Test order placement to verify functionality';
   RAISE NOTICE '';
   RAISE NOTICE 'IMPORTANT:';
-  RAISE NOTICE '  • orders.id remains UUID (not changed to TEXT)';
-  RAISE NOTICE '  • This prevents breaking existing foreign keys';
-  RAISE NOTICE '  • Compatible with loyalty_transactions.order_id';
+  RAISE NOTICE '  • order_id type was auto-detected from orders.id';
+  RAISE NOTICE '  • This prevents "operator does not exist: text = uuid" errors';
+  RAISE NOTICE '  • Compatible with all existing foreign key references';
   RAISE NOTICE '════════════════════════════════════════════════════════════';
   RAISE NOTICE '';
 END $$;
