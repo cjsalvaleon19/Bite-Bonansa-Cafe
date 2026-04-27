@@ -81,6 +81,12 @@ const GCASH_OWNER = {
  */
 const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz'])
 
+/**
+ * Delay to ensure cart has loaded from localStorage before processing URL parameters.
+ * This prevents race conditions where items might be added before the saved cart is restored.
+ */
+const CART_LOAD_DELAY_MS = 100
+
 function calcEarnedPoints(subtotal: number): number {
   const rate = subtotal <= 500 ? 0.002 : 0.0035
   return Math.floor(subtotal * rate)
@@ -220,7 +226,7 @@ export default function CustomerOrderPage() {
     const item = menuItems.find(m => m.id === itemId)
     if (!item) return
     
-    // Small delay to ensure cart has loaded from localStorage
+    // Delay to ensure cart has loaded from localStorage (see CART_LOAD_DELAY_MS)
     const timeoutId = setTimeout(() => {
       // Check if item already exists in cart (checking against current cart state)
       setCart(prevCart => {
@@ -259,9 +265,11 @@ export default function CustomerOrderPage() {
           return [...prevCart, newItem]
         }
       })
-    }, 100)
+    }, CART_LOAD_DELAY_MS)
     
     return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Note: setCart, setDialogItem, setShowItemDialog are stable setState functions and don't need to be in deps
   }, [menuItems, searchParams, router])
 
   const filteredItems = menuItems.filter((item) => {
