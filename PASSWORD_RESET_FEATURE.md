@@ -126,12 +126,18 @@ If you see the error "A user with this email address has already been registered
 
 ### Supabase Setup
 
-For this feature to work properly, ensure the following in your Supabase project:
+⚠️ **IMPORTANT**: For this feature to work properly, you **MUST** configure email service in Supabase.
 
-1. **Email Provider Configuration**
-   - Go to Supabase Dashboard → Authentication → Email Templates
-   - Customize the "Reset Password" email template if desired
-   - Ensure email sending is enabled
+**If email is not configured, users will see "Email Sent!" but won't receive any email.**
+
+See **[SUPABASE_EMAIL_SETUP.md](SUPABASE_EMAIL_SETUP.md)** for complete email configuration instructions.
+
+#### Quick Setup Steps:
+
+1. **Email Provider Configuration** (REQUIRED)
+   - **Option 1**: Use Supabase built-in email (limited to 3 emails/hour, not reliable)
+   - **Option 2**: Configure custom SMTP provider (recommended for production)
+   - See [SUPABASE_EMAIL_SETUP.md](SUPABASE_EMAIL_SETUP.md) for detailed instructions
 
 2. **Redirect URLs**
    - Go to Supabase Dashboard → Authentication → URL Configuration
@@ -180,7 +186,32 @@ All pages follow the existing Bite Bonansa Cafe design system:
 - **Components**: Consistent form inputs, buttons, and error/success messages
 - **Responsive**: Works on desktop and mobile devices
 
-## Error Handling
+## Common Issues and Solutions
+
+### "Email Sent!" but No Email Received
+
+**This is the most common issue** and happens when Supabase email service is not configured.
+
+**Symptoms:**
+- Page shows "Email Sent!" success message
+- No email arrives in inbox or spam folder
+- Supabase logs show no errors
+
+**Root Cause:**
+- Supabase's `resetPasswordForEmail()` returns success even when email service is not configured
+- The function only fails on client-side validation errors (invalid email format)
+- Email delivery failures happen silently on the backend
+
+**Solution:**
+1. **Configure email service in Supabase** - See [SUPABASE_EMAIL_SETUP.md](SUPABASE_EMAIL_SETUP.md)
+2. **Option A**: Use Supabase built-in email (limited, unreliable, for testing only)
+3. **Option B**: Configure custom SMTP provider (recommended for production)
+
+**Temporary Workaround:**
+- If you can't configure email immediately, users can:
+  - Create a new account if they forgot their password
+  - Contact support/admin to reset password manually
+  - Use alternative login methods (OAuth/social login if available)
 
 ### Common Error Messages
 
