@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function CustomerDashboard() {
   const router = useRouter();
@@ -13,7 +14,8 @@ export default function CustomerDashboard() {
     loyaltyBalance: 0,
     currentOrder: null,
     totalEarnings: 0,
-    mostPurchasedItems: []
+    mostPurchasedItems: [],
+    pendingOrdersCount: 0
   });
 
   useEffect(() => {
@@ -112,6 +114,13 @@ export default function CustomerDashboard() {
         .limit(1)
         .maybeSingle();
 
+      // Get count of all pending orders
+      const { count: pendingCount } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('customer_id', userId)
+        .or('status.eq.order_in_queue,status.eq.order_in_process,status.eq.out_for_delivery');
+
       // Calculate loyalty balance from loyalty_transactions
       const { data: allTransactions, error: transError } = await supabase
         .from('loyalty_transactions')
@@ -170,7 +179,8 @@ export default function CustomerDashboard() {
         loyaltyBalance,
         currentOrder: currentOrderData,
         totalEarnings,
-        mostPurchasedItems
+        mostPurchasedItems,
+        pendingOrdersCount: pendingCount || 0
       });
     } catch (err) {
       console.error('[CustomerDashboard] Failed to fetch dashboard data:', err);
@@ -230,9 +240,12 @@ export default function CustomerDashboard() {
             <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
             <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>
           </nav>
-          <button style={styles.logoutBtn} onClick={handleLogout}>
-            Logout
-          </button>
+          <div style={styles.headerActions}>
+            <NotificationBell user={user} />
+            <button style={styles.logoutBtn} onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </header>
 
         <main style={styles.main}>
@@ -258,15 +271,17 @@ export default function CustomerDashboard() {
             </Link>
 
             {/* Order Status */}
-            <Link href="/customer/order-tracking" style={styles.actionCard}>
+            <Link href="/customer/orders" style={styles.actionCard}>
               <span style={styles.cardIcon}>📦</span>
               <h3 style={styles.cardTitle}>Order Status</h3>
-              {dashboardData.currentOrder ? (
+              {dashboardData.pendingOrdersCount > 0 ? (
                 <>
-                  <p style={{...styles.cardDesc, color: statusInfo.color, fontWeight: 'bold'}}>
-                    {statusInfo.icon} {statusInfo.label}
+                  <p style={{...styles.cardDesc, color: '#ffc107', fontWeight: 'bold', fontSize: '20px'}}>
+                    {dashboardData.pendingOrdersCount} {dashboardData.pendingOrdersCount === 1 ? 'Order' : 'Orders'}
                   </p>
-                  <p style={styles.cardDesc}>Total: ₱{dashboardData.currentOrder.total_amount}</p>
+                  <p style={styles.cardDesc}>
+                    {dashboardData.pendingOrdersCount === 1 ? 'Pending order' : 'Pending orders'}
+                  </p>
                 </>
               ) : (
                 <p style={styles.cardDesc}>No Active Orders</p>
@@ -353,6 +368,11 @@ const styles = {
     backgroundColor: '#1a1a1a',
     borderBottom: '1px solid #ffc107',
     flexWrap: 'wrap',
+    gap: '12px',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
     gap: '12px',
   },
   logo: {

@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function CustomerReviews() {
   const router = useRouter();
@@ -402,9 +403,12 @@ export default function CustomerReviews() {
             <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
             <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>
           </nav>
-          <button style={styles.logoutBtn} onClick={handleLogout}>
-            Logout
-          </button>
+          <div style={styles.headerActions}>
+            <NotificationBell user={user} />
+            <button style={styles.logoutBtn} onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </header>
 
         <main style={styles.main}>
@@ -629,6 +633,11 @@ const styles = {
     backgroundColor: '#1a1a1a',
     borderBottom: '1px solid #ffc107',
     flexWrap: 'wrap',
+    gap: '12px',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
     gap: '12px',
   },
   logo: {
