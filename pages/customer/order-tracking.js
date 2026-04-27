@@ -363,7 +363,7 @@ export default function OrderTracking() {
                       </div>
                       <div style={styles.infoItem}>
                         <span style={styles.infoLabel}>Total Amount:</span>
-                        <span style={{...styles.infoValue, color: '#ffc107', fontWeight: 'bold', fontSize: '18px'}}>
+                        <span style={styles.infoValueHighlight}>
                           ₱{order.total_amount?.toFixed(2) || '0.00'}
                         </span>
                       </div>
@@ -386,6 +386,7 @@ export default function OrderTracking() {
                             <div key={item.id || idx} style={styles.orderItem}>
                               <div style={styles.itemInfo}>
                                 <span style={styles.itemName}>{item.name}</span>
+                                {/* Item notes: customization requests for individual items (e.g., "extra sugar", "no ice") */}
                                 {item.notes && (
                                   <span style={styles.itemNotes}>Note: {item.notes}</span>
                                 )}
@@ -620,6 +621,11 @@ const styles = {
   infoValue: {
     fontSize: '14px',
     color: '#ccc',
+  },
+  infoValueHighlight: {
+    fontSize: '18px',
+    color: '#ffc107',
+    fontWeight: 'bold',
   },
   viewDetailsBtn: {
     width: '100%',
