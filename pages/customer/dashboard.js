@@ -236,7 +236,7 @@ export default function CustomerDashboard() {
           <nav style={styles.nav}>
             <Link href="/customer/dashboard" style={styles.navLink}>Dashboard</Link>
             <Link href="/customer/order" style={styles.navLink}>Order Portal</Link>
-            <Link href="/customer/orders" style={styles.navLink}>Order Tracking</Link>
+            <Link href="/customer/order-tracking" style={styles.navLink}>Order Tracking</Link>
             <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
             <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>
           </nav>
@@ -271,7 +271,7 @@ export default function CustomerDashboard() {
             </Link>
 
             {/* Order Status */}
-            <Link href="/customer/orders" style={styles.actionCard}>
+            <Link href="/customer/order-tracking" style={styles.actionCard}>
               <span style={styles.cardIcon}>📦</span>
               <h3 style={styles.cardTitle}>Order Status</h3>
               {dashboardData.pendingOrdersCount > 0 ? (
