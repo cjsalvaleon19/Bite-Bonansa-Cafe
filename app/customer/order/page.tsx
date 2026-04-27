@@ -211,12 +211,13 @@ export default function CustomerOrderPage() {
 
   // Handle URL parameter to auto-add items from dashboard
   useEffect(() => {
-    if (!searchParams) return
-    
-    const itemId = searchParams.get('addItem')
+    const itemId = searchParams?.get('addItem')
     if (itemId && menuItems.length > 0) {
       const item = menuItems.find(m => m.id === itemId)
       if (item) {
+        // Clean up URL parameter first
+        router.replace('/customer/order', { scroll: false })
+        
         // Check if item already exists in cart
         const alreadyInCart = cart.some(c => c.menuItemId === itemId)
         if (!alreadyInCart) {
@@ -235,9 +236,6 @@ export default function CustomerOrderPage() {
             addToCartWithCustomizations(item, '', '', [], 1)
           }
         }
-        
-        // Clean up URL parameter
-        router.replace('/customer/order', { scroll: false })
       }
     }
   }, [menuItems, searchParams, cart, addToCartWithCustomizations, router])
