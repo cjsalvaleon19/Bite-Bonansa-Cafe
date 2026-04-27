@@ -121,14 +121,11 @@ This document summarizes all the improvements made to the Cashier Interface base
 
 Adds:
 - `order_mode` VARCHAR(50) - Type of order (dine-in, take-out, pick-up, delivery)
-- `order_number` VARCHAR(10) - 4-digit daily order number (e.g., 0001)
 - `customer_name` VARCHAR(255) - Customer full name
 - `contact_number` VARCHAR(20) - Customer contact
 - `customer_address` TEXT - Delivery address
 
-Includes:
-- Auto-generation trigger for daily 4-digit order numbers
-- Proper indexes for performance
+**Note**: This migration does NOT recreate the `order_number` column or `generate_daily_order_number()` function, as those were already created in migration 017. The order number auto-generation functionality is already in place.
 
 ### Migration 022: Cashier Settings
 **File**: `supabase/migrations/022_cashier_settings.sql`
