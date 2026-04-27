@@ -158,6 +158,7 @@ If you encounter any issues:
 ---
 
 **Date Fixed:** 2026-04-27  
-**Branch:** copilot/fix-nullable-items-column  
-**Files Changed:** 2 (created)  
-**SQL Migration:** fix_customer_id_nullable.sql
+**Branch:** copilot/fix-nullable-items-column _(Note: Branch name is from a previous session)_  
+**Files Changed:** 3 (created)  
+**SQL Migration:** fix_customer_id_nullable.sql  
+**Documentation:** FIX_CUSTOMER_ID_CONSTRAINT.md, ORDER_PLACEMENT_FIX_SUMMARY.md
