@@ -96,24 +96,48 @@ const ForgotPassword = () => {
         )}
 
         {success ? (
-          <div style={{
-            backgroundColor: '#1a3a1a',
-            color: '#4caf50',
-            padding: '20px',
-            borderRadius: '8px',
-            marginBottom: '20px',
-            fontSize: '14px',
-            border: '1px solid #4caf50',
-            textAlign: 'center'
-          }}>
-            <p style={{ fontSize: '20px', marginBottom: '8px' }}>✅ Email Sent!</p>
-            <p style={{ marginBottom: '12px' }}>
-              We've sent a password reset link to <strong>{email}</strong>
-            </p>
-            <p style={{ color: '#aaa', fontSize: '13px' }}>
-              Please check your email and click the link to reset your password.
-              If you don't see it, check your spam folder.
-            </p>
+          <div>
+            <div style={{
+              backgroundColor: '#1a3a1a',
+              color: '#4caf50',
+              padding: '20px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              fontSize: '14px',
+              border: '1px solid #4caf50',
+              textAlign: 'center'
+            }}>
+              <p style={{ fontSize: '20px', marginBottom: '8px' }}>✅ Email Sent!</p>
+              <p style={{ marginBottom: '12px' }}>
+                We've sent a password reset link to <strong>{email}</strong>
+              </p>
+              <p style={{ color: '#aaa', fontSize: '13px' }}>
+                Please check your email and click the link to reset your password.
+                If you don't see it, check your spam folder.
+              </p>
+            </div>
+
+            <div style={{
+              backgroundColor: '#3a2a1a',
+              color: '#ffc107',
+              padding: '16px',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              fontSize: '13px',
+              border: '1px solid #ffc107',
+              textAlign: 'left'
+            }}>
+              <p style={{ fontSize: '15px', marginBottom: '8px', fontWeight: 'bold' }}>⚠️ Not receiving the email?</p>
+              <ul style={{ marginLeft: '20px', marginBottom: '8px', lineHeight: '1.6' }}>
+                <li>Check your spam/junk folder</li>
+                <li>Wait a few minutes - emails can be delayed</li>
+                <li>Make sure you entered the correct email address</li>
+                <li>Contact support if the issue persists</li>
+              </ul>
+              <p style={{ color: '#aaa', fontSize: '12px', marginTop: '12px', fontStyle: 'italic' }}>
+                Note: If email service is not configured in the system, you may not receive the email even though this message appears. Please contact your system administrator.
+              </p>
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
