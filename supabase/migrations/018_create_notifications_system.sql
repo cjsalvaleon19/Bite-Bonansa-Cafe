@@ -63,33 +63,37 @@ DECLARE
   notification_title TEXT;
   notification_message TEXT;
   notification_type TEXT := 'order_status';
+  order_display_number TEXT;
 BEGIN
   -- Only create notification for specific status changes
   IF NEW.status != OLD.status THEN
+    
+    -- Get order display number once
+    order_display_number := COALESCE(NEW.order_number, LEFT(NEW.id::TEXT, 8));
     
     -- Determine notification based on status and order_mode
     CASE NEW.status
       WHEN 'order_in_process' THEN
         notification_title := 'Order Being Prepared';
-        notification_message := 'Your order #' || COALESCE(NEW.order_number, LEFT(NEW.id::TEXT, 8)) || ' is now being prepared.';
+        notification_message := 'Your order #' || order_display_number || ' is now being prepared.';
       
       WHEN 'out_for_delivery' THEN
         IF NEW.order_mode = 'pick-up' THEN
           notification_title := 'Order Ready for Pick-up';
-          notification_message := 'Your order #' || COALESCE(NEW.order_number, LEFT(NEW.id::TEXT, 8)) || ' is ready for pick-up!';
+          notification_message := 'Your order #' || order_display_number || ' is ready for pick-up!';
           notification_type := 'order_ready_pickup';
         ELSE
           notification_title := 'Order Out for Delivery';
-          notification_message := 'Your order #' || COALESCE(NEW.order_number, LEFT(NEW.id::TEXT, 8)) || ' is out for delivery.';
+          notification_message := 'Your order #' || order_display_number || ' is out for delivery.';
         END IF;
       
       WHEN 'order_delivered' THEN
         notification_title := 'Order Delivered';
-        notification_message := 'Your order #' || COALESCE(NEW.order_number, LEFT(NEW.id::TEXT, 8)) || ' has been delivered. Enjoy your meal!';
+        notification_message := 'Your order #' || order_display_number || ' has been delivered. Enjoy your meal!';
       
       WHEN 'cancelled' THEN
         notification_title := 'Order Cancelled';
-        notification_message := 'Your order #' || COALESCE(NEW.order_number, LEFT(NEW.id::TEXT, 8)) || ' has been cancelled.';
+        notification_message := 'Your order #' || order_display_number || ' has been cancelled.';
       
       ELSE
         -- Don't create notification for other status changes
