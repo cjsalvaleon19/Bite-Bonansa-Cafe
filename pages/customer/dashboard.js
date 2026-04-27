@@ -324,7 +324,7 @@ export default function CustomerDashboard() {
                       </p>
                       <button
                         style={styles.addToCartBtn}
-                        onClick={() => router.push('/customer/order').catch(console.error)}
+                        onClick={() => router.push(`/customer/order?addItem=${purchase.menu_item_id}`).catch(console.error)}
                       >
                         🛒 Add to Cart
                       </button>

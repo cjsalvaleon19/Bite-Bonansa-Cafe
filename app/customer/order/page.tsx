@@ -49,7 +49,7 @@ import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '@
 import { supabase } from '@/lib/supabase/client'
 import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -91,6 +91,7 @@ function calcEarnedPoints(subtotal: number): number {
 export default function CustomerOrderPage() {
   const { user } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
@@ -112,6 +113,28 @@ export default function CustomerOrderPage() {
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
+
+  // Load cart from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedCart = localStorage.getItem('bite-bonanza-cart')
+      if (savedCart) {
+        const parsedCart = JSON.parse(savedCart)
+        setCart(parsedCart)
+      }
+    } catch (error) {
+      console.error('Failed to load cart from localStorage:', error)
+    }
+  }, [])
+
+  // Save cart to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('bite-bonanza-cart', JSON.stringify(cart))
+    } catch (error) {
+      console.error('Failed to save cart to localStorage:', error)
+    }
+  }, [cart])
 
   useEffect(() => {
     async function loadMenu() {
@@ -146,6 +169,37 @@ export default function CustomerOrderPage() {
     }
     loadMenu()
   }, [])
+
+  // Handle URL parameter to auto-add items from dashboard
+  useEffect(() => {
+    const itemId = searchParams.get('addItem')
+    if (itemId && menuItems.length > 0) {
+      const item = menuItems.find(m => m.id === itemId)
+      if (item) {
+        // Check if item already exists in cart
+        const alreadyInCart = cart.some(c => c.menuItemId === itemId)
+        if (!alreadyInCart) {
+          // Auto-add the item to cart
+          const hasOptions =
+            (item.varieties && item.varieties.length > 0) ||
+            (item.sizes && item.sizes.length > 0) ||
+            (item.addons && item.addons.length > 0)
+          
+          if (hasOptions) {
+            // If item has options, open the dialog for user to select
+            setDialogItem(item)
+            setShowItemDialog(true)
+          } else {
+            // If no options, add directly to cart
+            addToCartWithCustomizations(item, '', '', [], 1)
+          }
+        }
+        
+        // Clean up URL parameter
+        router.replace('/customer/order', { scroll: false })
+      }
+    }
+  }, [menuItems, searchParams])
 
   const filteredItems = menuItems.filter((item) => {
     const matchesSearch =
@@ -353,6 +407,7 @@ export default function CustomerOrderPage() {
         description: 'You can track your order in the Track Orders page.',
       })
       setCart([])
+      localStorage.removeItem('bite-bonanza-cart')
       setOrderNotes('')
       setCashTendered('')
       setGcashRef('')
