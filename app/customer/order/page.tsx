@@ -362,7 +362,7 @@ export default function CustomerOrderPage() {
       }
       setGcashScreenshot(null)
       setGcashScreenshotPreview(null)
-      router.push('/customer/track')
+      router.push('/customer/order-tracking')
     } catch (error) {
       console.error('Failed to place order:', error)
       toast.error('Failed to place order. Please try again.')
