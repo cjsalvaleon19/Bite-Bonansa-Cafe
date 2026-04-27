@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import {
   Search,
   Plus,
@@ -94,7 +94,7 @@ function calcEarnedPoints(subtotal: number): number {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function CustomerOrderPage() {
+function CustomerOrderPage() {
   const { user } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -1310,5 +1310,21 @@ function CartContent({
         {isSubmitting ? 'Placing Order...' : 'Place Order'}
       </Button>
     </div>
+  )
+}
+
+// Wrap the component in Suspense to handle useSearchParams()
+export default function CustomerOrderPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+          <p className="mt-4 text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    }>
+      <CustomerOrderPage />
+    </Suspense>
   )
 }

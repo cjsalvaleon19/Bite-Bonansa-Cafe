@@ -1,10 +1,13 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Toaster } from 'sonner'
 import '../styles/globals.css'
 
 export const metadata: Metadata = {
   title: 'Bite Bonanza Cafe',
   description: 'Order delicious food from Bite Bonanza Cafe',
+}
+
+export const viewport: Viewport = {
   themeColor: '#0a0a0a',
 }
 
