@@ -36,6 +36,9 @@ export default function CashierPOS() {
   const [pointsToUse, setPointsToUse] = useState(0);
   const [customerPointsBalance, setCustomerPointsBalance] = useState(0);
   const [deliveryFee, setDeliveryFee] = useState(0);
+  const [customerSearchResults, setCustomerSearchResults] = useState([]);
+  const [showCustomerSearch, setShowCustomerSearch] = useState(false);
+  const [combinedPayment, setCombinedPayment] = useState(false); // For points + cash/gcash
 
   const { items, addItem, removeItem, updateQuantity, clearCart, getTotalPrice } =
     useCartStore();
@@ -117,7 +120,7 @@ export default function CashierPOS() {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('id, full_name, phone, address')
+        .select('id, full_name, phone, address, customer_id')
         .eq('customer_id', customerId)
         .maybeSingle();
 
@@ -136,7 +139,7 @@ export default function CashierPOS() {
 
         setCustomerInfo({
           ...customerInfo,
-          customerId: customerId,
+          customerId: data.customer_id || customerId,
           customerName: data.full_name || 'Customer',
           address: data.address || '',
           contactNumber: data.phone || '',
@@ -147,6 +150,54 @@ export default function CashierPOS() {
       console.error('[POS] Failed to fetch customer data:', err?.message ?? err);
       alert('Customer not found');
     }
+  };
+
+  const searchCustomerByName = async (searchTerm) => {
+    if (!supabase || !searchTerm || searchTerm.length < 2) {
+      setCustomerSearchResults([]);
+      setShowCustomerSearch(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, phone, address, customer_id')
+        .eq('role', 'customer')
+        .ilike('full_name', `%${searchTerm}%`)
+        .limit(10);
+
+      if (error) throw error;
+
+      setCustomerSearchResults(data || []);
+      setShowCustomerSearch(data && data.length > 0);
+    } catch (err) {
+      console.error('[POS] Failed to search customers:', err?.message ?? err);
+      setCustomerSearchResults([]);
+      setShowCustomerSearch(false);
+    }
+  };
+
+  const selectCustomer = async (customer) => {
+    // Fetch loyalty balance
+    const { data: transactions, error: transError } = await supabase
+      .from('loyalty_transactions')
+      .select('amount')
+      .eq('customer_id', customer.id);
+
+    const loyaltyBalance = (!transError && transactions) 
+      ? transactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0) 
+      : 0;
+
+    setCustomerInfo({
+      customerId: customer.customer_id || '',
+      customerName: customer.full_name || 'Customer',
+      address: customer.address || '',
+      contactNumber: customer.phone || '',
+    });
+    setCustomerPointsBalance(loyaltyBalance);
+    setShowCustomerSearch(false);
+    setCustomerSearchResults([]);
   };
 
   const handleCustomerIdChange = (value) => {
@@ -173,30 +224,52 @@ export default function CashierPOS() {
 
     const subtotal = getTotalPrice();
     const vatAmount = subtotal * VAT_RATE;
-    const totalAmount = subtotal + vatAmount + deliveryFee - pointsToUse;
+    let totalAmount = subtotal + vatAmount + deliveryFee;
+    
+    // Apply points first if combined payment or points only
+    let finalPointsUsed = 0;
+    let remainingAmount = totalAmount;
+    
+    if (combinedPayment || paymentMethod === 'points') {
+      finalPointsUsed = Math.min(pointsToUse, customerPointsBalance, totalAmount);
+      remainingAmount = totalAmount - finalPointsUsed;
+    }
 
     // Validate payment
-    if (paymentMethod === 'cash') {
+    if (paymentMethod === 'cash' || (combinedPayment && paymentMethod === 'cash')) {
       const cashTendered = parseFloat(paymentDetails.cashTendered || 0);
-      const change = cashTendered - totalAmount;
+      const change = cashTendered - remainingAmount;
       if (change < 0) {
-        alert('Insufficient cash tendered. Change must be >= 0');
+        alert(`Insufficient cash tendered. Need ₱${remainingAmount.toFixed(2)}, got ₱${cashTendered.toFixed(2)}`);
         return;
       }
     }
 
-    if (paymentMethod === 'gcash' && !paymentDetails.gcashReference) {
-      alert('Please enter GCash reference number');
-      return;
+    if (paymentMethod === 'gcash' || (combinedPayment && paymentMethod === 'gcash')) {
+      if (!paymentDetails.gcashReference) {
+        alert('Please enter GCash reference number');
+        return;
+      }
     }
 
-    if (paymentMethod === 'points') {
+    if (paymentMethod === 'points' && !combinedPayment) {
       if (pointsToUse > customerPointsBalance) {
         alert('Insufficient points balance');
         return;
       }
-      if (pointsToUse > totalAmount) {
-        alert('Points to use cannot exceed total amount');
+      if (pointsToUse < totalAmount) {
+        alert('Insufficient points to cover total amount. Use combined payment for points + cash/gcash');
+        return;
+      }
+    }
+
+    if (combinedPayment) {
+      if (pointsToUse > customerPointsBalance) {
+        alert('Points to use cannot exceed available balance');
+        return;
+      }
+      if (remainingAmount <= 0) {
+        alert('Points cover the full amount. No need for combined payment');
         return;
       }
     }
@@ -207,11 +280,13 @@ export default function CashierPOS() {
     try {
       if (!supabase) throw new Error('Database not available');
 
-      // Generate order number
-      const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+      // Determine final payment method string
+      let finalPaymentMethod = paymentMethod;
+      if (combinedPayment) {
+        finalPaymentMethod = `points+${paymentMethod}`;
+      }
 
       const orderData = {
-        order_number: orderNumber,
         items: items.map(({ id, name, price, quantity }) => ({
           id,
           name,
@@ -221,17 +296,18 @@ export default function CashierPOS() {
         order_mode: orderMode,
         customer_name: customerInfo.customerName,
         customer_id: customerInfo.customerId || null,
-        delivery_address: orderMode === 'delivery' ? customerInfo.address : null,
         contact_number: customerInfo.contactNumber || null,
+        customer_address: orderMode === 'delivery' ? customerInfo.address : null,
+        delivery_address: orderMode === 'delivery' ? customerInfo.address : null,
         subtotal: subtotal,
         vat_amount: vatAmount,
         delivery_fee: deliveryFee,
-        points_used: pointsToUse,
+        points_used: finalPointsUsed,
         total_amount: totalAmount,
-        payment_method: paymentMethod,
-        cash_amount: paymentMethod === 'cash' ? parseFloat(paymentDetails.cashTendered || 0) : 0,
-        gcash_amount: paymentMethod === 'gcash' ? totalAmount : 0,
-        gcash_reference: paymentMethod === 'gcash' ? paymentDetails.gcashReference : null,
+        payment_method: finalPaymentMethod,
+        cash_amount: (paymentMethod === 'cash' || combinedPayment) ? parseFloat(paymentDetails.cashTendered || 0) : 0,
+        gcash_amount: (paymentMethod === 'gcash' || combinedPayment) ? remainingAmount : 0,
+        gcash_reference: (paymentMethod === 'gcash' || combinedPayment) ? paymentDetails.gcashReference : null,
         status: 'order_in_queue',
         created_at: new Date().toISOString(),
       };
@@ -244,8 +320,46 @@ export default function CashierPOS() {
 
       if (error) throw error;
 
+      // Insert order_items
+      if (order && items.length > 0) {
+        const orderItems = items.map(item => ({
+          order_id: order.id,
+          menu_item_id: item.id,
+          name: item.name,
+          price: item.finalPrice || item.price || item.base_price || 0,
+          quantity: item.quantity || 1,
+          subtotal: (item.finalPrice || item.price || item.base_price || 0) * (item.quantity || 1),
+        }));
+
+        const { error: itemsError } = await supabase
+          .from('order_items')
+          .insert(orderItems);
+
+        if (itemsError) {
+          console.error('[POS] Failed to insert order items:', itemsError);
+        }
+      }
+
+      // Deduct loyalty points if used
+      if (finalPointsUsed > 0 && customerInfo.customerId) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('id')
+          .eq('customer_id', customerInfo.customerId)
+          .maybeSingle();
+
+        if (userData) {
+          await supabase.from('loyalty_transactions').insert({
+            customer_id: userData.id,
+            amount: -finalPointsUsed,
+            transaction_type: 'redeem',
+            description: `Points used for order #${order.order_number || order.id.slice(0, 8)}`,
+          });
+        }
+      }
+
       // Generate receipt (simple print)
-      printReceipt(order, orderNumber);
+      printReceipt(order, remainingAmount);
 
       // Clear form
       clearCart();
@@ -263,28 +377,30 @@ export default function CashierPOS() {
       setCustomerPointsBalance(0);
       setOrderMode('dine-in');
       setPaymentMethod('cash');
+      setCombinedPayment(false);
 
       setOrderStatus('success');
       setTimeout(() => setOrderStatus(null), 3000);
     } catch (err) {
       console.error('[POS] Checkout failed:', err?.message ?? err);
       setOrderStatus('error');
+      alert('Failed to place order: ' + (err?.message || 'Unknown error'));
     } finally {
       setCheckoutLoading(false);
     }
   };
 
-  const printReceipt = (order, orderNumber) => {
+  const printReceipt = (order, paidAmount) => {
     const receiptWindow = window.open('', '_blank', 'width=300,height=600');
     if (!receiptWindow) return;
 
     const cashTendered = parseFloat(paymentDetails.cashTendered || 0);
-    const change = cashTendered - order.total_amount;
+    const change = (paymentMethod === 'cash' || combinedPayment) ? cashTendered - paidAmount : 0;
 
     receiptWindow.document.write(`
       <html>
         <head>
-          <title>Receipt - ${orderNumber}</title>
+          <title>Receipt - ${order.order_number || order.id.slice(0, 8)}</title>
           <style>
             body { font-family: monospace; font-size: 12px; padding: 20px; }
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
@@ -297,7 +413,7 @@ export default function CashierPOS() {
         <body>
           <div class="header">
             <h2>Bite Bonansa Cafe</h2>
-            <p><strong>Order #${orderNumber}</strong></p>
+            <p><strong>Order #${order.order_number || order.id.slice(0, 8)}</strong></p>
             <p>${new Date().toLocaleString()}</p>
             <p>Mode: ${order.order_mode}</p>
             <p>Customer: ${order.customer_name}</p>
@@ -426,13 +542,35 @@ export default function CashierPOS() {
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>Customer Name</label>
-              <input
-                style={styles.input}
-                type="text"
-                value={customerInfo.customerName}
-                onChange={(e) => setCustomerInfo({ ...customerInfo, customerName: e.target.value })}
-              />
+              <label style={styles.label}>Customer Name 🔍</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={customerInfo.customerName}
+                  onChange={(e) => {
+                    setCustomerInfo({ ...customerInfo, customerName: e.target.value });
+                    searchCustomerByName(e.target.value);
+                  }}
+                  placeholder="Type to search registered customers"
+                />
+                {showCustomerSearch && customerSearchResults.length > 0 && (
+                  <div style={styles.searchDropdown}>
+                    {customerSearchResults.map((customer) => (
+                      <div
+                        key={customer.id}
+                        style={styles.searchResultItem}
+                        onClick={() => selectCustomer(customer)}
+                      >
+                        <div style={styles.searchResultName}>{customer.full_name}</div>
+                        <div style={styles.searchResultDetails}>
+                          ID: {customer.customer_id} | {customer.phone || 'No phone'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={styles.formGroup}>
@@ -467,6 +605,50 @@ export default function CashierPOS() {
                 <option value="points">🎁 Points</option>
               </select>
             </div>
+
+            {/* Combined Payment Option */}
+            {customerPointsBalance > 0 && paymentMethod !== 'points' && (
+              <div style={styles.formGroup}>
+                <label style={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={combinedPayment}
+                    onChange={(e) => setCombinedPayment(e.target.checked)}
+                    style={{ marginRight: '8px' }}
+                  />
+                  Use Points + {paymentMethod === 'cash' ? 'Cash' : 'GCash'}
+                </label>
+                {combinedPayment && (
+                  <div style={{ marginTop: '8px' }}>
+                    <label style={styles.label}>Points to Use (Balance: ₱{customerPointsBalance.toFixed(2)})</label>
+                    <input
+                      style={styles.input}
+                      type="number"
+                      step="0.01"
+                      placeholder="Points to use"
+                      value={pointsToUse}
+                      onChange={(e) => setPointsToUse(Math.min(parseFloat(e.target.value) || 0, customerPointsBalance))}
+                      max={customerPointsBalance}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {paymentMethod === 'cash' && (
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Cash Tendered *</label>
+                <input
+                  style={styles.input}
+                  type="number"
+                  step="0.01"
+                  placeholder="Amount received"
+                  value={paymentDetails.cashTendered}
+                  onChange={(e) => setPaymentDetails({ ...paymentDetails, cashTendered: e.target.value })}
+                  required
+                />
+              </div>
+            )}
 
             {paymentMethod === 'gcash' && (
               <div style={styles.formGroup}>
@@ -621,4 +803,9 @@ const styles = {
   cartActions: { display: 'flex', gap: '10px', marginTop: '16px' },
   clearBtn: { flex: 1, padding: '10px', backgroundColor: 'transparent', color: '#ccc', border: '1px solid #555', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' },
   checkoutBtn: { flex: 2, padding: '10px', backgroundColor: '#ffc107', color: '#0a0a0a', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' },
+  searchDropdown: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#2a2a2a', border: '1px solid #ffc107', borderRadius: '6px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto', zIndex: 1000 },
+  searchResultItem: { padding: '12px', cursor: 'pointer', borderBottom: '1px solid #3a3a3a', transition: 'background 0.2s' },
+  searchResultName: { fontSize: '14px', color: '#fff', fontWeight: '600', marginBottom: '4px' },
+  searchResultDetails: { fontSize: '11px', color: '#888' },
+  checkboxLabel: { display: 'flex', alignItems: 'center', fontSize: '13px', color: '#ffc107', cursor: 'pointer', padding: '8px', backgroundColor: 'rgba(255, 193, 7, 0.1)', borderRadius: '6px', border: '1px solid rgba(255, 193, 7, 0.3)' },
 };

@@ -135,6 +135,7 @@ export default function CashierDashboard() {
             <Link href="/cashier/pos" style={styles.navLink}>POS</Link>
             <Link href="/cashier/orders-queue" style={styles.navLink}>Order Queue</Link>
             <Link href="/cashier/eod-report" style={styles.navLink}>EOD Report</Link>
+            <Link href="/cashier/settings" style={styles.navLink}>Settings</Link>
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
           <div style={styles.headerActions}>

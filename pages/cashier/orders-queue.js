@@ -140,6 +140,7 @@ export default function OrdersQueue() {
             <Link href="/cashier/pos" style={styles.navLink}>POS</Link>
             <Link href="/cashier/orders-queue" style={styles.navLinkActive}>Order Queue</Link>
             <Link href="/cashier/eod-report" style={styles.navLink}>EOD Report</Link>
+            <Link href="/cashier/settings" style={styles.navLink}>Settings</Link>
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
           <button style={styles.logoutBtn} onClick={async () => {

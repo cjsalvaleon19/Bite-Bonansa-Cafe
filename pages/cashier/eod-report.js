@@ -44,6 +44,78 @@ export default function EndOfDayReport() {
     }
   };
 
+  const handlePreviewReceipt = (order) => {
+    // Create a modal-like preview window
+    const previewWindow = window.open('', '_blank', 'width=400,height=700');
+    if (!previewWindow) return;
+
+    previewWindow.document.write(`
+      <html>
+        <head>
+          <title>Receipt Preview - #${order.order_number || order.id.slice(0, 8)}</title>
+          <style>
+            body { font-family: monospace; font-size: 12px; padding: 20px; background: #f5f5f5; }
+            .receipt { max-width: 300px; margin: 0 auto; background: white; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+            .items { margin: 20px 0; }
+            .item { display: flex; justify-content: space-between; margin: 5px 0; }
+            .footer { border-top: 2px dashed #000; padding-top: 10px; margin-top: 20px; }
+            .total { font-weight: bold; font-size: 14px; }
+            .actions { text-align: center; margin-top: 20px; padding: 20px; background: #f9f9f9; }
+            .btn { padding: 10px 20px; margin: 5px; cursor: pointer; font-size: 14px; border: none; border-radius: 4px; }
+            .print-btn { background: #ffc107; color: #000; font-weight: bold; }
+            .close-btn { background: #ccc; color: #000; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="header">
+              <h2>Bite Bonansa Cafe</h2>
+              <p>Receipt #${order.order_number || order.id.slice(0, 8)}</p>
+              <p>${new Date(order.created_at).toLocaleString()}</p>
+              <p>Mode: ${order.order_mode || 'N/A'}</p>
+              <p>Payment: ${order.payment_method || 'N/A'}</p>
+              <p>Customer: ${order.customer_name || 'Walk-in'}</p>
+            </div>
+            <div class="items">
+              ${order.items?.map(item => `
+                <div class="item">
+                  <span>
+                    ${item.name} x${item.quantity}
+                    ${item.variantDetails && Object.keys(item.variantDetails).length > 0 
+                      ? `<br><small style="padding-left: 10px; color: #666; font-size: 10px;">
+                          ${Object.entries(item.variantDetails).map(([type, value]) => 
+                            `${type}: ${value}`
+                          ).join(', ')}
+                        </small>`
+                      : ''
+                    }
+                  </span>
+                  <span>₱${(item.price * item.quantity).toFixed(2)}</span>
+                </div>
+              `).join('') || ''}
+            </div>
+            <div class="footer">
+              <div class="item"><span>Subtotal:</span><span>₱${parseFloat(order.subtotal || 0).toFixed(2)}</span></div>
+              ${order.delivery_fee > 0 ? `<div class="item"><span>Delivery Fee:</span><span>₱${parseFloat(order.delivery_fee).toFixed(2)}</span></div>` : ''}
+              ${order.points_used > 0 ? `<div class="item"><span>Points Used:</span><span>-₱${parseFloat(order.points_used).toFixed(2)}</span></div>` : ''}
+              <div class="item total"><span>Total:</span><span>₱${parseFloat(order.total_amount || 0).toFixed(2)}</span></div>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+              <p>Thank you for your order!</p>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn print-btn" onclick="window.print()">🖨️ Print Receipt</button>
+            <button class="btn close-btn" onclick="window.close()">Close</button>
+          </div>
+        </body>
+      </html>
+    `);
+
+    previewWindow.document.close();
+  };
+
   const handlePrintReceipt = (order) => {
     // Create a simple receipt print window
     const receiptWindow = window.open('', '_blank', 'width=300,height=600');
@@ -140,6 +212,7 @@ export default function EndOfDayReport() {
             <Link href="/cashier/pos" style={styles.navLink}>POS</Link>
             <Link href="/cashier/orders-queue" style={styles.navLink}>Order Queue</Link>
             <Link href="/cashier/eod-report" style={styles.navLinkActive}>EOD Report</Link>
+            <Link href="/cashier/settings" style={styles.navLink}>Settings</Link>
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
           <button style={styles.logoutBtn} onClick={async () => {
@@ -196,15 +269,15 @@ export default function EndOfDayReport() {
               <table style={styles.table}>
                 <thead>
                   <tr style={styles.tableHeader}>
+                    <th style={styles.th}>Receipt #</th>
                     <th style={styles.th}>Date & Time</th>
-                    <th style={styles.th}>Customer ID</th>
-                    <th style={styles.th}>Customer Name</th>
-                    <th style={styles.th}>Mode of Order</th>
+                    <th style={styles.th}>Customer</th>
+                    <th style={styles.th}>Mode</th>
                     <th style={styles.th}>Payment</th>
                     <th style={styles.th}>Subtotal</th>
                     <th style={styles.th}>Delivery Fee</th>
-                    <th style={styles.th}>Points Used</th>
-                    <th style={styles.th}>Net Amount</th>
+                    <th style={styles.th}>Points</th>
+                    <th style={styles.th}>Total</th>
                     <th style={styles.th}>Actions</th>
                   </tr>
                 </thead>
@@ -212,13 +285,18 @@ export default function EndOfDayReport() {
                   {orders.map((order) => (
                     <tr key={order.id} style={styles.tableRow}>
                       <td style={styles.td}>
+                        <strong>#{order.order_number || order.id.slice(0, 8)}</strong>
+                      </td>
+                      <td style={styles.td}>
                         {new Date(order.created_at).toLocaleString()}
                       </td>
                       <td style={styles.td}>
-                        {order.customer_id?.slice(0, 8) || 'N/A'}
-                      </td>
-                      <td style={styles.td}>
-                        {order.customer_name || 'Walk-in'}
+                        <div style={styles.customerCell}>
+                          <div>{order.customer_name || 'Walk-in'}</div>
+                          <div style={styles.customerIdText}>
+                            {order.customer_id ? `ID: ${order.customer_id}` : ''}
+                          </div>
+                        </div>
                       </td>
                       <td style={styles.td}>
                         {order.order_mode || 'N/A'}
@@ -239,12 +317,20 @@ export default function EndOfDayReport() {
                         <strong>₱{parseFloat(order.total_amount || 0).toFixed(2)}</strong>
                       </td>
                       <td style={styles.td}>
-                        <button
-                          style={styles.printBtn}
-                          onClick={() => handlePrintReceipt(order)}
-                        >
-                          🖨️ Print
-                        </button>
+                        <div style={styles.actionButtons}>
+                          <button
+                            style={styles.previewBtn}
+                            onClick={() => handlePreviewReceipt(order)}
+                          >
+                            👁️
+                          </button>
+                          <button
+                            style={styles.printBtn}
+                            onClick={() => handlePrintReceipt(order)}
+                          >
+                            🖨️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -424,6 +510,29 @@ const styles = {
     padding: '6px 12px',
     backgroundColor: '#ffc107',
     color: '#0a0a0a',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '12px',
+    cursor: 'pointer',
+    fontWeight: '600',
+  },
+  customerCell: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  customerIdText: {
+    fontSize: '10px',
+    color: '#888',
+  },
+  actionButtons: {
+    display: 'flex',
+    gap: '4px',
+  },
+  previewBtn: {
+    padding: '6px 10px',
+    backgroundColor: '#2196f3',
+    color: '#fff',
     border: 'none',
     borderRadius: '4px',
     fontSize: '12px',

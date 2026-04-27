@@ -409,7 +409,7 @@ function CustomerOrderPage() {
           customer_address: isDelivery ? deliveryAddress : null,
           delivery_latitude: isDelivery ? deliveryLat : null,
           delivery_longitude: isDelivery ? deliveryLng : null,
-          status: 'pending',
+          status: 'order_in_queue',
           order_mode: isDelivery ? 'delivery' : 'takeout',
           payment_method: paymentMethod,
           subtotal,

@@ -11,7 +11,8 @@ export default function CashDrawer() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState([]);
-  const [activeModal, setActiveModal] = useState(null); // 'cash-in', 'cash-out', 'pay-bill', 'pay-expense', 'adjustment', null
+  const [activeModal, setActiveModal] = useState(null); // 'cash-in', 'cash-out', 'adjustment', null
+  const [cashOutType, setCashOutType] = useState(null); // 'general', 'pay-bill', 'pay-expense', null
   const [formData, setFormData] = useState({
     amount: '',
     description: '',
@@ -152,9 +153,19 @@ export default function CashDrawer() {
     setSubmitting(true);
 
     try {
+      // Determine the actual transaction type to save
+      let transactionType = activeModal;
+      if (activeModal === 'cash-out' && cashOutType) {
+        transactionType = cashOutType; // 'general', 'pay-bill', or 'pay-expense'
+        // Map 'general' to 'cash-out' for database
+        if (transactionType === 'general') {
+          transactionType = 'cash-out';
+        }
+      }
+
       const transactionData = {
         cashier_id: user.id,
-        transaction_type: activeModal,
+        transaction_type: transactionType,
         amount: parseFloat(formData.amount),
         description: formData.description || null,
         payee_name: formData.payeeName || null,
@@ -186,6 +197,7 @@ export default function CashDrawer() {
         billType: '',
       });
       setActiveModal(null);
+      setCashOutType(null);
       
       // Refresh transactions
       await fetchTransactions();
@@ -223,6 +235,7 @@ export default function CashDrawer() {
             <Link href="/cashier/pos" style={styles.navLink}>POS</Link>
             <Link href="/cashier/orders-queue" style={styles.navLink}>Order Queue</Link>
             <Link href="/cashier/eod-report" style={styles.navLink}>EOD Report</Link>
+            <Link href="/cashier/settings" style={styles.navLink}>Settings</Link>
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
           <button style={styles.logoutBtn} onClick={async () => {
@@ -255,29 +268,14 @@ export default function CashDrawer() {
 
             <button
               style={styles.actionBtn}
-              onClick={() => setActiveModal('cash-out')}
+              onClick={() => {
+                setActiveModal('cash-out');
+                setCashOutType(null); // Will show submenu
+              }}
             >
               <div style={styles.actionIcon}>💵</div>
               <div style={styles.actionTitle}>Cash Out</div>
-              <div style={styles.actionDesc}>Remove cash from drawer</div>
-            </button>
-
-            <button
-              style={styles.actionBtn}
-              onClick={() => setActiveModal('pay-bill')}
-            >
-              <div style={styles.actionIcon}>🧾</div>
-              <div style={styles.actionTitle}>Pay Bills</div>
-              <div style={styles.actionDesc}>Pay outstanding bills</div>
-            </button>
-
-            <button
-              style={styles.actionBtn}
-              onClick={() => setActiveModal('pay-expense')}
-            >
-              <div style={styles.actionIcon}>💳</div>
-              <div style={styles.actionTitle}>Pay Expenses</div>
-              <div style={styles.actionDesc}>Record ad-hoc expenses</div>
+              <div style={styles.actionDesc}>Remove cash / Pay bills / Pay expenses</div>
             </button>
 
             <button
@@ -334,17 +332,64 @@ export default function CashDrawer() {
             )}
           </div>
 
-          {/* Modal for Cash In/Out/Pay Bill/Pay Expense/Adjustment */}
+          {/* Modal for Cash In/Out/Adjustment */}
           {activeModal && (
-            <div style={styles.modal} onClick={() => setActiveModal(null)}>
+            <div style={styles.modal} onClick={() => { setActiveModal(null); setCashOutType(null); }}>
               <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-                <h3 style={styles.modalTitle}>
-                  {activeModal === 'cash-in' && '💰 Cash In'}
-                  {activeModal === 'cash-out' && '💵 Cash Out'}
-                  {activeModal === 'pay-bill' && '🧾 Pay Bills'}
-                  {activeModal === 'pay-expense' && '💳 Pay Expenses'}
-                  {activeModal === 'adjustment' && '⚖️ Adjustment'}
-                </h3>
+                {/* Cash Out Submenu */}
+                {activeModal === 'cash-out' && !cashOutType && (
+                  <>
+                    <h3 style={styles.modalTitle}>💵 Cash Out Options</h3>
+                    <p style={styles.modalSubtext}>Select the type of cash out transaction:</p>
+                    <div style={styles.submenuGrid}>
+                      <button
+                        type="button"
+                        style={styles.submenuBtn}
+                        onClick={() => setCashOutType('general')}
+                      >
+                        <div style={styles.actionIcon}>💵</div>
+                        <div>General Cash Out</div>
+                        <div style={styles.submenuDesc}>Remove cash from drawer</div>
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.submenuBtn}
+                        onClick={() => setCashOutType('pay-bill')}
+                      >
+                        <div style={styles.actionIcon}>🧾</div>
+                        <div>Pay Bills</div>
+                        <div style={styles.submenuDesc}>Pay outstanding bills</div>
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.submenuBtn}
+                        onClick={() => setCashOutType('pay-expense')}
+                      >
+                        <div style={styles.actionIcon}>💳</div>
+                        <div>Pay Expenses</div>
+                        <div style={styles.submenuDesc}>Record ad-hoc expenses</div>
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      style={styles.modalCancelBtn}
+                      onClick={() => { setActiveModal(null); setCashOutType(null); }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+
+                {/* Main Transaction Forms */}
+                {(activeModal !== 'cash-out' || cashOutType) && (
+                  <>
+                    <h3 style={styles.modalTitle}>
+                      {activeModal === 'cash-in' && '💰 Cash In'}
+                      {activeModal === 'cash-out' && cashOutType === 'general' && '💵 Cash Out'}
+                      {activeModal === 'cash-out' && cashOutType === 'pay-bill' && '🧾 Pay Bills'}
+                      {activeModal === 'cash-out' && cashOutType === 'pay-expense' && '💳 Pay Expenses'}
+                      {activeModal === 'adjustment' && '⚖️ Adjustment'}
+                    </h3>
 
                 <form onSubmit={handleSubmit}>
                   <div style={styles.formGroup}>
@@ -373,7 +418,7 @@ export default function CashDrawer() {
                     </div>
                   )}
 
-                  {activeModal === 'cash-out' && (
+                  {(activeModal === 'cash-out' && cashOutType === 'general') && (
                     <>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Description</label>
@@ -388,7 +433,7 @@ export default function CashDrawer() {
                     </>
                   )}
 
-                  {activeModal === 'pay-bill' && (
+                  {(activeModal === 'cash-out' && cashOutType === 'pay-bill') && (
                     <>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Bill Type *</label>
@@ -430,7 +475,7 @@ export default function CashDrawer() {
                     </>
                   )}
 
-                  {activeModal === 'pay-expense' && (
+                  {(activeModal === 'cash-out' && cashOutType === 'pay-expense') && (
                     <>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Payee Name *</label>
@@ -525,7 +570,8 @@ export default function CashDrawer() {
                     <button
                       type="button"
                       style={styles.cancelBtn}
-                      onClick={() => setActiveModal(null)}
+                      onClick={() => { setActiveModal(null); setCashOutType(null); }}
+                      disabled={submitting}
                     >
                       Cancel
                     </button>
@@ -538,6 +584,8 @@ export default function CashDrawer() {
                     </button>
                   </div>
                 </form>
+                </>
+                )}
               </div>
             </div>
           )}
@@ -790,5 +838,36 @@ const styles = {
     fontSize: '14px',
     fontWeight: '700',
     cursor: 'pointer',
+  },
+  modalSubtext: {
+    fontSize: '14px',
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: '24px',
+  },
+  submenuGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '16px',
+    marginBottom: '24px',
+  },
+  submenuBtn: {
+    backgroundColor: '#2a2a2a',
+    border: '1px solid #ffc107',
+    borderRadius: '12px',
+    padding: '20px',
+    textAlign: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    color: '#fff',
+    fontFamily: "'Poppins', sans-serif",
+    fontSize: '14px',
+    fontWeight: '600',
+  },
+  submenuDesc: {
+    fontSize: '11px',
+    color: '#888',
+    marginTop: '8px',
+    fontWeight: 'normal',
   },
 };
