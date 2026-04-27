@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../utils/supabaseClient';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function OrderTracking() {
   const router = useRouter();
@@ -174,12 +175,18 @@ export default function OrderTracking() {
     return statusMap[formatted] || formatted;
   };
 
-  const getProgressSteps = (status) => {
+  const getProgressSteps = (status, orderMode) => {
     const normalizedStatus = status?.toLowerCase();
+    const isPickup = orderMode === 'pick-up';
+    
     const steps = [
       { label: 'Order in Queue', status: 'order_in_queue', icon: '🕐' },
       { label: 'Order in Process', status: 'order_in_process', icon: '👨‍🍳' },
-      { label: 'Out for Delivery', status: 'out_for_delivery', icon: '🛵' },
+      { 
+        label: isPickup ? 'Ready for Pick-up' : 'Out for Delivery', 
+        status: 'out_for_delivery', 
+        icon: isPickup ? '✅' : '🛵' 
+      },
       { label: 'Order Delivered', status: 'order_delivered', icon: '✓' },
     ];
 
@@ -231,7 +238,10 @@ export default function OrderTracking() {
             ← Back
           </button>
           <h1 style={styles.logo}>📦 Order Tracking</h1>
-          <div style={{ width: '80px' }}></div>
+          <div style={styles.headerActions}>
+            <NotificationBell user={user} />
+            <div style={{ width: '8px' }}></div>
+          </div>
         </header>
 
         <main style={styles.main}>
@@ -258,10 +268,11 @@ export default function OrderTracking() {
           {!loadingOrders && orders.length > 0 && (
             <div style={styles.ordersList}>
               {orders.map(order => {
-                const progressSteps = getProgressSteps(order.status);
+                const progressSteps = getProgressSteps(order.status, order.order_mode);
                 const isExpanded = expandedOrderId === order.id;
                 const orderNumber = order.order_number || order.id?.slice(0, 8);
                 const customerNotes = extractSpecialRequest(order.special_request);
+                const isPickup = order.order_mode === 'pick-up';
                 
                 return (
                   <div key={order.id} style={styles.orderCard}>
@@ -275,6 +286,9 @@ export default function OrderTracking() {
                           }}>
                             {formatStatus(order.status)}
                           </span>
+                          {isPickup && (
+                            <span style={styles.pickupBadge}>Pick-up</span>
+                          )}
                         </div>
                         <p style={styles.orderDate}>
                           {order.created_at ? new Date(order.created_at).toLocaleString() : ''}
@@ -321,9 +335,14 @@ export default function OrderTracking() {
                     {/* Order Info Summary */}
                     <div style={styles.orderInfoGrid}>
                       <div style={styles.infoItem}>
-                        <span style={styles.infoLabel}>Delivery Address:</span>
+                        <span style={styles.infoLabel}>
+                          {isPickup ? 'Order Type:' : 'Delivery Address:'}
+                        </span>
                         <span style={styles.infoValue}>
-                          {order.customer_address || order.delivery_address || 'Not specified'}
+                          {isPickup 
+                            ? 'Pick-up' 
+                            : (order.customer_address || order.delivery_address || 'Not specified')
+                          }
                         </span>
                       </div>
                       {customerNotes && (
@@ -418,6 +437,11 @@ const styles = {
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
   },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
   main: {
     padding: '32px',
     maxWidth: '900px',
@@ -500,6 +524,16 @@ const styles = {
     fontSize: '11px',
     fontWeight: '600',
     color: '#0a0a0a',
+    textTransform: 'uppercase',
+  },
+  pickupBadge: {
+    display: 'inline-block',
+    padding: '4px 12px',
+    borderRadius: '12px',
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#0a0a0a',
+    backgroundColor: '#4caf50',
     textTransform: 'uppercase',
   },
   horizontalTimeline: {
