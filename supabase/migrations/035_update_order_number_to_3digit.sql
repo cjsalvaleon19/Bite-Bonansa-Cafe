@@ -76,7 +76,7 @@ CREATE TRIGGER trg_set_order_number
   FOR EACH ROW
   EXECUTE FUNCTION set_order_number();
 
--- Update column size if needed
+-- Update existing order numbers and column size
 DO $$
 BEGIN
   -- Check if order_number column exists and update size
@@ -84,8 +84,20 @@ BEGIN
     SELECT 1 FROM information_schema.columns 
     WHERE table_name = 'orders' AND column_name = 'order_number'
   ) THEN
-    -- Alter column to ensure it can store 3-digit values
-    ALTER TABLE orders ALTER COLUMN order_number TYPE VARCHAR(3);
+    -- First, update any existing 4-digit order numbers to 3-digit by taking the last 3 digits
+    -- This preserves the numeric sequence while fitting the new format
+    UPDATE orders 
+    SET order_number = RIGHT(order_number, 3)
+    WHERE LENGTH(order_number) > 3;
+    
+    RAISE NOTICE 'Converted existing order numbers to 3-digit format';
+    
+    -- Now alter column to ensure it can store 3-digit values
+    -- Use USING clause to handle any edge cases
+    ALTER TABLE orders 
+    ALTER COLUMN order_number TYPE VARCHAR(3)
+    USING RIGHT(order_number, 3);
+    
     RAISE NOTICE 'Updated order_number column to VARCHAR(3)';
   END IF;
 END $$;
