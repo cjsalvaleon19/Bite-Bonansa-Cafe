@@ -368,14 +368,27 @@ export default function CashierPOS() {
 
       // Insert order_items
       if (order && items.length > 0) {
-        const orderItems = items.map(item => ({
-          order_id: order.id,
-          menu_item_id: item.id,
-          name: item.name,
-          price: item.finalPrice || item.price || item.base_price || 0,
-          quantity: item.quantity || 1,
-          subtotal: (item.finalPrice || item.price || item.base_price || 0) * (item.quantity || 1),
-        }));
+        const orderItems = items.map(item => {
+          // Format item name with variant details if present
+          let displayName = item.name;
+          if (item.variantDetails) {
+            const variantParts = Object.entries(item.variantDetails)
+              .map(([type, value]) => value)
+              .filter(Boolean);
+            if (variantParts.length > 0) {
+              displayName = `${item.name} (${variantParts.join(' | ')})`;
+            }
+          }
+
+          return {
+            order_id: order.id,
+            menu_item_id: item.id,
+            name: displayName,
+            price: item.finalPrice || item.price || item.base_price || 0,
+            quantity: item.quantity || 1,
+            subtotal: (item.finalPrice || item.price || item.base_price || 0) * (item.quantity || 1),
+          };
+        });
 
         const { error: itemsError } = await supabase
           .from('order_items')
@@ -786,18 +799,36 @@ export default function CashierPOS() {
                 <p style={styles.emptyText}>No items added</p>
               ) : (
                 <ul style={styles.cartList}>
-                  {items.map((item) => (
-                    <li key={item.id} style={styles.cartItem}>
-                      <span style={styles.cartItemName}>{item.name}</span>
-                      <div style={styles.cartControls}>
-                        <button style={styles.qtyBtn} onClick={() => updateQuantity(item.id, item.quantity - 1)}>−</button>
-                        <span style={styles.qtyValue}>{item.quantity}</span>
-                        <button style={styles.qtyBtn} onClick={() => updateQuantity(item.id, item.quantity + 1)}>+</button>
-                        <span style={styles.cartItemPrice}>₱{(item.price * item.quantity).toFixed(2)}</span>
-                        <button style={styles.removeBtn} onClick={() => removeItem(item.id)}>✕</button>
-                      </div>
-                    </li>
-                  ))}
+                  {items.map((item) => {
+                    // Format item name with variant details if present
+                    let displayName = item.name;
+                    if (item.variantDetails) {
+                      const variantParts = Object.entries(item.variantDetails)
+                        .map(([type, value]) => value)
+                        .filter(Boolean);
+                      if (variantParts.length > 0) {
+                        displayName = `${item.name} (${variantParts.join(' | ')})`;
+                      }
+                    }
+                    
+                    // Calculate price correctly using finalPrice if available
+                    const itemPrice = item.finalPrice || item.price || item.base_price || 0;
+                    const totalItemPrice = itemPrice * item.quantity;
+                    const itemKey = item.cartKey || item.id;
+
+                    return (
+                      <li key={itemKey} style={styles.cartItem}>
+                        <span style={styles.cartItemName}>{displayName}</span>
+                        <div style={styles.cartControls}>
+                          <button style={styles.qtyBtn} onClick={() => updateQuantity(itemKey, item.quantity - 1)}>−</button>
+                          <span style={styles.qtyValue}>{item.quantity}</span>
+                          <button style={styles.qtyBtn} onClick={() => updateQuantity(itemKey, item.quantity + 1)}>+</button>
+                          <span style={styles.cartItemPrice}>₱{totalItemPrice.toFixed(2)}</span>
+                          <button style={styles.removeBtn} onClick={() => removeItem(itemKey)}>✕</button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

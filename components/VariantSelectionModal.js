@@ -87,8 +87,18 @@ export default function VariantSelectionModal({ item, onConfirm, onCancel }) {
         }
       });
 
+      // Create a unique cart key based on item ID and selected variants
+      const variantKeys = Object.entries(selectedVariants)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([typeId, options]) => 
+          options.map(opt => opt.optionId).sort().join(',')
+        )
+        .join('|');
+      const cartKey = `${item.id}|${variantKeys}`;
+
       onConfirm({
         ...item,
+        cartKey,
         selectedVariants,
         variantDetails,
         finalPrice: calculatePrice(),
