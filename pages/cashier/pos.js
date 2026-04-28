@@ -87,11 +87,12 @@ export default function CashierPOS() {
               is_required,
               allow_multiple,
               display_order,
-              options:menu_variant_options(
+              options:menu_item_variant_options(
                 id,
                 option_name,
                 price_modifier,
-                display_order
+                display_order,
+                available
               )
             `)
             .eq('menu_item_id', item.id)
@@ -602,20 +603,33 @@ export default function CashierPOS() {
                   <span style={styles.menuItemCategory}>{item.category}</span>
                   <span style={styles.menuItemPrice}>₱{Number(item.price || item.base_price || 0).toFixed(2)}</span>
                   
+                  {/* Badge to indicate item has variants */}
+                  {item.has_variants && item.variant_types && item.variant_types.length > 0 && (
+                    <span style={styles.variantBadge}>
+                      ⚙️ {item.variant_types.length} variant{item.variant_types.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  
+                  {/* Detailed variant type summary */}
                   {item.has_variants && item.variant_types && item.variant_types.length > 0 && (
                     <div style={styles.variantInfo}>
                       {item.variant_types.map((vt, idx) => {
                         if (!vt.id) {
                           console.warn('[POS] Variant type missing ID:', vt);
                         }
-                        const optionNames = vt.options ? vt.options.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name) : [];
-                        const hasMoreOptions = vt.options && vt.options.length > MAX_DISPLAYED_OPTIONS;
+                        // Filter available options once for reuse
+                        const availableOptions = vt.options ? vt.options.filter(opt => opt.available !== false) : [];
+                        const optionNames = availableOptions.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name);
+                        const totalOptions = availableOptions.length;
+                        const hasMoreOptions = totalOptions > MAX_DISPLAYED_OPTIONS;
                         return (
                           <div key={vt.id || idx} style={styles.variantType}>
-                            <span style={styles.variantTypeName}>{vt.variant_type_name}:</span>
+                            <span style={styles.variantTypeName}>
+                              {vt.variant_type_name}{vt.is_required ? '*' : ''}:
+                            </span>
                             <span style={styles.variantOptions}>
                               {optionNames.join(', ')}
-                              {hasMoreOptions && ` +${vt.options.length - MAX_DISPLAYED_OPTIONS} more`}
+                              {hasMoreOptions && ` +${totalOptions - MAX_DISPLAYED_OPTIONS} more`}
                             </span>
                           </div>
                         );
