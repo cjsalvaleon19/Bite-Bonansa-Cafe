@@ -50,7 +50,7 @@ import { supabase } from '@/lib/supabase/client'
 import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
+import type { MenuItem, MenuItemAddon, MenuItemVariety, MenuItemSize, PaymentMethod } from '@/lib/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -199,8 +199,8 @@ function CustomerOrderPage() {
             }
 
             // Transform variant types into varieties, sizes, and addons arrays
-            const varieties: string[] = []
-            const sizes: any[] = []
+            const varieties: MenuItemVariety[] = []
+            const sizes: MenuItemSize[] = []
             const addons: MenuItemAddon[] = []
 
             if (variantTypes) {
@@ -209,8 +209,11 @@ function CustomerOrderPage() {
                 const options = (variantType.options || []).filter((opt: any) => opt.available)
 
                 if (typeName === 'variety' || typeName === 'flavor') {
-                  // Add to varieties array
-                  varieties.push(...options.map((opt: any) => opt.option_name))
+                  // Add to varieties array - for varieties, price is base price (no modifier for flavor selection)
+                  varieties.push(...options.map((opt: any) => ({
+                    name: opt.option_name,
+                    price: item.base_price || item.price || 0,
+                  })))
                 } else if (typeName === 'size') {
                   // Add to sizes array with price
                   sizes.push(...options.map((opt: any) => ({
@@ -220,7 +223,6 @@ function CustomerOrderPage() {
                 } else if (typeName === 'add ons' || typeName === 'add-ons') {
                   // Add to addons array
                   addons.push(...options.map((opt: any) => ({
-                    id: opt.id,
                     name: opt.option_name,
                     price: opt.price_modifier || 0,
                   })))
@@ -684,16 +686,16 @@ function CustomerOrderPage() {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredItems.map((item) => {
-              const varieties = (item.varieties as unknown as string[]) ?? []
-              const sizes = (item.sizes as any[]) ?? []
-              const addons = (item.addons as any[]) ?? []
+              const varieties = item.varieties ?? []
+              const sizes = item.sizes ?? []
+              const addons = item.addons ?? []
               const hasVarieties = varieties.length > 0
               const hasSizes = sizes.length > 0
               const hasAddons = addons.length > 0
               const hasOptions = hasVarieties || hasSizes || hasAddons
 
               const minSizePrice = hasSizes
-                ? Math.min(...sizes.map((s: any) => s.price))
+                ? Math.min(...sizes.map((s) => s.price))
                 : null
               const priceLabel = minSizePrice !== null
                 ? `from ${formatCurrency(minSizePrice)}`
@@ -718,12 +720,12 @@ function CustomerOrderPage() {
                     )}
 
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {hasVarieties && varieties.slice(0, 3).map((v: string) => (
+                      {hasVarieties && varieties.slice(0, 3).map((v) => (
                         <span
-                          key={v}
+                          key={v.name}
                           className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
                         >
-                          {v}
+                          {v.name}
                         </span>
                       ))}
                       {hasVarieties && varieties.length > 3 && (
@@ -731,7 +733,7 @@ function CustomerOrderPage() {
                           +{varieties.length - 3} more
                         </span>
                       )}
-                      {hasSizes && sizes.map((s: any) => (
+                      {hasSizes && sizes.map((s) => (
                         <span
                           key={s.name}
                           className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
@@ -885,9 +887,9 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
 
   if (!item) return null
 
-  const varieties = (item.varieties as unknown as string[]) ?? []
-  const sizes = (item.sizes as any[]) ?? []
-  const addons = (item.addons as MenuItemAddon[]) ?? []
+  const varieties = item.varieties ?? []
+  const sizes = item.sizes ?? []
+  const addons = item.addons ?? []
 
   const basePrice = selectedSize?.price ?? item.price
   const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0)
@@ -918,10 +920,10 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
                 Variety <span className="text-destructive">*</span>
               </Label>
               <RadioGroup value={selectedVariety} onValueChange={setSelectedVariety} className="space-y-1">
-                {varieties.map((v: string) => (
-                  <div key={v} className="flex items-center gap-2">
-                    <RadioGroupItem value={v} id={`variety-${v}`} />
-                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">{v}</Label>
+                {varieties.map((v) => (
+                  <div key={v.name} className="flex items-center gap-2">
+                    <RadioGroupItem value={v.name} id={`variety-${v.name}`} />
+                    <Label htmlFor={`variety-${v.name}`} className="cursor-pointer font-normal">{v.name}</Label>
                   </div>
                 ))}
               </RadioGroup>
@@ -935,10 +937,10 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
               </Label>
               <RadioGroup
                 value={selectedSize?.name || ''}
-                onValueChange={(name) => setSelectedSize(sizes.find((x: any) => x.name === name) || null)}
+                onValueChange={(name) => setSelectedSize(sizes.find((x) => x.name === name) || null)}
                 className="space-y-1"
               >
-                {sizes.map((s: any) => {
+                {sizes.map((s) => {
                   // Disable excluded sizes when Hot variety is selected
                   const isDisabled = selectedVariety === 'Hot' && HOT_VARIETY_EXCLUDED_SIZES.has(s.name)
                   return (
@@ -973,7 +975,7 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
                 Add-ons <span className="text-muted-foreground font-normal">(optional)</span>
               </Label>
               <div className="space-y-1.5">
-                {addons.map((addon: MenuItemAddon) => (
+                {addons.map((addon) => (
                   <div key={addon.name} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Checkbox
