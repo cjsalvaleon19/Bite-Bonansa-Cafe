@@ -224,6 +224,26 @@ FROM menu_item_variant_types;
 
 ## Troubleshooting
 
+### Issue: Migration fails with "column is_sold_out does not exist"
+**Error Message**:
+```
+ERROR:  42703: column "is_sold_out" does not exist
+LINE 33:   is_sold_out,
+```
+
+**Solution**: 
+This error occurs if `is_sold_out` column wasn't added to `menu_items_base` table. The fix has been applied in the latest version of migrations 022 and 023.
+
+If you already ran the migration and got this error:
+1. Manually add the column: 
+   ```sql
+   ALTER TABLE menu_items_base ADD COLUMN IF NOT EXISTS is_sold_out BOOLEAN DEFAULT FALSE;
+   CREATE INDEX IF NOT EXISTS idx_menu_items_base_sold_out ON menu_items_base(is_sold_out);
+   ```
+2. Re-run migration 023: `supabase/migrations/023_fix_cashier_interface_issues.sql`
+
+Alternatively, pull the latest version of both migration files which handle this correctly.
+
 ### Issue: Migration fails with "menu_items is not a view"
 **Error Message**:
 ```

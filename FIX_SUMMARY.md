@@ -1,9 +1,13 @@
 # Fix Summary - Cashier Interface Issues
 
 ## Date: 2026-04-27
-## Updated: 2026-04-28 (Migration conflict fix)
+## Updated: 2026-04-28 (Migration conflicts fixed)
 
-> **Important Update (2026-04-28)**: The migration file has been updated to handle cases where `menu_items` exists as a TABLE instead of a VIEW. If you encountered the error `"menu_items" is not a view`, pull the latest version of the migration file.
+> **Important Updates (2026-04-28)**: 
+> 1. The migration files have been updated to handle cases where `menu_items` exists as a TABLE instead of a VIEW.
+> 2. Fixed `is_sold_out` column being added to wrong table - now correctly adds to `menu_items_base`.
+> 
+> If you encountered errors like `"menu_items" is not a view` or `column "is_sold_out" does not exist`, pull the latest migration files.
 
 ## Problem Statement
 The cashier interface had multiple critical issues:
