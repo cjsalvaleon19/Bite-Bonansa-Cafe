@@ -832,13 +832,15 @@ export default function CashierPOS() {
 
                     return (
                       <li key={itemKey} style={styles.cartItem}>
-                        <span style={styles.cartItemName}>{displayName}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                          <span style={styles.cartItemName}>{displayName}</span>
+                          <button style={styles.removeBtn} onClick={() => removeItem(itemKey)}>✕</button>
+                        </div>
                         <div style={styles.cartControls}>
                           <button style={styles.qtyBtn} onClick={() => updateQuantity(itemKey, item.quantity - 1)}>−</button>
                           <span style={styles.qtyValue}>{item.quantity}</span>
                           <button style={styles.qtyBtn} onClick={() => updateQuantity(itemKey, item.quantity + 1)}>+</button>
                           <span style={styles.cartItemPrice}>₱{totalItemPrice.toFixed(2)}</span>
-                          <button style={styles.removeBtn} onClick={() => removeItem(itemKey)}>✕</button>
                         </div>
                       </li>
                     );
