@@ -43,11 +43,11 @@ END $$;
 DO $$
 DECLARE
   column_type TEXT;
-  is_nullable TEXT;
+  column_nullable TEXT;
   has_reference BOOLEAN;
 BEGIN
   SELECT data_type, is_nullable
-  INTO column_type, is_nullable
+  INTO column_type, column_nullable
   FROM information_schema.columns 
   WHERE table_name = 'orders' AND column_name = 'cashier_id';
   
@@ -60,11 +60,11 @@ BEGIN
       AND tc.constraint_type = 'FOREIGN KEY'
   ) INTO has_reference;
   
-  IF column_type = 'uuid' AND is_nullable = 'YES' AND has_reference THEN
+  IF column_type = 'uuid' AND column_nullable = 'YES' AND has_reference THEN
     RAISE NOTICE '✓ Test 3 PASSED: cashier_id is UUID, nullable, and has foreign key reference';
   ELSE
     RAISE EXCEPTION '✗ Test 3 FAILED: cashier_id - type: %, nullable: %, has_fk: %', 
-      column_type, is_nullable, has_reference;
+      column_type, column_nullable, has_reference;
   END IF;
 END $$;
 
@@ -72,11 +72,11 @@ END $$;
 DO $$
 DECLARE
   column_type TEXT;
-  is_nullable TEXT;
+  column_nullable TEXT;
   has_reference BOOLEAN;
 BEGIN
   SELECT data_type, is_nullable
-  INTO column_type, is_nullable
+  INTO column_type, column_nullable
   FROM information_schema.columns 
   WHERE table_name = 'orders' AND column_name = 'rider_id';
   
@@ -89,11 +89,11 @@ BEGIN
       AND tc.constraint_type = 'FOREIGN KEY'
   ) INTO has_reference;
   
-  IF column_type = 'uuid' AND is_nullable = 'YES' AND has_reference THEN
+  IF column_type = 'uuid' AND column_nullable = 'YES' AND has_reference THEN
     RAISE NOTICE '✓ Test 4 PASSED: rider_id is UUID, nullable, and has foreign key reference';
   ELSE
     RAISE EXCEPTION '✗ Test 4 FAILED: rider_id - type: %, nullable: %, has_fk: %', 
-      column_type, is_nullable, has_reference;
+      column_type, column_nullable, has_reference;
   END IF;
 END $$;
 
