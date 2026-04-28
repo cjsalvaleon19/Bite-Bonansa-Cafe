@@ -1,6 +1,9 @@
 # Fix Summary - Cashier Interface Issues
 
 ## Date: 2026-04-27
+## Updated: 2026-04-28 (Migration conflict fix)
+
+> **Important Update (2026-04-28)**: The migration file has been updated to handle cases where `menu_items` exists as a TABLE instead of a VIEW. If you encountered the error `"menu_items" is not a view`, pull the latest version of the migration file.
 
 ## Problem Statement
 The cashier interface had multiple critical issues:

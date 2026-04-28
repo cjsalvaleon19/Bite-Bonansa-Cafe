@@ -224,6 +224,22 @@ FROM menu_item_variant_types;
 
 ## Troubleshooting
 
+### Issue: Migration fails with "menu_items is not a view"
+**Error Message**:
+```
+ERROR:  42809: "menu_items" is not a view
+HINT:  Use DROP TABLE to remove a table.
+```
+
+**Solution**: 
+This error occurs if `menu_items` exists as a TABLE from a previous migration. The fix has been applied in the latest version of migration 023, which now uses `DROP TABLE IF EXISTS menu_items CASCADE;` before creating the view. 
+
+If you already ran the migration and got this error:
+1. Manually drop the table: `DROP TABLE IF EXISTS menu_items CASCADE;`
+2. Re-run the migration: `supabase/migrations/023_fix_cashier_interface_issues.sql`
+
+Alternatively, pull the latest version of the migration file which handles both cases.
+
 ### Issue: Menu items still not showing
 **Solution**: 
 1. Check if migration ran successfully
