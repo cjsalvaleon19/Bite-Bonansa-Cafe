@@ -31,13 +31,14 @@ BEGIN
   
   -- Find the maximum order number for today
   -- Extract numeric part from order_number where created_at is today
+  -- Default to -1 so first order of the day becomes 0 (formatted as '000')
   SELECT COALESCE(MAX(CAST(order_number AS INTEGER)), -1)
   INTO max_order_num
   FROM orders
   WHERE DATE(created_at) = today_date
     AND order_number ~ '^\d{3}$';  -- Only consider valid 3-digit numbers
   
-  -- Calculate next number (start from 000)
+  -- Calculate next number (first order will be 0, formatted as '000')
   next_num := max_order_num + 1;
   
   -- If we've exceeded 999, reset to 0
