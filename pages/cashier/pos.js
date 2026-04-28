@@ -6,6 +6,8 @@ import { supabase } from '../../utils/supabaseClient';
 import useCartStore from '../../store/useCartStore';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
+import OpenStreetMapPicker from '../../components/OpenStreetMapPicker';
+import { calculateDeliveryFee, getDistanceBetweenCoordinates, STORE_LOCATION, formatDistance } from '../../utils/deliveryCalculator';
 
 const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
@@ -41,6 +43,12 @@ export default function CashierPOS() {
   const [pointsToUse, setPointsToUse] = useState(0);
   const [customerPointsBalance, setCustomerPointsBalance] = useState(0);
   const [deliveryFee, setDeliveryFee] = useState(0);
+  const [deliveryCoordinates, setDeliveryCoordinates] = useState({
+    latitude: null,
+    longitude: null,
+  });
+  const [deliveryDistance, setDeliveryDistance] = useState(null);
+  const [addressSearchQuery, setAddressSearchQuery] = useState('');
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [combinedPayment, setCombinedPayment] = useState(false); // For points + cash/gcash
@@ -53,12 +61,28 @@ export default function CashierPOS() {
   }, [authLoading]);
 
   useEffect(() => {
-    if (orderMode === 'delivery') {
+    if (orderMode === 'delivery' && deliveryCoordinates.latitude && deliveryCoordinates.longitude) {
+      // Calculate distance from store to delivery location
+      const distance = getDistanceBetweenCoordinates(
+        STORE_LOCATION.latitude,
+        STORE_LOCATION.longitude,
+        deliveryCoordinates.latitude,
+        deliveryCoordinates.longitude
+      );
+      setDeliveryDistance(distance);
+      
+      // Calculate delivery fee based on distance
+      const fee = calculateDeliveryFee(distance);
+      setDeliveryFee(fee);
+    } else if (orderMode === 'delivery') {
+      // If delivery mode but no coordinates yet, set default fee
       setDeliveryFee(DELIVERY_FEE_DEFAULT);
+      setDeliveryDistance(null);
     } else {
       setDeliveryFee(0);
+      setDeliveryDistance(null);
     }
-  }, [orderMode]);
+  }, [orderMode, deliveryCoordinates]);
 
   const fetchMenu = useCallback(async () => {
     if (!supabase) return;
@@ -251,6 +275,17 @@ export default function CashierPOS() {
     setCustomerSearchResults([]);
   };
 
+  const handleLocationChange = (lat, lng, address) => {
+    setDeliveryCoordinates({
+      latitude: lat,
+      longitude: lng,
+    });
+    setCustomerInfo({
+      ...customerInfo,
+      address: address || customerInfo.address,
+    });
+  };
+
   const handleCustomerIdChange = (value) => {
     setCustomerInfo({ ...customerInfo, customerId: value });
     if (value && value.length >= 5) {
@@ -350,6 +385,8 @@ export default function CashierPOS() {
         contact_number: customerInfo.contactNumber || null,
         customer_address: orderMode === 'delivery' ? customerInfo.address : null,
         delivery_address: orderMode === 'delivery' ? customerInfo.address : null,
+        delivery_latitude: orderMode === 'delivery' ? deliveryCoordinates.latitude : null,
+        delivery_longitude: orderMode === 'delivery' ? deliveryCoordinates.longitude : null,
         subtotal: subtotal,
         vat_amount: vatAmount,
         delivery_fee: deliveryFee,
@@ -435,6 +472,9 @@ export default function CashierPOS() {
       setOrderMode('dine-in');
       setPaymentMethod('cash');
       setCombinedPayment(false);
+      setDeliveryCoordinates({ latitude: null, longitude: null });
+      setDeliveryDistance(null);
+      setAddressSearchQuery('');
 
       setOrderStatus('success');
       setTimeout(() => setOrderStatus(null), 3000);
@@ -536,6 +576,12 @@ export default function CashierPOS() {
     <>
       <Head>
         <title>POS - Bite Bonansa Cafe</title>
+        <link 
+          rel="stylesheet" 
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossOrigin=""
+        />
       </Head>
       <div style={styles.page}>
         <header style={styles.header}>
@@ -731,16 +777,38 @@ export default function CashierPOS() {
             </div>
 
             {orderMode === 'delivery' && (
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Delivery Address *</label>
-                <textarea
-                  style={{ ...styles.input, minHeight: '60px' }}
-                  placeholder="Enter delivery address"
-                  value={customerInfo.address}
-                  onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
-                  required
-                />
-              </div>
+              <>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Delivery Address *</label>
+                  <OpenStreetMapPicker
+                    initialLat={deliveryCoordinates.latitude || STORE_LOCATION.latitude}
+                    initialLng={deliveryCoordinates.longitude || STORE_LOCATION.longitude}
+                    onLocationChange={handleLocationChange}
+                    searchQuery={addressSearchQuery}
+                    onSearchQueryChange={setAddressSearchQuery}
+                  />
+                  {deliveryCoordinates.latitude && deliveryCoordinates.longitude && (
+                    <div style={{ 
+                      marginTop: '8px', 
+                      padding: '8px', 
+                      backgroundColor: 'hsl(0 0% 15%)', 
+                      borderRadius: '5px',
+                      fontSize: '12px',
+                      color: 'hsl(45 80% 70%)'
+                    }}>
+                      <div>📍 Coordinates: {deliveryCoordinates.latitude.toFixed(6)}, {deliveryCoordinates.longitude.toFixed(6)}</div>
+                      {deliveryDistance && (
+                        <div style={{ marginTop: '4px' }}>
+                          📏 Distance from store: {formatDistance(deliveryDistance)}
+                        </div>
+                      )}
+                      <div style={{ marginTop: '4px', fontWeight: 'bold', color: 'hsl(45 100% 51%)' }}>
+                        💵 Delivery Fee: ₱{deliveryFee.toFixed(2)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
 
             <div style={styles.formGroup}>
