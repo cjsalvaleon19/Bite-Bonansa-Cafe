@@ -98,7 +98,16 @@ LIMIT 5;
 
 
 -- Test 5: Check table structure
-\d orders
+-- Note: \d is a psql command and won't work in Supabase SQL Editor
+-- Use this SQL query instead:
+SELECT 
+  column_name,
+  data_type,
+  is_nullable,
+  column_default
+FROM information_schema.columns
+WHERE table_name = 'orders'
+ORDER BY ordinal_position;
 
 -- This will show all columns including the new 'items' column
 
