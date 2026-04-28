@@ -2,12 +2,18 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
 import useCartStore from '../../store/useCartStore';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
-import OpenStreetMapPicker from '../../components/OpenStreetMapPicker';
 import { STORE_LOCATION, calculateDeliveryFee, getDistanceBetweenCoordinates } from '../../utils/deliveryCalculator';
+
+// Dynamically import OpenStreetMapPicker to avoid SSR issues with Leaflet
+const OpenStreetMapPicker = dynamic(
+  () => import('../../components/OpenStreetMapPicker'),
+  { ssr: false }
+);
 
 const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
@@ -981,14 +987,15 @@ export default function CashierPOS() {
                 </button>
               </div>
               <OpenStreetMapPicker
-                onLocationSelect={(lat, lng, address) => {
+                initialLat={deliveryCoordinates?.lat}
+                initialLng={deliveryCoordinates?.lng}
+                onLocationChange={(lat, lng, address) => {
                   setDeliveryCoordinates({ lat, lng });
                   if (address) {
                     setCustomerInfo({ ...customerInfo, address });
                   }
                   setShowMapPicker(false);
                 }}
-                initialPosition={deliveryCoordinates}
               />
             </div>
           </div>
