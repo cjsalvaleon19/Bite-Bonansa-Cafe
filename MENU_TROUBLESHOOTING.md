@@ -4,6 +4,36 @@
 
 Menu items are not showing up in the customer order page despite the migrations defining 85 menu items.
 
+## Quick Diagnosis
+
+### Step 1: Run the Diagnostic Script
+
+1. Open your Supabase project dashboard
+2. Go to **SQL Editor**
+3. Open the file `DIAGNOSE_MENU_ISSUE.sql` from this repository
+4. Copy and paste the queries **one section at a time** into the SQL Editor
+5. Run each query and note the results
+
+### Step 2: Check Browser Console
+
+1. Open the customer order page (`/customer/order`)
+2. Open browser Developer Tools (F12)
+3. Go to the **Console** tab
+4. Look for messages starting with `[CustomerOrder]`
+
+**Expected Console Output:**
+```
+[CustomerOrder] Loading menu items...
+[CustomerOrder] Loaded 85 menu items
+[CustomerOrder] Loaded 8 categories
+[CustomerOrder] Menu items processed and set: 85
+```
+
+**If you see:**
+- `"Loaded 0 menu items"` → Database has no menu items (see Solution below)
+- Error messages → Check the error details
+- `"trying menu_items_base"` → menu_items view doesn't exist or is empty
+
 ## Root Cause
 
 The database migrations that seed menu items have not been executed on the Supabase database instance.
