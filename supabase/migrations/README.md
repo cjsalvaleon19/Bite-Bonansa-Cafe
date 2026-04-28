@@ -124,6 +124,13 @@ This directory contains SQL migration files for the Bite Bonanza Cafe database.
 - Fixes Waffles: Replace Plain/Nutella with Lotus Biscoff, Oreo, Mallows
 - Adds Size and Add Ons variants to all Frappe Series items
 
+### 032_standardize_addon_variant_names.sql
+**Purpose:** Standardize all variant type names
+- Renames "Add-ons" (with hyphen) to "Add Ons" (with space)
+- Merges duplicate variant types for same menu item
+- Preserves all add-on options during merge
+- Includes verification to ensure no "Add-ons" remain
+
 ---
 
 ## How to Run Migrations
@@ -316,8 +323,8 @@ DROP TABLE IF EXISTS menu_items_base CASCADE;
 
 ## Migration Details
 
-**Latest Migration:** `031_fix_remaining_menu_variant_errors.sql`
-**Total Migrations:** 19 (012-018, 020-031, migration 019 skipped)
+**Latest Migration:** `032_standardize_addon_variant_names.sql`
+**Total Migrations:** 20 (012-018, 020-032, migration 019 skipped)
 **Total Menu Items:** ~80 (after Chicken Meal deletion)
 **Safe to rerun:** Yes (most migrations are idempotent)
 **Dependencies:** Requires `users` table to exist for RLS policies

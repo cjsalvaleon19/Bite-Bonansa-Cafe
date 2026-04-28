@@ -832,13 +832,15 @@ export default function CashierPOS() {
 
                     return (
                       <li key={itemKey} style={styles.cartItem}>
-                        <span style={styles.cartItemName}>{displayName}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                          <span style={styles.cartItemName}>{displayName}</span>
+                          <button style={styles.removeBtn} onClick={() => removeItem(itemKey)}>✕</button>
+                        </div>
                         <div style={styles.cartControls}>
                           <button style={styles.qtyBtn} onClick={() => updateQuantity(itemKey, item.quantity - 1)}>−</button>
                           <span style={styles.qtyValue}>{item.quantity}</span>
                           <button style={styles.qtyBtn} onClick={() => updateQuantity(itemKey, item.quantity + 1)}>+</button>
                           <span style={styles.cartItemPrice}>₱{totalItemPrice.toFixed(2)}</span>
-                          <button style={styles.removeBtn} onClick={() => removeItem(itemKey)}>✕</button>
                         </div>
                       </li>
                     );
@@ -914,13 +916,13 @@ const styles = {
   nav: { display: 'flex', gap: '16px', flex: 1, justifyContent: 'center' },
   navLink: { color: '#ccc', textDecoration: 'none', fontSize: '14px', padding: '8px 12px', borderRadius: '6px' },
   logoutBtn: { padding: '8px 18px', backgroundColor: 'transparent', color: '#ffc107', border: '1px solid #ffc107', borderRadius: '6px', fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap' },
-  body: { display: 'grid', gridTemplateColumns: '1fr 400px', gap: '24px', padding: '32px', maxWidth: '1400px', margin: '0 auto' },
+  body: { display: 'grid', gridTemplateColumns: '320px 1fr', gap: '24px', padding: '32px', maxWidth: '1400px', margin: '0 auto' },
   menuPanel: { minWidth: 0 },
   orderPanel: { backgroundColor: '#1a1a1a', border: '1px solid #ffc107', borderRadius: '12px', padding: '24px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' },
   sectionTitle: { fontSize: '18px', fontFamily: "'Playfair Display', serif", color: '#ffc107', marginTop: 0, marginBottom: '16px' },
   loadingText: { color: '#aaa', fontSize: '14px' },
   emptyText: { color: '#aaa', fontSize: '14px' },
-  menuGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' },
+  menuGrid: { display: 'flex', flexDirection: 'column', gap: '12px' },
   menuCard: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '16px', backgroundColor: '#1a1a1a', border: '1px solid #ffc107', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.15s', color: '#fff', textAlign: 'left' },
   soldOutCard: { opacity: 0.5, backgroundColor: '#2a2a2a', border: '1px solid #666', cursor: 'not-allowed' },
   menuItemName: { fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '4px' },
@@ -933,9 +935,9 @@ const styles = {
   input: { width: '100%', padding: '8px 12px', border: '1px solid #444', borderRadius: '6px', backgroundColor: '#2a2a2a', color: '#fff', fontSize: '13px', boxSizing: 'border-box', outline: 'none' },
   cartSection: { marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #2a2a2a' },
   cartTitle: { fontSize: '14px', color: '#ffc107', margin: '0 0 12px 0' },
-  cartList: { listStyle: 'none', padding: 0, margin: '0 0 16px 0' },
-  cartItem: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #2a2a2a', gap: '8px' },
-  cartItemName: { fontSize: '13px', color: '#fff', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  cartList: { listStyle: 'none', padding: 0, margin: '0 0 16px 0', maxHeight: '300px', overflowY: 'auto' },
+  cartItem: { display: 'flex', flexDirection: 'column', padding: '12px 0', borderBottom: '1px solid #2a2a2a', gap: '8px' },
+  cartItemName: { fontSize: '13px', color: '#fff', flex: 1, minWidth: 0, wordWrap: 'break-word', whiteSpace: 'normal' },
   cartControls: { display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 },
   qtyBtn: { width: '24px', height: '24px', backgroundColor: '#2a2a2a', color: '#ffc107', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', lineHeight: 1, padding: 0 },
   qtyValue: { fontSize: '13px', color: '#fff', minWidth: '20px', textAlign: 'center' },
