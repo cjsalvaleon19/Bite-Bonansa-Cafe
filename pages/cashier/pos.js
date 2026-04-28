@@ -2,10 +2,18 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
 import useCartStore from '../../store/useCartStore';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
+import { getDistanceBetweenCoordinates, calculateDeliveryFee, STORE_LOCATION } from '../../utils/deliveryCalculator';
+
+// Dynamically import OpenStreetMapPicker with SSR disabled
+const OpenStreetMapPicker = dynamic(
+  () => import('../../components/OpenStreetMapPicker'),
+  { ssr: false }
+);
 
 const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
@@ -41,6 +49,7 @@ export default function CashierPOS() {
   const [pointsToUse, setPointsToUse] = useState(0);
   const [customerPointsBalance, setCustomerPointsBalance] = useState(0);
   const [deliveryFee, setDeliveryFee] = useState(0);
+  const [deliveryCoordinates, setDeliveryCoordinates] = useState({ lat: null, lng: null });
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [combinedPayment, setCombinedPayment] = useState(false); // For points + cash/gcash
@@ -54,11 +63,33 @@ export default function CashierPOS() {
 
   useEffect(() => {
     if (orderMode === 'delivery') {
-      setDeliveryFee(DELIVERY_FEE_DEFAULT);
+      // Only use default if coordinates are not set
+      if (!deliveryCoordinates.lat || !deliveryCoordinates.lng) {
+        setDeliveryFee(DELIVERY_FEE_DEFAULT);
+      }
     } else {
       setDeliveryFee(0);
+      setDeliveryCoordinates({ lat: null, lng: null });
     }
   }, [orderMode]);
+
+  // Calculate delivery fee when coordinates change
+  useEffect(() => {
+    if (orderMode === 'delivery' && deliveryCoordinates.lat && deliveryCoordinates.lng) {
+      const distanceInMeters = getDistanceBetweenCoordinates(
+        STORE_LOCATION.latitude,
+        STORE_LOCATION.longitude,
+        deliveryCoordinates.lat,
+        deliveryCoordinates.lng
+      );
+      const calculatedFee = calculateDeliveryFee(distanceInMeters);
+      setDeliveryFee(calculatedFee);
+    }
+  }, [deliveryCoordinates, orderMode]);
+
+  const handleLocationChange = (lat, lng) => {
+    setDeliveryCoordinates({ lat, lng });
+  };
 
   const fetchMenu = useCallback(async () => {
     if (!supabase) return;
@@ -350,6 +381,8 @@ export default function CashierPOS() {
         contact_number: customerInfo.contactNumber || null,
         customer_address: orderMode === 'delivery' ? customerInfo.address : null,
         delivery_address: orderMode === 'delivery' ? customerInfo.address : null,
+        delivery_latitude: orderMode === 'delivery' ? deliveryCoordinates.lat : null,
+        delivery_longitude: orderMode === 'delivery' ? deliveryCoordinates.lng : null,
         subtotal: subtotal,
         vat_amount: vatAmount,
         delivery_fee: deliveryFee,
@@ -731,16 +764,38 @@ export default function CashierPOS() {
             </div>
 
             {orderMode === 'delivery' && (
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Delivery Address *</label>
-                <textarea
-                  style={{ ...styles.input, minHeight: '60px' }}
-                  placeholder="Enter delivery address"
-                  value={customerInfo.address}
-                  onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
-                  required
-                />
-              </div>
+              <>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Delivery Address *</label>
+                  <textarea
+                    style={{ ...styles.input, minHeight: '60px' }}
+                    placeholder="Enter delivery address"
+                    value={customerInfo.address}
+                    onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
+                    required
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Pin Delivery Location on Map</label>
+                  <div style={styles.mapContainer}>
+                    <OpenStreetMapPicker
+                      initialLat={STORE_LOCATION.latitude}
+                      initialLng={STORE_LOCATION.longitude}
+                      onLocationChange={handleLocationChange}
+                    />
+                  </div>
+                  {deliveryCoordinates.lat && deliveryCoordinates.lng && (
+                    <div style={styles.deliveryInfo}>
+                      <p style={styles.deliveryInfoText}>
+                        📍 Selected location: {deliveryCoordinates.lat.toFixed(6)}, {deliveryCoordinates.lng.toFixed(6)}
+                      </p>
+                      <p style={styles.deliveryInfoText}>
+                        💰 Delivery Fee: ₱{deliveryFee.toFixed(2)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
 
             <div style={styles.formGroup}>
@@ -985,4 +1040,24 @@ const styles = {
   variantType: { fontSize: '10px', color: '#888', marginBottom: '2px' },
   variantTypeName: { fontWeight: '600', marginRight: '4px' },
   variantOptions: { color: '#aaa' },
+  mapContainer: {
+    width: '100%',
+    height: '300px',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    border: '1px solid #444',
+    marginTop: '8px',
+  },
+  deliveryInfo: {
+    marginTop: '12px',
+    padding: '12px',
+    backgroundColor: '#2a2a2a',
+    borderRadius: '6px',
+    border: '1px solid #444',
+  },
+  deliveryInfoText: {
+    fontSize: '13px',
+    color: '#ccc',
+    margin: '4px 0',
+  },
 };

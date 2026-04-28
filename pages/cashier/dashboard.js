@@ -22,12 +22,36 @@ export default function CashierDashboard() {
     deliveryCount: 0,
   });
   const [showReceiptBreakdown, setShowReceiptBreakdown] = useState(false);
+  const [activeTab, setActiveTab] = useState('stats'); // 'stats' or 'pending'
+  const [pendingOrders, setPendingOrders] = useState([]);
+  const [riders, setRiders] = useState([]);
+  const [selectedOrderForRider, setSelectedOrderForRider] = useState(null);
+  const [showRiderModal, setShowRiderModal] = useState(false);
 
   useEffect(() => {
     if (!authLoading) {
       initializePage();
     }
   }, [authLoading]);
+
+  useEffect(() => {
+    if (!authLoading && activeTab === 'pending') {
+      fetchPendingOnlineOrders();
+      fetchRiders();
+      
+      // Set up real-time subscription
+      const subscription = supabase
+        ?.channel('pending_orders_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+          fetchPendingOnlineOrders();
+        })
+        .subscribe();
+
+      return () => {
+        subscription?.unsubscribe();
+      };
+    }
+  }, [authLoading, activeTab]);
 
   const initializePage = async () => {
     if (!supabase) return;
@@ -111,6 +135,88 @@ export default function CashierDashboard() {
     }
   };
 
+  const fetchPendingOnlineOrders = async () => {
+    if (!supabase) return;
+
+    try {
+      // Fetch pending online orders (delivery or pick-up, status: pending)
+      const { data: orders, error } = await supabase
+        .from('orders')
+        .select('*')
+        .in('order_mode', ['delivery', 'pick-up'])
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      setPendingOrders(orders || []);
+    } catch (err) {
+      console.error('[CashierDashboard] Failed to fetch pending orders:', err?.message ?? err);
+    }
+  };
+
+  const fetchRiders = async () => {
+    if (!supabase) return;
+
+    try {
+      // Fetch available riders
+      const { data: ridersData, error } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .eq('role', 'rider')
+        .order('full_name');
+
+      if (error) throw error;
+
+      setRiders(ridersData || []);
+    } catch (err) {
+      console.error('[CashierDashboard] Failed to fetch riders:', err?.message ?? err);
+    }
+  };
+
+  const handleAcceptOrder = async (orderId) => {
+    if (!supabase) return;
+    if (!confirm('Accept this order and start processing?')) return;
+
+    try {
+      // Update order status to 'order_in_process' and set accepted_at timestamp
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'order_in_process',
+          accepted_at: new Date().toISOString(),
+          cashier_id: user?.id
+        })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      // TODO: Generate sales invoice receipt
+      console.log('[Order Accepted] Sales invoice receipt generated for order:', orderId);
+      
+      // TODO: Generate kitchen order slips by department
+      console.log('[Order Accepted] Kitchen order slips generated for order:', orderId);
+
+      // Send notification to customer
+      const order = pendingOrders.find(o => o.id === orderId);
+      if (order && order.customer_id) {
+        await supabase.from('notifications').insert({
+          user_id: order.customer_id,
+          title: 'Order Accepted',
+          message: `Your order #${order.order_number} is now being prepared!`,
+          type: 'order_update',
+          related_id: orderId
+        });
+      }
+
+      alert('Order accepted successfully!');
+      fetchPendingOnlineOrders();
+    } catch (err) {
+      console.error('[CashierDashboard] Failed to accept order:', err?.message ?? err);
+      alert('Failed to accept order. Please try again.');
+    }
+  };
+
   if (authLoading) {
     return (
       <div style={styles.center}>
@@ -152,8 +258,30 @@ export default function CashierDashboard() {
         <main style={styles.main}>
           <h2 style={styles.title}>💰 Cashier Dashboard</h2>
 
-          {/* Sales Stats Grid */}
-          <div style={styles.statsGrid}>
+          {/* Dashboard Tabs */}
+          <div style={styles.tabContainer}>
+            <button
+              style={activeTab === 'stats' ? styles.tabActive : styles.tab}
+              onClick={() => setActiveTab('stats')}
+            >
+              📊 Today's Stats
+            </button>
+            <button
+              style={activeTab === 'pending' ? styles.tabActive : styles.tab}
+              onClick={() => setActiveTab('pending')}
+            >
+              📦 Pending Online Orders
+              {pendingOrders.length > 0 && (
+                <span style={styles.tabBadge}>{pendingOrders.length}</span>
+              )}
+            </button>
+          </div>
+
+          {/* Stats Tab Content */}
+          {activeTab === 'stats' && (
+            <>
+              {/* Sales Stats Grid */}
+              <div style={styles.statsGrid}>
             <div style={styles.statCard}>
               <div style={styles.statIcon}>💵</div>
               <div style={styles.statValue}>₱{stats.totalSales.toFixed(2)}</div>
@@ -249,6 +377,77 @@ export default function CashierDashboard() {
               </Link>
             </div>
           </div>
+            </>
+          )}
+
+          {/* Pending Orders Tab Content */}
+          {activeTab === 'pending' && (
+            <div style={styles.pendingSection}>
+              {pendingOrders.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <p style={styles.emptyIcon}>📭</p>
+                  <p style={styles.emptyText}>No pending online orders</p>
+                </div>
+              ) : (
+                <div style={styles.ordersGrid}>
+                  {pendingOrders.map((order) => (
+                    <div key={order.id} style={styles.pendingOrderCard}>
+                      <div style={styles.orderHeader}>
+                        <div>
+                          <h3 style={styles.orderNumber}>
+                            Order #{order.order_number || order.id.slice(0, 8)}
+                          </h3>
+                          <p style={styles.orderTime}>
+                            {new Date(order.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                        <div style={styles.orderModeBadge}>
+                          {order.order_mode === 'delivery' ? '🚚 Delivery' : '📦 Pick-up'}
+                        </div>
+                      </div>
+
+                      {order.customer_name && (
+                        <div style={styles.orderCustomer}>
+                          👤 {order.customer_name}
+                          {order.contact_number && ` • ${order.contact_number}`}
+                        </div>
+                      )}
+
+                      {order.delivery_address && order.order_mode === 'delivery' && (
+                        <div style={styles.orderAddress}>
+                          📍 {order.delivery_address}
+                        </div>
+                      )}
+
+                      <div style={styles.itemsList}>
+                        {order.items && order.items.map((item, index) => (
+                          <div key={index} style={styles.orderItem}>
+                            <span style={styles.itemName}>{item.name}</span>
+                            <span style={styles.itemQty}>x{item.quantity}</span>
+                            <span style={styles.itemPrice}>
+                              ₱{(item.price * item.quantity).toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={styles.orderFooter}>
+                        <div style={styles.orderTotal}>
+                          Total: ₱{parseFloat(order.total_amount || 0).toFixed(2)}
+                        </div>
+                        <button
+                          style={styles.acceptOrderBtn}
+                          onClick={() => handleAcceptOrder(order.id)}
+                        >
+                          ✓ Accept Order
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </main>
       </div>
     </>
@@ -475,5 +674,158 @@ const styles = {
     fontSize: '13px',
     color: '#ccc',
     margin: 0,
+  },
+  tabContainer: {
+    display: 'flex',
+    gap: '12px',
+    marginBottom: '32px',
+    justifyContent: 'center',
+  },
+  tab: {
+    padding: '12px 24px',
+    backgroundColor: '#1a1a1a',
+    color: '#ccc',
+    border: '1px solid #444',
+    borderRadius: '8px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.2s',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  tabActive: {
+    padding: '12px 24px',
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
+    borderRadius: '8px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  tabBadge: {
+    backgroundColor: '#ffc107',
+    color: '#0a0a0a',
+    borderRadius: '12px',
+    padding: '2px 8px',
+    fontSize: '12px',
+    fontWeight: '700',
+  },
+  pendingSection: {
+    marginTop: '20px',
+  },
+  emptyState: {
+    textAlign: 'center',
+    padding: '60px 20px',
+  },
+  emptyIcon: {
+    fontSize: '64px',
+    marginBottom: '16px',
+  },
+  emptyText: {
+    fontSize: '18px',
+    color: '#888',
+  },
+  ordersGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+    gap: '20px',
+  },
+  pendingOrderCard: {
+    backgroundColor: '#1a1a1a',
+    border: '1px solid #ffc107',
+    borderRadius: '12px',
+    padding: '20px',
+  },
+  orderHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: '12px',
+    paddingBottom: '12px',
+    borderBottom: '1px solid #2a2a2a',
+  },
+  orderNumber: {
+    fontSize: '16px',
+    color: '#ffc107',
+    margin: '0 0 4px 0',
+  },
+  orderTime: {
+    fontSize: '12px',
+    color: '#888',
+    margin: 0,
+  },
+  orderModeBadge: {
+    padding: '4px 12px',
+    backgroundColor: '#2a2a2a',
+    color: '#ffc107',
+    borderRadius: '12px',
+    fontSize: '12px',
+    fontWeight: '600',
+  },
+  orderCustomer: {
+    fontSize: '13px',
+    color: '#ccc',
+    marginBottom: '8px',
+  },
+  orderAddress: {
+    fontSize: '12px',
+    color: '#888',
+    marginBottom: '12px',
+    fontStyle: 'italic',
+  },
+  itemsList: {
+    marginBottom: '16px',
+  },
+  orderItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 0',
+    borderBottom: '1px solid #2a2a2a',
+    gap: '12px',
+  },
+  itemName: {
+    fontSize: '14px',
+    color: '#fff',
+    flex: 1,
+  },
+  itemQty: {
+    fontSize: '12px',
+    color: '#888',
+  },
+  itemPrice: {
+    fontSize: '14px',
+    color: '#ffc107',
+    fontWeight: '600',
+  },
+  orderFooter: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: '16px',
+    paddingTop: '12px',
+    borderTop: '1px solid #2a2a2a',
+  },
+  orderTotal: {
+    fontSize: '16px',
+    color: '#ffc107',
+    fontWeight: '700',
+  },
+  acceptOrderBtn: {
+    padding: '10px 20px',
+    backgroundColor: '#4caf50',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
   },
 };

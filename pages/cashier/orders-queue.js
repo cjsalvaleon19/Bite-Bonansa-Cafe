@@ -11,10 +11,14 @@ export default function OrdersQueue() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterMode, setFilterMode] = useState('all'); // 'all', 'dine-in', 'take-out', 'pick-up', 'delivery'
+  const [riders, setRiders] = useState([]);
+  const [selectedOrderForRider, setSelectedOrderForRider] = useState(null);
+  const [showRiderModal, setShowRiderModal] = useState(false);
 
   useEffect(() => {
     if (!authLoading) {
       fetchOrders();
+      fetchRiders();
       
       // Set up real-time subscription for orders
       const subscription = supabase
@@ -109,6 +113,76 @@ export default function OrdersQueue() {
     } catch (err) {
       console.error('[OrdersQueue] Failed to mark as served:', err?.message ?? err);
       alert('Failed to update order status. Please try again.');
+    }
+  };
+
+  const fetchRiders = async () => {
+    if (!supabase) return;
+
+    try {
+      // Fetch available riders
+      const { data: ridersData, error } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .eq('role', 'rider')
+        .order('full_name');
+
+      if (error) throw error;
+
+      setRiders(ridersData || []);
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to fetch riders:', err?.message ?? err);
+    }
+  };
+
+  const handleOutForDelivery = (order) => {
+    setSelectedOrderForRider(order);
+    setShowRiderModal(true);
+  };
+
+  const handleAssignRider = async (riderId) => {
+    if (!supabase || !selectedOrderForRider) return;
+
+    try {
+      // Update order with rider and status
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'out_for_delivery',
+          rider_id: riderId,
+          out_for_delivery_at: new Date().toISOString()
+        })
+        .eq('id', selectedOrderForRider.id);
+
+      if (error) throw error;
+
+      // Send notification to rider
+      await supabase.from('notifications').insert({
+        user_id: riderId,
+        title: 'New Delivery Assignment',
+        message: `You have been assigned to deliver order #${selectedOrderForRider.order_number}`,
+        type: 'delivery_assignment',
+        related_id: selectedOrderForRider.id
+      });
+
+      // Send notification to customer
+      if (selectedOrderForRider.customer_id) {
+        await supabase.from('notifications').insert({
+          user_id: selectedOrderForRider.customer_id,
+          title: 'Order Out for Delivery',
+          message: `Your order #${selectedOrderForRider.order_number} is out for delivery!`,
+          type: 'order_update',
+          related_id: selectedOrderForRider.id
+        });
+      }
+
+      alert('Rider assigned successfully!');
+      setShowRiderModal(false);
+      setSelectedOrderForRider(null);
+      fetchOrders();
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to assign rider:', err?.message ?? err);
+      alert('Failed to assign rider. Please try again.');
     }
   };
 
@@ -239,15 +313,69 @@ export default function OrdersQueue() {
                     <div style={styles.orderTotal}>
                       Total: ₱{parseFloat(order.total_amount || 0).toFixed(2)}
                     </div>
-                    <button
-                      style={styles.servedBtn}
-                      onClick={() => handleMarkServed(order.id)}
-                    >
-                      ✓ Mark as Served
-                    </button>
+                    <div style={styles.orderActions}>
+                      {/* Show Out for Delivery button only for delivery orders in process status */}
+                      {order.order_mode === 'delivery' && order.status === 'order_in_process' && (
+                        <button
+                          style={styles.deliveryBtn}
+                          onClick={() => handleOutForDelivery(order)}
+                        >
+                          🚚 Out for Delivery
+                        </button>
+                      )}
+                      <button
+                        style={styles.servedBtn}
+                        onClick={() => handleMarkServed(order.id)}
+                      >
+                        ✓ Mark as Served
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Rider Selection Modal */}
+          {showRiderModal && selectedOrderForRider && (
+            <div style={styles.modal} onClick={() => setShowRiderModal(false)}>
+              <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <h3 style={styles.modalTitle}>Select Delivery Rider</h3>
+                <p style={styles.modalSubtext}>
+                  Order #{selectedOrderForRider.order_number || selectedOrderForRider.id.slice(0, 8)}
+                </p>
+                
+                {riders.length === 0 ? (
+                  <p style={styles.noRidersText}>No riders available</p>
+                ) : (
+                  <div style={styles.ridersList}>
+                    {riders.map((rider) => (
+                      <button
+                        key={rider.id}
+                        style={styles.riderItem}
+                        onClick={() => handleAssignRider(rider.id)}
+                      >
+                        <span style={styles.riderIcon}>🏍️</span>
+                        <div style={styles.riderInfo}>
+                          <div style={styles.riderName}>{rider.full_name || 'Unnamed Rider'}</div>
+                          <div style={styles.riderEmail}>{rider.email}</div>
+                        </div>
+                        <span style={styles.selectArrow}>→</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                <button 
+                  style={styles.modalCloseBtn} 
+                  onClick={() => {
+                    setShowRiderModal(false);
+                    setSelectedOrderForRider(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </main>
@@ -463,6 +591,10 @@ const styles = {
     color: '#ffc107',
     fontWeight: '700',
   },
+  orderActions: {
+    display: 'flex',
+    gap: '8px',
+  },
   servedBtn: {
     padding: '8px 16px',
     backgroundColor: '#4caf50',
@@ -472,5 +604,109 @@ const styles = {
     fontSize: '13px',
     fontWeight: '600',
     cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  deliveryBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#2196f3',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  modal: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    border: '2px solid #ffc107',
+    borderRadius: '12px',
+    padding: '32px',
+    maxWidth: '500px',
+    width: '90%',
+    maxHeight: '80vh',
+    overflow: 'auto',
+  },
+  modalTitle: {
+    fontSize: '20px',
+    color: '#ffc107',
+    marginBottom: '8px',
+    textAlign: 'center',
+  },
+  modalSubtext: {
+    fontSize: '14px',
+    color: '#888',
+    marginBottom: '24px',
+    textAlign: 'center',
+  },
+  noRidersText: {
+    fontSize: '14px',
+    color: '#888',
+    textAlign: 'center',
+    padding: '20px',
+  },
+  ridersList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    marginBottom: '24px',
+  },
+  riderItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '16px',
+    backgroundColor: '#2a2a2a',
+    border: '1px solid #444',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    fontFamily: "'Poppins', sans-serif",
+    width: '100%',
+    textAlign: 'left',
+  },
+  riderIcon: {
+    fontSize: '24px',
+  },
+  riderInfo: {
+    flex: 1,
+  },
+  riderName: {
+    fontSize: '15px',
+    color: '#fff',
+    fontWeight: '600',
+    marginBottom: '4px',
+  },
+  riderEmail: {
+    fontSize: '12px',
+    color: '#888',
+  },
+  selectArrow: {
+    fontSize: '18px',
+    color: '#ffc107',
+  },
+  modalCloseBtn: {
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#444',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
   },
 };
