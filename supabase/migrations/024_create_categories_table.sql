@@ -1,12 +1,14 @@
 -- ============================================================================
 -- Migration: 024_create_categories_table
--- Description: Create categories table to properly organize menu items
+-- Description: Create categories table with only the 8 standard menu categories
 -- Created: 2026-04-28
+-- Updated: 2026-04-28 - Fixed to only include 8 standard categories
 --
 -- This migration creates:
 -- 1. categories table with id, name, and sort_order
--- 2. Seeds all existing categories from menu_items_base
+-- 2. Seeds ONLY the 8 standard categories (prevents duplicate/subcategory tabs)
 -- 3. RLS policies for categories table
+-- 4. Cleans up any non-standard categories that might exist
 -- ============================================================================
 
 -- Create categories table
@@ -38,24 +40,31 @@ CREATE POLICY "Staff can manage categories" ON categories
     )
   );
 
--- Seed categories from existing menu items
--- Extract unique categories and insert them with sort_order
+-- Clean up any non-standard categories that might exist
+DELETE FROM categories 
+WHERE name NOT IN (
+  'Snacks & Bites',
+  'Noodles',
+  'Chicken',
+  'Rice & More',
+  'Milktea Series',
+  'Hot/iced Drinks',
+  'Frappe Series',
+  'Fruit Soda & Lemonade'
+);
+
+-- Seed only the 8 standard categories (not all categories from menu_items_base)
+-- This prevents showing duplicate/subcategory tabs in the UI
 INSERT INTO categories (name, sort_order)
-SELECT DISTINCT 
-  category,
-  CASE category
-    WHEN 'Snacks & Bites' THEN 1
-    WHEN 'Noodles' THEN 2
-    WHEN 'Chicken' THEN 3
-    WHEN 'Rice & More' THEN 4
-    WHEN 'Milktea Series' THEN 5
-    WHEN 'Hot/iced Drinks' THEN 6
-    WHEN 'Frappe Series' THEN 7
-    WHEN 'Fruit Soda & Lemonade' THEN 8
-    ELSE 99
-  END as sort_order
-FROM menu_items_base
-WHERE category IS NOT NULL AND category != ''
+VALUES 
+  ('Snacks & Bites', 1),
+  ('Noodles', 2),
+  ('Chicken', 3),
+  ('Rice & More', 4),
+  ('Milktea Series', 5),
+  ('Hot/iced Drinks', 6),
+  ('Frappe Series', 7),
+  ('Fruit Soda & Lemonade', 8)
 ON CONFLICT (name) DO NOTHING;
 
 COMMENT ON TABLE categories IS 'Menu categories for organizing menu items';

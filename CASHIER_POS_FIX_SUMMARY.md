@@ -35,10 +35,21 @@ CREATE TABLE IF NOT EXISTS categories (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Seeds all existing categories from menu_items_base
--- Includes: Snacks & Bites, Noodles, Chicken, Rice & More, Milktea Series, 
---           Hot/iced Drinks, Frappe Series, Fruit Soda & Lemonade
+-- Seeds ONLY the 8 standard categories (prevents duplicate tabs)
+INSERT INTO categories (name, sort_order)
+VALUES 
+  ('Snacks & Bites', 1),
+  ('Noodles', 2),
+  ('Chicken', 3),
+  ('Rice & More', 4),
+  ('Milktea Series', 5),
+  ('Hot/iced Drinks', 6),
+  ('Frappe Series', 7),
+  ('Fruit Soda & Lemonade', 8)
+ON CONFLICT (name) DO NOTHING;
 ```
+
+**Note**: The migration explicitly inserts only the 8 standard categories instead of extracting all categories from menu_items_base. This prevents showing duplicate or subcategory tabs (like "Beverages", "Salads", "Breakfast & Snacks", etc.) in the UI.
 
 ### 2. Fixed Customer Order Page Menu Loading
 **File**: `app/customer/order/page.tsx`
