@@ -162,7 +162,8 @@ export default function OrdersQueue() {
         title: 'New Delivery Assignment',
         message: `You have been assigned to deliver order #${selectedOrderForRider.order_number}`,
         type: 'delivery_assignment',
-        related_id: selectedOrderForRider.id
+        related_id: selectedOrderForRider.id,
+        related_type: 'order'
       });
 
       // Send notification to customer
@@ -172,7 +173,8 @@ export default function OrdersQueue() {
           title: 'Order Out for Delivery',
           message: `Your order #${selectedOrderForRider.order_number} is out for delivery!`,
           type: 'order_update',
-          related_id: selectedOrderForRider.id
+          related_id: selectedOrderForRider.id,
+          related_type: 'order'
         });
       }
 
