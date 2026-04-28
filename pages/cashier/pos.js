@@ -561,21 +561,22 @@ export default function CashierPOS() {
                   
                   {item.has_variants && item.variant_types && item.variant_types.length > 0 && (
                     <div style={styles.variantInfo}>
-                      {item.variant_types.map((vt, idx) => (
-                        <div key={vt.id || idx} style={styles.variantType}>
-                          <span style={styles.variantTypeName}>{vt.variant_type_name}:</span>
-                          <span style={styles.variantOptions}>
-                            {vt.options && vt.options.slice(0, 3).map(opt => opt.option_name).join(', ')}
-                            {vt.options && vt.options.length > 3 && ` +${vt.options.length - 3} more`}
-                          </span>
-                        </div>
-                      ))}
+                      {item.variant_types.map((vt, idx) => {
+                        const optionNames = vt.options ? vt.options.slice(0, 3).map(opt => opt.option_name) : [];
+                        const hasMoreOptions = vt.options && vt.options.length > 3;
+                        return (
+                          <div key={vt.id || idx} style={styles.variantType}>
+                            <span style={styles.variantTypeName}>{vt.variant_type_name}:</span>
+                            <span style={styles.variantOptions}>
+                              {optionNames.join(', ')}
+                              {hasMoreOptions && ` +${vt.options.length - 3} more`}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   
-                  {item.has_variants && (
-                    <span style={styles.variantBadge}>Select Options</span>
-                  )}
                   {item.is_sold_out && (
                     <span style={styles.soldOutBadge}>SOLD OUT</span>
                   )}
