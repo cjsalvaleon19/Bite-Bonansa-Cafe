@@ -564,17 +564,16 @@ export default function CashierPOS() {
                     <div style={styles.variantInfo}>
                       {item.variant_types.map((vt, idx) => {
                         if (!vt.id) {
-                          console.warn('[POS] Variant type missing ID, using index as fallback:', vt);
+                          console.warn('[POS] Variant type missing ID:', vt);
                         }
                         const optionNames = vt.options ? vt.options.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name) : [];
                         const hasMoreOptions = vt.options && vt.options.length > MAX_DISPLAYED_OPTIONS;
-                        const remainingCount = vt.options ? vt.options.length - MAX_DISPLAYED_OPTIONS : 0;
                         return (
                           <div key={vt.id || idx} style={styles.variantType}>
                             <span style={styles.variantTypeName}>{vt.variant_type_name}:</span>
                             <span style={styles.variantOptions}>
                               {optionNames.join(', ')}
-                              {hasMoreOptions && ` +${remainingCount} more`}
+                              {hasMoreOptions && ` +${vt.options.length - MAX_DISPLAYED_OPTIONS} more`}
                             </span>
                           </div>
                         );
