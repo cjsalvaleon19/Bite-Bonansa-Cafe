@@ -144,17 +144,62 @@ function CustomerOrderPage() {
 
   useEffect(() => {
     async function loadMenu() {
-      const [{ data: items }, { data: cats }] = await Promise.all([
-        supabase
+      try {
+        console.log('[CustomerOrder] Loading menu items...')
+        
+        let items = null
+        let itemsError = null
+        
+        // Try to load from menu_items view first
+        const menuItemsResult = await supabase
           .from('menu_items')
           .select('id, name, description, price, base_price, category, available, has_variants, is_sold_out, preparation_time, kitchen_department')
           .eq('available', true)
           .eq('is_sold_out', false)
-          .order('name'),
-        supabase.from('categories').select('*').order('sort_order'),
-      ])
+          .order('name')
+        
+        items = menuItemsResult.data
+        itemsError = menuItemsResult.error
+        
+        // If menu_items view fails or returns no data, try menu_items_base directly
+        if (itemsError || !items || items.length === 0) {
+          console.log('[CustomerOrder] menu_items view returned no data, trying menu_items_base...')
+          const baseResult = await supabase
+            .from('menu_items_base')
+            .select('id, name, description, base_price, category, available, has_variants, is_sold_out, preparation_time, kitchen_department')
+            .eq('available', true)
+            .order('name')
+          
+          if (baseResult.error) {
+            console.error('[CustomerOrder] Error loading from menu_items_base:', baseResult.error)
+            toast.error('Failed to load menu items')
+          } else {
+            items = baseResult.data?.map((item: any) => ({
+              ...item,
+              price: item.base_price,
+              is_sold_out: item.is_sold_out ?? false
+            })).filter((item: any) => !item.is_sold_out) || []
+            console.log(`[CustomerOrder] Loaded ${items.length} items from menu_items_base`)
+          }
+        }
+        
+        const catsResult = await supabase.from('categories').select('*').order('sort_order')
+        const cats = catsResult.data
+        const catsError = catsResult.error
+        
+        if (itemsError && (!items || items.length === 0)) {
+          console.error('[CustomerOrder] Error loading menu items:', itemsError)
+          toast.error('Failed to load menu items')
+        }
+        
+        if (catsError) {
+          console.error('[CustomerOrder] Error loading categories:', catsError)
+        }
+        
+        console.log(`[CustomerOrder] Loaded ${items?.length || 0} menu items`)
+        console.log(`[CustomerOrder] Loaded ${cats?.length || 0} categories`)
       
-      if (items) {
+      if (items && items.length > 0) {
         // For items with variants, fetch their variant data (like POS does)
         const itemsWithVariants = await Promise.all(
           items.map(async (item: any) => {
@@ -247,6 +292,10 @@ function CustomerOrderPage() {
         )
 
         setMenuItems(itemsWithVariants)
+        console.log('[CustomerOrder] Menu items processed and set:', itemsWithVariants.length)
+      } else {
+        console.warn('[CustomerOrder] No menu items returned from query')
+        toast.error('No menu items available')
       }
       
       if (cats) {
@@ -259,6 +308,10 @@ function CustomerOrderPage() {
           ).map((name, index) => ({ id: String(index), name: name as string }))
           setDbCategories(uniqueCategories)
         }
+      }
+      } catch (error) {
+        console.error('[CustomerOrder] Error in loadMenu:', error)
+        toast.error('Failed to load menu. Please refresh the page.')
       }
     }
     loadMenu()
