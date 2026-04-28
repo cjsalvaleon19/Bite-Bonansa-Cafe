@@ -147,8 +147,8 @@ function CustomerOrderPage() {
       try {
         console.log('[CustomerOrder] Loading menu items...')
         
-        let items = null
-        let itemsError = null
+        let items: any[] | null = null
+        let itemsError: any = null
         
         // Try to load from menu_items view first
         const menuItemsResult = await supabase
