@@ -27,7 +27,8 @@ export default function CashierPOS() {
   // Order details
   const [orderMode, setOrderMode] = useState('dine-in');
   const [customerInfo, setCustomerInfo] = useState({
-    customerId: '',
+    userId: null, // UUID from users.id (for orders.customer_id foreign key)
+    customerId: '', // Loyalty card ID from users.customer_id database field (format: BBC-XXXXX)
     customerName: 'Walk-in',
     address: '',
     contactNumber: '',
@@ -187,6 +188,7 @@ export default function CashierPOS() {
 
         setCustomerInfo({
           ...customerInfo,
+          userId: data.id, // Store the actual UUID for orders
           customerId: data.customer_id || customerId,
           customerName: data.full_name || 'Customer',
           address: data.address || '',
@@ -238,6 +240,7 @@ export default function CashierPOS() {
       : 0;
 
     setCustomerInfo({
+      userId: customer.id, // Store the actual UUID for orders
       customerId: customer.customer_id || '',
       customerName: customer.full_name || 'Customer',
       address: customer.address || '',
@@ -343,7 +346,7 @@ export default function CashierPOS() {
         })),
         order_mode: orderMode,
         customer_name: customerInfo.customerName,
-        customer_id: customerInfo.customerId || null,
+        customer_id: customerInfo.userId || null, // Use UUID, not loyalty card ID
         contact_number: customerInfo.contactNumber || null,
         customer_address: orderMode === 'delivery' ? customerInfo.address : null,
         delivery_address: orderMode === 'delivery' ? customerInfo.address : null,
@@ -402,21 +405,13 @@ export default function CashierPOS() {
       }
 
       // Deduct loyalty points if used
-      if (finalPointsUsed > 0 && customerInfo.customerId) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('id')
-          .eq('customer_id', customerInfo.customerId)
-          .maybeSingle();
-
-        if (userData) {
-          await supabase.from('loyalty_transactions').insert({
-            customer_id: userData.id,
-            amount: -finalPointsUsed,
-            transaction_type: 'redeem',
-            description: `Points used for order #${order.order_number || order.id.slice(0, 8)}`,
-          });
-        }
+      if (finalPointsUsed > 0 && customerInfo.userId) {
+        await supabase.from('loyalty_transactions').insert({
+          customer_id: customerInfo.userId,
+          amount: -finalPointsUsed,
+          transaction_type: 'redeem',
+          description: `Points used for order #${order.order_number || order.id.slice(0, 8)}`,
+        });
       }
 
       // Generate receipt (simple print)
@@ -425,6 +420,7 @@ export default function CashierPOS() {
       // Clear form
       clearCart();
       setCustomerInfo({
+        userId: null,
         customerId: '',
         customerName: 'Walk-in',
         address: '',
