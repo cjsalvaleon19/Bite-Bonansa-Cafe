@@ -73,26 +73,51 @@ supabase
 
 **Changes**:
 - Split menu query into two parts: fetch menu items first, then fetch variants separately
-- Query `menu_item_variant_types` table directly instead of using incorrect view relationship
+- Query `menu_item_variant_types` table directly using explicit foreign key relationship
 - Added proper error handling and fallback for categories
+- Fetch variants using separate queries to avoid complex nested select issues
 
 **Before**:
 ```javascript
-supabase
-  .from('menu_items')
-  .select(`
-    id, name, price, base_price, category, available, has_variants, is_sold_out,
-    variant_types:menu_item_variants(
-      id, variant_type_name, is_required, allow_multiple, display_order,
-      options:menu_variant_options(...)
-    )
-  `)
+const [{ data, error }, { data: cats, error: catsError }] = await Promise.all([
+  supabase
+    .from('menu_items')
+    .select(`
+      id, 
+      name, 
+      price, 
+      base_price,
+      category, 
+      available,
+      has_variants,
+      is_sold_out,
+      variant_types:menu_item_variants(
+        id,
+        variant_type_name,
+        is_required,
+        allow_multiple,
+        display_order,
+        options:menu_variant_options(
+          id,
+          option_name,
+          price_modifier,
+          display_order
+        )
+      )
+    `)
+    .eq('available', true)
+    .order('category'),
+  supabase
+    .from('categories')
+    .select('*')
+    .order('sort_order')
+]);
 ```
 
 **After**:
 ```javascript
 // First fetch menu items
-const { data: menuData } = await supabase
+const { data: menuData, error: menuError } = await supabase
   .from('menu_items')
   .select('id, name, price, base_price, category, available, has_variants, is_sold_out')
   .eq('available', true)
@@ -103,16 +128,43 @@ const itemsWithVariants = await Promise.all(
   (menuData || []).map(async (item) => {
     if (!item.has_variants) return item;
     
-    const { data: variantTypes } = await supabase
+    const { data: variantTypes, error: variantError } = await supabase
       .from('menu_item_variant_types')
-      .select(`id, variant_type_name, is_required, allow_multiple, display_order,
-              options:menu_variant_options(...)`)
+      .select(`
+        id,
+        variant_type_name,
+        is_required,
+        allow_multiple,
+        display_order,
+        options:menu_variant_options(
+          id,
+          option_name,
+          price_modifier,
+          display_order
+        )
+      `)
       .eq('menu_item_id', item.id)
       .order('display_order');
     
     return { ...item, variant_types: variantTypes || [] };
   })
 );
+
+// Fetch categories with fallback
+const { data: cats, error: catsError } = await supabase
+  .from('categories')
+  .select('*')
+  .order('sort_order');
+
+if (!catsError && cats) {
+  setCategories(cats);
+} else {
+  // Fallback: extract unique categories from menu items
+  const uniqueCategories = Array.from(
+    new Set((menuData || []).map(item => item.category).filter(Boolean))
+  ).map((name, index) => ({ id: String(index), name }));
+  setCategories(uniqueCategories);
+}
 ```
 
 ### 4. Enhanced Variant Selection Modal
