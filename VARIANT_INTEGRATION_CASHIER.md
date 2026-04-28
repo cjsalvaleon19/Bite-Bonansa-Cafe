@@ -240,7 +240,6 @@ const { data: variantTypes, error } = await supabase
 - `/pages/cashier/pos.js` - Cashier POS interface
 - `/components/VariantSelectionModal.js` - Variant selection component
 - `/diagnose_variant_system.sql` - Diagnostic queries for variant system
-- `/fix_has_variants_flag.sql` - Original has_variants fix script
 
 ## Migration Instructions
 
