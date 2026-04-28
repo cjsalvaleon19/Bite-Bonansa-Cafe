@@ -69,6 +69,61 @@ This directory contains SQL migration files for the Bite Bonanza Cafe database.
 
 **Total items after migration:** 80 menu items
 
+### 017_order_number_4digit_daily.sql
+**Purpose:** Implement 4-digit daily order numbering system
+
+### 018_create_notifications_system.sql
+**Purpose:** Create notifications system for order updates
+
+### 020_cashier_interface_tables.sql
+**Purpose:** Create tables for cashier interface
+
+### 021_add_missing_orders_columns.sql
+**Purpose:** Add missing columns to orders table
+
+### 022_cashier_settings.sql
+**Purpose:** Add cashier settings table
+
+### 023_fix_cashier_interface_issues.sql
+**Purpose:** Fix cashier interface issues
+
+### 024_create_categories_table.sql
+**Purpose:** Create categories table for menu organization
+
+### 025_cleanup_duplicate_categories.sql
+**Purpose:** Clean up duplicate category entries
+
+### 026_enable_has_variants_flag.sql
+**Purpose:** Enable has_variants flag and create summary view
+
+### 027_cleanup_invalid_variant_options.sql
+**Purpose:** Clean up invalid variant options (available=false)
+
+### 028_cleanup_duplicate_menu_items_and_variants.sql
+**Purpose:** Clean up duplicate menu items and variants
+
+### 029_fix_variant_duplicates_and_add_missing_variants.sql
+**Purpose:** Fix duplicate variant types and add missing variants
+- Removes duplicate Chicken Platter "Flavor" variant types
+- Deletes duplicate "Chicken Meal" entries
+- Ensures Chicken Burger has exactly 8 flavors
+- Adds size variant (16oz/22oz) for Fruit Soda & Lemonade items
+
+### 030_cleanup_duplicate_variant_options.sql
+**Purpose:** Clean up duplicate variant options (same option_name for same variant_type_id)
+
+### 031_fix_remaining_menu_variant_errors.sql
+**Purpose:** Fix remaining menu item variant errors
+- Fixes Fries: Remove duplicate Barbeque flavor
+- Fixes Spag Solo: Keep only "Meaty Sauce" add-on
+- Fixes Samyang Carbonara & Chicken: Keep only Spam, Egg, Cheese add-ons
+- Fixes Chicken Burger: Replace Korean BBQ with Original flavor
+- Deletes Chicken Meal menu item entirely
+- Fixes Footlong: Keep only "No Vegies" add-on
+- Fixes Clubhouse: Keep only "No Vegies" and "Spam" add-ons
+- Fixes Waffles: Replace Plain/Nutella with Lotus Biscoff, Oreo, Mallows
+- Adds Size and Add Ons variants to all Frappe Series items
+
 ---
 
 ## How to Run Migrations
@@ -261,9 +316,9 @@ DROP TABLE IF EXISTS menu_items_base CASCADE;
 
 ## Migration Details
 
-**Latest Migration:** `016_Update_Menu_Multiple_Addons_And_New_Items.sql`
-**Total Migrations:** 5 (012 through 016)
-**Total Menu Items:** 80
+**Latest Migration:** `031_fix_remaining_menu_variant_errors.sql`
+**Total Migrations:** 17 (012 through 031, with some numbers skipped)
+**Total Menu Items:** ~80 (after Chicken Meal deletion)
 **Safe to rerun:** Yes (most migrations are idempotent)
 **Dependencies:** Requires `users` table to exist for RLS policies
 
@@ -276,7 +331,8 @@ For additional help, see:
 - `../APPLY_MIGRATION_NOW.md` - Detailed step-by-step instructions
 - `../MENU_VARIANTS_IMPLEMENTATION.md` - Technical implementation details
 - `../scripts/README.md` - Alternative migration methods
+- `../RUN_MIGRATION_031.md` - Detailed guide for migration 031
 
 ---
 
-**Last Updated:** 2026-04-24
+**Last Updated:** 2026-04-28
