@@ -2,6 +2,29 @@
 
 This directory contains SQL migration files for the Bite Bonanza Cafe database.
 
+## 🚨 Important: Latest Migration
+
+### 034_add_items_column_to_orders.sql ⚠️ CRITICAL
+**Purpose:** Fix checkout error - Add missing `items` column to `orders` table
+
+**Problem Solved:** 
+- Fixes: "Could not find the 'items' column of 'orders' in the schema cache"
+- Enables POS checkout functionality
+
+**What it does:**
+- Adds `items JSONB` column to store order item data
+- Creates GIN index for efficient JSONB queries
+- Includes idempotency checks and verification
+
+**When to run:** 
+- ✅ If checkout fails with schema cache error
+- ✅ Before using POS cashier interface
+- ✅ On fresh database setups
+
+**Documentation:** See `FIX_CHECKOUT_ERROR_ITEMS_COLUMN.md` for complete details
+
+---
+
 ## Available Migrations
 
 ### 012_Seed_Bite_Bonanza_Menu_Variants.sql
@@ -323,8 +346,8 @@ DROP TABLE IF EXISTS menu_items_base CASCADE;
 
 ## Migration Details
 
-**Latest Migration:** `032_standardize_addon_variant_names.sql`
-**Total Migrations:** 20 (012-018, 020-032, migration 019 skipped)
+**Latest Migration:** `034_add_items_column_to_orders.sql` ⚠️ CRITICAL
+**Total Migrations:** 21 (012-018, 020-034, migration 019 skipped)
 **Total Menu Items:** ~80 (after Chicken Meal deletion)
 **Safe to rerun:** Yes (most migrations are idempotent)
 **Dependencies:** Requires `users` table to exist for RLS policies
@@ -334,12 +357,15 @@ DROP TABLE IF EXISTS menu_items_base CASCADE;
 ## Support
 
 For additional help, see:
+- `../CHECKOUT_ERROR_FIX_SUMMARY.md` - **Latest fix for checkout errors**
+- `../FIX_CHECKOUT_ERROR_ITEMS_COLUMN.md` - Detailed checkout fix guide
 - `../QUICK_START.md` - Quick migration guide
 - `../APPLY_MIGRATION_NOW.md` - Detailed step-by-step instructions
 - `../MENU_VARIANTS_IMPLEMENTATION.md` - Technical implementation details
 - `../scripts/README.md` - Alternative migration methods
 - `../RUN_MIGRATION_031.md` - Detailed guide for migration 031
+- `../RUN_MIGRATION_032.md` - Detailed guide for migration 032
 
 ---
 
-**Last Updated:** 2026-04-28
+**Last Updated:** 2026-04-28 (Migration 034 added)
