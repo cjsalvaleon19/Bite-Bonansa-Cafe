@@ -50,7 +50,7 @@ import { supabase } from '@/lib/supabase/client'
 import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
+import type { MenuItem, MenuItemAddon, MenuItemVariety, MenuItemSize, PaymentMethod } from '@/lib/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -144,34 +144,160 @@ function CustomerOrderPage() {
 
   useEffect(() => {
     async function loadMenu() {
-      const [{ data: items }, { data: cats }] = await Promise.all([
-        supabase
+      try {
+        console.log('[CustomerOrder] Loading menu items...')
+        
+        let items: any[] | null = null
+        let itemsError: any = null
+        
+        // Try to load from menu_items view first
+        const menuItemsResult = await supabase
           .from('menu_items')
-          .select('*')
+          .select('id, name, description, price, base_price, category, available, has_variants, is_sold_out, preparation_time, kitchen_department')
           .eq('available', true)
           .eq('is_sold_out', false)
-          .order('name'),
-        supabase.from('categories').select('*').order('sort_order'),
-      ])
-      if (items) {
-        setMenuItems(
-          items.map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            description: item.description || '',
-            price: item.price,
-            category: item.category || '',
-            available: item.available,
-            preparationTime: item.preparation_time || 0,
-            varieties: Array.isArray(item.varieties)
-              ? item.varieties.map((v: any) => (typeof v === 'string' ? v : v?.name ?? String(v)))
-              : [],
-            sizes: item.sizes || [],
-            addons: item.addons || [],
-            kitchenDepartment: item.kitchen_department || '',
-          }))
+          .order('name')
+        
+        items = menuItemsResult.data
+        itemsError = menuItemsResult.error
+        
+        // If menu_items view fails or returns no data, try menu_items_base directly
+        if (itemsError || !items || items.length === 0) {
+          console.log('[CustomerOrder] menu_items view returned no data, trying menu_items_base...')
+          const baseResult = await supabase
+            .from('menu_items_base')
+            .select('id, name, description, base_price, category, available, has_variants, is_sold_out, preparation_time, kitchen_department')
+            .eq('available', true)
+            .order('name')
+          
+          if (baseResult.error) {
+            console.error('[CustomerOrder] Error loading from menu_items_base:', baseResult.error)
+            toast.error('Failed to load menu items')
+          } else {
+            items = baseResult.data?.map((item: any) => ({
+              ...item,
+              price: item.base_price,
+              is_sold_out: item.is_sold_out ?? false
+            })).filter((item: any) => !item.is_sold_out) || []
+            console.log(`[CustomerOrder] Loaded ${items.length} items from menu_items_base`)
+          }
+        }
+        
+        const catsResult = await supabase.from('categories').select('*').order('sort_order')
+        const cats = catsResult.data
+        const catsError = catsResult.error
+        
+        if (itemsError && (!items || items.length === 0)) {
+          console.error('[CustomerOrder] Error loading menu items:', itemsError)
+          toast.error('Failed to load menu items')
+        }
+        
+        if (catsError) {
+          console.error('[CustomerOrder] Error loading categories:', catsError)
+        }
+        
+        console.log(`[CustomerOrder] Loaded ${items?.length || 0} menu items`)
+        console.log(`[CustomerOrder] Loaded ${cats?.length || 0} categories`)
+      
+      if (items && items.length > 0) {
+        // For items with variants, fetch their variant data (like POS does)
+        const itemsWithVariants = await Promise.all(
+          items.map(async (item: any) => {
+            if (!item.has_variants) {
+              return {
+                id: item.id,
+                name: item.name,
+                description: item.description || '',
+                price: item.price || item.base_price,
+                category: item.category || '',
+                available: item.available,
+                preparationTime: item.preparation_time || 0,
+                varieties: [],
+                sizes: [],
+                addons: [],
+                kitchenDepartment: item.kitchen_department || '',
+              }
+            }
+
+            // Fetch variant types and options from the database
+            const { data: variantTypes, error: variantError } = await supabase
+              .from('menu_item_variant_types')
+              .select(`
+                id,
+                variant_type_name,
+                is_required,
+                allow_multiple,
+                display_order,
+                options:menu_item_variant_options(
+                  id,
+                  option_name,
+                  price_modifier,
+                  display_order,
+                  available
+                )
+              `)
+              .eq('menu_item_id', item.id)
+              .order('display_order')
+
+            if (variantError) {
+              console.error(`[CustomerOrder] Error fetching variants for ${item.name}:`, variantError)
+            }
+
+            // Transform variant types into varieties, sizes, and addons arrays
+            const varieties: MenuItemVariety[] = []
+            const sizes: MenuItemSize[] = []
+            const addons: MenuItemAddon[] = []
+
+            if (variantTypes) {
+              for (const variantType of variantTypes) {
+                const typeName = variantType.variant_type_name.toLowerCase()
+                const options = (variantType.options || []).filter((opt: any) => opt.available)
+
+                if (typeName === 'variety' || typeName === 'flavor') {
+                  // Add to varieties array - for varieties, price is base price (no modifier for flavor selection)
+                  varieties.push(...options.map((opt: any) => ({
+                    name: opt.option_name,
+                    price: item.base_price || item.price || 0,
+                  })))
+                } else if (typeName === 'size') {
+                  // Add to sizes array with price
+                  sizes.push(...options.map((opt: any) => ({
+                    name: opt.option_name,
+                    price: (item.base_price || item.price || 0) + (opt.price_modifier || 0),
+                  })))
+                } else if (typeName === 'add ons' || typeName === 'add-ons') {
+                  // Add to addons array
+                  addons.push(...options.map((opt: any) => ({
+                    name: opt.option_name,
+                    price: opt.price_modifier || 0,
+                  })))
+                }
+              }
+            }
+
+            return {
+              id: item.id,
+              name: item.name,
+              description: item.description || '',
+              price: item.base_price || item.price,
+              category: item.category || '',
+              available: item.available,
+              preparationTime: item.preparation_time || 0,
+              varieties,
+              sizes,
+              addons,
+              kitchenDepartment: item.kitchen_department || '',
+            }
+          })
         )
+
+        setMenuItems(itemsWithVariants)
+        console.log('[CustomerOrder] Menu items processed and set:', itemsWithVariants.length)
+      } else {
+        console.warn('[CustomerOrder] No menu items returned from query')
+        toast.error('No menu items available')
       }
+      
       if (cats) {
         setDbCategories(cats)
       } else {
@@ -182,6 +308,10 @@ function CustomerOrderPage() {
           ).map((name, index) => ({ id: String(index), name: name as string }))
           setDbCategories(uniqueCategories)
         }
+      }
+      } catch (error) {
+        console.error('[CustomerOrder] Error in loadMenu:', error)
+        toast.error('Failed to load menu. Please refresh the page.')
       }
     }
     loadMenu()
@@ -411,6 +541,14 @@ function CustomerOrderPage() {
       if (paymentMethod === 'gcash' && gcashProofUrl) {
         notesStr += ` | GCash proof: ${gcashProofUrl}`
       }
+      // Build items array for orders table (like POS does)
+      const orderItemsForOrdersTable = cart.map((item) => ({
+        id: item.menuItemId,
+        name: item.menuItem.name,
+        price: item.basePrice + item.addonPrice,
+        quantity: item.quantity,
+      }))
+
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -418,15 +556,17 @@ function CustomerOrderPage() {
           customer_name: user?.name || 'Customer',
           contact_number: user?.phone || '',
           customer_address: isDelivery ? deliveryAddress : null,
+          delivery_address: isDelivery ? deliveryAddress : null,
           delivery_latitude: isDelivery ? deliveryLat : null,
           delivery_longitude: isDelivery ? deliveryLng : null,
           status: 'order_in_queue',
-          order_mode: isDelivery ? 'delivery' : 'takeout',
+          order_mode: isDelivery ? 'delivery' : 'pick-up',
           payment_method: paymentMethod,
           subtotal,
           delivery_fee: isDelivery ? appliedDeliveryFee : 0,
           total_amount: total,
           special_request: notesStr.trim(),
+          items: orderItemsForOrdersTable,
         } as any)
         .select()
         .single()
@@ -599,16 +739,16 @@ function CustomerOrderPage() {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredItems.map((item) => {
-              const varieties = (item.varieties as unknown as string[]) ?? []
-              const sizes = (item.sizes as any[]) ?? []
-              const addons = (item.addons as any[]) ?? []
+              const varieties = item.varieties ?? []
+              const sizes = item.sizes ?? []
+              const addons = item.addons ?? []
               const hasVarieties = varieties.length > 0
               const hasSizes = sizes.length > 0
               const hasAddons = addons.length > 0
               const hasOptions = hasVarieties || hasSizes || hasAddons
 
               const minSizePrice = hasSizes
-                ? Math.min(...sizes.map((s: any) => s.price))
+                ? Math.min(...sizes.map((s) => s.price))
                 : null
               const priceLabel = minSizePrice !== null
                 ? `from ${formatCurrency(minSizePrice)}`
@@ -633,12 +773,12 @@ function CustomerOrderPage() {
                     )}
 
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {hasVarieties && varieties.slice(0, 3).map((v: string) => (
+                      {hasVarieties && varieties.slice(0, 3).map((v) => (
                         <span
-                          key={v}
+                          key={v.name}
                           className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
                         >
-                          {v}
+                          {v.name}
                         </span>
                       ))}
                       {hasVarieties && varieties.length > 3 && (
@@ -646,7 +786,7 @@ function CustomerOrderPage() {
                           +{varieties.length - 3} more
                         </span>
                       )}
-                      {hasSizes && sizes.map((s: any) => (
+                      {hasSizes && sizes.map((s) => (
                         <span
                           key={s.name}
                           className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
@@ -800,9 +940,9 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
 
   if (!item) return null
 
-  const varieties = (item.varieties as unknown as string[]) ?? []
-  const sizes = (item.sizes as any[]) ?? []
-  const addons = (item.addons as MenuItemAddon[]) ?? []
+  const varieties = item.varieties ?? []
+  const sizes = item.sizes ?? []
+  const addons = item.addons ?? []
 
   const basePrice = selectedSize?.price ?? item.price
   const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0)
@@ -833,10 +973,10 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
                 Variety <span className="text-destructive">*</span>
               </Label>
               <RadioGroup value={selectedVariety} onValueChange={setSelectedVariety} className="space-y-1">
-                {varieties.map((v: string) => (
-                  <div key={v} className="flex items-center gap-2">
-                    <RadioGroupItem value={v} id={`variety-${v}`} />
-                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">{v}</Label>
+                {varieties.map((v) => (
+                  <div key={v.name} className="flex items-center gap-2">
+                    <RadioGroupItem value={v.name} id={`variety-${v.name}`} />
+                    <Label htmlFor={`variety-${v.name}`} className="cursor-pointer font-normal">{v.name}</Label>
                   </div>
                 ))}
               </RadioGroup>
@@ -850,10 +990,10 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
               </Label>
               <RadioGroup
                 value={selectedSize?.name || ''}
-                onValueChange={(name) => setSelectedSize(sizes.find((x: any) => x.name === name) || null)}
+                onValueChange={(name) => setSelectedSize(sizes.find((x) => x.name === name) || null)}
                 className="space-y-1"
               >
-                {sizes.map((s: any) => {
+                {sizes.map((s) => {
                   // Disable excluded sizes when Hot variety is selected
                   const isDisabled = selectedVariety === 'Hot' && HOT_VARIETY_EXCLUDED_SIZES.has(s.name)
                   return (
@@ -888,7 +1028,7 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
                 Add-ons <span className="text-muted-foreground font-normal">(optional)</span>
               </Label>
               <div className="space-y-1.5">
-                {addons.map((addon: MenuItemAddon) => (
+                {addons.map((addon) => (
                   <div key={addon.name} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Checkbox
