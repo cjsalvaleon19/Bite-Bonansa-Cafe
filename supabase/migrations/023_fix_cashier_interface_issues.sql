@@ -13,8 +13,9 @@
 -- 1. Create views to map old table names to new schema
 -- ============================================================================
 
--- Drop existing views if they exist
-DROP VIEW IF EXISTS menu_items CASCADE;
+-- Drop existing menu_items (could be either table or view from previous migrations)
+-- First try to drop as table, then as view
+DROP TABLE IF EXISTS menu_items CASCADE;
 DROP VIEW IF EXISTS menu_item_variants CASCADE;
 
 -- Create menu_items view that maps to menu_items_base
