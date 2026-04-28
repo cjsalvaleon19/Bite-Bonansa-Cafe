@@ -17,6 +17,7 @@ export default function CashierPOS() {
   const [menuItems, setMenuItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const [menuLoading, setMenuLoading] = useState(false);
   const [orderStatus, setOrderStatus] = useState(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -560,6 +561,18 @@ export default function CashierPOS() {
             {menuLoading && <p style={styles.loadingText}>Loading menu…</p>}
             {!menuLoading && menuItems.length === 0 && <p style={styles.emptyText}>No menu items available</p>}
             
+            {!menuLoading && menuItems.length > 0 && (
+              <div style={styles.searchContainer}>
+                <input
+                  type="text"
+                  placeholder="🔍 Search items..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={styles.searchInput}
+                />
+              </div>
+            )}
+            
             {!menuLoading && categories.length > 0 && (
               <div style={styles.categoryTabs}>
                 <button
@@ -588,7 +601,16 @@ export default function CashierPOS() {
             
             <div style={styles.menuGrid}>
               {menuItems
-                .filter(item => selectedCategory === 'all' || item.category === selectedCategory)
+                .filter(item => {
+                  // Filter by category
+                  const categoryMatch = selectedCategory === 'all' || item.category === selectedCategory;
+                  // Filter by search term
+                  const searchMatch = searchTerm === '' || 
+                    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    item.category.toLowerCase().includes(searchTerm.toLowerCase());
+                  return categoryMatch && searchMatch;
+                })
+                .sort((a, b) => a.name.localeCompare(b.name))
                 .map((item) => (
                 <button
                   key={item.id}
@@ -922,7 +944,7 @@ const styles = {
   sectionTitle: { fontSize: '18px', fontFamily: "'Playfair Display', serif", color: '#ffc107', marginTop: 0, marginBottom: '16px' },
   loadingText: { color: '#aaa', fontSize: '14px' },
   emptyText: { color: '#aaa', fontSize: '14px' },
-  menuGrid: { display: 'flex', flexDirection: 'column', gap: '12px' },
+  menuGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' },
   menuCard: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '16px', backgroundColor: '#1a1a1a', border: '1px solid #ffc107', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.15s', color: '#fff', textAlign: 'left' },
   soldOutCard: { opacity: 0.5, backgroundColor: '#2a2a2a', border: '1px solid #666', cursor: 'not-allowed' },
   menuItemName: { fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '4px' },
@@ -961,6 +983,8 @@ const styles = {
   categoryTabs: { display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' },
   categoryTab: { padding: '8px 16px', backgroundColor: '#2a2a2a', color: '#aaa', border: '1px solid #444', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' },
   categoryTabActive: { backgroundColor: '#ffc107', color: '#0a0a0a', border: '1px solid #ffc107', fontWeight: '600' },
+  searchContainer: { marginBottom: '16px' },
+  searchInput: { width: '100%', padding: '10px 12px', border: '1px solid #444', borderRadius: '6px', backgroundColor: '#2a2a2a', color: '#fff', fontSize: '14px', boxSizing: 'border-box', outline: 'none', transition: 'border-color 0.2s' },
   variantInfo: { marginTop: '8px', width: '100%' },
   variantType: { fontSize: '10px', color: '#888', marginBottom: '2px' },
   variantTypeName: { fontWeight: '600', marginRight: '4px' },
