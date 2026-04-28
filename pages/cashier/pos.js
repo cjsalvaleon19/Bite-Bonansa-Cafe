@@ -62,19 +62,26 @@ export default function CashierPOS() {
     if (!supabase) return;
     setMenuLoading(true);
     try {
-      const [{ data, error }, { data: cats, error: catsError }] = await Promise.all([
-        supabase
-          .from('menu_items')
-          .select(`
-            id, 
-            name, 
-            price, 
-            base_price,
-            category, 
-            available,
-            has_variants,
-            is_sold_out,
-            variant_types:menu_item_variants(
+      // Fetch menu items with variants
+      const { data: menuData, error: menuError } = await supabase
+        .from('menu_items')
+        .select('id, name, price, base_price, category, available, has_variants, is_sold_out')
+        .eq('available', true)
+        .order('category');
+
+      if (menuError) {
+        console.error('[POS] Error fetching menu:', menuError);
+        return;
+      }
+
+      // For items with variants, fetch their variant data
+      const itemsWithVariants = await Promise.all(
+        (menuData || []).map(async (item) => {
+          if (!item.has_variants) return item;
+
+          const { data: variantTypes, error: variantError } = await supabase
+            .from('menu_item_variant_types')
+            .select(`
               id,
               variant_type_name,
               is_required,
@@ -86,17 +93,39 @@ export default function CashierPOS() {
                 price_modifier,
                 display_order
               )
-            )
-          `)
-          .eq('available', true)
-          .order('category'),
-        supabase
-          .from('categories')
-          .select('*')
-          .order('sort_order')
-      ]);
-      if (!error && data) setMenuItems(data);
-      if (!catsError && cats) setCategories(cats);
+            `)
+            .eq('menu_item_id', item.id)
+            .order('display_order');
+
+          if (variantError) {
+            console.error(`[POS] Error fetching variants for ${item.name}:`, variantError);
+            return item;
+          }
+
+          return {
+            ...item,
+            variant_types: variantTypes || []
+          };
+        })
+      );
+
+      setMenuItems(itemsWithVariants);
+
+      // Fetch categories
+      const { data: cats, error: catsError } = await supabase
+        .from('categories')
+        .select('*')
+        .order('sort_order');
+
+      if (!catsError && cats) {
+        setCategories(cats);
+      } else {
+        // If categories table doesn't exist yet, extract unique categories from menu items
+        const uniqueCategories = Array.from(
+          new Set((menuData || []).map(item => item.category).filter(Boolean))
+        ).map((name, index) => ({ id: String(index), name }));
+        setCategories(uniqueCategories);
+      }
     } catch (err) {
       console.error('[POS] Failed to fetch menu:', err?.message ?? err);
     } finally {
@@ -339,14 +368,27 @@ export default function CashierPOS() {
 
       // Insert order_items
       if (order && items.length > 0) {
-        const orderItems = items.map(item => ({
-          order_id: order.id,
-          menu_item_id: item.id,
-          name: item.name,
-          price: item.finalPrice || item.price || item.base_price || 0,
-          quantity: item.quantity || 1,
-          subtotal: (item.finalPrice || item.price || item.base_price || 0) * (item.quantity || 1),
-        }));
+        const orderItems = items.map(item => {
+          // Format item name with variant details if present
+          let displayName = item.name;
+          if (item.variantDetails) {
+            const variantParts = Object.entries(item.variantDetails)
+              .map(([type, value]) => value)
+              .filter(Boolean);
+            if (variantParts.length > 0) {
+              displayName = `${item.name} (${variantParts.join(' | ')})`;
+            }
+          }
+
+          return {
+            order_id: order.id,
+            menu_item_id: item.id,
+            name: displayName,
+            price: item.finalPrice || item.price || item.base_price || 0,
+            quantity: item.quantity || 1,
+            subtotal: (item.finalPrice || item.price || item.base_price || 0) * (item.quantity || 1),
+          };
+        });
 
         const { error: itemsError } = await supabase
           .from('order_items')
@@ -757,18 +799,36 @@ export default function CashierPOS() {
                 <p style={styles.emptyText}>No items added</p>
               ) : (
                 <ul style={styles.cartList}>
-                  {items.map((item) => (
-                    <li key={item.id} style={styles.cartItem}>
-                      <span style={styles.cartItemName}>{item.name}</span>
-                      <div style={styles.cartControls}>
-                        <button style={styles.qtyBtn} onClick={() => updateQuantity(item.id, item.quantity - 1)}>−</button>
-                        <span style={styles.qtyValue}>{item.quantity}</span>
-                        <button style={styles.qtyBtn} onClick={() => updateQuantity(item.id, item.quantity + 1)}>+</button>
-                        <span style={styles.cartItemPrice}>₱{(item.price * item.quantity).toFixed(2)}</span>
-                        <button style={styles.removeBtn} onClick={() => removeItem(item.id)}>✕</button>
-                      </div>
-                    </li>
-                  ))}
+                  {items.map((item) => {
+                    // Format item name with variant details if present
+                    let displayName = item.name;
+                    if (item.variantDetails) {
+                      const variantParts = Object.entries(item.variantDetails)
+                        .map(([type, value]) => value)
+                        .filter(Boolean);
+                      if (variantParts.length > 0) {
+                        displayName = `${item.name} (${variantParts.join(' | ')})`;
+                      }
+                    }
+                    
+                    // Calculate price correctly using finalPrice if available
+                    const itemPrice = item.finalPrice || item.price || item.base_price || 0;
+                    const totalItemPrice = itemPrice * item.quantity;
+                    const itemKey = item.cartKey || item.id;
+
+                    return (
+                      <li key={itemKey} style={styles.cartItem}>
+                        <span style={styles.cartItemName}>{displayName}</span>
+                        <div style={styles.cartControls}>
+                          <button style={styles.qtyBtn} onClick={() => updateQuantity(itemKey, item.quantity - 1)}>−</button>
+                          <span style={styles.qtyValue}>{item.quantity}</span>
+                          <button style={styles.qtyBtn} onClick={() => updateQuantity(itemKey, item.quantity + 1)}>+</button>
+                          <span style={styles.cartItemPrice}>₱{totalItemPrice.toFixed(2)}</span>
+                          <button style={styles.removeBtn} onClick={() => removeItem(itemKey)}>✕</button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

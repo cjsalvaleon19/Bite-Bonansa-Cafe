@@ -5,26 +5,29 @@ const useCartStore = create((set, get) => ({
 
   addItem: (item) =>
     set((state) => {
-      const existing = state.items.find((i) => i.id === item.id);
+      // Create a unique cart key based on item ID and variant details
+      const cartKey = item.cartKey || item.id;
+      const existing = state.items.find((i) => (i.cartKey || i.id) === cartKey);
+      
       if (existing) {
         return {
           items: state.items.map((i) =>
-            i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+            (i.cartKey || i.id) === cartKey ? { ...i, quantity: i.quantity + (item.quantity || 1) } : i
           ),
         };
       }
-      return { items: [...state.items, { ...item, quantity: 1 }] };
+      return { items: [...state.items, { ...item, cartKey, quantity: item.quantity || 1 }] };
     }),
 
   removeItem: (id) =>
-    set((state) => ({ items: state.items.filter((i) => i.id !== id) })),
+    set((state) => ({ items: state.items.filter((i) => (i.cartKey || i.id) !== id) })),
 
   updateQuantity: (id, quantity) =>
     set((state) => ({
       items:
         quantity <= 0
-          ? state.items.filter((i) => i.id !== id)
-          : state.items.map((i) => (i.id === id ? { ...i, quantity } : i)),
+          ? state.items.filter((i) => (i.cartKey || i.id) !== id)
+          : state.items.map((i) => ((i.cartKey || i.id) === id ? { ...i, quantity } : i)),
     })),
 
   clearCart: () => set({ items: [] }),
@@ -33,7 +36,10 @@ const useCartStore = create((set, get) => ({
     get().items.reduce((sum, i) => sum + i.quantity, 0),
 
   getTotalPrice: () =>
-    get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),
+    get().items.reduce((sum, i) => {
+      const itemPrice = i.finalPrice || i.price || i.base_price || 0;
+      return sum + itemPrice * i.quantity;
+    }, 0),
 }));
 
 export default useCartStore;

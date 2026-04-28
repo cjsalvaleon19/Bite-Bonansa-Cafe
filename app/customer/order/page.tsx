@@ -147,7 +147,7 @@ function CustomerOrderPage() {
       const [{ data: items }, { data: cats }] = await Promise.all([
         supabase
           .from('menu_items')
-          .select('*, category:categories(id, name)')
+          .select('*')
           .eq('available', true)
           .eq('is_sold_out', false)
           .order('name'),
@@ -160,7 +160,7 @@ function CustomerOrderPage() {
             name: item.name,
             description: item.description || '',
             price: item.price,
-            category: item.category?.name || '',
+            category: item.category || '',
             available: item.available,
             preparationTime: item.preparation_time || 0,
             varieties: Array.isArray(item.varieties)
@@ -172,7 +172,17 @@ function CustomerOrderPage() {
           }))
         )
       }
-      if (cats) setDbCategories(cats)
+      if (cats) {
+        setDbCategories(cats)
+      } else {
+        // If categories table doesn't exist yet, extract unique categories from menu items
+        if (items) {
+          const uniqueCategories = Array.from(
+            new Set(items.map((item: any) => item.category).filter(Boolean))
+          ).map((name, index) => ({ id: String(index), name: name as string }))
+          setDbCategories(uniqueCategories)
+        }
+      }
     }
     loadMenu()
   }, [])
