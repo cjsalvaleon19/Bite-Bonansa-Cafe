@@ -136,3 +136,25 @@ Ensure these migrations have been run on the database:
 - The trigger generates 3-digit numbers (000-999) that reset daily
 - Both POS and Customer interfaces now use the same data structure for consistency
 - TypeScript types ensure type safety across the application
+
+## Code Review Findings
+
+### Performance Optimization (Future Enhancement)
+
+The current implementation fetches variants using N+1 queries (one query per menu item). While this matches the POS implementation and works correctly, it could be optimized in the future by:
+1. Collecting all item IDs upfront
+2. Fetching all variant data in a single query with proper filtering
+3. Mapping the results back to items
+
+This optimization is not critical for the current fix since:
+- Menu items are cached in state after initial load
+- The pattern is already used successfully in the POS interface
+- The number of menu items is relatively small (< 50 items typically)
+
+### Duplicate Field Explanation
+
+Both `customer_address` and `delivery_address` fields are included in the orders insert to maintain consistency with the POS implementation. While they contain the same value for delivery orders, they serve different purposes:
+- `customer_address`: The customer's general address (from user profile)
+- `delivery_address`: The specific address for this delivery (may differ from profile)
+
+For future orders, a customer might want to deliver to a different address than their default.
