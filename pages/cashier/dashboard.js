@@ -205,7 +205,8 @@ export default function CashierDashboard() {
           title: 'Order Accepted',
           message: `Your order #${order.order_number} is now being prepared!`,
           type: 'order_update',
-          related_id: orderId
+          related_id: order.id, // Use order.id to ensure proper UUID type
+          related_type: 'order'
         });
       }
 
