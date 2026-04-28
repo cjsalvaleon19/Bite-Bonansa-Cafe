@@ -27,8 +27,8 @@ export default function CashierPOS() {
   // Order details
   const [orderMode, setOrderMode] = useState('dine-in');
   const [customerInfo, setCustomerInfo] = useState({
-    userId: null, // UUID from users.id (for orders.customer_id)
-    customerId: '', // Loyalty card ID from users.customer_id (BBC-XXXXX)
+    userId: null, // UUID from users.id (for orders.customer_id foreign key)
+    customerId: '', // Loyalty card ID from users.customer_id database field (format: BBC-XXXXX)
     customerName: 'Walk-in',
     address: '',
     contactNumber: '',
