@@ -43,7 +43,7 @@ VALUES
   ('Chicken', 3),
   ('Rice & More', 4),
   ('Milktea Series', 5),
-  ('Hot/iced Drinks', 6),
+  ('Hot/Iced Drinks', 6),
   ('Frappe Series', 7),
   ('Fruit Soda & Lemonade', 8)
 ON CONFLICT (name) DO NOTHING;

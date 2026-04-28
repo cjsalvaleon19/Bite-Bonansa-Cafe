@@ -10,7 +10,7 @@ The cashier POS interface was showing more than 9 category tabs (All + 8 categor
 4. Chicken
 5. Rice & More
 6. Milktea Series
-7. Hot/iced Drinks
+7. Hot/Iced Drinks
 8. Frappe Series
 9. Fruit Soda & Lemonade
 
@@ -119,7 +119,7 @@ WHERE name NOT IN (
   'Chicken',
   'Rice & More',
   'Milktea Series',
-  'Hot/iced Drinks',
+  'Hot/Iced Drinks',
   'Frappe Series',
   'Fruit Soda & Lemonade'
 );
@@ -187,7 +187,7 @@ Only 8 standard categories:
 3. Chicken
 4. Rice & More
 5. Milktea Series
-6. Hot/iced Drinks
+6. Hot/Iced Drinks
 7. Frappe Series
 8. Fruit Soda & Lemonade
 

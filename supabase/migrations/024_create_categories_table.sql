@@ -3,12 +3,16 @@
 -- Description: Create categories table with only the 8 standard menu categories
 -- Created: 2026-04-28
 -- Updated: 2026-04-28 - Fixed to only include 8 standard categories
+-- Updated: 2026-04-28 - Fixed capitalization: "Hot/Iced Drinks" (matches migrations 014-016)
 --
 -- This migration creates:
 -- 1. categories table with id, name, and sort_order
 -- 2. Seeds ONLY the 8 standard categories (prevents duplicate/subcategory tabs)
 -- 3. RLS policies for categories table
 -- 4. Cleans up any non-standard categories that might exist
+--
+-- IMPORTANT: Category names must exactly match migrations 013-016:
+--   - "Hot/Iced Drinks" with capital "I" in "Iced" (not "Hot/iced Drinks")
 -- ============================================================================
 
 -- Create categories table
@@ -48,7 +52,7 @@ WHERE name NOT IN (
   'Chicken',
   'Rice & More',
   'Milktea Series',
-  'Hot/iced Drinks',
+  'Hot/Iced Drinks',
   'Frappe Series',
   'Fruit Soda & Lemonade'
 );
@@ -62,7 +66,7 @@ VALUES
   ('Chicken', 3),
   ('Rice & More', 4),
   ('Milktea Series', 5),
-  ('Hot/iced Drinks', 6),
+  ('Hot/Iced Drinks', 6),
   ('Frappe Series', 7),
   ('Fruit Soda & Lemonade', 8)
 ON CONFLICT (name) DO NOTHING;
