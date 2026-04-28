@@ -317,7 +317,7 @@ DROP TABLE IF EXISTS menu_items_base CASCADE;
 ## Migration Details
 
 **Latest Migration:** `031_fix_remaining_menu_variant_errors.sql`
-**Total Migrations:** 17 (012 through 031, with some numbers skipped)
+**Total Migrations:** 19 (012-018, 020-031, migration 019 skipped)
 **Total Menu Items:** ~80 (after Chicken Meal deletion)
 **Safe to rerun:** Yes (most migrations are idempotent)
 **Dependencies:** Requires `users` table to exist for RLS policies
