@@ -46,16 +46,16 @@ INSERT INTO cashier_settings (setting_key, setting_value, description) VALUES
   ('sold_out_items', '[]', 'JSON array of menu item IDs that are sold out')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- Add is_sold_out column to menu_items if it doesn't exist
+-- Add is_sold_out column to menu_items_base if it doesn't exist
 DO $$ 
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'menu_items' AND column_name = 'is_sold_out'
+    WHERE table_name = 'menu_items_base' AND column_name = 'is_sold_out'
   ) THEN
-    ALTER TABLE menu_items ADD COLUMN is_sold_out BOOLEAN DEFAULT FALSE;
-    COMMENT ON COLUMN menu_items.is_sold_out IS 'Indicates if item is temporarily sold out';
+    ALTER TABLE menu_items_base ADD COLUMN is_sold_out BOOLEAN DEFAULT FALSE;
+    COMMENT ON COLUMN menu_items_base.is_sold_out IS 'Indicates if item is temporarily sold out';
   END IF;
 END $$;
 
-CREATE INDEX IF NOT EXISTS idx_menu_items_sold_out ON menu_items(is_sold_out);
+CREATE INDEX IF NOT EXISTS idx_menu_items_base_sold_out ON menu_items_base(is_sold_out);
