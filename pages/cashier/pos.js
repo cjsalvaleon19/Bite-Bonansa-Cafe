@@ -62,19 +62,26 @@ export default function CashierPOS() {
     if (!supabase) return;
     setMenuLoading(true);
     try {
-      const [{ data, error }, { data: cats, error: catsError }] = await Promise.all([
-        supabase
-          .from('menu_items')
-          .select(`
-            id, 
-            name, 
-            price, 
-            base_price,
-            category, 
-            available,
-            has_variants,
-            is_sold_out,
-            variant_types:menu_item_variants(
+      // Fetch menu items with variants
+      const { data: menuData, error: menuError } = await supabase
+        .from('menu_items')
+        .select('id, name, price, base_price, category, available, has_variants, is_sold_out')
+        .eq('available', true)
+        .order('category');
+
+      if (menuError) {
+        console.error('[POS] Error fetching menu:', menuError);
+        return;
+      }
+
+      // For items with variants, fetch their variant data
+      const itemsWithVariants = await Promise.all(
+        (menuData || []).map(async (item) => {
+          if (!item.has_variants) return item;
+
+          const { data: variantTypes, error: variantError } = await supabase
+            .from('menu_item_variant_types')
+            .select(`
               id,
               variant_type_name,
               is_required,
@@ -86,17 +93,39 @@ export default function CashierPOS() {
                 price_modifier,
                 display_order
               )
-            )
-          `)
-          .eq('available', true)
-          .order('category'),
-        supabase
-          .from('categories')
-          .select('*')
-          .order('sort_order')
-      ]);
-      if (!error && data) setMenuItems(data);
-      if (!catsError && cats) setCategories(cats);
+            `)
+            .eq('menu_item_id', item.id)
+            .order('display_order');
+
+          if (variantError) {
+            console.error(`[POS] Error fetching variants for ${item.name}:`, variantError);
+            return item;
+          }
+
+          return {
+            ...item,
+            variant_types: variantTypes || []
+          };
+        })
+      );
+
+      setMenuItems(itemsWithVariants);
+
+      // Fetch categories
+      const { data: cats, error: catsError } = await supabase
+        .from('categories')
+        .select('*')
+        .order('sort_order');
+
+      if (!catsError && cats) {
+        setCategories(cats);
+      } else {
+        // If categories table doesn't exist yet, extract unique categories from menu items
+        const uniqueCategories = Array.from(
+          new Set((menuData || []).map(item => item.category).filter(Boolean))
+        ).map((name, index) => ({ id: String(index), name }));
+        setCategories(uniqueCategories);
+      }
     } catch (err) {
       console.error('[POS] Failed to fetch menu:', err?.message ?? err);
     } finally {
