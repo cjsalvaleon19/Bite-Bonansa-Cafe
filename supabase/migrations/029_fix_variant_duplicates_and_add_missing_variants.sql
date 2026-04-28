@@ -47,8 +47,8 @@ END $$;
 
 DO $$
 DECLARE
-  variant_to_delete INTEGER;
-  variant_to_keep INTEGER;
+  variant_to_delete UUID;
+  variant_to_keep UUID;
 BEGIN
   -- Find the Flavor variant type with more than 7 options (the duplicate)
   SELECT vt.id INTO variant_to_delete
@@ -125,9 +125,9 @@ END $$;
 
 DO $$
 DECLARE
-  chicken_burger_id INTEGER;
-  flavor_variant_id INTEGER;
-  addon_variant_id INTEGER;
+  chicken_burger_id UUID;
+  flavor_variant_id UUID;
+  addon_variant_id UUID;
   current_flavor_count INTEGER;
 BEGIN
   -- Get Chicken Burger ID
@@ -210,7 +210,7 @@ END $$;
 DO $$
 DECLARE
   item RECORD;
-  size_variant_id INTEGER;
+  size_variant_id UUID;
 BEGIN
   -- Loop through all Fruit Soda & Lemonade items
   FOR item IN 
@@ -260,8 +260,8 @@ END $$;
 DO $$
 DECLARE
   duplicate RECORD;
-  types_to_keep INTEGER;
-  types_to_delete INTEGER[];
+  types_to_keep UUID;
+  types_to_delete UUID[];
 BEGIN
   RAISE NOTICE 'Checking for duplicate variant types...';
   
