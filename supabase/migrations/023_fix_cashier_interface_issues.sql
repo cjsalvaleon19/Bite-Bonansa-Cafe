@@ -10,7 +10,25 @@
 -- ============================================================================
 
 -- ============================================================================
--- 1. Create views to map old table names to new schema
+-- 1. Ensure menu_items_base has required columns
+-- ============================================================================
+
+-- Add is_sold_out column to menu_items_base if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'menu_items_base' AND column_name = 'is_sold_out'
+  ) THEN
+    ALTER TABLE menu_items_base ADD COLUMN is_sold_out BOOLEAN DEFAULT FALSE;
+    COMMENT ON COLUMN menu_items_base.is_sold_out IS 'Indicates if item is temporarily sold out';
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_menu_items_base_sold_out ON menu_items_base(is_sold_out);
+
+-- ============================================================================
+-- 2. Create views to map old table names to new schema
 -- ============================================================================
 
 -- Drop existing menu_items (could be either table or view from previous migrations)
