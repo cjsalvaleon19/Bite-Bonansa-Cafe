@@ -916,7 +916,7 @@ const styles = {
   nav: { display: 'flex', gap: '16px', flex: 1, justifyContent: 'center' },
   navLink: { color: '#ccc', textDecoration: 'none', fontSize: '14px', padding: '8px 12px', borderRadius: '6px' },
   logoutBtn: { padding: '8px 18px', backgroundColor: 'transparent', color: '#ffc107', border: '1px solid #ffc107', borderRadius: '6px', fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap' },
-  body: { display: 'grid', gridTemplateColumns: '320px 1fr', gap: '24px', padding: '32px', maxWidth: '1400px', margin: '0 auto' },
+  body: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', padding: '32px', maxWidth: '1400px', margin: '0 auto' },
   menuPanel: { minWidth: 0 },
   orderPanel: { backgroundColor: '#1a1a1a', border: '1px solid #ffc107', borderRadius: '12px', padding: '24px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' },
   sectionTitle: { fontSize: '18px', fontFamily: "'Playfair Display', serif", color: '#ffc107', marginTop: 0, marginBottom: '16px' },
