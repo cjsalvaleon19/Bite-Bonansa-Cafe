@@ -2,10 +2,18 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
 import useCartStore from '../../store/useCartStore';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
+import { STORE_LOCATION, calculateDeliveryFee, getDistanceBetweenCoordinates } from '../../utils/deliveryCalculator';
+
+// Dynamically import OpenStreetMapPicker to avoid SSR issues with Leaflet
+const OpenStreetMapPicker = dynamic(
+  () => import('../../components/OpenStreetMapPicker'),
+  { ssr: false }
+);
 
 const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
@@ -44,6 +52,8 @@ export default function CashierPOS() {
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [combinedPayment, setCombinedPayment] = useState(false); // For points + cash/gcash
+  const [deliveryCoordinates, setDeliveryCoordinates] = useState(null); // { lat, lng }
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   const { items, addItem, removeItem, updateQuantity, clearCart, getTotalPrice } =
     useCartStore();
@@ -59,6 +69,20 @@ export default function CashierPOS() {
       setDeliveryFee(0);
     }
   }, [orderMode]);
+
+  // Calculate delivery fee when coordinates change
+  useEffect(() => {
+    if (orderMode === 'delivery' && deliveryCoordinates) {
+      const distance = getDistanceBetweenCoordinates(
+        STORE_LOCATION.latitude,
+        STORE_LOCATION.longitude,
+        deliveryCoordinates.lat,
+        deliveryCoordinates.lng
+      );
+      const fee = calculateDeliveryFee(distance);
+      setDeliveryFee(fee);
+    }
+  }, [orderMode, deliveryCoordinates]);
 
   const fetchMenu = useCallback(async () => {
     if (!supabase) return;
@@ -350,6 +374,8 @@ export default function CashierPOS() {
         contact_number: customerInfo.contactNumber || null,
         customer_address: orderMode === 'delivery' ? customerInfo.address : null,
         delivery_address: orderMode === 'delivery' ? customerInfo.address : null,
+        delivery_latitude: deliveryCoordinates?.lat || null,
+        delivery_longitude: deliveryCoordinates?.lng || null,
         subtotal: subtotal,
         vat_amount: vatAmount,
         delivery_fee: deliveryFee,
@@ -731,16 +757,41 @@ export default function CashierPOS() {
             </div>
 
             {orderMode === 'delivery' && (
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Delivery Address *</label>
-                <textarea
-                  style={{ ...styles.input, minHeight: '60px' }}
-                  placeholder="Enter delivery address"
-                  value={customerInfo.address}
-                  onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
-                  required
-                />
-              </div>
+              <>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Delivery Address *</label>
+                  <textarea
+                    style={{ ...styles.input, minHeight: '60px' }}
+                    placeholder="Enter delivery address"
+                    value={customerInfo.address}
+                    onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
+                    required
+                  />
+                </div>
+                
+                <div style={styles.formGroup}>
+                  <button
+                    type="button"
+                    style={styles.mapButton}
+                    onClick={() => setShowMapPicker(true)}
+                  >
+                    📍 {deliveryCoordinates ? 'Update Location on Map' : 'Select Location on Map'}
+                  </button>
+                  {deliveryCoordinates && (
+                    <div style={styles.coordinatesInfo}>
+                      <small>
+                        📌 Location: {deliveryCoordinates.lat.toFixed(6)}, {deliveryCoordinates.lng.toFixed(6)}
+                      </small>
+                    </div>
+                  )}
+                  <div style={styles.deliveryFeeInfo}>
+                    <strong>Delivery Fee: ₱{deliveryFee.toFixed(2)}</strong>
+                    {deliveryCoordinates && (
+                      <small> (Calculated based on distance)</small>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
 
             <div style={styles.formGroup}>
@@ -921,6 +972,34 @@ export default function CashierPOS() {
             }}
           />
         )}
+        
+        {/* OpenStreetMap Picker Modal */}
+        {showMapPicker && (
+          <div style={styles.modalOverlay}>
+            <div style={styles.mapModalContent}>
+              <div style={styles.mapModalHeader}>
+                <h3 style={styles.mapModalTitle}>Select Delivery Location</h3>
+                <button
+                  style={styles.mapCloseButton}
+                  onClick={() => setShowMapPicker(false)}
+                >
+                  ✕
+                </button>
+              </div>
+              <OpenStreetMapPicker
+                initialLat={deliveryCoordinates?.lat}
+                initialLng={deliveryCoordinates?.lng}
+                onLocationChange={(lat, lng, address) => {
+                  setDeliveryCoordinates({ lat, lng });
+                  if (address) {
+                    setCustomerInfo({ ...customerInfo, address });
+                  }
+                  setShowMapPicker(false);
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
@@ -985,4 +1064,12 @@ const styles = {
   variantType: { fontSize: '10px', color: '#888', marginBottom: '2px' },
   variantTypeName: { fontWeight: '600', marginRight: '4px' },
   variantOptions: { color: '#aaa' },
+  mapButton: { width: '100%', padding: '10px', backgroundColor: '#ffc107', color: '#0a0a0a', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s' },
+  coordinatesInfo: { marginTop: '8px', color: '#888', fontSize: '11px' },
+  deliveryFeeInfo: { marginTop: '8px', padding: '8px', backgroundColor: 'rgba(255, 193, 7, 0.1)', borderRadius: '6px', border: '1px solid rgba(255, 193, 7, 0.3)', color: '#ffc107', fontSize: '13px' },
+  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 },
+  mapModalContent: { backgroundColor: '#1a1a1a', borderRadius: '12px', width: '90%', maxWidth: '900px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', border: '2px solid #ffc107' },
+  mapModalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #ffc107' },
+  mapModalTitle: { fontSize: '18px', fontFamily: "'Playfair Display', serif", color: '#ffc107', margin: 0 },
+  mapCloseButton: { padding: '8px 12px', backgroundColor: 'transparent', color: '#fff', border: '1px solid #666', borderRadius: '6px', fontSize: '16px', cursor: 'pointer', transition: 'all 0.2s' },
 };

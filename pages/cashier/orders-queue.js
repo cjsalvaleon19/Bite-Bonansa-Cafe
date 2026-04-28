@@ -11,6 +11,10 @@ export default function OrdersQueue() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterMode, setFilterMode] = useState('all'); // 'all', 'dine-in', 'take-out', 'pick-up', 'delivery'
+  const [showRiderModal, setShowRiderModal] = useState(false);
+  const [selectedOrderForDelivery, setSelectedOrderForDelivery] = useState(null);
+  const [riders, setRiders] = useState([]);
+  const [selectedRiderId, setSelectedRiderId] = useState('');
 
   useEffect(() => {
     if (!authLoading) {
@@ -47,6 +51,60 @@ export default function OrdersQueue() {
       console.error('[OrdersQueue] Failed to fetch orders:', err?.message ?? err);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const fetchRiders = async () => {
+    if (!supabase) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, phone')
+        .eq('role', 'rider')
+        .order('full_name');
+      
+      if (error) throw error;
+      
+      setRiders(data || []);
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to fetch riders:', err?.message ?? err);
+    }
+  };
+  
+  const handleOutForDelivery = (order) => {
+    setSelectedOrderForDelivery(order);
+    setSelectedRiderId('');
+    fetchRiders();
+    setShowRiderModal(true);
+  };
+  
+  const confirmOutForDelivery = async () => {
+    if (!supabase || !selectedOrderForDelivery || !selectedRiderId) {
+      alert('Please select a rider');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'out_for_delivery',
+          out_for_delivery_at: new Date().toISOString(),
+          rider_id: selectedRiderId,
+        })
+        .eq('id', selectedOrderForDelivery.id);
+      
+      if (error) throw error;
+      
+      alert('Order marked as "Out for Delivery" and assigned to rider!');
+      setShowRiderModal(false);
+      setSelectedOrderForDelivery(null);
+      setSelectedRiderId('');
+      fetchOrders();
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to update order:', err?.message ?? err);
+      alert('Failed to update order. Please try again.');
     }
   };
 
@@ -239,18 +297,83 @@ export default function OrdersQueue() {
                     <div style={styles.orderTotal}>
                       Total: ₱{parseFloat(order.total_amount || 0).toFixed(2)}
                     </div>
-                    <button
-                      style={styles.servedBtn}
-                      onClick={() => handleMarkServed(order.id)}
-                    >
-                      ✓ Mark as Served
-                    </button>
+                    <div style={styles.orderActions}>
+                      {order.order_mode === 'delivery' && order.status === 'order_in_process' && (
+                        <button
+                          style={styles.deliveryBtn}
+                          onClick={() => handleOutForDelivery(order)}
+                        >
+                          🛵 Out for Delivery
+                        </button>
+                      )}
+                      <button
+                        style={styles.servedBtn}
+                        onClick={() => handleMarkServed(order.id)}
+                      >
+                        ✓ Mark as Served
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
         </main>
+        
+        {/* Rider Selection Modal */}
+        {showRiderModal && selectedOrderForDelivery && (
+          <div style={styles.modalOverlay}>
+            <div style={styles.modalContent}>
+              <h3 style={styles.modalTitle}>Select Delivery Rider</h3>
+              <p style={styles.modalSubtitle}>
+                Order #{selectedOrderForDelivery.order_number || selectedOrderForDelivery.id.slice(0, 8)}
+              </p>
+              
+              <div style={styles.riderList}>
+                {riders.length === 0 ? (
+                  <p style={styles.noRiders}>No riders available. Please ensure riders are registered in the system.</p>
+                ) : (
+                  riders.map((rider) => (
+                    <label key={rider.id} style={styles.riderOption}>
+                      <input
+                        type="radio"
+                        name="rider"
+                        value={rider.id}
+                        checked={selectedRiderId === rider.id}
+                        onChange={(e) => setSelectedRiderId(e.target.value)}
+                        style={styles.riderRadio}
+                      />
+                      <div style={styles.riderInfo}>
+                        <div style={styles.riderName}>{rider.full_name}</div>
+                        <div style={styles.riderPhone}>{rider.phone || 'No phone'}</div>
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+              
+              <div style={styles.modalActions}>
+                <button
+                  style={styles.cancelBtn}
+                  onClick={() => {
+                    setShowRiderModal(false);
+                    setSelectedOrderForDelivery(null);
+                    setSelectedRiderId('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  style={styles.confirmBtn}
+                  onClick={confirmOutForDelivery}
+                  disabled={!selectedRiderId}
+                >
+                  Confirm & Assign
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
@@ -455,13 +578,28 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: '16px',
-    paddingTop: '12px',
+    paddingTop: '16px',
     borderTop: '1px solid #2a2a2a',
   },
   orderTotal: {
     fontSize: '16px',
-    color: '#ffc107',
     fontWeight: '700',
+    color: '#ffc107',
+  },
+  orderActions: {
+    display: 'flex',
+    gap: '8px',
+  },
+  deliveryBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#ff9800',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
   },
   servedBtn: {
     padding: '8px 16px',
@@ -472,5 +610,109 @@ const styles = {
     fontSize: '13px',
     fontWeight: '600',
     cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2000,
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    border: '2px solid #ffc107',
+    borderRadius: '12px',
+    padding: '32px',
+    maxWidth: '500px',
+    width: '90%',
+    maxHeight: '80vh',
+    overflowY: 'auto',
+  },
+  modalTitle: {
+    fontSize: '20px',
+    fontFamily: "'Playfair Display', serif",
+    color: '#ffc107',
+    marginBottom: '8px',
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: '14px',
+    color: '#888',
+    marginBottom: '24px',
+    textAlign: 'center',
+  },
+  riderList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    marginBottom: '24px',
+  },
+  noRiders: {
+    textAlign: 'center',
+    color: '#888',
+    padding: '24px',
+    fontSize: '14px',
+  },
+  riderOption: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '16px',
+    backgroundColor: '#2a2a2a',
+    border: '1px solid #444',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  riderRadio: {
+    width: '20px',
+    height: '20px',
+    cursor: 'pointer',
+  },
+  riderInfo: {
+    flex: 1,
+  },
+  riderName: {
+    fontSize: '15px',
+    color: '#fff',
+    fontWeight: '600',
+    marginBottom: '4px',
+  },
+  riderPhone: {
+    fontSize: '12px',
+    color: '#888',
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '12px',
+  },
+  cancelBtn: {
+    flex: 1,
+    padding: '12px',
+    backgroundColor: 'transparent',
+    color: '#ccc',
+    border: '1px solid #666',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  confirmBtn: {
+    flex: 2,
+    padding: '12px',
+    backgroundColor: '#ffc107',
+    color: '#0a0a0a',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
   },
 };
