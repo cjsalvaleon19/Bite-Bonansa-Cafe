@@ -200,16 +200,13 @@ export default function CashierDashboard() {
       // Send notification to customer
       const order = pendingOrders.find(o => o.id === orderId);
       if (order && order.customer_id) {
-        // Use order.id (UUID from database object) instead of orderId (function parameter)
-        // to ensure the proper UUID type is passed to the database. The parameter may be
-        // coerced to string in some contexts, causing a type mismatch error.
         await supabase.from('notifications').insert({
           user_id: order.customer_id,
           title: 'Order Accepted',
           message: `Your order #${order.order_number} is now being prepared!`,
           type: 'order_update',
           related_id: order.id,
-          related_type: 'order'
+          related_type: 'order'  // For consistency with database schema
         });
       }
 
