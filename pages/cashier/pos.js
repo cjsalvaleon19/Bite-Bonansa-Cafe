@@ -9,6 +9,7 @@ import VariantSelectionModal from '../../components/VariantSelectionModal';
 
 const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
+const MAX_DISPLAYED_OPTIONS = 3; // Maximum number of variant options to display before showing "+X more"
 
 export default function CashierPOS() {
   const router = useRouter();
@@ -562,14 +563,18 @@ export default function CashierPOS() {
                   {item.has_variants && item.variant_types && item.variant_types.length > 0 && (
                     <div style={styles.variantInfo}>
                       {item.variant_types.map((vt, idx) => {
-                        const optionNames = vt.options ? vt.options.slice(0, 3).map(opt => opt.option_name) : [];
-                        const hasMoreOptions = vt.options && vt.options.length > 3;
+                        if (!vt.id) {
+                          console.warn('[POS] Variant type missing ID, using index as fallback:', vt);
+                        }
+                        const optionNames = vt.options ? vt.options.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name) : [];
+                        const hasMoreOptions = vt.options && vt.options.length > MAX_DISPLAYED_OPTIONS;
+                        const remainingCount = vt.options ? vt.options.length - MAX_DISPLAYED_OPTIONS : 0;
                         return (
                           <div key={vt.id || idx} style={styles.variantType}>
                             <span style={styles.variantTypeName}>{vt.variant_type_name}:</span>
                             <span style={styles.variantOptions}>
                               {optionNames.join(', ')}
-                              {hasMoreOptions && ` +${vt.options.length - 3} more`}
+                              {hasMoreOptions && ` +${remainingCount} more`}
                             </span>
                           </div>
                         );
