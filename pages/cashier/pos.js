@@ -589,6 +589,7 @@ export default function CashierPOS() {
             <div style={styles.menuGrid}>
               {menuItems
                 .filter(item => selectedCategory === 'all' || item.category === selectedCategory)
+                .sort((a, b) => a.name.localeCompare(b.name))
                 .map((item) => (
                 <button
                   key={item.id}
@@ -922,7 +923,7 @@ const styles = {
   sectionTitle: { fontSize: '18px', fontFamily: "'Playfair Display', serif", color: '#ffc107', marginTop: 0, marginBottom: '16px' },
   loadingText: { color: '#aaa', fontSize: '14px' },
   emptyText: { color: '#aaa', fontSize: '14px' },
-  menuGrid: { display: 'flex', flexDirection: 'column', gap: '12px' },
+  menuGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' },
   menuCard: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '16px', backgroundColor: '#1a1a1a', border: '1px solid #ffc107', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.15s', color: '#fff', textAlign: 'left' },
   soldOutCard: { opacity: 0.5, backgroundColor: '#2a2a2a', border: '1px solid #666', cursor: 'not-allowed' },
   menuItemName: { fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '4px' },
