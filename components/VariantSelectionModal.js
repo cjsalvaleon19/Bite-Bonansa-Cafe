@@ -136,6 +136,7 @@ export default function VariantSelectionModal({ item, onConfirm, onCancel }) {
                   <div style={styles.optionsGrid}>
                     {type.options && type.options.length > 0 ? (
                       type.options
+                        .filter(option => option.available !== false) // Only show available options
                         .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
                         .map(option => (
                           <button
