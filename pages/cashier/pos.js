@@ -9,11 +9,14 @@ import VariantSelectionModal from '../../components/VariantSelectionModal';
 
 const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
+const MAX_DISPLAYED_OPTIONS = 3; // Maximum number of variant options to display before showing "+X more"
 
 export default function CashierPOS() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
   const [menuItems, setMenuItems] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [menuLoading, setMenuLoading] = useState(false);
   const [orderStatus, setOrderStatus] = useState(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -59,34 +62,41 @@ export default function CashierPOS() {
     if (!supabase) return;
     setMenuLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('menu_items')
-        .select(`
-          id, 
-          name, 
-          price, 
-          base_price,
-          category, 
-          available,
-          has_variants,
-          is_sold_out,
-          variant_types:menu_item_variants(
-            id,
-            variant_type_name,
-            is_required,
-            allow_multiple,
-            display_order,
-            options:menu_variant_options(
+      const [{ data, error }, { data: cats, error: catsError }] = await Promise.all([
+        supabase
+          .from('menu_items')
+          .select(`
+            id, 
+            name, 
+            price, 
+            base_price,
+            category, 
+            available,
+            has_variants,
+            is_sold_out,
+            variant_types:menu_item_variants(
               id,
-              option_name,
-              price_modifier,
-              display_order
+              variant_type_name,
+              is_required,
+              allow_multiple,
+              display_order,
+              options:menu_variant_options(
+                id,
+                option_name,
+                price_modifier,
+                display_order
+              )
             )
-          )
-        `)
-        .eq('available', true)
-        .order('category');
+          `)
+          .eq('available', true)
+          .order('category'),
+        supabase
+          .from('categories')
+          .select('*')
+          .order('sort_order')
+      ]);
       if (!error && data) setMenuItems(data);
+      if (!catsError && cats) setCategories(cats);
     } catch (err) {
       console.error('[POS] Failed to fetch menu:', err?.message ?? err);
     } finally {
@@ -506,8 +516,37 @@ export default function CashierPOS() {
             <h2 style={styles.sectionTitle}>Menu Items</h2>
             {menuLoading && <p style={styles.loadingText}>Loading menu…</p>}
             {!menuLoading && menuItems.length === 0 && <p style={styles.emptyText}>No menu items available</p>}
+            
+            {!menuLoading && categories.length > 0 && (
+              <div style={styles.categoryTabs}>
+                <button
+                  style={{
+                    ...styles.categoryTab,
+                    ...(selectedCategory === 'all' ? styles.categoryTabActive : {})
+                  }}
+                  onClick={() => setSelectedCategory('all')}
+                >
+                  All
+                </button>
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    style={{
+                      ...styles.categoryTab,
+                      ...(selectedCategory === category.name ? styles.categoryTabActive : {})
+                    }}
+                    onClick={() => setSelectedCategory(category.name)}
+                  >
+                    {category.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            
             <div style={styles.menuGrid}>
-              {menuItems.map((item) => (
+              {menuItems
+                .filter(item => selectedCategory === 'all' || item.category === selectedCategory)
+                .map((item) => (
                 <button
                   key={item.id}
                   style={{
@@ -520,9 +559,28 @@ export default function CashierPOS() {
                   <span style={styles.menuItemName}>{item.name}</span>
                   <span style={styles.menuItemCategory}>{item.category}</span>
                   <span style={styles.menuItemPrice}>₱{Number(item.price || item.base_price || 0).toFixed(2)}</span>
-                  {item.has_variants && (
-                    <span style={styles.variantBadge}>Has options</span>
+                  
+                  {item.has_variants && item.variant_types && item.variant_types.length > 0 && (
+                    <div style={styles.variantInfo}>
+                      {item.variant_types.map((vt, idx) => {
+                        if (!vt.id) {
+                          console.warn('[POS] Variant type missing ID:', vt);
+                        }
+                        const optionNames = vt.options ? vt.options.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name) : [];
+                        const hasMoreOptions = vt.options && vt.options.length > MAX_DISPLAYED_OPTIONS;
+                        return (
+                          <div key={vt.id || idx} style={styles.variantType}>
+                            <span style={styles.variantTypeName}>{vt.variant_type_name}:</span>
+                            <span style={styles.variantOptions}>
+                              {optionNames.join(', ')}
+                              {hasMoreOptions && ` +${vt.options.length - MAX_DISPLAYED_OPTIONS} more`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
+                  
                   {item.is_sold_out && (
                     <span style={styles.soldOutBadge}>SOLD OUT</span>
                   )}
@@ -824,4 +882,11 @@ const styles = {
   searchResultName: { fontSize: '14px', color: '#fff', fontWeight: '600', marginBottom: '4px' },
   searchResultDetails: { fontSize: '11px', color: '#888' },
   checkboxLabel: { display: 'flex', alignItems: 'center', fontSize: '13px', color: '#ffc107', cursor: 'pointer', padding: '8px', backgroundColor: 'rgba(255, 193, 7, 0.1)', borderRadius: '6px', border: '1px solid rgba(255, 193, 7, 0.3)' },
+  categoryTabs: { display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' },
+  categoryTab: { padding: '8px 16px', backgroundColor: '#2a2a2a', color: '#aaa', border: '1px solid #444', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' },
+  categoryTabActive: { backgroundColor: '#ffc107', color: '#0a0a0a', border: '1px solid #ffc107', fontWeight: '600' },
+  variantInfo: { marginTop: '8px', width: '100%' },
+  variantType: { fontSize: '10px', color: '#888', marginBottom: '2px' },
+  variantTypeName: { fontWeight: '600', marginRight: '4px' },
+  variantOptions: { color: '#aaa' },
 };
