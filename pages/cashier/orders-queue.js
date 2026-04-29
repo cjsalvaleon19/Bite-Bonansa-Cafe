@@ -123,12 +123,13 @@ export default function OrdersQueue() {
 
   const handleMarkServed = async (orderId) => {
     if (!supabase) return;
-    if (!confirm('Mark this order as served?')) return;
+    if (!confirm('Mark this order as served? This will remove the order from the queue.')) return;
 
     try {
+      // Delete the order instead of updating status
       const { error } = await supabase
         .from('orders')
-        .update({ status: 'served' })
+        .delete()
         .eq('id', orderId);
 
       if (error) throw error;
@@ -136,7 +137,7 @@ export default function OrdersQueue() {
       fetchOrders();
     } catch (err) {
       console.error('[OrdersQueue] Failed to mark as served:', err?.message ?? err);
-      alert('Failed to update order status. Please try again.');
+      alert('Failed to remove order. Please try again.');
     }
   };
 
