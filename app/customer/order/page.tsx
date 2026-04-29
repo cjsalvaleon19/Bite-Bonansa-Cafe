@@ -339,14 +339,20 @@ function CustomerOrderPage() {
           return prevCart // Item already in cart, no changes
         }
         
-        // Auto-add the item to cart
-        const hasOptions =
+        // Check for customization options
+        const hasVariantTypes = item.has_variants && item.variant_types && item.variant_types.length > 0
+        const hasOldOptions =
           (item.varieties && item.varieties.length > 0) ||
           (item.sizes && item.sizes.length > 0) ||
           (item.addons && item.addons.length > 0)
         
-        if (hasOptions) {
-          // If item has options, open the dialog for user to select
+        if (hasVariantTypes) {
+          // If item has variant types, open the variant modal
+          setVariantModalItem(item)
+          setShowVariantModal(true)
+          return prevCart // Don't modify cart yet, wait for modal
+        } else if (hasOldOptions) {
+          // If item has old-style options, open the customization dialog
           setDialogItem(item)
           setShowItemDialog(true)
           return prevCart // Don't modify cart yet, wait for dialog
