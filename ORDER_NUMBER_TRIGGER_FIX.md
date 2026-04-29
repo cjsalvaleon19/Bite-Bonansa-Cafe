@@ -162,7 +162,7 @@ If you still see the error after running migration 038:
 
 1. **Verify the migration ran successfully**:
    ```sql
-   SELECT * FROM _migrations WHERE name = '038_fix_order_number_trigger';
+   SELECT * FROM _migrations WHERE name = '038_fix_order_number_trigger.sql';
    ```
 
 2. **Check current trigger configuration**:
