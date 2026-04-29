@@ -1,6 +1,6 @@
-# Cashier Interface Updates Summary
+# Cashier and Customer Interface Updates Summary
 
-This document summarizes the improvements made to the Cashier Interface based on user feedback.
+This document summarizes the improvements made to the Cashier and Customer Interfaces based on user feedback.
 
 ## Changes Implemented
 
@@ -132,6 +132,116 @@ header: {
 - Clicking the bell opens a dropdown with recent notifications
 - Logout button signs out the cashier and redirects to login
 - All elements styled consistently with the cafe's theme
+
+---
+
+## Additional Updates (Latest)
+
+### 6. Fixed "Mark as Served" Button in Order Queue ✅
+
+**Problem:** Clicking the "Mark as Served" button only updated the order status to 'served' but didn't actually remove/delete the order from the queue.
+
+**Solution:**
+- Changed the `handleMarkServed` function to **delete** the order instead of updating its status
+- The order is now completely removed from the database when marked as served
+- Updated the confirmation dialog to clearly indicate the order will be removed
+- All order items are cleared along with the order
+
+**Files Modified:**
+- `pages/cashier/orders-queue.js`
+
+**Before:**
+```javascript
+// Only updated status to 'served'
+const { error } = await supabase
+  .from('orders')
+  .update({ status: 'served' })
+  .eq('id', orderId);
+```
+
+**After:**
+```javascript
+// Deletes the order completely
+const { error } = await supabase
+  .from('orders')
+  .delete()
+  .eq('id', orderId);
+```
+
+**Why This Change:**
+- When an order is served, it should be removed from the active queue
+- No need to keep served orders in the database (they're already tracked in EOD reports)
+- Cleaner queue management for cashiers
+
+---
+
+### 7. Sticky Navigation for Customer Pages ✅
+
+**Problem:** Customer interface pages didn't have sticky navigation headers, making it harder to navigate when scrolling.
+
+**Solution:**
+- Applied sticky navigation to all customer pages
+- Headers now stay at the top when scrolling
+- Consistent user experience with cashier interface
+
+**Files Modified:**
+- `pages/customer/dashboard.js`
+- `pages/customer/orders.js`
+- `pages/customer/order-tracking.js`
+- `pages/customer/profile.js`
+- `pages/customer/menu.js`
+- `pages/customer/reviews.js`
+- `pages/customer/order-history.js`
+
+**CSS Properties Added:**
+```javascript
+header: {
+  position: 'sticky',
+  top: 0,
+  zIndex: 100,
+  // ... other styles
+}
+```
+
+**Customer Pages Updated:**
+- ✅ Dashboard
+- ✅ Order Portal
+- ✅ Order Tracking
+- ✅ My Profile
+- ✅ Share Review
+- ✅ Menu
+- ✅ Order History
+
+**Note:** Customer pages already had NotificationBell and Logout buttons, so no changes were needed for that aspect.
+
+---
+
+## Updated Testing Recommendations
+
+### 6. Test Mark as Served Button
+- Create a test order with items
+- Navigate to Order Queue
+- Click "✓ Mark as Served" button
+- Verify the confirmation dialog mentions "remove"
+- Confirm the action
+- Verify:
+  - Order is completely removed from the queue
+  - Order no longer appears in the database
+  - Page refreshes and shows updated queue
+
+### 7. Test Customer Sticky Navigation
+- Log in as a customer
+- Navigate to any customer page:
+  - Dashboard
+  - Order Portal
+  - Order Tracking
+  - My Profile
+  - Share Review
+  - Menu
+  - Order History
+- Scroll down the page
+- Verify the header stays at the top
+- Test navigation between pages
 
 ---
 
@@ -267,10 +377,16 @@ For notification issues specifically:
 ## Summary
 
 All requested features have been successfully implemented:
+
+### Initial Features:
 ✅ Delete button for order items
 ✅ Print receipt confirmation modal
 ✅ Fixed notification system
-✅ Sticky navigation header
-✅ NotificationBell and Logout on all pages
+✅ Sticky navigation header (cashier pages)
+✅ NotificationBell and Logout on all cashier pages
 
-The cashier interface is now more user-friendly and efficient!
+### Additional Features:
+✅ Fixed "Mark as Served" to delete orders (not just update status)
+✅ Sticky navigation header on all customer pages
+
+The cashier and customer interfaces are now more user-friendly and efficient!
