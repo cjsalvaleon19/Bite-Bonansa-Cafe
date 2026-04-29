@@ -311,7 +311,7 @@ export default function CustomerOrderPortal() {
         subtotal: subtotal,
         vat_amount: 0,
         total_amount: subtotal + deliveryFee,
-        payment_method: 'cash', // Default to cash for online orders
+        payment_method: 'cash', // Temporary default - TODO: Implement payment method selection
         order_mode: orderMode,
         status: 'pending',
         contact_number: contactNumber.trim() || null,
@@ -334,10 +334,11 @@ export default function CustomerOrderPortal() {
       setOrderStatus('success');
       clearCart();
       
-      // Show success message and redirect after 2 seconds
-      setTimeout(() => {
-        router.push('/customer/orders');
-      }, 2000);
+      // Redirect to order tracking after successful order placement
+      router.push('/customer/orders').catch(err => {
+        console.error('[CustomerOrderPortal] Redirect failed:', err);
+        // If redirect fails, user can manually navigate using the success message
+      });
 
     } catch (err) {
       console.error('[CustomerOrderPortal] Checkout failed:', err);
@@ -479,7 +480,8 @@ export default function CustomerOrderPortal() {
                   {item.has_variants && item.variant_types && item.variant_types.length > 0 && (
                     <div style={styles.variantInfo}>
                       {item.variant_types.map((vt, idx) => {
-                        const availableOptions = vt.options ? vt.options.filter(opt => opt.available !== false) : [];
+                        // Note: Options are already filtered during fetchMenu
+                        const availableOptions = vt.options || [];
                         const optionNames = availableOptions.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name);
                         const totalOptions = availableOptions.length;
                         const hasMoreOptions = totalOptions > MAX_DISPLAYED_OPTIONS;
@@ -610,7 +612,11 @@ export default function CustomerOrderPortal() {
               </div>
             </div>
 
-            {orderStatus === 'success' && <p style={styles.successMsg}>✅ Order placed successfully! Redirecting...</p>}
+            {orderStatus === 'success' && (
+              <p style={styles.successMsg}>
+                ✅ Order placed successfully! Click <Link href="/customer/orders" style={{color: '#ffc107', textDecoration: 'underline'}}>here</Link> to view your order.
+              </p>
+            )}
             {orderStatus === 'error' && <p style={styles.errorMsg}>❌ Failed to place order</p>}
 
             <div style={styles.cartActions}>
