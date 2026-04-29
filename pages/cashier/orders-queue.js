@@ -4,10 +4,12 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function OrdersQueue() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
+  const [user, setUser] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterMode, setFilterMode] = useState('all'); // 'all', 'dine-in', 'take-out', 'pick-up', 'delivery'
@@ -17,6 +19,7 @@ export default function OrdersQueue() {
 
   useEffect(() => {
     if (!authLoading) {
+      fetchUser();
       fetchOrders();
       fetchRiders();
       
@@ -33,6 +36,16 @@ export default function OrdersQueue() {
       };
     }
   }, [authLoading]);
+
+  const fetchUser = async () => {
+    if (!supabase) return;
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      setUser(authUser);
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to fetch user:', err?.message ?? err);
+    }
+  };
 
   const fetchOrders = async () => {
     if (!supabase) return;
@@ -266,12 +279,15 @@ export default function OrdersQueue() {
             <Link href="/cashier/settings" style={styles.navLink}>Settings</Link>
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
-          <button style={styles.logoutBtn} onClick={async () => {
-            if (supabase) await supabase.auth.signOut();
-            router.replace('/login');
-          }}>
-            Logout
-          </button>
+          <div style={styles.headerActions}>
+            {user && <NotificationBell user={user} />}
+            <button style={styles.logoutBtn} onClick={async () => {
+              if (supabase) await supabase.auth.signOut();
+              router.replace('/login');
+            }}>
+              Logout
+            </button>
+          </div>
         </header>
 
         <main style={styles.main}>
@@ -347,6 +363,13 @@ export default function OrdersQueue() {
                           <span style={styles.itemPrice}>
                             ₱{((item.price || 0) * (item.quantity || 0)).toFixed(2)}
                           </span>
+                          <button
+                            style={styles.removeItemBtn}
+                            onClick={() => handleRemoveItem(order.id, index)}
+                            title="Remove item"
+                          >
+                            ✕
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -451,6 +474,9 @@ const styles = {
     background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)',
   },
   header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -488,6 +514,11 @@ const styles = {
     borderRadius: '6px',
     backgroundColor: 'rgba(255, 193, 7, 0.1)',
     border: '1px solid #ffc107',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
   },
   logoutBtn: {
     padding: '8px 18px',

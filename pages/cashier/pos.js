@@ -7,6 +7,7 @@ import { supabase } from '../../utils/supabaseClient';
 import useCartStore from '../../store/useCartStore';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
+import NotificationBell from '../../components/NotificationBell';
 import { getDistanceBetweenCoordinates, calculateDeliveryFee, STORE_LOCATION } from '../../utils/deliveryCalculator';
 
 // Dynamically import OpenStreetMapPicker with SSR disabled
@@ -22,6 +23,7 @@ const MAX_DISPLAYED_OPTIONS = 3; // Maximum number of variant options to display
 export default function CashierPOS() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
+  const [user, setUser] = useState(null);
   const [menuItems, setMenuItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -59,6 +61,19 @@ export default function CashierPOS() {
 
   useEffect(() => {
     if (!authLoading) fetchMenu();
+  }, [authLoading]);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (!supabase) return;
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        setUser(authUser);
+      } catch (err) {
+        console.error('[POS] Failed to fetch user:', err?.message ?? err);
+      }
+    };
+    if (!authLoading) fetchUser();
   }, [authLoading]);
 
   useEffect(() => {
@@ -572,16 +587,24 @@ export default function CashierPOS() {
       </Head>
       <div style={styles.page}>
         <header style={styles.header}>
-          <h1 style={styles.logo}>☕ Point of Sale</h1>
+          <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
           <nav style={styles.nav}>
             <Link href="/cashier/dashboard" style={styles.navLink}>Dashboard</Link>
+            <Link href="/cashier/pos" style={styles.navLinkActive}>POS</Link>
+            <Link href="/cashier/orders-queue" style={styles.navLink}>Order Queue</Link>
+            <Link href="/cashier/eod-report" style={styles.navLink}>EOD Report</Link>
+            <Link href="/cashier/settings" style={styles.navLink}>Settings</Link>
+            <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
-          <button style={styles.logoutBtn} onClick={async () => {
-            if (supabase) await supabase.auth.signOut();
-            router.replace('/login');
-          }}>
-            Logout
-          </button>
+          <div style={styles.headerActions}>
+            {user && <NotificationBell user={user} />}
+            <button style={styles.logoutBtn} onClick={async () => {
+              if (supabase) await supabase.auth.signOut();
+              router.replace('/login');
+            }}>
+              Logout
+            </button>
+          </div>
         </header>
 
         <div style={styles.body}>
@@ -984,11 +1007,13 @@ export default function CashierPOS() {
 const styles = {
   page: { minHeight: '100vh', background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)', fontFamily: "'Poppins', sans-serif", color: '#fff' },
   center: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)' },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 32px', backgroundColor: '#1a1a1a', borderBottom: '1px solid #ffc107', gap: '24px' },
+  header: { position: 'sticky', top: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 32px', backgroundColor: '#1a1a1a', borderBottom: '1px solid #ffc107', gap: '24px' },
   logo: { fontSize: '22px', fontFamily: "'Playfair Display', serif", color: '#ffc107', margin: 0, whiteSpace: 'nowrap' },
   nav: { display: 'flex', gap: '16px', flex: 1, justifyContent: 'center' },
-  navLink: { color: '#ccc', textDecoration: 'none', fontSize: '14px', padding: '8px 12px', borderRadius: '6px' },
-  logoutBtn: { padding: '8px 18px', backgroundColor: 'transparent', color: '#ffc107', border: '1px solid #ffc107', borderRadius: '6px', fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap' },
+  navLink: { color: '#ccc', textDecoration: 'none', fontSize: '14px', padding: '8px 12px', borderRadius: '6px', transition: 'all 0.2s' },
+  navLinkActive: { color: '#ffc107', textDecoration: 'none', fontSize: '14px', padding: '8px 12px', borderRadius: '6px', backgroundColor: 'rgba(255, 193, 7, 0.1)', border: '1px solid #ffc107' },
+  headerActions: { display: 'flex', alignItems: 'center', gap: '12px' },
+  logoutBtn: { padding: '8px 18px', backgroundColor: 'transparent', color: '#ffc107', border: '1px solid #ffc107', borderRadius: '6px', fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'Poppins', sans-serif" },
   body: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', padding: '32px', maxWidth: '1400px', margin: '0 auto' },
   menuPanel: { minWidth: 0 },
   orderPanel: { backgroundColor: '#1a1a1a', border: '1px solid #ffc107', borderRadius: '12px', padding: '24px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' },
