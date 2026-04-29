@@ -286,6 +286,11 @@ function CustomerOrderPage() {
   const handleVariantConfirm = useCallback((itemWithVariants: any) => {
     const { cartKey, finalPrice, quantity, variantDetails } = itemWithVariants
     
+    // Extract variant summary for display (join all variant selections)
+    const variantSummary = variantDetails && typeof variantDetails === 'object'
+      ? Object.entries(variantDetails).map(([type, value]) => `${type}: ${value}`).join(', ')
+      : undefined
+    
     setCart(prev => {
       const existing = prev.find(c => c.comboKey === cartKey)
       if (existing) {
@@ -304,7 +309,7 @@ function CustomerOrderPage() {
         basePrice: finalPrice,
         addonPrice: 0,
         price: finalPrice * quantity,
-        selectedVariety: variantDetails ? Object.values(variantDetails)[0] as string : undefined,
+        selectedVariety: variantSummary,
         selectedSize: undefined,
         selectedAddons: [],
       }]
