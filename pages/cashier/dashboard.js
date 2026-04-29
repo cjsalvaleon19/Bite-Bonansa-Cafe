@@ -27,6 +27,8 @@ export default function CashierDashboard() {
   const [riders, setRiders] = useState([]);
   const [selectedOrderForRider, setSelectedOrderForRider] = useState(null);
   const [showRiderModal, setShowRiderModal] = useState(false);
+  const [hasNewOrders, setHasNewOrders] = useState(false);
+  const [notificationAudio, setNotificationAudio] = useState(null);
 
   useEffect(() => {
     if (!authLoading) {
@@ -39,10 +41,38 @@ export default function CashierDashboard() {
       fetchPendingOnlineOrders();
       fetchRiders();
       
-      // Set up real-time subscription
+      // Set up real-time subscription for new orders
       const subscription = supabase
         ?.channel('pending_orders_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        .on('postgres_changes', { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'orders',
+          filter: 'status=eq.pending'
+        }, (payload) => {
+          // New order detected
+          const newOrder = payload.new;
+          if (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up') {
+            setHasNewOrders(true);
+            // Play notification sound
+            if (notificationAudio) {
+              notificationAudio.play().catch(err => console.log('Audio play failed:', err));
+            }
+            // Show browser notification
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification('New Online Order!', {
+                body: `Order #${newOrder.order_number || newOrder.id.slice(0, 8)} - ${newOrder.order_mode}`,
+                icon: '/favicon.ico',
+                tag: `order-${newOrder.id}`,
+              });
+            }
+          }
+          fetchPendingOnlineOrders();
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () => {
+          fetchPendingOnlineOrders();
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, () => {
           fetchPendingOnlineOrders();
         })
         .subscribe();
@@ -51,7 +81,20 @@ export default function CashierDashboard() {
         subscription?.unsubscribe();
       };
     }
-  }, [authLoading, activeTab]);
+  }, [authLoading, activeTab, notificationAudio]);
+
+  // Initialize notification audio on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Request notification permission
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+      // Create audio element for notification sound
+      const audio = new Audio('/notification.mp3');
+      setNotificationAudio(audio);
+    }
+  }, []);
 
   const initializePage = async () => {
     if (!supabase) return;
@@ -142,7 +185,18 @@ export default function CashierDashboard() {
       // Fetch pending online orders (delivery or pick-up, status: pending)
       const { data: orders, error } = await supabase
         .from('orders')
-        .select('*')
+        .select(`
+          *,
+          order_items (
+            id,
+            menu_item_id,
+            name,
+            price,
+            quantity,
+            subtotal,
+            notes
+          )
+        `)
         .in('order_mode', ['delivery', 'pick-up'])
         .eq('status', 'pending')
         .order('created_at', { ascending: true });
@@ -174,6 +228,145 @@ export default function CashierDashboard() {
     }
   };
 
+  const printReceipt = (order, receiptType = 'sales') => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Please allow popups to print receipts');
+      return;
+    }
+
+    const items = order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
+    const itemsHtml = items.map(item => `
+      <tr>
+        <td style="padding: 4px 0; border-bottom: 1px dashed #ccc;">${item.name}</td>
+        <td style="padding: 4px 8px; text-align: center; border-bottom: 1px dashed #ccc;">x${item.quantity}</td>
+        <td style="padding: 4px 0; text-align: right; border-bottom: 1px dashed #ccc;">₱${((item.price || 0) * (item.quantity || 0)).toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+    const isKitchenCopy = receiptType === 'kitchen';
+    const title = isKitchenCopy ? 'KITCHEN ORDER SLIP' : 'SALES INVOICE';
+    
+    const receiptHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${title} - Order #${order.order_number || order.id.slice(0, 8)}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            font-family: 'Courier New', monospace; 
+            padding: 20px; 
+            max-width: 350px;
+            margin: 0 auto;
+          }
+          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+          .header h1 { font-size: 20px; margin-bottom: 5px; }
+          .header p { font-size: 12px; }
+          .section { margin: 15px 0; }
+          .section-title { font-weight: bold; margin-bottom: 8px; font-size: 14px; text-decoration: underline; }
+          table { width: 100%; border-collapse: collapse; }
+          .total-row { font-weight: bold; font-size: 14px; }
+          .footer { text-align: center; margin-top: 20px; padding-top: 10px; border-top: 2px solid #000; font-size: 12px; }
+          @media print {
+            body { padding: 0; }
+            button { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>☕ Bite Bonansa Cafe</h1>
+          <p>123 Main Street, City</p>
+          <p>Tel: (123) 456-7890</p>
+          <p style="margin-top: 10px; font-size: 16px; font-weight: bold;">${title}</p>
+        </div>
+
+        <div class="section">
+          <p><strong>Order #:</strong> ${order.order_number || order.id.slice(0, 8)}</p>
+          <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
+          <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
+          ${order.customer_name ? `<p><strong>Customer:</strong> ${order.customer_name}</p>` : ''}
+          ${order.contact_number ? `<p><strong>Contact:</strong> ${order.contact_number}</p>` : ''}
+          ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Address:</strong> ${order.delivery_address}</p>` : ''}
+        </div>
+
+        <div class="section">
+          <p class="section-title">ITEMS ORDERED</p>
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align: left; padding: 4px 0; border-bottom: 2px solid #000;">Item</th>
+                <th style="text-align: center; padding: 4px 8px; border-bottom: 2px solid #000;">Qty</th>
+                <th style="text-align: right; padding: 4px 0; border-bottom: 2px solid #000;">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+        </div>
+
+        ${!isKitchenCopy ? `
+        <div class="section">
+          <table>
+            <tr>
+              <td style="padding: 4px 0;"><strong>Subtotal:</strong></td>
+              <td style="text-align: right;">₱${(order.subtotal || 0).toFixed(2)}</td>
+            </tr>
+            ${order.delivery_fee > 0 ? `
+            <tr>
+              <td style="padding: 4px 0;"><strong>Delivery Fee:</strong></td>
+              <td style="text-align: right;">₱${(order.delivery_fee || 0).toFixed(2)}</td>
+            </tr>
+            ` : ''}
+            <tr class="total-row">
+              <td style="padding: 8px 0; border-top: 2px solid #000;"><strong>TOTAL:</strong></td>
+              <td style="text-align: right; border-top: 2px solid #000;">₱${(order.total_amount || 0).toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0;"><strong>Payment Method:</strong></td>
+              <td style="text-align: right;">${order.payment_method || 'N/A'}</td>
+            </tr>
+          </table>
+        </div>
+        ` : ''}
+
+        ${order.special_request ? `
+        <div class="section">
+          <p class="section-title">SPECIAL INSTRUCTIONS</p>
+          <p style="font-size: 12px;">${order.special_request}</p>
+        </div>
+        ` : ''}
+
+        <div class="footer">
+          <p>Thank you for your order!</p>
+          ${isKitchenCopy ? '<p style="margin-top: 10px; font-weight: bold;">⚠️ KITCHEN COPY - DO NOT GIVE TO CUSTOMER ⚠️</p>' : ''}
+          <p style="margin-top: 10px;">Accepted by: ${user?.full_name || 'Cashier'}</p>
+          <p>${new Date().toLocaleString()}</p>
+        </div>
+
+        <div style="text-align: center; margin-top: 20px;">
+          <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #ffc107; border: none; border-radius: 4px;">
+            Print Receipt
+          </button>
+          <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; margin-left: 10px; background: #666; color: white; border: none; border-radius: 4px;">
+            Close
+          </button>
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(receiptHtml);
+    printWindow.document.close();
+    
+    // Auto print after a short delay
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
+
   const handleAcceptOrder = async (orderId) => {
     if (!supabase) return;
     if (!confirm('Accept this order and start processing?')) return;
@@ -191,11 +384,17 @@ export default function CashierDashboard() {
 
       if (error) throw error;
 
-      // TODO: Generate sales invoice receipt
-      console.log('[Order Accepted] Sales invoice receipt generated for order:', orderId);
-      
-      // TODO: Generate kitchen order slips by department
-      console.log('[Order Accepted] Kitchen order slips generated for order:', orderId);
+      // Get the full order details for printing
+      const order = pendingOrders.find(o => o.id === orderId);
+      if (order) {
+        // Generate sales invoice receipt
+        printReceipt(order, 'sales');
+        
+        // Generate kitchen order slip after a short delay
+        setTimeout(() => {
+          printReceipt(order, 'kitchen');
+        }, 500);
+      }
 
       // Send notification to customer
       const order = pendingOrders.find(o => o.id === orderId);
@@ -269,11 +468,14 @@ export default function CashierDashboard() {
             </button>
             <button
               style={activeTab === 'pending' ? styles.tabActive : styles.tab}
-              onClick={() => setActiveTab('pending')}
+              onClick={() => {
+                setActiveTab('pending');
+                setHasNewOrders(false); // Clear notification when tab is clicked
+              }}
             >
               📦 Pending Online Orders
               {pendingOrders.length > 0 && (
-                <span style={styles.tabBadge}>{pendingOrders.length}</span>
+                <span style={hasNewOrders ? styles.tabBadgeNew : styles.tabBadge}>{pendingOrders.length}</span>
               )}
             </button>
           </div>
@@ -421,12 +623,13 @@ export default function CashierDashboard() {
                       )}
 
                       <div style={styles.itemsList}>
-                        {order.items && order.items.map((item, index) => (
+                        {/* Display order_items if available, otherwise fall back to items array */}
+                        {(order.order_items && order.order_items.length > 0 ? order.order_items : order.items || []).map((item, index) => (
                           <div key={index} style={styles.orderItem}>
                             <span style={styles.itemName}>{item.name}</span>
                             <span style={styles.itemQty}>x{item.quantity}</span>
                             <span style={styles.itemPrice}>
-                              ₱{(item.price * item.quantity).toFixed(2)}
+                              ₱{((item.price || 0) * (item.quantity || 0)).toFixed(2)}
                             </span>
                           </div>
                         ))}
@@ -716,6 +919,15 @@ const styles = {
     padding: '2px 8px',
     fontSize: '12px',
     fontWeight: '700',
+  },
+  tabBadgeNew: {
+    backgroundColor: '#ff4444',
+    color: '#fff',
+    borderRadius: '12px',
+    padding: '2px 8px',
+    fontSize: '12px',
+    fontWeight: '700',
+    animation: 'pulse 1.5s ease-in-out infinite',
   },
   pendingSection: {
     marginTop: '20px',
