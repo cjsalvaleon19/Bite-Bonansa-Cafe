@@ -397,7 +397,6 @@ export default function CashierDashboard() {
       }
 
       // Send notification to customer
-      const order = pendingOrders.find(o => o.id === orderId);
       if (order && order.customer_id) {
         await supabase.from('notifications').insert({
           user_id: order.customer_id,
