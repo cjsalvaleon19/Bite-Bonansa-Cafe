@@ -4,10 +4,12 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function CashierSettings() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deliveryEnabled, setDeliveryEnabled] = useState(true);
@@ -16,9 +18,20 @@ export default function CashierSettings() {
 
   useEffect(() => {
     if (!authLoading) {
+      fetchUser();
       initializePage();
     }
   }, [authLoading]);
+
+  const fetchUser = async () => {
+    if (!supabase) return;
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      setUser(authUser);
+    } catch (err) {
+      console.error('[Settings] Failed to fetch user:', err?.message ?? err);
+    }
+  };
 
   const initializePage = async () => {
     if (!supabase) return;
@@ -161,6 +174,7 @@ export default function CashierSettings() {
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
           <div style={styles.headerActions}>
+            {user && <NotificationBell user={user} />}
             <button style={styles.logoutBtn} onClick={async () => {
               if (supabase) await supabase.auth.signOut();
               router.replace('/login');
@@ -253,6 +267,9 @@ const styles = {
     background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)',
   },
   header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -289,7 +306,7 @@ const styles = {
     padding: '8px 12px',
     borderRadius: '6px',
     backgroundColor: 'rgba(255, 193, 7, 0.1)',
-    fontWeight: 'bold',
+    border: '1px solid #ffc107',
   },
   headerActions: {
     display: 'flex',
@@ -297,15 +314,15 @@ const styles = {
     alignItems: 'center',
   },
   logoutBtn: {
-    padding: '8px 16px',
-    backgroundColor: '#d32f2f',
-    color: '#fff',
-    border: 'none',
+    padding: '8px 18px',
+    backgroundColor: 'transparent',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
     borderRadius: '6px',
-    cursor: 'pointer',
     fontSize: '14px',
-    fontWeight: '600',
-    transition: 'all 0.2s',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    whiteSpace: 'nowrap',
   },
   main: {
     maxWidth: '1200px',

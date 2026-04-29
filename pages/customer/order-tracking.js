@@ -432,6 +432,9 @@ const styles = {
     background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)',
   },
   header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',

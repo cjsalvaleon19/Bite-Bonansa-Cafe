@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function CashierProfile() {
   const router = useRouter();
@@ -152,12 +153,15 @@ export default function CashierProfile() {
             <Link href="/cashier/settings" style={styles.navLink}>Settings</Link>
             <Link href="/cashier/profile" style={styles.navLinkActive}>Profile</Link>
           </nav>
-          <button style={styles.logoutBtn} onClick={async () => {
-            if (supabase) await supabase.auth.signOut();
-            router.replace('/login');
-          }}>
-            Logout
-          </button>
+          <div style={styles.headerActions}>
+            {user && <NotificationBell user={user} />}
+            <button style={styles.logoutBtn} onClick={async () => {
+              if (supabase) await supabase.auth.signOut();
+              router.replace('/login');
+            }}>
+              Logout
+            </button>
+          </div>
         </header>
 
         <main style={styles.main}>
@@ -307,6 +311,9 @@ const styles = {
     background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)',
   },
   header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -344,6 +351,11 @@ const styles = {
     borderRadius: '6px',
     backgroundColor: 'rgba(255, 193, 7, 0.1)',
     border: '1px solid #ffc107',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
   },
   logoutBtn: {
     padding: '8px 18px',

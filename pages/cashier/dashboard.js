@@ -6,6 +6,9 @@ import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 
+// Constants
+const NOTIFICATION_AUDIO_VOLUME = 0.5;
+
 export default function CashierDashboard() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
@@ -29,6 +32,8 @@ export default function CashierDashboard() {
   const [showRiderModal, setShowRiderModal] = useState(false);
   const [hasNewOrders, setHasNewOrders] = useState(false);
   const [notificationAudio, setNotificationAudio] = useState(null);
+  const [showPrintReceiptModal, setShowPrintReceiptModal] = useState(false);
+  const [acceptedOrder, setAcceptedOrder] = useState(null);
 
   useEffect(() => {
     if (!authLoading) {
@@ -36,11 +41,9 @@ export default function CashierDashboard() {
     }
   }, [authLoading]);
 
+  // Set up real-time subscription for new orders (always active for notifications)
   useEffect(() => {
-    if (!authLoading && activeTab === 'pending') {
-      fetchPendingOnlineOrders();
-      fetchRiders();
-      
+    if (!authLoading) {
       // Set up real-time subscription for new orders
       const subscription = supabase
         ?.channel('pending_orders_changes')
@@ -52,6 +55,8 @@ export default function CashierDashboard() {
         }, (payload) => {
           // New order detected
           const newOrder = payload.new;
+          console.log('[CashierDashboard] New order received:', newOrder);
+          
           if (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up') {
             setHasNewOrders(true);
             // Play notification sound
@@ -65,21 +70,38 @@ export default function CashierDashboard() {
                 icon: '/favicon.ico',
                 tag: `order-${newOrder.id}`,
               });
+            } else {
+              console.log('[CashierDashboard] Browser notifications not available or not permitted');
             }
           }
-          fetchPendingOnlineOrders();
+          // Fetch pending orders if on that tab
+          if (activeTab === 'pending') {
+            fetchPendingOnlineOrders();
+          }
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () => {
-          fetchPendingOnlineOrders();
+          if (activeTab === 'pending') {
+            fetchPendingOnlineOrders();
+          }
         })
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, () => {
-          fetchPendingOnlineOrders();
+          if (activeTab === 'pending') {
+            fetchPendingOnlineOrders();
+          }
         })
         .subscribe();
 
       return () => {
         subscription?.unsubscribe();
       };
+    }
+  }, [authLoading, notificationAudio, activeTab]);
+
+  // Fetch pending orders when switching to pending tab
+  useEffect(() => {
+    if (!authLoading && activeTab === 'pending') {
+      fetchPendingOnlineOrders();
+      fetchRiders();
     }
   }, [authLoading, activeTab, notificationAudio]);
 
@@ -90,8 +112,9 @@ export default function CashierDashboard() {
       if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
       }
-      // Create audio element for notification sound
+      // Create audio element for notification sound (optional - will fail gracefully if file doesn't exist)
       const audio = new Audio('/notification.mp3');
+      audio.volume = NOTIFICATION_AUDIO_VOLUME;
       setNotificationAudio(audio);
     }
   }, []);
@@ -387,6 +410,10 @@ export default function CashierDashboard() {
       // Get the full order details for printing
       const order = pendingOrders.find(o => o.id === orderId);
       if (order) {
+        // Show print receipt confirmation modal
+        setAcceptedOrder(order);
+        setShowPrintReceiptModal(true);
+        
         // Generate sales invoice receipt
         printReceipt(order, 'sales');
         
@@ -408,7 +435,6 @@ export default function CashierDashboard() {
         });
       }
 
-      alert('Order accepted successfully!');
       fetchPendingOnlineOrders();
     } catch (err) {
       console.error('[CashierDashboard] Failed to accept order:', err?.message ?? err);
@@ -652,6 +678,39 @@ export default function CashierDashboard() {
             </div>
           )}
         </main>
+
+        {/* Print Receipt Confirmation Modal */}
+        {showPrintReceiptModal && acceptedOrder && (
+          <div style={styles.modal} onClick={() => setShowPrintReceiptModal(false)}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+              <h3 style={styles.modalTitle}>✅ Order Accepted!</h3>
+              <p style={styles.modalSubtext}>
+                Order #{acceptedOrder.order_number || acceptedOrder.id.slice(0, 8)} has been accepted and receipts have been printed.
+              </p>
+              <p style={styles.modalInfo}>
+                • Sales invoice (for records)<br />
+                • Kitchen order slip
+              </p>
+              <div style={styles.modalActions}>
+                <button
+                  style={styles.modalReprintBtn}
+                  onClick={() => {
+                    printReceipt(acceptedOrder, 'sales');
+                    setTimeout(() => printReceipt(acceptedOrder, 'kitchen'), 500);
+                  }}
+                >
+                  🖨️ Reprint Receipts
+                </button>
+                <button
+                  style={styles.modalCloseBtn}
+                  onClick={() => setShowPrintReceiptModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
@@ -672,6 +731,9 @@ const styles = {
     background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)',
   },
   header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -834,6 +896,37 @@ const styles = {
     backgroundColor: '#ffc107',
     color: '#0a0a0a',
     border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '700',
+    cursor: 'pointer',
+  },
+  modalSubtext: {
+    fontSize: '14px',
+    color: '#ccc',
+    textAlign: 'center',
+    marginBottom: '16px',
+  },
+  modalInfo: {
+    fontSize: '13px',
+    color: '#888',
+    textAlign: 'left',
+    marginBottom: '24px',
+    lineHeight: '1.8',
+    padding: '12px',
+    backgroundColor: '#2a2a2a',
+    borderRadius: '6px',
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '12px',
+  },
+  modalReprintBtn: {
+    flex: 1,
+    padding: '12px',
+    backgroundColor: 'transparent',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
     borderRadius: '6px',
     fontSize: '14px',
     fontWeight: '700',
