@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import {
   Search,
   Plus,
@@ -51,6 +52,12 @@ import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
+
+// Dynamically import VariantSelectionModal for variant selection
+const VariantSelectionModal = dynamic(
+  () => import('../../../components/VariantSelectionModal'),
+  { ssr: false }
+)
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,6 +126,9 @@ function CustomerOrderPage() {
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
+  // State for new variant system modal
+  const [showVariantModal, setShowVariantModal] = useState(false)
+  const [variantModalItem, setVariantModalItem] = useState<MenuItem | null>(null)
 
   // Load cart from localStorage on mount
   useEffect(() => {
@@ -272,6 +282,39 @@ function CustomerOrderPage() {
     toast.success(`Added ${item.name} to cart`)
   }, [])
 
+  // Handle variant modal confirmation (new variant system)
+  const handleVariantConfirm = useCallback((itemWithVariants: any) => {
+    const { cartKey, finalPrice, quantity, variantDetails } = itemWithVariants
+    
+    setCart(prev => {
+      const existing = prev.find(c => c.comboKey === cartKey)
+      if (existing) {
+        return prev.map(c =>
+          c.comboKey === cartKey
+            ? { ...c, quantity: c.quantity + quantity, price: (c.quantity + quantity) * finalPrice }
+            : c
+        )
+      }
+      return [...prev, {
+        id: String(Date.now()),
+        comboKey: cartKey,
+        menuItemId: itemWithVariants.id,
+        menuItem: itemWithVariants,
+        quantity,
+        basePrice: finalPrice,
+        addonPrice: 0,
+        price: finalPrice * quantity,
+        selectedVariety: variantDetails ? Object.values(variantDetails)[0] as string : undefined,
+        selectedSize: undefined,
+        selectedAddons: [],
+      }]
+    })
+    
+    setShowVariantModal(false)
+    setVariantModalItem(null)
+    toast.success(`Added ${itemWithVariants.name} to cart`)
+  }, [])
+
   // Handle URL parameter to auto-add items from dashboard
   useEffect(() => {
     const itemId = searchParams?.get('addItem')
@@ -343,14 +386,25 @@ function CustomerOrderPage() {
   })
 
   const openItemDialog = (item: MenuItem) => {
-    const hasOptions =
+    // Check for new variant system first
+    const hasVariantTypes = item.has_variants && item.variant_types && item.variant_types.length > 0
+    
+    // Check for old system
+    const hasOldOptions =
       (item.varieties && item.varieties.length > 0) ||
       (item.sizes && item.sizes.length > 0) ||
       (item.addons && item.addons.length > 0)
-    if (hasOptions) {
+    
+    if (hasVariantTypes) {
+      // Use VariantSelectionModal for new variant system
+      setVariantModalItem(item)
+      setShowVariantModal(true)
+    } else if (hasOldOptions) {
+      // Use ItemCustomizationDialog for old system
       setDialogItem(item)
       setShowItemDialog(true)
     } else {
+      // No customization needed, add directly to cart
       addToCartWithCustomizations(item, '', '', [], 1)
     }
   }
@@ -815,6 +869,18 @@ function CustomerOrderPage() {
         onClose={() => setShowItemDialog(false)}
         onAddToCart={addToCartWithCustomizations}
       />
+
+      {/* Variant Selection Modal for new variant system */}
+      {showVariantModal && variantModalItem && (
+        <VariantSelectionModal
+          item={variantModalItem}
+          onConfirm={handleVariantConfirm}
+          onCancel={() => {
+            setShowVariantModal(false)
+            setVariantModalItem(null)
+          }}
+        />
+      )}
 
       {showLocationPicker && (
         <LocationPicker
