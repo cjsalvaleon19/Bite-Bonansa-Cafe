@@ -40,7 +40,18 @@ export default function OrdersQueue() {
     try {
       const { data, error } = await supabase
         .from('orders')
-        .select('*')
+        .select(`
+          *,
+          order_items (
+            id,
+            menu_item_id,
+            name,
+            price,
+            quantity,
+            subtotal,
+            notes
+          )
+        `)
         .in('status', ['order_in_queue', 'order_in_process'])
         .order('created_at', { ascending: true });
 
@@ -138,6 +149,42 @@ export default function OrdersQueue() {
   const handleOutForDelivery = (order) => {
     setSelectedOrderForRider(order);
     setShowRiderModal(true);
+  };
+
+  const handleReadyForPickup = async (order) => {
+    if (!supabase) return;
+    if (!confirm('Mark this order as ready for pick-up?')) return;
+
+    try {
+      // Update order status to out_for_delivery (which will be displayed as "Ready for Pick-up" for pick-up orders)
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'out_for_delivery',
+          out_for_delivery_at: new Date().toISOString()
+        })
+        .eq('id', order.id);
+
+      if (error) throw error;
+
+      // Send notification to customer
+      if (order.customer_id) {
+        await supabase.from('notifications').insert({
+          user_id: order.customer_id,
+          title: 'Order Ready for Pick-up',
+          message: `Your order #${order.order_number} is ready for pick-up!`,
+          type: 'order_update',
+          related_id: order.id,
+          related_type: 'order'
+        });
+      }
+
+      alert('Order marked as ready for pick-up!');
+      fetchOrders();
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to mark ready for pickup:', err?.message ?? err);
+      alert('Failed to update order status. Please try again.');
+    }
   };
 
   const handleAssignRider = async (riderId) => {
@@ -277,7 +324,7 @@ export default function OrdersQueue() {
                   <div style={styles.orderHeader}>
                     <div>
                       <h3 style={styles.orderNumber}>
-                        Order #{order.id.slice(0, 8)}
+                        Order #{order.order_number || order.id.slice(0, 8)}
                       </h3>
                       <p style={styles.orderTime}>
                         {new Date(order.created_at).toLocaleString()}
@@ -289,7 +336,8 @@ export default function OrdersQueue() {
                   </div>
 
                   <div style={styles.itemsList}>
-                    {order.items && order.items.map((item, index) => (
+                    {/* Display order_items if available, otherwise fall back to items array */}
+                    {(order.order_items && order.order_items.length > 0 ? order.order_items : order.items || []).map((item, index) => (
                       <div key={index} style={styles.itemRow}>
                         <div style={styles.itemInfo}>
                           <span style={styles.itemName}>{item.name}</span>
@@ -297,15 +345,8 @@ export default function OrdersQueue() {
                         </div>
                         <div style={styles.itemActions}>
                           <span style={styles.itemPrice}>
-                            ₱{(item.price * item.quantity).toFixed(2)}
+                            ₱{((item.price || 0) * (item.quantity || 0)).toFixed(2)}
                           </span>
-                          <button
-                            style={styles.removeItemBtn}
-                            onClick={() => handleRemoveItem(order.id, index)}
-                            title="Remove item"
-                          >
-                            ✕
-                          </button>
                         </div>
                       </div>
                     ))}
@@ -323,6 +364,15 @@ export default function OrdersQueue() {
                           onClick={() => handleOutForDelivery(order)}
                         >
                           🚚 Out for Delivery
+                        </button>
+                      )}
+                      {/* Show Ready for Pick-Up button only for pick-up orders in process status */}
+                      {order.order_mode === 'pick-up' && order.status === 'order_in_process' && (
+                        <button
+                          style={styles.pickupReadyBtn}
+                          onClick={() => handleReadyForPickup(order)}
+                        >
+                          ✅ Ready for Pick-Up
                         </button>
                       )}
                       <button
@@ -611,6 +661,17 @@ const styles = {
   deliveryBtn: {
     padding: '8px 16px',
     backgroundColor: '#2196f3',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  pickupReadyBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#ff9800',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',
