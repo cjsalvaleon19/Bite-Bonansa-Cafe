@@ -532,7 +532,7 @@ function CustomerOrderPage() {
           delivery_latitude: isDelivery ? deliveryLat : null,
           delivery_longitude: isDelivery ? deliveryLng : null,
           status: 'pending',
-          order_mode: isDelivery ? 'delivery' : 'takeout',
+          order_mode: isDelivery ? 'delivery' : 'pick-up',
           payment_method: paymentMethod,
           subtotal,
           delivery_fee: isDelivery ? appliedDeliveryFee : 0,

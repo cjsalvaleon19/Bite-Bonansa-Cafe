@@ -122,7 +122,8 @@ export default function CustomerOrders() {
     router.replace('/login').catch(console.error);
   };
 
-  const getStatusInfo = (status) => {
+  const getStatusInfo = (status, orderMode) => {
+    const isPickup = orderMode === 'pick-up';
     const statusMap = {
       'order_in_queue': {
         label: 'Order in Queue',
@@ -139,15 +140,15 @@ export default function CustomerOrders() {
         progress: 50
       },
       'out_for_delivery': {
-        label: 'Out for Delivery',
-        description: 'Rider has picked up your order and is on the way',
+        label: isPickup ? 'Ready for Pick-up' : 'Out for Delivery',
+        description: isPickup ? 'Your order is ready for pick-up' : 'Rider has picked up your order and is on the way',
         color: '#ff9800',
-        icon: '🛵',
+        icon: isPickup ? '✅' : '🛵',
         progress: 75
       },
       'order_delivered': {
-        label: 'Order Delivered',
-        description: 'Your order has been delivered successfully',
+        label: isPickup ? 'Order Complete' : 'Order Delivered',
+        description: isPickup ? 'Your order has been completed' : 'Your order has been delivered successfully',
         color: '#4caf50',
         icon: '✓',
         progress: 100
@@ -220,7 +221,7 @@ export default function CustomerOrders() {
           {orders.length > 0 ? (
             <div style={styles.ordersGrid}>
               {orders.map(order => {
-                const statusInfo = getStatusInfo(order.status);
+                const statusInfo = getStatusInfo(order.status, order.order_mode);
                 return (
                   <div key={order.id} style={styles.orderCard}>
                     <div style={styles.orderHeader}>
@@ -281,10 +282,12 @@ export default function CustomerOrders() {
                           ...styles.timelineIcon,
                           backgroundColor: ['out_for_delivery', 'order_delivered'].includes(order.status) ? '#4caf50' : '#999'
                         }}>
-                          🛵
+                          {order.order_mode === 'pick-up' ? '✅' : '🛵'}
                         </div>
                         <div style={styles.timelineContent}>
-                          <h4 style={styles.timelineTitle}>Out for Delivery</h4>
+                          <h4 style={styles.timelineTitle}>
+                            {order.order_mode === 'pick-up' ? 'Ready for Pick-up' : 'Out for Delivery'}
+                          </h4>
                           <p style={styles.timelineTime}>
                             {order.out_for_delivery_at ? formatDate(order.out_for_delivery_at) : 'Pending'}
                           </p>
@@ -299,7 +302,9 @@ export default function CustomerOrders() {
                           ✓
                         </div>
                         <div style={styles.timelineContent}>
-                          <h4 style={styles.timelineTitle}>Order Delivered</h4>
+                          <h4 style={styles.timelineTitle}>
+                            {order.order_mode === 'pick-up' ? 'Order Complete' : 'Order Delivered'}
+                          </h4>
                           <p style={styles.timelineTime}>
                             {order.delivered_at ? formatDate(order.delivered_at) : 'Pending'}
                           </p>

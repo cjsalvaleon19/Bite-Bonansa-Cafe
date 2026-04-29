@@ -140,6 +140,42 @@ export default function OrdersQueue() {
     setShowRiderModal(true);
   };
 
+  const handleReadyForPickup = async (order) => {
+    if (!supabase) return;
+    if (!confirm('Mark this order as ready for pick-up?')) return;
+
+    try {
+      // Update order status to out_for_delivery (which will be displayed as "Ready for Pick-up" for pick-up orders)
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'out_for_delivery',
+          out_for_delivery_at: new Date().toISOString()
+        })
+        .eq('id', order.id);
+
+      if (error) throw error;
+
+      // Send notification to customer
+      if (order.customer_id) {
+        await supabase.from('notifications').insert({
+          user_id: order.customer_id,
+          title: 'Order Ready for Pick-up',
+          message: `Your order #${order.order_number} is ready for pick-up!`,
+          type: 'order_update',
+          related_id: order.id,
+          related_type: 'order'
+        });
+      }
+
+      alert('Order marked as ready for pick-up!');
+      fetchOrders();
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to mark ready for pickup:', err?.message ?? err);
+      alert('Failed to update order status. Please try again.');
+    }
+  };
+
   const handleAssignRider = async (riderId) => {
     if (!supabase || !selectedOrderForRider) return;
 
@@ -323,6 +359,15 @@ export default function OrdersQueue() {
                           onClick={() => handleOutForDelivery(order)}
                         >
                           🚚 Out for Delivery
+                        </button>
+                      )}
+                      {/* Show Ready for Pick-Up button only for pick-up orders in process status */}
+                      {order.order_mode === 'pick-up' && order.status === 'order_in_process' && (
+                        <button
+                          style={styles.pickupReadyBtn}
+                          onClick={() => handleReadyForPickup(order)}
+                        >
+                          ✅ Ready for Pick-Up
                         </button>
                       )}
                       <button
@@ -611,6 +656,17 @@ const styles = {
   deliveryBtn: {
     padding: '8px 16px',
     backgroundColor: '#2196f3',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  pickupReadyBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#ff9800',
     color: '#fff',
     border: 'none',
     borderRadius: '6px',

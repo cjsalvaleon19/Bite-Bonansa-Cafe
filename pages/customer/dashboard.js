@@ -199,12 +199,21 @@ export default function CustomerDashboard() {
     router.replace('/login').catch(console.error);
   };
 
-  const getStatusDisplay = (status) => {
+  const getStatusDisplay = (status, orderMode) => {
+    const isPickup = orderMode === 'pick-up';
     const statusMap = {
       'order_in_queue': { label: 'Order in Queue', color: '#ffc107', icon: '🕐' },
       'order_in_process': { label: 'Order in Process', color: '#2196f3', icon: '👨‍🍳' },
-      'out_for_delivery': { label: 'Out for Delivery', color: '#ff9800', icon: '🛵' },
-      'order_delivered': { label: 'Order Delivered', color: '#4caf50', icon: '✓' },
+      'out_for_delivery': { 
+        label: isPickup ? 'Ready for Pick-up' : 'Out for Delivery', 
+        color: '#ff9800', 
+        icon: isPickup ? '✅' : '🛵' 
+      },
+      'order_delivered': { 
+        label: isPickup ? 'Order Complete' : 'Order Delivered', 
+        color: '#4caf50', 
+        icon: '✓' 
+      },
       'cancelled': { label: 'Cancelled', color: '#f44336', icon: '✗' }
     };
     return statusMap[status] || { label: status, color: '#999', icon: '?' };
@@ -221,7 +230,7 @@ export default function CustomerDashboard() {
   }
 
   const statusInfo = dashboardData.currentOrder 
-    ? getStatusDisplay(dashboardData.currentOrder.status) 
+    ? getStatusDisplay(dashboardData.currentOrder.status, dashboardData.currentOrder.order_mode) 
     : null;
 
   return (
