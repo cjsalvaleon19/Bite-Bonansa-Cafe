@@ -10,9 +10,28 @@
 -- The correct function to use is generate_daily_order_number() which returns VARCHAR(3).
 -- ═══════════════════════════════════════════════════════════════════════════
 
+-- Drop any triggers that depend on the legacy generate_order_number() function first
+-- This prevents dependency errors when dropping the function
+DO $$
+DECLARE
+  trigger_rec RECORD;
+BEGIN
+  -- Find and drop any triggers on the orders table that might use the old function
+  FOR trigger_rec IN 
+    SELECT trigger_name
+    FROM information_schema.triggers
+    WHERE event_object_table = 'orders'
+      AND trigger_name IN ('set_order_number', 'trg_generate_order_number', 'trg_set_order_number')
+  LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS %I ON orders', trigger_rec.trigger_name);
+    RAISE NOTICE 'Dropped trigger: %', trigger_rec.trigger_name;
+  END LOOP;
+END $$;
+
 -- Drop the legacy generate_order_number() function if it exists
 -- This function is obsolete and has been replaced by generate_daily_order_number()
-DROP FUNCTION IF EXISTS generate_order_number();
+-- Using CASCADE to drop any remaining dependent objects
+DROP FUNCTION IF EXISTS generate_order_number() CASCADE;
 
 -- Verify the correct function exists and has the right return type
 -- This function should return VARCHAR(3) for 3-digit order numbers (000-999)
@@ -38,6 +57,14 @@ BEGIN
   
   RAISE NOTICE 'Legacy function check completed.';
 END $$;
+
+-- Recreate the correct trigger using the set_order_number() trigger function
+-- This ensures the proper trigger is in place after cleanup
+CREATE TRIGGER trg_set_order_number
+  BEFORE INSERT ON orders
+  FOR EACH ROW
+  WHEN (NEW.order_number IS NULL)
+  EXECUTE FUNCTION set_order_number();
 
 -- Verify the trigger uses the correct function
 DO $$
