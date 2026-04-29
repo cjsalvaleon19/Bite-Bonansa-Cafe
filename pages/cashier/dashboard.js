@@ -6,6 +6,9 @@ import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 
+// Constants
+const NOTIFICATION_AUDIO_VOLUME = 0.5;
+
 export default function CashierDashboard() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
@@ -111,7 +114,7 @@ export default function CashierDashboard() {
       }
       // Create audio element for notification sound (optional - will fail gracefully if file doesn't exist)
       const audio = new Audio('/notification.mp3');
-      audio.volume = 0.5;
+      audio.volume = NOTIFICATION_AUDIO_VOLUME;
       setNotificationAudio(audio);
     }
   }, []);
