@@ -685,9 +685,14 @@ function CustomerOrderPage() {
                     {/* Variant badge indicator */}
                     {hasVariants && (
                       <div className="mt-2">
-                        <span className="inline-block rounded border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] text-primary font-medium">
-                          ⚙️ {item.variant_types?.length || 0} variant{(item.variant_types?.length || 0) > 1 ? 's' : ''}
-                        </span>
+                        {(() => {
+                          const variantCount = item.variant_types?.length || 0
+                          return (
+                            <span className="inline-block rounded border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] text-primary font-medium">
+                              ⚙️ {variantCount} variant{variantCount > 1 ? 's' : ''}
+                            </span>
+                          )
+                        })()}
                       </div>
                     )}
 
