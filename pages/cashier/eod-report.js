@@ -69,13 +69,17 @@ export default function EndOfDayReport() {
     }
   };
 
+  // Helper function to get order items with fallback
+  const getOrderItems = (order) => {
+    return order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
+  };
+
   const handlePreviewReceipt = (order) => {
     // Create a modal-like preview window
     const previewWindow = window.open('', '_blank', 'width=400,height=700');
     if (!previewWindow) return;
 
-    // Use order_items if available, otherwise fall back to items array
-    const orderItems = order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
+    const orderItems = getOrderItems(order);
 
     previewWindow.document.write(`
       <html>
@@ -150,8 +154,7 @@ export default function EndOfDayReport() {
     const receiptWindow = window.open('', '_blank', 'width=300,height=600');
     if (!receiptWindow) return;
 
-    // Use order_items if available, otherwise fall back to items array
-    const orderItems = order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
+    const orderItems = getOrderItems(order);
 
     receiptWindow.document.write(`
       <html>

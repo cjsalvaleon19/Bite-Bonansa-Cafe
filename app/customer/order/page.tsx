@@ -143,14 +143,17 @@ function CustomerOrderPage() {
       if (!error && data) {
         const isEnabled = data.setting_value === 'true'
         setDeliveryEnabled(isEnabled)
-        // If delivery is disabled and current order type is delivery, switch to pickup
-        if (!isEnabled && orderType === 'delivery') {
-          setOrderType('pickup')
-        }
       }
     }
     checkDeliveryEnabled()
   }, [])
+
+  // Switch to pickup if delivery gets disabled
+  useEffect(() => {
+    if (!deliveryEnabled && orderType === 'delivery') {
+      setOrderType('pickup')
+    }
+  }, [deliveryEnabled, orderType])
 
   // Load cart from localStorage on mount
   useEffect(() => {
@@ -690,7 +693,7 @@ function CustomerOrderPage() {
           disabled={!deliveryEnabled}
         >
           <Truck className="h-4 w-4" />
-          Delivery {!deliveryEnabled && '(Disabled)'}
+          Delivery
         </Button>
         <Button
           variant={orderType === 'pickup' ? 'default' : 'ghost'}
