@@ -686,7 +686,7 @@ function CustomerOrderPage() {
                     {hasVariants && (
                       <div className="mt-2">
                         <span className="inline-block rounded border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] text-primary font-medium">
-                          ⚙️ {item.variant_types!.length} variant{item.variant_types!.length > 1 ? 's' : ''}
+                          ⚙️ {item.variant_types?.length || 0} variant{(item.variant_types?.length || 0) > 1 ? 's' : ''}
                         </span>
                       </div>
                     )}
@@ -694,7 +694,7 @@ function CustomerOrderPage() {
                     {/* Variant type details */}
                     {hasVariants && (
                       <div className="mt-2 space-y-1">
-                        {item.variant_types!.map((vt, idx) => {
+                        {(item.variant_types || []).map((vt, idx) => {
                           const availableOptions = vt.options ? vt.options.filter(opt => opt.available !== false) : []
                           const optionNames = availableOptions.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name)
                           const totalOptions = availableOptions.length
