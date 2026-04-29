@@ -1,4 +1,4 @@
-# Order Number Trigger Fix - Migration 037
+# Order Number Trigger Fix - Migration 038
 
 ## Problem
 
@@ -32,7 +32,7 @@ Someone may have tried to create a trigger directly using `generate_daily_order_
 
 ## Solution
 
-Migration 037 fixes this by:
+Migration 038 fixes this by:
 
 1. Dropping any incorrectly configured triggers
 2. Ensuring `set_order_number()` exists with the correct `TRIGGER` return type
@@ -40,13 +40,13 @@ Migration 037 fixes this by:
 
 ## How to Apply the Fix
 
-### Step 1: Run Migration 037
+### Step 1: Run Migration 038
 
 In your Supabase SQL Editor, run:
 
 ```sql
 -- Copy and paste the contents of:
--- supabase/migrations/037_fix_order_number_trigger.sql
+-- supabase/migrations/038_fix_order_number_trigger.sql
 ```
 
 ### Step 2: Verify the Fix
@@ -158,11 +158,11 @@ CREATE TRIGGER trg_set_order_number
 
 ### Error Persists After Migration
 
-If you still see the error after running migration 037:
+If you still see the error after running migration 038:
 
 1. **Verify the migration ran successfully**:
    ```sql
-   SELECT * FROM _migrations WHERE name = '037_fix_order_number_trigger';
+   SELECT * FROM _migrations WHERE name = '038_fix_order_number_trigger';
    ```
 
 2. **Check current trigger configuration**:
@@ -193,7 +193,7 @@ If order numbers are NULL:
 
 ## Related Files
 
-- **Migration**: `supabase/migrations/037_fix_order_number_trigger.sql`
+- **Migration**: `supabase/migrations/038_fix_order_number_trigger.sql`
 - **Test Script**: `supabase/migrations/test_order_number_trigger_fix.sql`
 - **Original Migration**: `supabase/migrations/035_update_order_number_to_3digit.sql`
 
