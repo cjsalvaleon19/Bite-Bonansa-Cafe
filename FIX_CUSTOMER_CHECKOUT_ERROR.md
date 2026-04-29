@@ -14,6 +14,11 @@ Additional errors:
 - "Uncaught Could not find element with selector .header-and-quick-actions-mfe-Header--organisation-name-text"
 - "Failed to load resource: the server responded with a status of 400 ()"
 
+### Secondary Issue
+Orders placed by customers were not appearing in the Cashier's "Pending Online Orders" tab because:
+- Customer orders were being created with status = 'order_in_queue'
+- Cashier dashboard was looking for orders with status = 'pending'
+
 ## Root Cause
 
 The error "value too long for type character varying(3)" is related to the `order_number` column in the `orders` table. 
@@ -33,6 +38,10 @@ The migration may not have been fully applied to the production Supabase databas
 4. The trigger isn't working correctly
 
 ## Solution
+
+This fix includes TWO changes:
+1. **Database Fix**: Ensure migration 035 is properly applied (order_number column VARCHAR(3))
+2. **Code Fix**: Update customer order status from 'order_in_queue' to 'pending' (already applied to the code)
 
 ### Step 1: Diagnose the Issue
 
@@ -89,6 +98,8 @@ The order should be created with a 3-digit order number (e.g., 000, 001, 002, et
 - ✓ Order numbers reset daily at midnight
 - ✓ Order numbers are sequential within each day
 - ✓ No "value too long" errors
+- ✓ Customer orders appear in Cashier's "Pending Online Orders" tab
+- ✓ Order status workflow: pending → order_in_process → out_for_delivery → order_delivered
 
 ## Additional Notes
 
@@ -157,5 +168,6 @@ If you continue to experience issues after following this guide:
 **Last Updated**: 2026-04-29
 **Related Migrations**: 017, 021, 035
 **Affected Files**: 
-- `app/customer/order/page.tsx`
+- `app/customer/order/page.tsx` (status changed from 'order_in_queue' to 'pending')
 - `supabase/migrations/035_update_order_number_to_3digit.sql`
+- `pages/cashier/dashboard.js` (expects status 'pending' for online orders)

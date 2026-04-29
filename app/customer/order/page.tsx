@@ -531,13 +531,14 @@ function CustomerOrderPage() {
           customer_address: isDelivery ? deliveryAddress : null,
           delivery_latitude: isDelivery ? deliveryLat : null,
           delivery_longitude: isDelivery ? deliveryLng : null,
-          status: 'order_in_queue',
+          status: 'pending',
           order_mode: isDelivery ? 'delivery' : 'takeout',
           payment_method: paymentMethod,
           subtotal,
           delivery_fee: isDelivery ? appliedDeliveryFee : 0,
           total_amount: total,
           special_request: notesStr.trim(),
+          delivery_fee_pending: isDelivery ? true : false,
         } as any)
         .select()
         .single()
