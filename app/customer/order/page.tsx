@@ -154,23 +154,69 @@ function CustomerOrderPage() {
         supabase.from('categories').select('*').order('sort_order'),
       ])
       if (items) {
-        setMenuItems(
-          items.map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            description: item.description || '',
-            price: item.price,
-            category: item.category || '',
-            available: item.available,
-            preparationTime: item.preparation_time || 0,
-            varieties: Array.isArray(item.varieties)
-              ? item.varieties.map((v: any) => (typeof v === 'string' ? v : v?.name ?? String(v)))
-              : [],
-            sizes: item.sizes || [],
-            addons: item.addons || [],
-            kitchenDepartment: item.kitchen_department || '',
-          }))
+        // Fetch variant types for items that have variants
+        const itemsWithVariants = await Promise.all(
+          items.map(async (item: any) => {
+            if (!item.has_variants) {
+              return {
+                id: item.id,
+                name: item.name,
+                description: item.description || '',
+                price: item.price,
+                category: item.category || '',
+                available: item.available,
+                preparationTime: item.preparation_time || 0,
+                varieties: Array.isArray(item.varieties)
+                  ? item.varieties.map((v: any) => (typeof v === 'string' ? v : v?.name ?? String(v)))
+                  : [],
+                sizes: item.sizes || [],
+                addons: item.addons || [],
+                kitchenDepartment: item.kitchen_department || '',
+                has_variants: item.has_variants || false,
+                variant_types: [],
+              }
+            }
+
+            // Fetch variant types with options for items with variants
+            const { data: variantTypes } = await supabase
+              .from('menu_item_variant_types')
+              .select(`
+                id,
+                variant_type_name,
+                is_required,
+                allow_multiple,
+                display_order,
+                options:menu_item_variant_options(
+                  id,
+                  option_name,
+                  price_modifier,
+                  available,
+                  display_order
+                )
+              `)
+              .eq('menu_item_id', item.id)
+              .order('display_order')
+
+            return {
+              id: item.id,
+              name: item.name,
+              description: item.description || '',
+              price: item.price,
+              category: item.category || '',
+              available: item.available,
+              preparationTime: item.preparation_time || 0,
+              varieties: Array.isArray(item.varieties)
+                ? item.varieties.map((v: any) => (typeof v === 'string' ? v : v?.name ?? String(v)))
+                : [],
+              sizes: item.sizes || [],
+              addons: item.addons || [],
+              kitchenDepartment: item.kitchen_department || '',
+              has_variants: item.has_variants || false,
+              variant_types: variantTypes || [],
+            }
+          })
         )
+        setMenuItems(itemsWithVariants)
       }
       if (cats) {
         setDbCategories(cats)
@@ -606,6 +652,10 @@ function CustomerOrderPage() {
               const hasSizes = sizes.length > 0
               const hasAddons = addons.length > 0
               const hasOptions = hasVarieties || hasSizes || hasAddons
+              
+              // Check for new variant system
+              const hasVariants = item.has_variants && item.variant_types && item.variant_types.length > 0
+              const MAX_DISPLAYED_OPTIONS = 3
 
               const minSizePrice = hasSizes
                 ? Math.min(...sizes.map((s: any) => s.price))
@@ -632,32 +682,70 @@ function CustomerOrderPage() {
                       </p>
                     )}
 
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {hasVarieties && varieties.slice(0, 3).map((v: string) => (
-                        <span
-                          key={v}
-                          className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
-                        >
-                          {v}
+                    {/* Variant badge indicator */}
+                    {hasVariants && (
+                      <div className="mt-2">
+                        <span className="inline-block rounded border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] text-primary font-medium">
+                          ⚙️ {item.variant_types!.length} variant{item.variant_types!.length > 1 ? 's' : ''}
                         </span>
-                      ))}
-                      {hasVarieties && varieties.length > 3 && (
-                        <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                          +{varieties.length - 3} more
-                        </span>
-                      )}
-                      {hasSizes && sizes.map((s: any) => (
-                        <span
-                          key={s.name}
-                          className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-                        >
-                          {s.name}
-                        </span>
-                      ))}
-                    </div>
+                      </div>
+                    )}
 
-                    {hasAddons && (
-                      <p className="mt-1 text-[11px] text-muted-foreground">+ Add-ons available</p>
+                    {/* Variant type details */}
+                    {hasVariants && (
+                      <div className="mt-2 space-y-1">
+                        {item.variant_types!.map((vt, idx) => {
+                          const availableOptions = vt.options ? vt.options.filter(opt => opt.available !== false) : []
+                          const optionNames = availableOptions.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name)
+                          const totalOptions = availableOptions.length
+                          const hasMoreOptions = totalOptions > MAX_DISPLAYED_OPTIONS
+                          
+                          return (
+                            <div key={vt.id || idx} className="text-[11px]">
+                              <span className="font-semibold text-primary">
+                                {vt.variant_type_name}{vt.is_required ? '*' : ''}:
+                              </span>{' '}
+                              <span className="text-muted-foreground">
+                                {optionNames.join(', ')}
+                                {hasMoreOptions && ` +${totalOptions - MAX_DISPLAYED_OPTIONS} more`}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Fallback to old variety/size display for backward compatibility */}
+                    {!hasVariants && (
+                      <>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {hasVarieties && varieties.slice(0, 3).map((v: string) => (
+                            <span
+                              key={v}
+                              className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
+                            >
+                              {v}
+                            </span>
+                          ))}
+                          {hasVarieties && varieties.length > 3 && (
+                            <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                              +{varieties.length - 3} more
+                            </span>
+                          )}
+                          {hasSizes && sizes.map((s: any) => (
+                            <span
+                              key={s.name}
+                              className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                            >
+                              {s.name}
+                            </span>
+                          ))}
+                        </div>
+
+                        {hasAddons && (
+                          <p className="mt-1 text-[11px] text-muted-foreground">+ Add-ons available</p>
+                        )}
+                      </>
                     )}
 
                     <div className="mt-3">
@@ -670,7 +758,7 @@ function CustomerOrderPage() {
                         }}
                       >
                         <Plus className="mr-1 h-4 w-4" />
-                        {hasOptions ? 'Select Options' : 'Add to Cart'}
+                        {(hasOptions || hasVariants) ? 'Select Options' : 'Add to Cart'}
                       </Button>
                     </div>
                   </CardContent>
