@@ -82,6 +82,17 @@ FROM information_schema.triggers
 WHERE trigger_name = 'trg_set_order_number'
   AND event_object_table = 'orders';
 
+-- Test 6b: Verify no legacy triggers exist
+SELECT 'Test 6b: Check for legacy triggers' AS test;
+SELECT 
+  CASE 
+    WHEN COUNT(*) = 0 THEN '✓ No legacy triggers found (set_order_number, trg_generate_order_number)'
+    ELSE '✗ WARNING: Found ' || COUNT(*) || ' legacy trigger(s) that should be removed'
+  END AS result
+FROM information_schema.triggers
+WHERE event_object_table = 'orders'
+  AND trigger_name IN ('set_order_number', 'trg_generate_order_number');
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- FUNCTIONAL TEST: Create a test order
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -185,6 +196,7 @@ BEGIN
   RAISE NOTICE '4. ✓ order_number column is VARCHAR(3)';
   RAISE NOTICE '5. ✓ set_order_number() trigger function exists';
   RAISE NOTICE '6. ✓ Trigger is configured correctly';
+  RAISE NOTICE '6b. ✓ No legacy triggers exist';
   RAISE NOTICE '7. ✓ Order creation works without errors';
   RAISE NOTICE '';
   RAISE NOTICE 'If all checks passed, migration 039 is working correctly!';
