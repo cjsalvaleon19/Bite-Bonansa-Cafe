@@ -7,6 +7,7 @@ import NotificationBell from '../../components/NotificationBell';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
 
 const MAX_DISPLAYED_OPTIONS = 3; // Maximum number of variant options to display before showing "+X more"
+const DEFAULT_DELIVERY_FEE = 30; // Default delivery fee in pesos
 
 export default function CustomerOrderPortal() {
   const router = useRouter();
@@ -298,7 +299,7 @@ export default function CustomerOrderPortal() {
       }));
 
       const subtotal = getCartTotal();
-      const deliveryFee = orderMode === 'delivery' ? 30 : 0; // Default delivery fee
+      const deliveryFee = orderMode === 'delivery' ? DEFAULT_DELIVERY_FEE : 0;
 
       const orderData = {
         customer_id: user.id,
@@ -310,7 +311,7 @@ export default function CustomerOrderPortal() {
         subtotal: subtotal,
         vat_amount: 0,
         total_amount: subtotal + deliveryFee,
-        payment_method: orderMode === 'delivery' ? 'cash' : 'cash', // Default to cash for online orders
+        payment_method: 'cash', // Default to cash for online orders
         order_mode: orderMode,
         status: 'pending',
         contact_number: contactNumber.trim() || null,
@@ -370,7 +371,7 @@ export default function CustomerOrderPortal() {
   }
 
   const subtotal = getCartTotal();
-  const deliveryFee = orderMode === 'delivery' ? 30 : 0;
+  const deliveryFee = orderMode === 'delivery' ? DEFAULT_DELIVERY_FEE : 0;
   const totalAmount = subtotal + deliveryFee;
 
   return (
@@ -449,7 +450,7 @@ export default function CustomerOrderPortal() {
                   // Filter by search term
                   const searchMatch = searchTerm === '' || 
                     item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    item.category.toLowerCase().includes(searchTerm.toLowerCase());
+                    (item.category?.toLowerCase() || '').includes(searchTerm.toLowerCase());
                   return categoryMatch && searchMatch;
                 })
                 .sort((a, b) => a.name.localeCompare(b.name))
