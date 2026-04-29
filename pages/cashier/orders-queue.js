@@ -78,58 +78,20 @@ export default function OrdersQueue() {
     }
   };
 
-  const handleRemoveItem = async (orderId, itemIndex) => {
-    if (!supabase) return;
-    if (!confirm('Are you sure you want to remove this item?')) return;
 
-    try {
-      const order = orders.find(o => o.id === orderId);
-      if (!order) return;
-
-      const updatedItems = order.items.filter((_, index) => index !== itemIndex);
-      
-      // If no items left, delete the order
-      if (updatedItems.length === 0) {
-        const { error } = await supabase
-          .from('orders')
-          .delete()
-          .eq('id', orderId);
-
-        if (error) throw error;
-      } else {
-        // Update the order with remaining items
-        const newSubtotal = updatedItems.reduce((sum, item) => 
-          sum + (item.price * item.quantity), 0
-        );
-
-        const { error } = await supabase
-          .from('orders')
-          .update({
-            items: updatedItems,
-            subtotal: newSubtotal,
-            total_amount: newSubtotal,
-          })
-          .eq('id', orderId);
-
-        if (error) throw error;
-      }
-
-      fetchOrders();
-    } catch (err) {
-      console.error('[OrdersQueue] Failed to remove item:', err?.message ?? err);
-      alert('Failed to remove item. Please try again.');
-    }
-  };
 
   const handleMarkServed = async (orderId) => {
     if (!supabase) return;
-    if (!confirm('Mark this order as served? This will remove the order from the queue.')) return;
+    if (!confirm('Mark this order as served? This will complete the order and remove it from the queue.')) return;
 
     try {
-      // Delete the order instead of updating status
+      // Update order status to 'completed' instead of deleting
       const { error } = await supabase
         .from('orders')
-        .delete()
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString()
+        })
         .eq('id', orderId);
 
       if (error) throw error;
@@ -137,7 +99,7 @@ export default function OrdersQueue() {
       fetchOrders();
     } catch (err) {
       console.error('[OrdersQueue] Failed to mark as served:', err?.message ?? err);
-      alert('Failed to remove order. Please try again.');
+      alert('Failed to update order status. Please try again.');
     }
   };
 
@@ -364,13 +326,6 @@ export default function OrdersQueue() {
                           <span style={styles.itemPrice}>
                             ₱{((item.price || 0) * (item.quantity || 0)).toFixed(2)}
                           </span>
-                          <button
-                            style={styles.removeItemBtn}
-                            onClick={() => handleRemoveItem(order.id, index)}
-                            title="Remove item"
-                          >
-                            ✕
-                          </button>
                         </div>
                       </div>
                     ))}
