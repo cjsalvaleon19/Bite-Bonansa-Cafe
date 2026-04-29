@@ -101,7 +101,7 @@ You should see output like:
 ✓ Order numbers are sequential
 ```
 
-### Step 3: Test Order Creation
+### Step 4: Test Order Creation
 
 Try creating an order without specifying `order_number`:
 
