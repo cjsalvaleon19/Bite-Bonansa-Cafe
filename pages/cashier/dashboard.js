@@ -29,6 +29,8 @@ export default function CashierDashboard() {
   const [showRiderModal, setShowRiderModal] = useState(false);
   const [hasNewOrders, setHasNewOrders] = useState(false);
   const [notificationAudio, setNotificationAudio] = useState(null);
+  const [showPrintReceiptModal, setShowPrintReceiptModal] = useState(false);
+  const [acceptedOrder, setAcceptedOrder] = useState(null);
 
   useEffect(() => {
     if (!authLoading) {
@@ -387,6 +389,10 @@ export default function CashierDashboard() {
       // Get the full order details for printing
       const order = pendingOrders.find(o => o.id === orderId);
       if (order) {
+        // Show print receipt confirmation modal
+        setAcceptedOrder(order);
+        setShowPrintReceiptModal(true);
+        
         // Generate sales invoice receipt
         printReceipt(order, 'sales');
         
@@ -408,7 +414,6 @@ export default function CashierDashboard() {
         });
       }
 
-      alert('Order accepted successfully!');
       fetchPendingOnlineOrders();
     } catch (err) {
       console.error('[CashierDashboard] Failed to accept order:', err?.message ?? err);
@@ -652,6 +657,39 @@ export default function CashierDashboard() {
             </div>
           )}
         </main>
+
+        {/* Print Receipt Confirmation Modal */}
+        {showPrintReceiptModal && acceptedOrder && (
+          <div style={styles.modal} onClick={() => setShowPrintReceiptModal(false)}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+              <h3 style={styles.modalTitle}>✅ Order Accepted!</h3>
+              <p style={styles.modalSubtext}>
+                Order #{acceptedOrder.order_number || acceptedOrder.id.slice(0, 8)} has been accepted and receipts have been printed.
+              </p>
+              <p style={styles.modalInfo}>
+                • Sales invoice (for records)<br />
+                • Kitchen order slip
+              </p>
+              <div style={styles.modalActions}>
+                <button
+                  style={styles.modalReprintBtn}
+                  onClick={() => {
+                    printReceipt(acceptedOrder, 'sales');
+                    setTimeout(() => printReceipt(acceptedOrder, 'kitchen'), 500);
+                  }}
+                >
+                  🖨️ Reprint Receipts
+                </button>
+                <button
+                  style={styles.modalCloseBtn}
+                  onClick={() => setShowPrintReceiptModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
@@ -837,6 +875,37 @@ const styles = {
     backgroundColor: '#ffc107',
     color: '#0a0a0a',
     border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '700',
+    cursor: 'pointer',
+  },
+  modalSubtext: {
+    fontSize: '14px',
+    color: '#ccc',
+    textAlign: 'center',
+    marginBottom: '16px',
+  },
+  modalInfo: {
+    fontSize: '13px',
+    color: '#888',
+    textAlign: 'left',
+    marginBottom: '24px',
+    lineHeight: '1.8',
+    padding: '12px',
+    backgroundColor: '#2a2a2a',
+    borderRadius: '6px',
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '12px',
+  },
+  modalReprintBtn: {
+    flex: 1,
+    padding: '12px',
+    backgroundColor: 'transparent',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
     borderRadius: '6px',
     fontSize: '14px',
     fontWeight: '700',

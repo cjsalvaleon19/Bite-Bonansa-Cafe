@@ -4,19 +4,32 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function EndOfDayReport() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
+  const [user, setUser] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     if (!authLoading) {
+      fetchUser();
       fetchOrders();
     }
   }, [authLoading, selectedDate]);
+
+  const fetchUser = async () => {
+    if (!supabase) return;
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      setUser(authUser);
+    } catch (err) {
+      console.error('[EODReport] Failed to fetch user:', err?.message ?? err);
+    }
+  };
 
   const fetchOrders = async () => {
     if (!supabase) return;
@@ -215,12 +228,15 @@ export default function EndOfDayReport() {
             <Link href="/cashier/settings" style={styles.navLink}>Settings</Link>
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
-          <button style={styles.logoutBtn} onClick={async () => {
-            if (supabase) await supabase.auth.signOut();
-            router.replace('/login');
-          }}>
-            Logout
-          </button>
+          <div style={styles.headerActions}>
+            {user && <NotificationBell user={user} />}
+            <button style={styles.logoutBtn} onClick={async () => {
+              if (supabase) await supabase.auth.signOut();
+              router.replace('/login');
+            }}>
+              Logout
+            </button>
+          </div>
         </header>
 
         <main style={styles.main}>
@@ -359,6 +375,9 @@ const styles = {
     background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)',
   },
   header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -396,6 +415,11 @@ const styles = {
     borderRadius: '6px',
     backgroundColor: 'rgba(255, 193, 7, 0.1)',
     border: '1px solid #ffc107',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
   },
   logoutBtn: {
     padding: '8px 18px',
