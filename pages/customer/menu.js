@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../utils/supabaseClient';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function CustomerMenu() {
   const router = useRouter();
@@ -124,9 +125,12 @@ export default function CustomerMenu() {
           <span style={styles.welcome}>
             Welcome, {user?.email ?? 'Customer'}
           </span>
-          <button style={styles.logoutBtn} onClick={handleLogout}>
-            Logout
-          </button>
+          <div style={styles.headerActions}>
+            <NotificationBell user={user} />
+            <button style={styles.logoutBtn} onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </header>
 
         <main style={styles.main}>
@@ -171,6 +175,11 @@ const styles = {
     padding: '16px 32px',
     backgroundColor: '#1a1a1a',
     borderBottom: '1px solid #ffc107',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
   },
   logo: {
     fontSize: '22px',

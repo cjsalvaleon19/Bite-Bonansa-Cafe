@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../utils/supabaseClient';
+import NotificationBell from '../../components/NotificationBell';
 
 export default function OrderHistory() {
   const router = useRouter();
@@ -229,9 +230,12 @@ export default function OrderHistory() {
             ← Back
           </button>
           <h1 style={styles.logo}>📋 Order History</h1>
-          <span style={styles.cartBadge}>
-            🛒 Cart ({cart.length})
-          </span>
+          <div style={styles.headerActions}>
+            <span style={styles.cartBadge}>
+              🛒 Cart ({cart.length})
+            </span>
+            <NotificationBell user={user} />
+          </div>
         </header>
 
         <main style={styles.main}>
@@ -390,6 +394,11 @@ const styles = {
     padding: '16px 32px',
     backgroundColor: '#1a1a1a',
     borderBottom: '1px solid #ffc107',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
   },
   logo: {
     fontSize: '22px',
