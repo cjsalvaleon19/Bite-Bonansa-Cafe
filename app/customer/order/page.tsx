@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import {
   Search,
   Plus,
@@ -51,6 +52,12 @@ import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
+
+// Dynamically import VariantSelectionModal for variant selection
+const VariantSelectionModal = dynamic(
+  () => import('../../../components/VariantSelectionModal'),
+  { ssr: false }
+)
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,6 +126,9 @@ function CustomerOrderPage() {
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
+  // State for new variant system modal
+  const [showVariantModal, setShowVariantModal] = useState(false)
+  const [variantModalItem, setVariantModalItem] = useState<MenuItem | null>(null)
 
   // Load cart from localStorage on mount
   useEffect(() => {
@@ -154,23 +164,69 @@ function CustomerOrderPage() {
         supabase.from('categories').select('*').order('sort_order'),
       ])
       if (items) {
-        setMenuItems(
-          items.map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            description: item.description || '',
-            price: item.price,
-            category: item.category || '',
-            available: item.available,
-            preparationTime: item.preparation_time || 0,
-            varieties: Array.isArray(item.varieties)
-              ? item.varieties.map((v: any) => (typeof v === 'string' ? v : v?.name ?? String(v)))
-              : [],
-            sizes: item.sizes || [],
-            addons: item.addons || [],
-            kitchenDepartment: item.kitchen_department || '',
-          }))
+        // Fetch variant types for items that have variants
+        const itemsWithVariants = await Promise.all(
+          items.map(async (item: any) => {
+            if (!item.has_variants) {
+              return {
+                id: item.id,
+                name: item.name,
+                description: item.description || '',
+                price: item.price,
+                category: item.category || '',
+                available: item.available,
+                preparationTime: item.preparation_time || 0,
+                varieties: Array.isArray(item.varieties)
+                  ? item.varieties.map((v: any) => (typeof v === 'string' ? v : v?.name ?? String(v)))
+                  : [],
+                sizes: item.sizes || [],
+                addons: item.addons || [],
+                kitchenDepartment: item.kitchen_department || '',
+                has_variants: item.has_variants || false,
+                variant_types: [],
+              }
+            }
+
+            // Fetch variant types with options for items with variants
+            const { data: variantTypes } = await supabase
+              .from('menu_item_variant_types')
+              .select(`
+                id,
+                variant_type_name,
+                is_required,
+                allow_multiple,
+                display_order,
+                options:menu_item_variant_options(
+                  id,
+                  option_name,
+                  price_modifier,
+                  available,
+                  display_order
+                )
+              `)
+              .eq('menu_item_id', item.id)
+              .order('display_order')
+
+            return {
+              id: item.id,
+              name: item.name,
+              description: item.description || '',
+              price: item.price,
+              category: item.category || '',
+              available: item.available,
+              preparationTime: item.preparation_time || 0,
+              varieties: Array.isArray(item.varieties)
+                ? item.varieties.map((v: any) => (typeof v === 'string' ? v : v?.name ?? String(v)))
+                : [],
+              sizes: item.sizes || [],
+              addons: item.addons || [],
+              kitchenDepartment: item.kitchen_department || '',
+              has_variants: item.has_variants || false,
+              variant_types: variantTypes || [],
+            }
+          })
         )
+        setMenuItems(itemsWithVariants)
       }
       if (cats) {
         setDbCategories(cats)
@@ -226,6 +282,44 @@ function CustomerOrderPage() {
     toast.success(`Added ${item.name} to cart`)
   }, [])
 
+  // Handle variant modal confirmation (new variant system)
+  const handleVariantConfirm = useCallback((itemWithVariants: any) => {
+    const { cartKey, finalPrice, quantity, variantDetails } = itemWithVariants
+    
+    // Extract variant summary for display (join all variant selections)
+    const variantSummary = variantDetails && typeof variantDetails === 'object'
+      ? Object.entries(variantDetails).map(([type, value]) => `${type}: ${value}`).join(', ')
+      : undefined
+    
+    setCart(prev => {
+      const existing = prev.find(c => c.comboKey === cartKey)
+      if (existing) {
+        return prev.map(c =>
+          c.comboKey === cartKey
+            ? { ...c, quantity: c.quantity + quantity, price: (c.quantity + quantity) * finalPrice }
+            : c
+        )
+      }
+      return [...prev, {
+        id: String(Date.now()),
+        comboKey: cartKey,
+        menuItemId: itemWithVariants.id,
+        menuItem: itemWithVariants,
+        quantity,
+        basePrice: finalPrice,
+        addonPrice: 0,
+        price: finalPrice * quantity,
+        selectedVariety: variantSummary,
+        selectedSize: undefined,
+        selectedAddons: [],
+      }]
+    })
+    
+    setShowVariantModal(false)
+    setVariantModalItem(null)
+    toast.success(`Added ${itemWithVariants.name} to cart`)
+  }, [])
+
   // Handle URL parameter to auto-add items from dashboard
   useEffect(() => {
     const itemId = searchParams?.get('addItem')
@@ -250,14 +344,20 @@ function CustomerOrderPage() {
           return prevCart // Item already in cart, no changes
         }
         
-        // Auto-add the item to cart
-        const hasOptions =
+        // Check for customization options
+        const hasVariantTypes = item.has_variants && item.variant_types && item.variant_types.length > 0
+        const hasOldOptions =
           (item.varieties && item.varieties.length > 0) ||
           (item.sizes && item.sizes.length > 0) ||
           (item.addons && item.addons.length > 0)
         
-        if (hasOptions) {
-          // If item has options, open the dialog for user to select
+        if (hasVariantTypes) {
+          // If item has variant types, open the variant modal
+          setVariantModalItem(item)
+          setShowVariantModal(true)
+          return prevCart // Don't modify cart yet, wait for modal
+        } else if (hasOldOptions) {
+          // If item has old-style options, open the customization dialog
           setDialogItem(item)
           setShowItemDialog(true)
           return prevCart // Don't modify cart yet, wait for dialog
@@ -297,14 +397,25 @@ function CustomerOrderPage() {
   })
 
   const openItemDialog = (item: MenuItem) => {
-    const hasOptions =
+    // Check for new variant system first
+    const hasVariantTypes = item.has_variants && item.variant_types && item.variant_types.length > 0
+    
+    // Check for old system
+    const hasOldOptions =
       (item.varieties && item.varieties.length > 0) ||
       (item.sizes && item.sizes.length > 0) ||
       (item.addons && item.addons.length > 0)
-    if (hasOptions) {
+    
+    if (hasVariantTypes) {
+      // Use VariantSelectionModal for new variant system
+      setVariantModalItem(item)
+      setShowVariantModal(true)
+    } else if (hasOldOptions) {
+      // Use ItemCustomizationDialog for old system
       setDialogItem(item)
       setShowItemDialog(true)
     } else {
+      // No customization needed, add directly to cart
       addToCartWithCustomizations(item, '', '', [], 1)
     }
   }
@@ -606,6 +717,11 @@ function CustomerOrderPage() {
               const hasSizes = sizes.length > 0
               const hasAddons = addons.length > 0
               const hasOptions = hasVarieties || hasSizes || hasAddons
+              
+              // Check for new variant system
+              const hasVariants = item.has_variants && item.variant_types && item.variant_types.length > 0
+              const variantCount = item.variant_types?.length || 0
+              const MAX_DISPLAYED_OPTIONS = 3
 
               const minSizePrice = hasSizes
                 ? Math.min(...sizes.map((s: any) => s.price))
@@ -632,32 +748,70 @@ function CustomerOrderPage() {
                       </p>
                     )}
 
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {hasVarieties && varieties.slice(0, 3).map((v: string) => (
-                        <span
-                          key={v}
-                          className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
-                        >
-                          {v}
+                    {/* Variant badge indicator */}
+                    {hasVariants && (
+                      <div className="mt-2">
+                        <span className="inline-block rounded border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] text-primary font-medium">
+                          ⚙️ {variantCount} variant{variantCount > 1 ? 's' : ''}
                         </span>
-                      ))}
-                      {hasVarieties && varieties.length > 3 && (
-                        <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                          +{varieties.length - 3} more
-                        </span>
-                      )}
-                      {hasSizes && sizes.map((s: any) => (
-                        <span
-                          key={s.name}
-                          className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-                        >
-                          {s.name}
-                        </span>
-                      ))}
-                    </div>
+                      </div>
+                    )}
 
-                    {hasAddons && (
-                      <p className="mt-1 text-[11px] text-muted-foreground">+ Add-ons available</p>
+                    {/* Variant type details */}
+                    {hasVariants && (
+                      <div className="mt-2 space-y-1">
+                        {(item.variant_types || []).map((vt, idx) => {
+                          const availableOptions = vt.options ? vt.options.filter(opt => opt.available !== false) : []
+                          const optionNames = availableOptions.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name)
+                          const totalOptions = availableOptions.length
+                          const hasMoreOptions = totalOptions > MAX_DISPLAYED_OPTIONS
+                          
+                          return (
+                            <div key={vt.id || idx} className="text-[11px]">
+                              <span className="font-semibold text-primary">
+                                {vt.variant_type_name}{vt.is_required ? '*' : ''}:
+                              </span>{' '}
+                              <span className="text-muted-foreground">
+                                {optionNames.join(', ')}
+                                {hasMoreOptions && ` +${totalOptions - MAX_DISPLAYED_OPTIONS} more`}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Fallback to old variety/size display for backward compatibility */}
+                    {!hasVariants && (
+                      <>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {hasVarieties && varieties.slice(0, 3).map((v: string) => (
+                            <span
+                              key={v}
+                              className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
+                            >
+                              {v}
+                            </span>
+                          ))}
+                          {hasVarieties && varieties.length > 3 && (
+                            <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                              +{varieties.length - 3} more
+                            </span>
+                          )}
+                          {hasSizes && sizes.map((s: any) => (
+                            <span
+                              key={s.name}
+                              className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                            >
+                              {s.name}
+                            </span>
+                          ))}
+                        </div>
+
+                        {hasAddons && (
+                          <p className="mt-1 text-[11px] text-muted-foreground">+ Add-ons available</p>
+                        )}
+                      </>
                     )}
 
                     <div className="mt-3">
@@ -670,7 +824,7 @@ function CustomerOrderPage() {
                         }}
                       >
                         <Plus className="mr-1 h-4 w-4" />
-                        {hasOptions ? 'Select Options' : 'Add to Cart'}
+                        {(hasOptions || hasVariants) ? 'Select Options' : 'Add to Cart'}
                       </Button>
                     </div>
                   </CardContent>
@@ -726,6 +880,18 @@ function CustomerOrderPage() {
         onClose={() => setShowItemDialog(false)}
         onAddToCart={addToCartWithCustomizations}
       />
+
+      {/* Variant Selection Modal for new variant system */}
+      {showVariantModal && variantModalItem && (
+        <VariantSelectionModal
+          item={variantModalItem}
+          onConfirm={handleVariantConfirm}
+          onCancel={() => {
+            setShowVariantModal(false)
+            setVariantModalItem(null)
+          }}
+        />
+      )}
 
       {showLocationPicker && (
         <LocationPicker
