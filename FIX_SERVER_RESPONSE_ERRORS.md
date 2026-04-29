@@ -24,11 +24,20 @@ Failed to load resource: the server responded with a status of 400 ()
 
 **Location**: `pages/cashier/orders-queue.js:177-208`
 
-**Root Cause**: The `loyalty_transactions` table was missing from the database or didn't have the `balance_after` column that the application expected.
+**Root Cause**: The `loyalty_transactions` table was missing the `balance_after` column that the application expected.
+
+### Error 3: Migration 042 Didn't Add balance_after
+```
+Error: Failed to run sql query: ERROR: 42703: column "balance_after" of relation "loyalty_transactions" does not exist
+```
+
+**Root Cause**: The `loyalty_transactions` table was created by an earlier schema file (`fix_orders_and_loyalty_schema.sql`) without the `balance_after` column. Migration 042 used `CREATE TABLE IF NOT EXISTS`, so it skipped creation when the table already existed, leaving the column missing.
 
 ## Solution
 
-Created **Migration 042** to add all missing database tables with proper schema definitions.
+Created **TWO** migrations to handle both scenarios:
+1. **Migration 042** - Creates missing tables (if they don't exist)
+2. **Migration 043** - Adds missing columns to existing tables (using ALTER TABLE)
 
 ### Files Created
 
@@ -39,11 +48,23 @@ Created **Migration 042** to add all missing database tables with proper schema 
    - Configures Row Level Security (RLS) policies
    - Adds indexes for performance
 
-2. **`supabase/migrations/RUN_MIGRATION_042.md`**
-   - Detailed migration guide
+2. **`supabase/migrations/043_add_balance_after_to_loyalty_transactions.sql`**
+   - Adds missing `balance_after` column to existing `loyalty_transactions` table
+   - Fixes column data types (INT → DECIMAL, TEXT → VARCHAR)
+   - Ensures consistency with migration 042's schema
+   - Adds `total_spent` column to `customer_item_purchases` if missing
+
+3. **`supabase/migrations/RUN_MIGRATION_042.md`**
+   - Detailed migration guide for 042
    - Step-by-step application instructions
    - Verification queries
    - Rollback procedures
+
+4. **`supabase/migrations/RUN_MIGRATION_043.md`**
+   - Detailed migration guide for 043
+   - Explains why both migrations are needed
+   - Verification steps
+   - Rollback instructions
 
 ## What the Migration Does
 
@@ -98,12 +119,21 @@ CREATE TABLE customer_reviews (
 
 ## How to Apply the Fix
 
-### Immediate Action Required
-1. Open your **Supabase Dashboard**
-2. Navigate to **SQL Editor**
-3. Copy the contents of `supabase/migrations/042_create_missing_loyalty_and_purchase_tables.sql`
-4. Paste and **Run** the migration
-5. Verify success (see verification steps below)
+### ⚠️ Important: Apply BOTH Migrations
+
+Due to the way tables were created on production, you need to apply **BOTH** migrations:
+
+1. **Migration 042** - Creates tables if they don't exist
+2. **Migration 043** - Adds missing columns to tables that already exist
+
+### Quick Steps (7 minutes)
+
+1. Open your **Supabase Dashboard → SQL Editor**
+2. **First**, copy and run `042_create_missing_loyalty_and_purchase_tables.sql`
+3. **Then**, copy and run `043_add_balance_after_to_loyalty_transactions.sql`
+4. Verify with the provided queries
+
+See `APPLY_MIGRATION_042_NOW.md` for the fastest guide with both migrations.
 
 ### Verification
 
@@ -213,11 +243,29 @@ This migration is:
 
 ## Next Steps
 
-1. **Apply the migration** to your production database
+1. **Apply both migrations** to your production database (042 then 043)
 2. **Test** both affected features (customer dashboard and pickup orders)
 3. **Monitor** for any additional errors in the browser console or server logs
 4. **Consider implementing** the loyalty points earning logic (currently infrastructure-only)
 5. **Plan** the customer reviews feature implementation (tables are ready)
+
+## Why Two Migrations?
+
+**Background**: The `loyalty_transactions` table may have been created manually or by an earlier schema script (`fix_orders_and_loyalty_schema.sql`) that didn't include the `balance_after` column.
+
+**Migration 042** uses `CREATE TABLE IF NOT EXISTS`, which means:
+- ✅ If table doesn't exist → Creates it with all columns including `balance_after`
+- ❌ If table already exists → Skips creation, leaving missing columns
+
+**Migration 043** uses `ALTER TABLE ADD COLUMN IF NOT EXISTS`, which means:
+- ✅ Always adds missing columns to existing tables
+- ✅ Safe to run even if column already exists
+- ✅ Fixes data types to match the proper schema
+
+**Both migrations together** handle all scenarios:
+- Fresh database → 042 creates tables, 043 does nothing
+- Existing incomplete tables → 042 skips, 043 adds missing columns
+- Already fixed → Both skip, no changes made
 
 ## Support
 
@@ -229,6 +277,13 @@ If issues persist after migration:
 
 ---
 
-**Migration File**: `supabase/migrations/042_create_missing_loyalty_and_purchase_tables.sql`  
-**Guide**: `supabase/migrations/RUN_MIGRATION_042.md`  
+**Migration Files**: 
+- `supabase/migrations/042_create_missing_loyalty_and_purchase_tables.sql`  
+- `supabase/migrations/043_add_balance_after_to_loyalty_transactions.sql`
+
+**Guides**: 
+- `supabase/migrations/RUN_MIGRATION_042.md`
+- `supabase/migrations/RUN_MIGRATION_043.md`
+- `APPLY_MIGRATION_042_NOW.md` (Quick Start - includes both)
+
 **Date**: April 29, 2026
