@@ -44,7 +44,8 @@ export default function VariantSelectionModal({ item, onConfirm, onCancel }) {
 
   // Calculate total price including base price and all variant modifiers
   const calculatePrice = () => {
-    let price = parseFloat(item.base_price || 0);
+    // Use item.price (from menu_items table) or item.base_price (from menu_items_base table) as fallback
+    let price = parseFloat(item.price || item.base_price || 0);
     
     Object.values(selectedVariants).forEach(options => {
       if (Array.isArray(options)) {
