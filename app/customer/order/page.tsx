@@ -488,7 +488,7 @@ function CustomerOrderPage() {
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
 
   return (
-    <div className="min-h-screen bg-black space-y-6">
+    <div className="min-h-screen bg-black p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
@@ -500,8 +500,8 @@ function CustomerOrderPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Order Now</h1>
-            <p className="text-muted-foreground">Browse our menu and place your order</p>
+            <h1 className="text-3xl font-bold tracking-tight text-primary">Order Now</h1>
+            <p className="text-sm text-muted-foreground">Browse our menu and place your order</p>
           </div>
         </div>
 
