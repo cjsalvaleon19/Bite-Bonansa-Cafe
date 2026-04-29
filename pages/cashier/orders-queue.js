@@ -65,12 +65,23 @@ export default function OrdersQueue() {
             notes
           )
         `)
-        .in('status', ['order_in_queue', 'order_in_process'])
+        .in('status', ['order_in_queue', 'order_in_process', 'out_for_delivery'])
         .order('created_at', { ascending: true });
 
       if (error) throw error;
 
-      setOrders(data || []);
+      // Filter to show only:
+      // 1. All orders in 'order_in_queue' or 'order_in_process'
+      // 2. Pick-up orders in 'out_for_delivery' status (waiting to be completed)
+      const filteredOrders = (data || []).filter(order => {
+        if (order.status === 'order_in_queue' || order.status === 'order_in_process') {
+          return true;
+        }
+        // Only show pick-up orders in out_for_delivery status
+        return order.status === 'out_for_delivery' && order.order_mode === 'pick-up';
+      });
+
+      setOrders(filteredOrders);
     } catch (err) {
       console.error('[OrdersQueue] Failed to fetch orders:', err?.message ?? err);
     } finally {
@@ -159,6 +170,42 @@ export default function OrdersQueue() {
       fetchOrders();
     } catch (err) {
       console.error('[OrdersQueue] Failed to mark ready for pickup:', err?.message ?? err);
+      alert('Failed to update order status. Please try again.');
+    }
+  };
+
+  const handleCompletePickup = async (order) => {
+    if (!supabase) return;
+    if (!confirm('Mark this pick-up order as complete?')) return;
+
+    try {
+      // Update order status to order_delivered (completed)
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'order_delivered',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', order.id);
+
+      if (error) throw error;
+
+      // Send notification to customer
+      if (order.customer_id) {
+        await supabase.from('notifications').insert({
+          user_id: order.customer_id,
+          title: 'Order Complete',
+          message: `Your order #${order.order_number} has been completed. Thank you!`,
+          type: 'order_update',
+          related_id: order.id,
+          related_type: 'order'
+        });
+      }
+
+      alert('Order marked as complete!');
+      fetchOrders();
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to complete pickup order:', err?.message ?? err);
       alert('Failed to update order status. Please try again.');
     }
   };
@@ -354,12 +401,24 @@ export default function OrdersQueue() {
                           ✅ Ready for Pick-Up
                         </button>
                       )}
-                      <button
-                        style={styles.servedBtn}
-                        onClick={() => handleMarkServed(order.id)}
-                      >
-                        ✓ Mark as Served
-                      </button>
+                      {/* Show Order Complete button only for pick-up orders that are ready (out_for_delivery status) */}
+                      {order.order_mode === 'pick-up' && order.status === 'out_for_delivery' && (
+                        <button
+                          style={styles.completeBtn}
+                          onClick={() => handleCompletePickup(order)}
+                        >
+                          ✓ Order Complete
+                        </button>
+                      )}
+                      {/* Show Mark as Served button for dine-in and take-out orders */}
+                      {(order.order_mode === 'dine-in' || order.order_mode === 'take-out') && (
+                        <button
+                          style={styles.servedBtn}
+                          onClick={() => handleMarkServed(order.id)}
+                        >
+                          ✓ Mark as Served
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -635,6 +694,17 @@ const styles = {
     gap: '8px',
   },
   servedBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#4caf50',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  completeBtn: {
     padding: '8px 16px',
     backgroundColor: '#4caf50',
     color: '#fff',
