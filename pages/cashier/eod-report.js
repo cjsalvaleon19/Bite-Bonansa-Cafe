@@ -42,7 +42,19 @@ export default function EndOfDayReport() {
 
       const { data, error } = await supabase
         .from('orders')
-        .select('*')
+        .select(`
+          *,
+          order_items (
+            id,
+            menu_item_id,
+            name,
+            price,
+            quantity,
+            subtotal,
+            notes,
+            variant_details
+          )
+        `)
         .gte('created_at', startDate.toISOString())
         .lte('created_at', endDate.toISOString())
         .order('created_at', { ascending: false });
@@ -57,10 +69,17 @@ export default function EndOfDayReport() {
     }
   };
 
+  // Helper function to get order items with fallback
+  const getOrderItems = (order) => {
+    return order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
+  };
+
   const handlePreviewReceipt = (order) => {
     // Create a modal-like preview window
     const previewWindow = window.open('', '_blank', 'width=400,height=700');
     if (!previewWindow) return;
+
+    const orderItems = getOrderItems(order);
 
     previewWindow.document.write(`
       <html>
@@ -78,6 +97,7 @@ export default function EndOfDayReport() {
             .btn { padding: 10px 20px; margin: 5px; cursor: pointer; font-size: 14px; border: none; border-radius: 4px; }
             .print-btn { background: #ffc107; color: #000; font-weight: bold; }
             .close-btn { background: #ccc; color: #000; }
+            .variant-details { padding-left: 10px; color: #666; font-size: 10px; }
           </style>
         </head>
         <body>
@@ -91,22 +111,22 @@ export default function EndOfDayReport() {
               <p>Customer: ${order.customer_name || 'Walk-in'}</p>
             </div>
             <div class="items">
-              ${order.items?.map(item => `
+              ${orderItems.map(item => `
                 <div class="item">
                   <span>
                     ${item.name} x${item.quantity}
-                    ${item.variantDetails && Object.keys(item.variantDetails).length > 0 
-                      ? `<br><small style="padding-left: 10px; color: #666; font-size: 10px;">
-                          ${Object.entries(item.variantDetails).map(([type, value]) => 
+                    ${item.variant_details && Object.keys(item.variant_details).length > 0 
+                      ? `<br><small class="variant-details">
+                          ${Object.entries(item.variant_details).map(([type, value]) => 
                             `${type}: ${value}`
                           ).join(', ')}
                         </small>`
                       : ''
                     }
                   </span>
-                  <span>₱${(item.price * item.quantity).toFixed(2)}</span>
+                  <span>₱${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
                 </div>
-              `).join('') || ''}
+              `).join('')}
             </div>
             <div class="footer">
               <div class="item"><span>Subtotal:</span><span>₱${parseFloat(order.subtotal || 0).toFixed(2)}</span></div>
@@ -134,10 +154,12 @@ export default function EndOfDayReport() {
     const receiptWindow = window.open('', '_blank', 'width=300,height=600');
     if (!receiptWindow) return;
 
+    const orderItems = getOrderItems(order);
+
     receiptWindow.document.write(`
       <html>
         <head>
-          <title>Receipt #${order.id.slice(0, 8)}</title>
+          <title>Receipt #${order.order_number || order.id.slice(0, 8)}</title>
           <style>
             body { font-family: monospace; font-size: 12px; padding: 20px; }
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
@@ -145,33 +167,35 @@ export default function EndOfDayReport() {
             .item { display: flex; justify-content: space-between; margin: 5px 0; }
             .footer { border-top: 2px dashed #000; padding-top: 10px; margin-top: 20px; }
             .total { font-weight: bold; font-size: 14px; }
+            .variant-details { padding-left: 10px; color: #666; font-size: 10px; }
           </style>
         </head>
         <body>
           <div class="header">
             <h2>Bite Bonansa Cafe</h2>
-            <p>Receipt #${order.id.slice(0, 8)}</p>
+            <p>Receipt #${order.order_number || order.id.slice(0, 8)}</p>
             <p>${new Date(order.created_at).toLocaleString()}</p>
             <p>Mode: ${order.order_mode || 'N/A'}</p>
             <p>Payment: ${order.payment_method || 'N/A'}</p>
+            <p>Customer: ${order.customer_name || 'Walk-in'}</p>
           </div>
           <div class="items">
-            ${order.items?.map(item => `
+            ${orderItems.map(item => `
               <div class="item">
                 <span>
                   ${item.name} x${item.quantity}
-                  ${item.variantDetails && Object.keys(item.variantDetails).length > 0 
-                    ? `<br><small style="padding-left: 10px; color: #666; font-size: 10px;">
-                        ${Object.entries(item.variantDetails).map(([type, value]) => 
+                  ${item.variant_details && Object.keys(item.variant_details).length > 0 
+                    ? `<br><small class="variant-details">
+                        ${Object.entries(item.variant_details).map(([type, value]) => 
                           `${type}: ${value}`
                         ).join(', ')}
                       </small>`
                     : ''
                   }
                 </span>
-                <span>₱${(item.price * item.quantity).toFixed(2)}</span>
+                <span>₱${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
               </div>
-            `).join('') || ''}
+            `).join('')}
           </div>
           <div class="footer">
             <div class="item"><span>Subtotal:</span><span>₱${parseFloat(order.subtotal || 0).toFixed(2)}</span></div>
