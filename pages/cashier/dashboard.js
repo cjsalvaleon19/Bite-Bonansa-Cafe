@@ -38,11 +38,9 @@ export default function CashierDashboard() {
     }
   }, [authLoading]);
 
+  // Set up real-time subscription for new orders (always active for notifications)
   useEffect(() => {
-    if (!authLoading && activeTab === 'pending') {
-      fetchPendingOnlineOrders();
-      fetchRiders();
-      
+    if (!authLoading) {
       // Set up real-time subscription for new orders
       const subscription = supabase
         ?.channel('pending_orders_changes')
@@ -54,6 +52,8 @@ export default function CashierDashboard() {
         }, (payload) => {
           // New order detected
           const newOrder = payload.new;
+          console.log('[CashierDashboard] New order received:', newOrder);
+          
           if (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up') {
             setHasNewOrders(true);
             // Play notification sound
@@ -67,21 +67,38 @@ export default function CashierDashboard() {
                 icon: '/favicon.ico',
                 tag: `order-${newOrder.id}`,
               });
+            } else {
+              console.log('[CashierDashboard] Browser notifications not available or not permitted');
             }
           }
-          fetchPendingOnlineOrders();
+          // Fetch pending orders if on that tab
+          if (activeTab === 'pending') {
+            fetchPendingOnlineOrders();
+          }
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () => {
-          fetchPendingOnlineOrders();
+          if (activeTab === 'pending') {
+            fetchPendingOnlineOrders();
+          }
         })
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, () => {
-          fetchPendingOnlineOrders();
+          if (activeTab === 'pending') {
+            fetchPendingOnlineOrders();
+          }
         })
         .subscribe();
 
       return () => {
         subscription?.unsubscribe();
       };
+    }
+  }, [authLoading, notificationAudio, activeTab]);
+
+  // Fetch pending orders when switching to pending tab
+  useEffect(() => {
+    if (!authLoading && activeTab === 'pending') {
+      fetchPendingOnlineOrders();
+      fetchRiders();
     }
   }, [authLoading, activeTab, notificationAudio]);
 
@@ -92,8 +109,9 @@ export default function CashierDashboard() {
       if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
       }
-      // Create audio element for notification sound
+      // Create audio element for notification sound (optional - will fail gracefully if file doesn't exist)
       const audio = new Audio('/notification.mp3');
+      audio.volume = 0.5;
       setNotificationAudio(audio);
     }
   }, []);
