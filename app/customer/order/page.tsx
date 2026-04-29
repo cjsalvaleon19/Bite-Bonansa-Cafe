@@ -124,11 +124,33 @@ function CustomerOrderPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
+  const [deliveryEnabled, setDeliveryEnabled] = useState(true)
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
   // State for new variant system modal
   const [showVariantModal, setShowVariantModal] = useState(false)
   const [variantModalItem, setVariantModalItem] = useState<MenuItem | null>(null)
+
+  // Check delivery enabled setting
+  useEffect(() => {
+    async function checkDeliveryEnabled() {
+      const { data, error } = await supabase
+        .from('cashier_settings')
+        .select('setting_value')
+        .eq('setting_key', 'delivery_enabled')
+        .maybeSingle()
+      
+      if (!error && data) {
+        const isEnabled = data.setting_value === 'true'
+        setDeliveryEnabled(isEnabled)
+        // If delivery is disabled and current order type is delivery, switch to pickup
+        if (!isEnabled && orderType === 'delivery') {
+          setOrderType('pickup')
+        }
+      }
+    }
+    checkDeliveryEnabled()
+  }, [])
 
   // Load cart from localStorage on mount
   useEffect(() => {
@@ -665,9 +687,10 @@ function CustomerOrderPage() {
           size="sm"
           onClick={() => setOrderType('delivery')}
           className="gap-2"
+          disabled={!deliveryEnabled}
         >
           <Truck className="h-4 w-4" />
-          Delivery
+          Delivery {!deliveryEnabled && '(Disabled)'}
         </Button>
         <Button
           variant={orderType === 'pickup' ? 'default' : 'ghost'}
@@ -679,6 +702,12 @@ function CustomerOrderPage() {
           Pick-up
         </Button>
       </div>
+
+      {!deliveryEnabled && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
+          <strong>Delivery is currently unavailable.</strong> Please select pick-up for your order.
+        </div>
+      )}
 
       {orderType === 'pickup' && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-primary">
