@@ -1,9 +1,10 @@
-# URGENT: Apply Migrations 045 and 046 to Fix Critical Errors
+# URGENT: Apply Migrations 045, 046, and 047 to Fix Critical Errors
 
 ## Critical Issues Fixed
 
 ✅ **EOD Report failing to fetch orders** - Missing `variant_details` column  
-✅ **POS checkout failing with duplicate key error** - Invalid UNIQUE constraint on `order_number`
+✅ **POS checkout failing with duplicate key error** - Invalid UNIQUE constraint on `order_number`  
+✅ **Orders Queue failing to mark items as served** - Orphaned trigger referencing missing `post_order_journal_entries` function
 
 ## Quick Fix Instructions
 
@@ -91,7 +92,96 @@ Expected result: `idx_orders_order_number_date_unique`
 
 ---
 
+### Step 3: Apply Migration 047 (Remove orphaned triggers)
+
+Open Supabase SQL Editor and run:
+
+```sql
+-- Migration 047: Remove orphaned triggers referencing missing functions
+
+-- Drop triggers on order_items that reference journal functions
+DO $$
+DECLARE
+  trigger_rec RECORD;
+  dropped_count INT := 0;
+BEGIN
+  FOR trigger_rec IN 
+    SELECT t.tgname as trigger_name
+    FROM pg_trigger t
+    JOIN pg_class c ON t.tgrelid = c.oid
+    WHERE c.relname = 'order_items'
+      AND t.tgisinternal = false
+  LOOP
+    DECLARE
+      func_name TEXT;
+    BEGIN
+      SELECT p.proname INTO func_name
+      FROM pg_trigger t
+      JOIN pg_proc p ON t.tgfoid = p.oid
+      WHERE t.tgname = trigger_rec.trigger_name;
+      
+      IF func_name LIKE '%journal%' OR func_name = 'post_order_journal_entries' THEN
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON order_items', trigger_rec.trigger_name);
+        dropped_count := dropped_count + 1;
+        RAISE NOTICE 'Dropped trigger % referencing journal function %', trigger_rec.trigger_name, func_name;
+      END IF;
+    EXCEPTION
+      WHEN OTHERS THEN
+        NULL;
+    END;
+  END LOOP;
+  
+  IF dropped_count > 0 THEN
+    RAISE NOTICE '✓ Dropped % orphaned trigger(s)', dropped_count;
+  ELSE
+    RAISE NOTICE 'ℹ No orphaned triggers found';
+  END IF;
+END $$;
+
+-- Drop the missing function if it exists
+DROP FUNCTION IF EXISTS public.post_order_journal_entries(text, character varying, text);
+DROP FUNCTION IF EXISTS public.post_order_journal_entries(text, varchar, text);
+DROP FUNCTION IF EXISTS public.post_order_journal_entries();
+```
+
+**Verification:**
+```sql
+-- Check for remaining triggers on order_items
+SELECT 
+  t.tgname as trigger_name,
+  p.proname as function_name
+FROM pg_trigger t
+JOIN pg_class c ON t.tgrelid = c.oid
+JOIN pg_proc p ON t.tgfoid = p.oid
+WHERE c.relname = 'order_items'
+  AND t.tgisinternal = false;
+```
+
+Expected result: Should only show valid triggers (like `trg_update_customer_item_purchases`), no triggers referencing journal functions
+
+---
+
 ## What These Migrations Fix
+
+### Migration 047: Orphaned Trigger Cleanup
+**Problem**: Orders Queue was failing with error:
+```
+function public.post_order_journal_entries(text, character varying, text) does not exist
+```
+
+**Root Cause**: A trigger was created on the `order_items` table in production that references a function `post_order_journal_entries`, but this function was never created or has been dropped. When trying to mark items as served, the trigger fires and fails because the function doesn't exist.
+
+**Solution**: 
+1. Identify and drop any triggers on `order_items` that reference journal-related functions
+2. Drop the `post_order_journal_entries` function if it exists
+3. Allow order item updates to proceed without the orphaned trigger
+
+**Impact**:
+- ✅ Marking items as served will work correctly
+- ✅ No breaking changes to existing functionality
+- ⚠️ If journal functionality was intended, it will need to be reimplemented
+
+---
 
 ### Migration 045: variant_details Column
 **Problem**: EOD Report was failing with error:
@@ -167,6 +257,7 @@ You can also run them via command line:
 # Using psql
 psql -h <your-db-host> -U postgres -d postgres -f supabase/migrations/045_add_variant_details_to_order_items.sql
 psql -h <your-db-host> -U postgres -d postgres -f supabase/migrations/046_fix_duplicate_order_number_constraint.sql
+psql -h <your-db-host> -U postgres -d postgres -f supabase/migrations/047_remove_orphaned_journal_triggers.sql
 
 # Or using Supabase CLI
 supabase db push
@@ -206,9 +297,11 @@ See `FIX_EOD_REPORT_AND_ORDER_ERRORS.md` for:
 
 - [ ] Migration 045 applied and verified
 - [ ] Migration 046 applied and verified
+- [ ] Migration 047 applied and verified
 - [ ] EOD Report tested - working without errors
 - [ ] Order placement tested - working without errors
 - [ ] Order number reset tested (wait for next day)
+- [ ] Mark item as served tested - working without errors
 - [ ] Code deployed to production
 
-**Priority**: URGENT - Apply immediately to restore EOD Report and POS functionality
+**Priority**: URGENT - Apply immediately to restore EOD Report, POS, and Orders Queue functionality
