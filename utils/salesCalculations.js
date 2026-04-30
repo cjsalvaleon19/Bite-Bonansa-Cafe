@@ -26,7 +26,7 @@ export function calculateSalesBreakdown(orders) {
       cashSales += parseFloat(order.total_amount || 0);
     } else if (order.payment_method === 'points+cash') {
       // Combined payment - only count the cash portion (total - points)
-      cashSales += getCashPortion(order);
+      cashSales += getPaymentPortion(order);
     }
     
     // GCash Sales = actual sales amount paid via GCash
@@ -35,7 +35,7 @@ export function calculateSalesBreakdown(orders) {
       gcashSales += parseFloat(order.total_amount || 0);
     } else if (order.payment_method === 'points+gcash') {
       // Combined payment - only count the gcash portion (total - points)
-      gcashSales += getGCashPortion(order);
+      gcashSales += getPaymentPortion(order);
     }
     
     // Points used
@@ -53,24 +53,12 @@ export function calculateSalesBreakdown(orders) {
 }
 
 /**
- * Get the cash portion of a combined payment (points+cash)
+ * Get the non-points portion of a combined payment (points+cash or points+gcash)
  * 
  * @param {Object} order - Order object
- * @returns {number} Cash portion amount
+ * @returns {number} Payment portion amount after deducting points
  */
-export function getCashPortion(order) {
-  const totalAmount = parseFloat(order.total_amount || 0);
-  const pointsUsed = parseFloat(order.points_used || 0);
-  return Math.max(0, totalAmount - pointsUsed);
-}
-
-/**
- * Get the GCash portion of a combined payment (points+gcash)
- * 
- * @param {Object} order - Order object
- * @returns {number} GCash portion amount
- */
-export function getGCashPortion(order) {
+export function getPaymentPortion(order) {
   const totalAmount = parseFloat(order.total_amount || 0);
   const pointsUsed = parseFloat(order.points_used || 0);
   return Math.max(0, totalAmount - pointsUsed);
