@@ -27,6 +27,9 @@ export default function CashierDashboard() {
     deliveryCount: 0,
   });
   const [showReceiptBreakdown, setShowReceiptBreakdown] = useState(false);
+  const [showGCashReport, setShowGCashReport] = useState(false);
+  const [gcashTransactions, setGCashTransactions] = useState([]);
+  const [gcashAdjustments, setGCashAdjustments] = useState([]);
   const [activeTab, setActiveTab] = useState('stats'); // 'stats' or 'pending'
   const [pendingOrders, setPendingOrders] = useState([]);
   const [riders, setRiders] = useState([]);
@@ -260,6 +263,47 @@ export default function CashierDashboard() {
       setRiders(ridersData || []);
     } catch (err) {
       console.error('[CashierDashboard] Failed to fetch riders:', err?.message ?? err);
+    }
+  };
+
+  const fetchGCashTransactions = async () => {
+    if (!supabase) return;
+
+    try {
+      // Get today's date range
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // Fetch all GCash orders for today
+      const { data: orders, error: ordersError } = await supabase
+        .from('orders')
+        .select('*')
+        .gte('created_at', today.toISOString())
+        .lt('created_at', tomorrow.toISOString())
+        .or('payment_method.eq.gcash,payment_method.eq.points+gcash')
+        .order('created_at', { ascending: false });
+
+      if (ordersError) throw ordersError;
+
+      setGCashTransactions(orders || []);
+
+      // Fetch payment adjustments (cash-to-gcash conversions)
+      const { data: adjustments, error: adjustmentsError } = await supabase
+        .from('cash_drawer_transactions')
+        .select('*')
+        .gte('created_at', today.toISOString())
+        .lt('created_at', tomorrow.toISOString())
+        .eq('transaction_type', 'adjustment')
+        .eq('payment_adjustment_type', 'cash-to-gcash')
+        .order('created_at', { ascending: false });
+
+      if (adjustmentsError) throw adjustmentsError;
+
+      setGCashAdjustments(adjustments || []);
+    } catch (err) {
+      console.error('[CashierDashboard] Failed to fetch GCash transactions:', err?.message ?? err);
     }
   };
 
@@ -609,10 +653,17 @@ export default function CashierDashboard() {
               <div style={styles.statLabel}>Cash Sales</div>
             </div>
 
-            <div style={styles.statCard}>
+            <div 
+              style={{ ...styles.statCard, ...styles.statCardClickable }}
+              onClick={async () => {
+                await fetchGCashTransactions();
+                setShowGCashReport(true);
+              }}
+            >
               <div style={styles.statIcon}>📱</div>
               <div style={styles.statValue}>₱{stats.gcashSales.toFixed(2)}</div>
               <div style={styles.statLabel}>GCash Sales</div>
+              <div style={styles.statHint}>💡 Click for audit report</div>
             </div>
 
             <div style={styles.statCard}>
@@ -656,6 +707,150 @@ export default function CashierDashboard() {
                   </div>
                 </div>
                 <button style={styles.modalCloseBtn} onClick={() => setShowReceiptBreakdown(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* GCash Sales Report Modal */}
+          {showGCashReport && (
+            <div style={styles.modal} onClick={() => setShowGCashReport(false)}>
+              <div style={{ ...styles.modalContent, ...styles.gcashModalContent }} onClick={(e) => e.stopPropagation()}>
+                <h3 style={styles.modalTitle}>📱 GCash Sales Audit Report</h3>
+                <p style={styles.modalSubtitle}>Today's GCash Transactions for Reconciliation</p>
+                
+                {/* GCash Transactions Table */}
+                <div style={styles.reportSection}>
+                  <h4 style={styles.reportSectionTitle}>GCash Sales Transactions</h4>
+                  {gcashTransactions.length === 0 ? (
+                    <p style={styles.emptyText}>No GCash transactions for today</p>
+                  ) : (
+                    <div style={styles.tableContainer}>
+                      <table style={styles.reportTable}>
+                        <thead>
+                          <tr style={styles.reportTableHeader}>
+                            <th style={styles.reportTh}>Order #</th>
+                            <th style={styles.reportTh}>Time</th>
+                            <th style={styles.reportTh}>Customer</th>
+                            <th style={styles.reportTh}>Reference</th>
+                            <th style={styles.reportTh}>Amount</th>
+                            <th style={styles.reportTh}>Points</th>
+                            <th style={styles.reportTh}>GCash Paid</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gcashTransactions.map((order) => {
+                            const gcashAmount = order.payment_method === 'gcash' 
+                              ? parseFloat(order.total_amount || 0)
+                              : parseFloat(order.total_amount || 0) - parseFloat(order.points_used || 0);
+                            
+                            return (
+                              <tr key={order.id} style={styles.reportTableRow}>
+                                <td style={styles.reportTd}>{order.order_number || order.id.slice(0, 8)}</td>
+                                <td style={styles.reportTd}>{new Date(order.created_at).toLocaleTimeString()}</td>
+                                <td style={styles.reportTd}>{order.customer_name || 'N/A'}</td>
+                                <td style={styles.reportTd}>
+                                  {order.gcash_reference || 'N/A'}
+                                </td>
+                                <td style={styles.reportTd}>₱{parseFloat(order.total_amount || 0).toFixed(2)}</td>
+                                <td style={styles.reportTd}>₱{parseFloat(order.points_used || 0).toFixed(2)}</td>
+                                <td style={styles.reportTdHighlight}>₱{gcashAmount.toFixed(2)}</td>
+                              </tr>
+                            );
+                          })}
+                          <tr style={styles.reportTotalRow}>
+                            <td colSpan="6" style={styles.reportTotalLabel}>Total GCash Sales:</td>
+                            <td style={styles.reportTotalValue}>
+                              ₱{gcashTransactions.reduce((sum, order) => {
+                                const gcashAmount = order.payment_method === 'gcash' 
+                                  ? parseFloat(order.total_amount || 0)
+                                  : parseFloat(order.total_amount || 0) - parseFloat(order.points_used || 0);
+                                return sum + gcashAmount;
+                              }, 0).toFixed(2)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Adjustments Section */}
+                <div style={styles.reportSection}>
+                  <h4 style={styles.reportSectionTitle}>Adjustments</h4>
+                  <p style={styles.reportSectionDesc}>Payment method conversions from Cash to GCash</p>
+                  {gcashAdjustments.length === 0 ? (
+                    <p style={styles.emptyText}>No adjustments for today</p>
+                  ) : (
+                    <div style={styles.tableContainer}>
+                      <table style={styles.reportTable}>
+                        <thead>
+                          <tr style={styles.reportTableHeader}>
+                            <th style={styles.reportTh}>Time</th>
+                            <th style={styles.reportTh}>Cashier</th>
+                            <th style={styles.reportTh}>Description</th>
+                            <th style={styles.reportTh}>Reference</th>
+                            <th style={styles.reportTh}>Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gcashAdjustments.map((adj) => (
+                            <tr key={adj.id} style={styles.reportTableRow}>
+                              <td style={styles.reportTd}>{new Date(adj.created_at).toLocaleTimeString()}</td>
+                              <td style={styles.reportTd}>Cashier</td>
+                              <td style={styles.reportTd}>{adj.description || adj.adjustment_reason || 'Cash to GCash'}</td>
+                              <td style={styles.reportTd}>{adj.reference_number || 'N/A'}</td>
+                              <td style={styles.reportTdHighlight}>₱{parseFloat(adj.amount || 0).toFixed(2)}</td>
+                            </tr>
+                          ))}
+                          <tr style={styles.reportTotalRow}>
+                            <td colSpan="4" style={styles.reportTotalLabel}>Total Adjustments:</td>
+                            <td style={styles.reportTotalValue}>
+                              ₱{gcashAdjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0).toFixed(2)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div style={styles.reportSummary}>
+                  <div style={styles.summaryItem}>
+                    <span style={styles.summaryLabel}>Total GCash from Sales:</span>
+                    <span style={styles.summaryValue}>
+                      ₱{gcashTransactions.reduce((sum, order) => {
+                        const gcashAmount = order.payment_method === 'gcash' 
+                          ? parseFloat(order.total_amount || 0)
+                          : parseFloat(order.total_amount || 0) - parseFloat(order.points_used || 0);
+                        return sum + gcashAmount;
+                      }, 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div style={styles.summaryItem}>
+                    <span style={styles.summaryLabel}>Total Adjustments:</span>
+                    <span style={styles.summaryValue}>
+                      ₱{gcashAdjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div style={styles.summaryItemTotal}>
+                    <span style={styles.summaryLabelTotal}>Expected in GCash App:</span>
+                    <span style={styles.summaryValueTotal}>
+                      ₱{(
+                        gcashTransactions.reduce((sum, order) => {
+                          const gcashAmount = order.payment_method === 'gcash' 
+                            ? parseFloat(order.total_amount || 0)
+                            : parseFloat(order.total_amount || 0) - parseFloat(order.points_used || 0);
+                          return sum + gcashAmount;
+                        }, 0) +
+                        gcashAdjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0)
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                <button style={styles.modalCloseBtn} onClick={() => setShowGCashReport(false)}>
                   Close
                 </button>
               </div>
@@ -986,6 +1181,126 @@ const styles = {
     fontSize: '14px',
     fontWeight: '700',
     cursor: 'pointer',
+  },
+  gcashModalContent: {
+    maxWidth: '900px',
+    maxHeight: '90vh',
+    overflow: 'auto',
+  },
+  modalSubtitle: {
+    fontSize: '13px',
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: '24px',
+  },
+  reportSection: {
+    marginBottom: '32px',
+  },
+  reportSectionTitle: {
+    fontSize: '16px',
+    color: '#ffc107',
+    marginBottom: '12px',
+    borderBottom: '1px solid #ffc107',
+    paddingBottom: '8px',
+  },
+  reportSectionDesc: {
+    fontSize: '12px',
+    color: '#888',
+    marginBottom: '12px',
+  },
+  tableContainer: {
+    overflowX: 'auto',
+    backgroundColor: '#2a2a2a',
+    borderRadius: '8px',
+    padding: '16px',
+  },
+  reportTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: '13px',
+  },
+  reportTableHeader: {
+    borderBottom: '2px solid #ffc107',
+  },
+  reportTh: {
+    padding: '12px 8px',
+    textAlign: 'left',
+    color: '#ffc107',
+    fontWeight: '600',
+  },
+  reportTableRow: {
+    borderBottom: '1px solid #444',
+  },
+  reportTd: {
+    padding: '12px 8px',
+    color: '#ccc',
+  },
+  reportTdHighlight: {
+    padding: '12px 8px',
+    color: '#ffc107',
+    fontWeight: '600',
+  },
+  reportTotalRow: {
+    borderTop: '2px solid #ffc107',
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+  },
+  reportTotalLabel: {
+    padding: '12px 8px',
+    textAlign: 'right',
+    fontWeight: '700',
+    color: '#fff',
+  },
+  reportTotalValue: {
+    padding: '12px 8px',
+    color: '#ffc107',
+    fontWeight: '700',
+    fontSize: '16px',
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#888',
+    padding: '24px',
+    fontSize: '14px',
+  },
+  reportSummary: {
+    marginTop: '24px',
+    marginBottom: '24px',
+    padding: '20px',
+    backgroundColor: '#2a2a2a',
+    borderRadius: '8px',
+    border: '2px solid #ffc107',
+  },
+  summaryItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '8px 0',
+    borderBottom: '1px solid #444',
+  },
+  summaryLabel: {
+    fontSize: '14px',
+    color: '#ccc',
+  },
+  summaryValue: {
+    fontSize: '14px',
+    color: '#ffc107',
+    fontWeight: '600',
+  },
+  summaryItemTotal: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '12px 0',
+    marginTop: '8px',
+    borderTop: '2px solid #ffc107',
+  },
+  summaryLabelTotal: {
+    fontSize: '16px',
+    color: '#fff',
+    fontWeight: '700',
+  },
+  summaryValueTotal: {
+    fontSize: '18px',
+    color: '#ffc107',
+    fontWeight: '700',
   },
   modalSubtext: {
     fontSize: '14px',
