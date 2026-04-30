@@ -209,7 +209,7 @@ duplicate key value violates unique constraint "orders_order_number_key"
 
 **Solution**: 
 1. Removed global UNIQUE constraint
-2. Added composite unique index on `(order_number, DATE(created_at))`
+2. Added composite unique index on `(order_number, created_at::date)` using IMMUTABLE cast
 3. Ensures uniqueness within each day, allows daily resets
 
 **Impact**:
