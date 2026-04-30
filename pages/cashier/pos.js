@@ -514,6 +514,25 @@ export default function CashierPOS() {
     // Get customer loyalty ID from state (available in component closure)
     // This is the BBC-XXXXX format ID, not the UUID
     const customerLoyaltyId = customerInfo?.customerId || 'N/A';
+    
+    // Determine display payment method based on points usage
+    let displayPaymentMethod = order.payment_method || 'N/A';
+    if (pointsClaimed > 0) {
+      if (pointsClaimed >= total) {
+        // Fully paid by points
+        displayPaymentMethod = 'Points';
+      } else {
+        // Partial payment with points - show the secondary payment method
+        // Extract secondary method from payment_method field (e.g., "points+cash" -> "cash")
+        if (order.payment_method && order.payment_method.includes('points+')) {
+          displayPaymentMethod = order.payment_method.split('points+')[1];
+        } else if (order.payment_method && order.payment_method.includes('+')) {
+          // Handle other formats like "cash+points" -> extract non-points part
+          const parts = order.payment_method.split('+');
+          displayPaymentMethod = parts.find(p => p !== 'points') || order.payment_method;
+        }
+      }
+    }
 
     receiptWindow.document.write(`
       <html>
@@ -607,7 +626,7 @@ export default function CashierPOS() {
               ` : ''}
               <tr>
                 <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
-                <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${order.payment_method}</td>
+                <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
               </tr>
             </table>
           </div>

@@ -95,6 +95,25 @@ export default function EndOfDayReport() {
     
     // Get customer loyalty ID
     const customerLoyaltyId = order.users && order.users.customer_id ? order.users.customer_id : 'N/A';
+    
+    // Determine display payment method based on points usage
+    let displayPaymentMethod = order.payment_method || 'N/A';
+    if (pointsClaimed > 0) {
+      if (pointsClaimed >= total) {
+        // Fully paid by points
+        displayPaymentMethod = 'Points';
+      } else {
+        // Partial payment with points - show the secondary payment method
+        // Extract secondary method from payment_method field (e.g., "points+cash" -> "cash")
+        if (order.payment_method && order.payment_method.includes('points+')) {
+          displayPaymentMethod = order.payment_method.split('points+')[1];
+        } else if (order.payment_method && order.payment_method.includes('+')) {
+          // Handle other formats like "cash+points" -> extract non-points part
+          const parts = order.payment_method.split('+');
+          displayPaymentMethod = parts.find(p => p !== 'points') || order.payment_method;
+        }
+      }
+    }
 
     previewWindow.document.write(`
       <html>
@@ -194,7 +213,7 @@ export default function EndOfDayReport() {
                 ` : ''}
                 <tr>
                   <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
-                  <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${order.payment_method || 'N/A'}</td>
+                  <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
                 </tr>
               </table>
             </div>
@@ -239,6 +258,25 @@ export default function EndOfDayReport() {
     
     // Get customer loyalty ID
     const customerLoyaltyId = order.users && order.users.customer_id ? order.users.customer_id : 'N/A';
+    
+    // Determine display payment method based on points usage
+    let displayPaymentMethod = order.payment_method || 'N/A';
+    if (pointsClaimed > 0) {
+      if (pointsClaimed >= total) {
+        // Fully paid by points
+        displayPaymentMethod = 'Points';
+      } else {
+        // Partial payment with points - show the secondary payment method
+        // Extract secondary method from payment_method field (e.g., "points+cash" -> "cash")
+        if (order.payment_method && order.payment_method.includes('points+')) {
+          displayPaymentMethod = order.payment_method.split('points+')[1];
+        } else if (order.payment_method && order.payment_method.includes('+')) {
+          // Handle other formats like "cash+points" -> extract non-points part
+          const parts = order.payment_method.split('+');
+          displayPaymentMethod = parts.find(p => p !== 'points') || order.payment_method;
+        }
+      }
+    }
 
     receiptWindow.document.write(`
       <html>
@@ -332,7 +370,7 @@ export default function EndOfDayReport() {
               ` : ''}
               <tr>
                 <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
-                <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${order.payment_method || 'N/A'}</td>
+                <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
               </tr>
             </table>
           </div>
