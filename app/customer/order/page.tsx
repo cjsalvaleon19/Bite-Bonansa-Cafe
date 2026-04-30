@@ -600,26 +600,14 @@ function CustomerOrderPage() {
         gcashProofUrl = urlData.publicUrl
       }
 
-      if (paymentMethod === 'cash' && cashTendered) {
-        notesStr += ` | Cash tendered: ${formatCurrency(parseFloat(cashTendered))}`
+      // Note: Payment details are now stored in dedicated fields (cash_amount, gcash_amount, gcash_reference, points_used)
+      // Don't append payment info to special_request - keep it for actual customer notes only
+      // Determine final payment method string for combined payments
+      let finalPaymentMethod = paymentMethod
+      if (paymentMethod === 'points' && remainingBalance > 0 && secondaryPaymentMethod) {
+        finalPaymentMethod = `points+${secondaryPaymentMethod}`
       }
-      if (paymentMethod === 'gcash' && gcashRef) {
-        notesStr += ` | GCash ref: ${gcashRef}`
-      }
-      if (paymentMethod === 'gcash' && gcashProofUrl) {
-        notesStr += ` | GCash proof: ${gcashProofUrl}`
-      }
-      if (paymentMethod === 'points') {
-        notesStr += ` | Points used: ${actualPointsToUse.toFixed(2)}`
-        if (remainingBalance > 0) {
-          notesStr += ` | Remaining paid via ${secondaryPaymentMethod}`
-          if (secondaryPaymentMethod === 'cash' && cashTendered) {
-            notesStr += ` (Cash tendered: ${formatCurrency(parseFloat(cashTendered))})`
-          } else if (secondaryPaymentMethod === 'gcash' && gcashRef) {
-            notesStr += ` (GCash ref: ${gcashRef})`
-          }
-        }
-      }
+
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -631,12 +619,17 @@ function CustomerOrderPage() {
           delivery_longitude: isDelivery ? deliveryLng : null,
           status: 'pending',
           order_mode: isDelivery ? 'delivery' : 'pick-up',
-          payment_method: paymentMethod,
+          payment_method: finalPaymentMethod,
           subtotal,
           delivery_fee: isDelivery ? appliedDeliveryFee : 0,
           total_amount: total,
-          special_request: notesStr.trim(),
+          special_request: notesStr.trim() || null,
           delivery_fee_pending: isDelivery ? true : false,
+          // Payment details stored in dedicated fields
+          cash_amount: (paymentMethod === 'cash' || secondaryPaymentMethod === 'cash') ? parseFloat(cashTendered || '0') : 0,
+          gcash_amount: (paymentMethod === 'gcash' || secondaryPaymentMethod === 'gcash') ? (remainingBalance > 0 ? remainingBalance : total) : 0,
+          gcash_reference: (paymentMethod === 'gcash' || secondaryPaymentMethod === 'gcash') ? gcashRef || null : null,
+          points_used: paymentMethod === 'points' ? actualPointsToUse : 0,
         } as any)
         .select()
         .single()

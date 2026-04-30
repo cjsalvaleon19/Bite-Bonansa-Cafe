@@ -501,15 +501,14 @@ export default function CashierPOS() {
     const receiptWindow = window.open('', '_blank', 'width=300,height=600');
     if (!receiptWindow) return;
 
-    const cashTendered = parseFloat(paymentDetails.cashTendered || 0);
-    
     // Calculate values based on the new flow
     const subtotal = order.subtotal || 0;
     const deliveryFee = order.delivery_fee || 0;
     const total = subtotal + deliveryFee;
     const pointsClaimed = order.points_used || 0;
     const netAmount = total - pointsClaimed;
-    const amountTendered = (paymentMethod === 'cash' || combinedPayment) ? cashTendered : 0;
+    // Get cash amount from order (already saved to database) or fallback to component state
+    const amountTendered = order.cash_amount || 0;
     const change = Math.max(0, amountTendered - netAmount);
     
     // Get customer loyalty ID from state (available in component closure)
