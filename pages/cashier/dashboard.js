@@ -41,23 +41,26 @@ export default function CashierDashboard() {
     }
   }, [authLoading]);
 
-  // Set up real-time subscription for new orders (always active for notifications)
+  // Set up real-time subscription for new orders (always active for notifications and stats)
   useEffect(() => {
     if (!authLoading) {
-      // Set up real-time subscription for new orders
+      // Set up real-time subscription for all new orders
       const subscription = supabase
-        ?.channel('pending_orders_changes')
+        ?.channel('cashier_dashboard_changes')
         .on('postgres_changes', { 
           event: 'INSERT', 
           schema: 'public', 
-          table: 'orders',
-          filter: 'status=eq.pending'
+          table: 'orders'
         }, (payload) => {
           // New order detected
           const newOrder = payload.new;
           console.log('[CashierDashboard] New order received:', newOrder);
           
-          if (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up') {
+          // Update stats in real-time whenever a new order is created
+          fetchDashboardStats();
+          
+          // Handle online order notifications
+          if (newOrder.status === 'pending' && (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up')) {
             setHasNewOrders(true);
             // Play notification sound
             if (notificationAudio) {
