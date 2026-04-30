@@ -43,8 +43,9 @@ END $$;
 
 -- Create a partial unique index that allows the same order_number on different days
 -- This ensures uniqueness within a single day while allowing daily resets
+-- Using ::date cast instead of DATE() function because it's IMMUTABLE
 CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_order_number_date_unique
-ON orders (order_number, DATE(created_at))
+ON orders (order_number, (created_at::date))
 WHERE order_number IS NOT NULL;
 
 COMMENT ON INDEX idx_orders_order_number_date_unique IS 'Ensures order_number is unique per day (allows daily reset from 001)';

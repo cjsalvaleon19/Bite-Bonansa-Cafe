@@ -148,8 +148,9 @@ CREATE TABLE order_items (
 ```sql
 -- REMOVED: Global unique constraint on order_number
 -- ADDED: Composite unique index for order_number per date
+-- Using ::date cast instead of DATE() function (IMMUTABLE requirement)
 CREATE UNIQUE INDEX idx_orders_order_number_date_unique
-ON orders (order_number, DATE(created_at))
+ON orders (order_number, (created_at::date))
 WHERE order_number IS NOT NULL;
 ```
 

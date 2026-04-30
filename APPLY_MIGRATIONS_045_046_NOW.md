@@ -63,8 +63,9 @@ BEGIN
 END $$;
 
 -- Create composite unique index for order_number per date
+-- Using ::date cast instead of DATE() because it's IMMUTABLE
 CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_order_number_date_unique
-ON orders (order_number, DATE(created_at))
+ON orders (order_number, (created_at::date))
 WHERE order_number IS NOT NULL;
 ```
 
