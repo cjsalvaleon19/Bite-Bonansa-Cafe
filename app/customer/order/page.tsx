@@ -626,8 +626,10 @@ function CustomerOrderPage() {
           special_request: notesStr.trim() || null,
           delivery_fee_pending: isDelivery ? true : false,
           // Payment details stored in dedicated fields
-          cash_amount: (paymentMethod === 'cash' || secondaryPaymentMethod === 'cash') ? parseFloat(cashTendered || '0') : 0,
-          gcash_amount: (paymentMethod === 'gcash' || secondaryPaymentMethod === 'gcash') ? (remainingBalance > 0 ? remainingBalance : total) : 0,
+          cash_amount: (paymentMethod === 'cash' || secondaryPaymentMethod === 'cash') ? (parseFloat(cashTendered || '0') || 0) : 0,
+          gcash_amount: (paymentMethod === 'gcash' || secondaryPaymentMethod === 'gcash') 
+            ? (paymentMethod === 'points' && secondaryPaymentMethod === 'gcash' ? remainingBalance : total)
+            : 0,
           gcash_reference: (paymentMethod === 'gcash' || secondaryPaymentMethod === 'gcash') ? gcashRef || null : null,
           points_used: paymentMethod === 'points' ? actualPointsToUse : 0,
         } as any)
