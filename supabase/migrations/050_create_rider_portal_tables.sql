@@ -143,7 +143,7 @@ BEGIN
       NEW.rider_id,
       'report_paid',
       '💰 Payment Received',
-      'Your delivery report for ' || NEW.report_date::TEXT || ' has been paid. Amount: ₱' || NEW.rider_earnings::TEXT,
+      'Your delivery report for ' || NEW.report_date::TEXT || ' has been paid. Amount: ₱' || to_char(NEW.rider_earnings, 'FM999999999.00'),
       NEW.id::TEXT,
       'delivery_report'
     );
@@ -209,7 +209,7 @@ BEGIN
         'delivery_report',
         '💵 New Delivery Report',
         COALESCE(rider_name, 'Rider') || ' has submitted a delivery report for ₱' || 
-        NEW.rider_earnings::TEXT || ' (60% of ₱' || NEW.total_delivery_fees::TEXT || ')',
+        to_char(NEW.rider_earnings, 'FM999999999.00') || ' (60% of ₱' || to_char(NEW.total_delivery_fees, 'FM999999999.00') || ')',
         NEW.id::TEXT,
         'delivery_report'
       );
