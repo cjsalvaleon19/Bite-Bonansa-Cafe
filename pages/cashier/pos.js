@@ -575,17 +575,17 @@ export default function CashierPOS() {
               <div class="item">
                 <span>
                   ${item.name} x${item.quantity}
+                  ${item.variantDetails && Object.keys(item.variantDetails).length > 0 
+                    ? `<br><small style="padding-left: 10px; color: #666; font-size: 10px;">
+                        (${Object.entries(item.variantDetails).map(([type, value]) => 
+                          `${type}: ${value}`
+                        ).join(', ')})
+                      </small>`
+                    : ''
+                  }
                 </span>
                 <span>₱${(item.price * item.quantity).toFixed(2)}</span>
               </div>
-              ${item.variantDetails && Object.keys(item.variantDetails).length > 0 
-                ? `<div class="variant-details">
-                    (${Object.entries(item.variantDetails).map(([type, value]) => 
-                      `${type}: ${value}`
-                    ).join(', ')})
-                  </div>`
-                : ''
-              }
             `).join('')}
           </div>
           
