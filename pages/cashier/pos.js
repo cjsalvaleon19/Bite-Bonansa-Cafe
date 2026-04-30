@@ -510,6 +510,10 @@ export default function CashierPOS() {
     const netAmount = total - pointsClaimed;
     const amountTendered = (paymentMethod === 'cash' || combinedPayment) ? cashTendered : 0;
     const change = Math.max(0, amountTendered - netAmount);
+    
+    // Get customer loyalty ID from state (available in component closure)
+    // This is the BBC-XXXXX format ID, not the UUID
+    const customerLoyaltyId = customerInfo?.customerId || 'N/A';
 
     receiptWindow.document.write(`
       <html>
@@ -540,7 +544,7 @@ export default function CashierPOS() {
             <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
             <p><strong>Order Type:</strong> ${order.order_mode}</p>
             <p><strong>Customer:</strong> ${order.customer_name}</p>
-            <p><strong>Customer ID:</strong> ${customerInfo.customerId || 'N/A'}</p>
+            <p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>
             ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
             ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
           </div>
