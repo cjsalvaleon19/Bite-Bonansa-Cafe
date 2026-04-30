@@ -62,7 +62,8 @@ export default function OrdersQueue() {
             price,
             quantity,
             subtotal,
-            notes
+            notes,
+            served
           )
         `)
         .in('status', ['order_in_queue', 'order_in_process', 'out_for_delivery'])
