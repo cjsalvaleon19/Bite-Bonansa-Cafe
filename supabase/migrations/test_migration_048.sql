@@ -142,20 +142,26 @@ BEGIN
   
   -- Create 5 test orders
   FOR i IN 1..5 LOOP
-    INSERT INTO orders (
-      customer_id,
-      customer_name,
-      total_amount,
-      status,
-      order_mode
-    ) VALUES (
-      NULL,
-      'Test Customer',
-      100.00,
-      'pending',
-      'dine-in'
-    )
-    RETURNING order_number INTO order_numbers[i];
+    DECLARE
+      temp_order_number TEXT;
+    BEGIN
+      INSERT INTO orders (
+        customer_id,
+        customer_name,
+        total_amount,
+        status,
+        order_mode
+      ) VALUES (
+        NULL,
+        'Test Customer',
+        100.00,
+        'pending',
+        'dine-in'
+      )
+      RETURNING order_number INTO temp_order_number;
+      
+      order_numbers := array_append(order_numbers, temp_order_number);
+    END;
   END LOOP;
   
   -- Display the generated order numbers
@@ -260,20 +266,26 @@ BEGIN
   
   -- Create 10 orders quickly to test race conditions
   FOR i IN 1..10 LOOP
-    INSERT INTO orders (
-      customer_id,
-      customer_name,
-      total_amount,
-      status,
-      order_mode
-    ) VALUES (
-      NULL,
-      'Test Customer',
-      100.00,
-      'pending',
-      'dine-in'
-    )
-    RETURNING order_number INTO order_numbers[i];
+    DECLARE
+      temp_order_number TEXT;
+    BEGIN
+      INSERT INTO orders (
+        customer_id,
+        customer_name,
+        total_amount,
+        status,
+        order_mode
+      ) VALUES (
+        NULL,
+        'Test Customer',
+        100.00,
+        'pending',
+        'dine-in'
+      )
+      RETURNING order_number INTO temp_order_number;
+      
+      order_numbers := array_append(order_numbers, temp_order_number);
+    END;
   END LOOP;
   
   -- Check for duplicates
