@@ -343,7 +343,7 @@ export default function CustomerDashboard() {
             </Link>
 
             {/* Biter's Review */}
-            <Link href="/customer/reviews" style={{...styles.actionCard, textDecoration: 'none'}}>
+            <Link href="/customer/biters-reviews" style={{...styles.actionCard, textDecoration: 'none'}}>
               <span style={styles.cardIcon}>⭐</span>
               <h3 style={styles.cardTitle}>Biter's Review</h3>
               <p style={{...styles.cardDesc, fontSize: '20px', fontWeight: 'bold', color: '#ffc107'}}>
