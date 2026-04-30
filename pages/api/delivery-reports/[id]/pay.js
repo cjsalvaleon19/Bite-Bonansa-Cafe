@@ -59,11 +59,16 @@ export default async function handler(req, res) {
     }
 
     // Update the report status to paid
+    // Note: The database trigger will automatically:
+    // 1. Update rider's total earnings
+    // 2. Mark deliveries as paid
+    // 3. Create notification for the rider
     const { error: updateError } = await supabase
       .from('delivery_reports')
       .update({
         status: 'paid',
         paid_at: new Date().toISOString(),
+        paid_by: user.id, // Record which cashier processed the payment
         updated_at: new Date().toISOString(),
       })
       .eq('id', id);
@@ -71,24 +76,6 @@ export default async function handler(req, res) {
     if (updateError) {
       throw updateError;
     }
-
-    // Create notification for the rider
-    const { data: riderData } = await supabase
-      .from('users')
-      .select('full_name')
-      .eq('id', report.rider_id)
-      .single();
-
-    await supabase
-      .from('notifications')
-      .insert({
-        user_id: report.rider_id,
-        type: 'report_paid',
-        title: '✅ Report Paid',
-        message: `Your delivery report for ₱${report.rider_earnings.toFixed(2)} has been paid by the cashier.`,
-        related_id: report.id,
-        related_type: 'delivery_report',
-      });
 
     return res.status(200).json({
       success: true,
