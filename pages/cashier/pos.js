@@ -562,7 +562,8 @@ export default function CashierPOS() {
             <p><strong>Order Number: ${order.order_number || order.id.slice(0, 8)}</strong></p>
             <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
             <p><strong>Order Type:</strong> ${order.order_mode}</p>
-            <p><strong>Customer:</strong> ${order.customer_name}${customerLoyaltyId !== 'N/A' ? ` (${customerLoyaltyId})` : ''}</p>
+            <p><strong>Customer:</strong> ${order.customer_name}</p>
+            ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
             ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
           </div>
