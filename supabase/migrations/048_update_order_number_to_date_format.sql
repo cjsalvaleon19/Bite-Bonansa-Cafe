@@ -28,7 +28,7 @@ DECLARE
 BEGIN
   -- Get current time in Asia/Manila timezone
   manila_now := NOW() AT TIME ZONE 'Asia/Manila';
-  manila_date := DATE(manila_now AT TIME ZONE 'Asia/Manila');
+  manila_date := DATE(manila_now);
   
   -- Use advisory lock to prevent race conditions
   -- Lock key is based on today's date (YYYYMMDD as integer)
@@ -62,23 +62,7 @@ $$ LANGUAGE plpgsql;
 -- Update function comment
 COMMENT ON FUNCTION generate_order_number() IS 'Generates order number in ORD-YYMMDD-NNN format (e.g., ORD-260430-001). Globally unique, supports up to 999 orders per day.';
 
--- Step 5: Recreate trigger function (updated to use new function name)
-CREATE OR REPLACE FUNCTION set_order_number()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Only set order_number if it's NULL
-  IF NEW.order_number IS NULL THEN
-    -- The trigger function itself doesn't generate the number
-    -- Instead, we call the generate_order_number() function which is a trigger
-    -- This is a placeholder - the actual generation happens in generate_order_number()
-    RETURN NEW;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Step 6: Create trigger that calls generate_order_number directly
+-- Step 5: Create trigger that calls generate_order_number directly
 DROP TRIGGER IF EXISTS trg_generate_order_number ON orders;
 CREATE TRIGGER trg_generate_order_number
   BEFORE INSERT ON orders
