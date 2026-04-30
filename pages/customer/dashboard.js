@@ -529,14 +529,22 @@ export default function CustomerDashboard() {
                     {/* Display review images */}
                     {review.image_urls && review.image_urls.length > 0 && (
                       <div style={styles.reviewImages}>
-                        {review.image_urls.map((url, index) => (
-                          <img
-                            key={index}
-                            src={url}
-                            alt={`Review image ${index + 1}`}
-                            style={styles.reviewImage}
-                          />
-                        ))}
+                        {review.image_urls.map((url, index) => {
+                          const reviewerName = review.users?.full_name || 'Customer';
+                          const reviewTitle = review.title || '';
+                          const altText = reviewTitle 
+                            ? `${reviewTitle} - ${reviewerName}'s review image ${index + 1}`
+                            : `${reviewerName}'s review image ${index + 1}`;
+                          
+                          return (
+                            <img
+                              key={index}
+                              src={url}
+                              alt={altText}
+                              style={styles.reviewImage}
+                            />
+                          );
+                        })}
                       </div>
                     )}
                     

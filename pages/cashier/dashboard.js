@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -8,6 +8,7 @@ import NotificationBell from '../../components/NotificationBell';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
+const STATS_REFRESH_DEBOUNCE_MS = 2000; // Debounce stats refresh by 2 seconds
 
 export default function CashierDashboard() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function CashierDashboard() {
   const [notificationAudio, setNotificationAudio] = useState(null);
   const [showPrintReceiptModal, setShowPrintReceiptModal] = useState(false);
   const [acceptedOrder, setAcceptedOrder] = useState(null);
+  const statsRefreshTimerRef = useRef(null);
 
   useEffect(() => {
     if (!authLoading) {
@@ -44,6 +46,18 @@ export default function CashierDashboard() {
   // Set up real-time subscription for new orders (always active for notifications and stats)
   useEffect(() => {
     if (!authLoading) {
+      // Debounced stats refresh function
+      const debouncedStatsRefresh = () => {
+        // Clear any existing timer
+        if (statsRefreshTimerRef.current) {
+          clearTimeout(statsRefreshTimerRef.current);
+        }
+        // Set a new timer to refresh stats after debounce period
+        statsRefreshTimerRef.current = setTimeout(() => {
+          fetchDashboardStats();
+        }, STATS_REFRESH_DEBOUNCE_MS);
+      };
+
       // Set up real-time subscription for all new orders
       const subscription = supabase
         ?.channel('cashier_dashboard_changes')
@@ -56,8 +70,8 @@ export default function CashierDashboard() {
           const newOrder = payload.new;
           console.log('[CashierDashboard] New order received:', newOrder);
           
-          // Update stats in real-time whenever a new order is created
-          fetchDashboardStats();
+          // Update stats in real-time with debouncing to avoid excessive queries
+          debouncedStatsRefresh();
           
           // Handle online order notifications
           if (newOrder.status === 'pending' && (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up')) {
@@ -96,6 +110,10 @@ export default function CashierDashboard() {
 
       return () => {
         subscription?.unsubscribe();
+        // Clear timer on cleanup
+        if (statsRefreshTimerRef.current) {
+          clearTimeout(statsRefreshTimerRef.current);
+        }
       };
     }
   }, [authLoading, notificationAudio, activeTab]);
