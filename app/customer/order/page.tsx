@@ -608,6 +608,12 @@ function CustomerOrderPage() {
         finalPaymentMethod = `points+${secondaryPaymentMethod}`
       }
 
+      // Calculate GCash amount based on payment method
+      const isGcashPayment = paymentMethod === 'gcash' || secondaryPaymentMethod === 'gcash'
+      const gcashAmountValue = isGcashPayment 
+        ? (paymentMethod === 'points' && secondaryPaymentMethod === 'gcash' ? remainingBalance : total)
+        : 0
+
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -626,11 +632,9 @@ function CustomerOrderPage() {
           special_request: notesStr.trim() || null,
           delivery_fee_pending: isDelivery ? true : false,
           // Payment details stored in dedicated fields
-          cash_amount: (paymentMethod === 'cash' || secondaryPaymentMethod === 'cash') ? (parseFloat(cashTendered || '0') || 0) : 0,
-          gcash_amount: (paymentMethod === 'gcash' || secondaryPaymentMethod === 'gcash') 
-            ? (paymentMethod === 'points' && secondaryPaymentMethod === 'gcash' ? remainingBalance : total)
-            : 0,
-          gcash_reference: (paymentMethod === 'gcash' || secondaryPaymentMethod === 'gcash') ? gcashRef || null : null,
+          cash_amount: (paymentMethod === 'cash' || secondaryPaymentMethod === 'cash') ? parseFloat(cashTendered || '0') : 0,
+          gcash_amount: gcashAmountValue,
+          gcash_reference: isGcashPayment ? gcashRef || null : null,
           points_used: paymentMethod === 'points' ? actualPointsToUse : 0,
         } as any)
         .select()
