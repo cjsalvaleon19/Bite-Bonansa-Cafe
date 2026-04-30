@@ -12,10 +12,10 @@ export default function RiderDashboard() {
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
-    activeDeliveries: 0,
+    pendingDeliveries: 0,
     completedToday: 0,
+    todayEarnings: 0,
     totalEarnings: 0,
-    pendingReports: 0,
   });
 
   useEffect(() => {
@@ -95,12 +95,12 @@ export default function RiderDashboard() {
           .eq('user_id', userId)
           .maybeSingle();
 
-        // Fetch active deliveries count
-        const { count: activeCount } = await supabase
+        // Fetch pending deliveries count (orders assigned to rider but not yet accepted)
+        const { count: pendingCount } = await supabase
           .from('deliveries')
           .select('*', { count: 'exact', head: true })
           .eq('rider_id', userId)
-          .in('status', ['pending', 'in_progress']);
+          .eq('status', 'pending');
 
         // Fetch completed deliveries today
         const today = new Date();
@@ -112,19 +112,23 @@ export default function RiderDashboard() {
           .eq('status', 'completed')
           .gte('completed_at', today.toISOString());
 
-        // Fetch pending reports (deliveries without submitted reports)
-        const { count: pendingReportsCount } = await supabase
+        // Fetch today's completed deliveries with fees to calculate today's earnings (60% of delivery fees)
+        const { data: todayDeliveries } = await supabase
           .from('deliveries')
-          .select('*', { count: 'exact', head: true })
+          .select('delivery_fee')
           .eq('rider_id', userId)
           .eq('status', 'completed')
-          .eq('report_submitted', false);
+          .gte('completed_at', today.toISOString());
+
+        // Calculate today's earnings (60% of total delivery fees)
+        const todayTotalFees = todayDeliveries?.reduce((sum, d) => sum + (parseFloat(d.delivery_fee) || DEFAULT_DELIVERY_FEE), 0) || 0;
+        const todayEarnings = todayTotalFees * 0.60; // Rider gets 60% of delivery fee
 
         setStats({
-          activeDeliveries: activeCount || 0,
+          pendingDeliveries: pendingCount || 0,
           completedToday: completedCount || 0,
+          todayEarnings: todayEarnings,
           totalEarnings: riderData?.total_earnings || 0,
-          pendingReports: pendingReportsCount || 0,
         });
       } catch (err) {
         console.error('[RiderDashboard] Failed to fetch stats:', err?.message ?? err);
@@ -192,11 +196,6 @@ export default function RiderDashboard() {
 
           {/* Stats Overview */}
           <div style={styles.statsGrid}>
-            <div style={styles.statCard}>
-              <div style={styles.statIcon}>📦</div>
-              <div style={styles.statValue}>{stats.activeDeliveries}</div>
-              <div style={styles.statLabel}>Active Deliveries</div>
-            </div>
             <Link 
               href="/rider/reports" 
               style={{ ...styles.statCard, ...styles.statCardClickable, textDecoration: 'none' }}
@@ -204,18 +203,24 @@ export default function RiderDashboard() {
             >
               <div style={styles.statIcon}>✅</div>
               <div style={styles.statValue}>{stats.completedToday}</div>
-              <div style={styles.statLabel}>Completed Today</div>
-              <div style={styles.statHint}>💡 Click to bill cashier</div>
+              <div style={styles.statLabel}>Total Number of Deliveries</div>
+              <div style={styles.statHint}>💡 Click to view billing details</div>
+            </Link>
+            <Link 
+              href="/rider/deliveries" 
+              style={{ ...styles.statCard, ...styles.statCardClickable, textDecoration: 'none' }}
+              title="Click to view order portal"
+            >
+              <div style={styles.statIcon}>📦</div>
+              <div style={styles.statValue}>{stats.pendingDeliveries}</div>
+              <div style={styles.statLabel}>Pending Deliveries</div>
+              <div style={styles.statHint}>💡 Click to view orders</div>
             </Link>
             <div style={styles.statCard}>
               <div style={styles.statIcon}>💰</div>
-              <div style={styles.statValue}>₱{stats.totalEarnings.toFixed(2)}</div>
-              <div style={styles.statLabel}>Total Earnings</div>
-            </div>
-            <div style={styles.statCard}>
-              <div style={styles.statIcon}>📄</div>
-              <div style={styles.statValue}>{stats.pendingReports}</div>
-              <div style={styles.statLabel}>Pending Reports</div>
+              <div style={styles.statValue}>₱{stats.todayEarnings.toFixed(2)}</div>
+              <div style={styles.statLabel}>Total Earnings for the Day</div>
+              <div style={styles.statSubtext}>60% of delivery fees</div>
             </div>
           </div>
 
@@ -224,19 +229,19 @@ export default function RiderDashboard() {
             <Link href="/rider/deliveries" style={styles.navCard}>
               <div style={styles.navIcon}>🚚</div>
               <h3 style={styles.navTitle}>Order Portal</h3>
-              <p style={styles.navDesc}>View and manage your deliveries</p>
+              <p style={styles.navDesc}>Accept and manage delivery orders</p>
             </Link>
 
             <Link href="/rider/reports" style={styles.navCard}>
               <div style={styles.navIcon}>📊</div>
-              <h3 style={styles.navTitle}>Delivery Reports</h3>
-              <p style={styles.navDesc}>Submit delivery fee billing</p>
+              <h3 style={styles.navTitle}>Billing Portal</h3>
+              <p style={styles.navDesc}>Submit delivery fee billing reports</p>
             </Link>
 
             <Link href="/rider/profile" style={styles.navCard}>
               <div style={styles.navIcon}>👤</div>
               <h3 style={styles.navTitle}>My Profile</h3>
-              <p style={styles.navDesc}>Update your information</p>
+              <p style={styles.navDesc}>Update your driver information</p>
             </Link>
           </div>
         </main>
@@ -339,6 +344,11 @@ const styles = {
     color: '#ffc107',
     marginTop: '8px',
     fontWeight: '500',
+  },
+  statSubtext: {
+    fontSize: '11px',
+    color: '#999',
+    marginTop: '4px',
   },
   navGrid: {
     display: 'grid',
