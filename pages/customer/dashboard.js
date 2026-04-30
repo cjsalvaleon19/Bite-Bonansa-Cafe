@@ -4,12 +4,15 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import NotificationBell from '../../components/NotificationBell';
+import VariantSelectionModal from '../../components/VariantSelectionModal';
 
 export default function CustomerDashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showVariantModal, setShowVariantModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
   const [dashboardData, setDashboardData] = useState({
     loyaltyBalance: 0,
     currentOrder: null,
@@ -153,17 +156,16 @@ export default function CustomerDashboard() {
         totalEarnings = earningsData.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
       }
 
-      // Get most purchased items (top 5)
+      // Get most purchased items (all items, sorted by purchase count)
       const { data: purchasesData, error: purchasesError } = await supabase
         .from('customer_item_purchases')
         .select(`
           menu_item_id,
           purchase_count,
-          menu_items (id, name, price, image_url, category)
+          menu_items (id, name, price, image_url, category, has_variants, variant_types)
         `)
         .eq('customer_id', userId)
-        .order('purchase_count', { ascending: false })
-        .limit(5);
+        .order('purchase_count', { ascending: false });
 
       // Handle missing table gracefully
       let mostPurchasedItems = [];
@@ -197,6 +199,32 @@ export default function CustomerDashboard() {
     }
     localStorage.removeItem('token');
     router.replace('/login').catch(console.error);
+  };
+
+  const handleAddToCart = (item) => {
+    // Check if item has variants
+    if (item.has_variants && item.variant_types && item.variant_types.length > 0) {
+      // Show variant selection modal
+      setSelectedItem(item);
+      setShowVariantModal(true);
+    } else {
+      // Navigate to order page with item ID to add directly
+      router.push(`/customer/order?addItem=${item.id}`).catch(console.error);
+    }
+  };
+
+  const handleVariantConfirm = (variantData) => {
+    // Save the variant data to localStorage for the order page to pick up
+    localStorage.setItem('pendingCartItem', JSON.stringify(variantData));
+    setShowVariantModal(false);
+    setSelectedItem(null);
+    // Navigate to order page
+    router.push('/customer/order').catch(console.error);
+  };
+
+  const handleVariantCancel = () => {
+    setShowVariantModal(false);
+    setSelectedItem(null);
   };
 
   const getStatusDisplay = (status, orderMode) => {
@@ -333,7 +361,7 @@ export default function CustomerDashboard() {
                       </p>
                       <button
                         style={styles.addToCartBtn}
-                        onClick={() => router.push(`/customer/order?addItem=${purchase.menu_item_id}`).catch(console.error)}
+                        onClick={() => handleAddToCart(item)}
                       >
                         🛒 Add to Cart
                       </button>
@@ -350,6 +378,15 @@ export default function CustomerDashboard() {
             )}
           </div>
         </main>
+
+        {/* Variant Selection Modal */}
+        {showVariantModal && selectedItem && (
+          <VariantSelectionModal
+            item={selectedItem}
+            onConfirm={handleVariantConfirm}
+            onCancel={handleVariantCancel}
+          />
+        )}
       </div>
     </>
   );
