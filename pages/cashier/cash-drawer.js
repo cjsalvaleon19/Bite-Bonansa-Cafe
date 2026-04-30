@@ -163,6 +163,12 @@ export default function CashDrawer() {
         }
       }
 
+      // Determine payment adjustment type
+      let paymentAdjustmentType = null;
+      if (activeModal === 'adjustment' && formData.reason === 'payment_correction') {
+        paymentAdjustmentType = 'cash-to-gcash';
+      }
+
       const transactionData = {
         cashier_id: user.id,
         transaction_type: transactionType,
@@ -174,6 +180,7 @@ export default function CashDrawer() {
         reference_number: formData.referenceNumber || null,
         adjustment_reason: formData.reason || null,
         bill_type: formData.billType || null,
+        payment_adjustment_type: paymentAdjustmentType,
         admin_verified: activeModal === 'adjustment' ? true : null,
         created_at: new Date().toISOString(),
       };

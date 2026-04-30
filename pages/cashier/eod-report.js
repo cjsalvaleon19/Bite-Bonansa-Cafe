@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
+import { calculateSalesBreakdown } from '../../utils/salesCalculations';
 
 export default function EndOfDayReport() {
   const router = useRouter();
@@ -395,14 +396,8 @@ export default function EndOfDayReport() {
     }, 250);
   };
 
-  const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_amount || 0), 0);
-  const totalCash = orders.reduce((sum, order) => 
-    sum + (order.payment_method === 'cash' ? parseFloat(order.cash_amount || order.total_amount || 0) : 0), 0
-  );
-  const totalGcash = orders.reduce((sum, order) => 
-    sum + (order.payment_method === 'gcash' ? parseFloat(order.gcash_amount || 0) : 0), 0
-  );
-  const totalPoints = orders.reduce((sum, order) => sum + parseFloat(order.points_used || 0), 0);
+  // Use utility function for sales calculations
+  const { totalSales, cashSales: totalCash, gcashSales: totalGcash, pointsSales: totalPoints } = calculateSalesBreakdown(orders);
 
   if (authLoading || loading) {
     return (
