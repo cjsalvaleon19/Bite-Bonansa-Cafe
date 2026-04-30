@@ -130,6 +130,10 @@ function CustomerOrderPage() {
   // State for new variant system modal
   const [showVariantModal, setShowVariantModal] = useState(false)
   const [variantModalItem, setVariantModalItem] = useState<MenuItem | null>(null)
+  // State for loyalty points payment
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0)
+  const [pointsToUse, setPointsToUse] = useState(0)
+  const [secondaryPaymentMethod, setSecondaryPaymentMethod] = useState<'cash' | 'gcash'>('cash')
 
   // Check delivery enabled setting
   useEffect(() => {
@@ -147,6 +151,28 @@ function CustomerOrderPage() {
     }
     checkDeliveryEnabled()
   }, [])
+
+  // Fetch loyalty balance
+  useEffect(() => {
+    async function fetchLoyaltyBalance() {
+      if (!user?.id) return
+      
+      try {
+        const { data: transactions, error } = await supabase
+          .from('loyalty_transactions')
+          .select('amount')
+          .eq('customer_id', user.id)
+        
+        if (!error && transactions) {
+          const balance = transactions.reduce((sum, t) => sum + parseFloat(String(t.amount || 0)), 0)
+          setLoyaltyBalance(balance)
+        }
+      } catch (err) {
+        console.error('Failed to fetch loyalty balance:', err)
+      }
+    }
+    fetchLoyaltyBalance()
+  }, [user?.id])
 
   // Switch to pickup if delivery gets disabled
   useEffect(() => {
@@ -468,6 +494,11 @@ function CustomerOrderPage() {
     calculateDeliveryFee(deliveryLat, deliveryLng)
   const appliedDeliveryFee = orderType === 'delivery' ? deliveryFee : 0
   const total = subtotal + appliedDeliveryFee
+  
+  // Calculate payment breakdown when using points
+  const maxPointsUsable = Math.min(loyaltyBalance, total)
+  const actualPointsToUse = paymentMethod === 'points' ? Math.min(pointsToUse, maxPointsUsable) : 0
+  const remainingBalance = total - actualPointsToUse
   const earnedPoints = calcEarnedPoints(subtotal)
 
   const handlePlaceOrder = async () => {
@@ -479,17 +510,46 @@ function CustomerOrderPage() {
       toast.error('Your location is outside our delivery area (max 10 km).')
       return
     }
-    if (paymentMethod === 'cash') {
+    
+    // Validate points payment
+    if (paymentMethod === 'points') {
+      if (pointsToUse <= 0) {
+        toast.error('Please enter the amount of points you want to use')
+        return
+      }
+      if (pointsToUse > loyaltyBalance) {
+        toast.error(`You only have ${loyaltyBalance.toFixed(2)} points available`)
+        return
+      }
+      if (pointsToUse > total) {
+        toast.error('Points to use cannot exceed the total amount')
+        return
+      }
+      
+      // If there's remaining balance after using points
+      if (remainingBalance > 0) {
+        if (secondaryPaymentMethod === 'cash') {
+          const cashAmount = parseFloat(cashTendered)
+          if (isNaN(cashAmount) || cashAmount < remainingBalance) {
+            toast.error(`Please enter cash amount of at least ₱${remainingBalance.toFixed(2)}`)
+            return
+          }
+        } else if (secondaryPaymentMethod === 'gcash') {
+          setShowGcashDialog(true)
+          return
+        }
+      }
+    } else if (paymentMethod === 'cash') {
       const cashAmount = parseFloat(cashTendered)
       if (isNaN(cashAmount) || cashAmount < total) {
         toast.error('Please enter a valid cash amount that covers the total')
         return
       }
-    }
-    if (paymentMethod === 'gcash') {
+    } else if (paymentMethod === 'gcash') {
       setShowGcashDialog(true)
       return
     }
+    
     await submitOrder()
   }
 
@@ -547,6 +607,17 @@ function CustomerOrderPage() {
       if (paymentMethod === 'gcash' && gcashProofUrl) {
         notesStr += ` | GCash proof: ${gcashProofUrl}`
       }
+      if (paymentMethod === 'points') {
+        notesStr += ` | Points used: ${actualPointsToUse.toFixed(2)}`
+        if (remainingBalance > 0) {
+          notesStr += ` | Remaining paid via ${secondaryPaymentMethod}`
+          if (secondaryPaymentMethod === 'cash' && cashTendered) {
+            notesStr += ` (Cash tendered: ${formatCurrency(parseFloat(cashTendered))})`
+          } else if (secondaryPaymentMethod === 'gcash' && gcashRef) {
+            notesStr += ` (GCash ref: ${gcashRef})`
+          }
+        }
+      }
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -587,6 +658,29 @@ function CustomerOrderPage() {
       })
       const { error: itemsError } = await supabase.from('order_items').insert(orderItems as any)
       if (itemsError) throw new Error(itemsError.message)
+      
+      // Create loyalty transaction if points were used
+      if (paymentMethod === 'points' && actualPointsToUse > 0) {
+        // Calculate new balance after spending points
+        const newBalance = loyaltyBalance - actualPointsToUse
+        
+        const { error: loyaltyError } = await supabase
+          .from('loyalty_transactions')
+          .insert({
+            customer_id: user?.id,
+            order_id: (order as any).id,
+            transaction_type: 'spent',
+            amount: -actualPointsToUse, // Negative for spending
+            balance_after: newBalance,
+            description: `Points used for order #${(order as any).order_number}`
+          })
+        
+        if (loyaltyError) {
+          console.error('Failed to record loyalty transaction:', loyaltyError)
+          // Don't fail the order if loyalty transaction fails, just log it
+        }
+      }
+      
       toast.success(`Order ${(order as any).order_number} placed successfully!`, {
         description: 'You can track your order in the Track Orders page.',
       })
@@ -1427,6 +1521,13 @@ function CartContent({
                 {orderType === 'delivery' ? 'Cash on Delivery' : 'Cash'}
               </Label>
             </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="points" id="points" />
+              <Label htmlFor="points" className="flex items-center gap-1">
+                <Gift className="h-4 w-4" />
+                Points (₱{loyaltyBalance.toFixed(2)})
+              </Label>
+            </div>
           </RadioGroup>
         </div>
 
@@ -1437,6 +1538,105 @@ function CartContent({
           </span>
           <span className="font-bold text-primary">+{earnedPoints} pts</span>
         </div>
+
+        {paymentMethod === 'points' && (
+          <div className="mt-4 space-y-3 rounded-lg bg-card border p-4">
+            <div className="space-y-2">
+              <Label htmlFor="pointsToUse" className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Gift className="h-4 w-4" />
+                  Points to Use
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  Available: ₱{loyaltyBalance.toFixed(2)}
+                </span>
+              </Label>
+              <Input
+                id="pointsToUse"
+                type="number"
+                placeholder="Enter points amount"
+                value={pointsToUse || ''}
+                onChange={(e) => setPointsToUse(parseFloat(e.target.value) || 0)}
+                min={0}
+                max={maxPointsUsable}
+                step={0.01}
+              />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPointsToUse(Math.min(loyaltyBalance, total))}
+                  className="flex-1"
+                >
+                  Use Maximum
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPointsToUse(0)}
+                  className="flex-1"
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            {remainingBalance > 0 && (
+              <div className="space-y-2 pt-2 border-t">
+                <Label className="text-sm">
+                  Remaining Balance: <span className="font-bold text-primary">{formatCurrency(remainingBalance)}</span>
+                </Label>
+                <Label className="text-sm font-semibold">Pay remaining via:</Label>
+                <RadioGroup
+                  value={secondaryPaymentMethod}
+                  onValueChange={(v) => setSecondaryPaymentMethod(v as 'cash' | 'gcash')}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="cash" id="secondary-cash" />
+                    <Label htmlFor="secondary-cash">
+                      {orderType === 'delivery' ? 'Cash on Delivery' : 'Cash'}
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="gcash" id="secondary-gcash" />
+                    <Label htmlFor="secondary-gcash">GCash</Label>
+                  </div>
+                </RadioGroup>
+
+                {secondaryPaymentMethod === 'cash' && (
+                  <div className="space-y-2 pt-2">
+                    <Label htmlFor="cashTenderedSecondary" className="flex items-center gap-2">
+                      <Banknote className="h-4 w-4" />
+                      Cash to be Tendered
+                    </Label>
+                    <Input
+                      id="cashTenderedSecondary"
+                      type="number"
+                      placeholder={`Enter at least ${formatCurrency(remainingBalance)}`}
+                      value={cashTendered}
+                      onChange={(e) => setCashTendered(e.target.value)}
+                      min={remainingBalance}
+                    />
+                    {cashTendered && parseFloat(cashTendered) >= remainingBalance && (
+                      <p className="text-sm text-green-600">
+                        Change: {formatCurrency(parseFloat(cashTendered) - remainingBalance)}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {actualPointsToUse > 0 && remainingBalance === 0 && (
+              <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
+                ✓ Full payment with points! No additional payment needed.
+              </div>
+            )}
+          </div>
+        )}
 
         {paymentMethod === 'cash' && (
           <div className="mt-4 space-y-2">
@@ -1512,9 +1712,15 @@ function CartContent({
         onClick={handlePlaceOrder}
         disabled={
           isSubmitting ||
+          cart.length === 0 ||
           (orderType === 'delivery' && !deliveryAddress.trim()) ||
           (orderType === 'delivery' && deliveryOutOfRange) ||
-          (paymentMethod === 'cash' && (!cashTendered || parseFloat(cashTendered) < total))
+          (paymentMethod === 'cash' && (!cashTendered || parseFloat(cashTendered) < total)) ||
+          (paymentMethod === 'points' && (
+            pointsToUse <= 0 ||
+            pointsToUse > loyaltyBalance ||
+            (remainingBalance > 0 && secondaryPaymentMethod === 'cash' && (!cashTendered || parseFloat(cashTendered) < remainingBalance))
+          ))
         }
       >
         {isSubmitting ? 'Placing Order...' : 'Place Order'}
