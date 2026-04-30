@@ -56,7 +56,6 @@ END $$;
 
 -- Also check and drop the function itself if it exists but is causing errors
 DROP FUNCTION IF EXISTS public.post_order_journal_entries(text, character varying, text);
-DROP FUNCTION IF EXISTS public.post_order_journal_entries(text, varchar, text);
 DROP FUNCTION IF EXISTS public.post_order_journal_entries();
 DROP FUNCTION IF EXISTS public.post_order_journal_entries;
 

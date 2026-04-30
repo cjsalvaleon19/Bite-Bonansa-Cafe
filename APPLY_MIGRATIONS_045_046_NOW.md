@@ -250,6 +250,7 @@ duplicate key value violates unique constraint "orders_order_number_key"
 The complete migration files are available at:
 - `supabase/migrations/045_add_variant_details_to_order_items.sql`
 - `supabase/migrations/046_fix_duplicate_order_number_constraint.sql`
+- `supabase/migrations/047_remove_orphaned_journal_triggers.sql`
 
 You can also run them via command line:
 
