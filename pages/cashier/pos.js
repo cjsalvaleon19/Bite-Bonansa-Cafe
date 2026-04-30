@@ -501,7 +501,15 @@ export default function CashierPOS() {
     if (!receiptWindow) return;
 
     const cashTendered = parseFloat(paymentDetails.cashTendered || 0);
-    const change = (paymentMethod === 'cash' || combinedPayment) ? cashTendered - paidAmount : 0;
+    
+    // Calculate values based on the new flow
+    const subtotal = order.subtotal || 0;
+    const deliveryFee = order.delivery_fee || 0;
+    const total = subtotal + deliveryFee;
+    const pointsClaimed = order.points_used || 0;
+    const netAmount = total - pointsClaimed;
+    const amountTendered = (paymentMethod === 'cash' || combinedPayment) ? cashTendered : 0;
+    const change = Math.max(0, amountTendered - netAmount);
 
     receiptWindow.document.write(`
       <html>
@@ -512,49 +520,103 @@ export default function CashierPOS() {
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
             .item { display: flex; justify-content: space-between; margin: 5px 0; }
+            .item-details { font-size: 10px; color: #666; padding-left: 10px; margin-top: 2px; }
             .footer { border-top: 2px dashed #000; padding-top: 10px; margin-top: 20px; }
             .total { font-weight: bold; font-size: 14px; }
+            table { width: 100%; }
+            .section-title { font-weight: bold; margin: 10px 0 5px 0; text-decoration: underline; }
           </style>
         </head>
         <body>
           <div class="header">
             <h2>Bite Bonansa Cafe</h2>
-            <p><strong>Order #${order.order_number || order.id.slice(0, 8)}</strong></p>
-            <p>${new Date().toLocaleString()}</p>
-            <p>Mode: ${order.order_mode}</p>
-            <p>Customer: ${order.customer_name}</p>
+            <p>123 Main Street, City</p>
+            <p>Tel: (123) 456-7890</p>
+            <p style="margin-top: 10px; font-weight: bold;">SALES INVOICE</p>
           </div>
+          
+          <div style="margin-bottom: 15px;">
+            <p><strong>Order Number: ${order.order_number || order.id.slice(0, 8)}</strong></p>
+            <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
+            <p><strong>Order Type:</strong> ${order.order_mode}</p>
+            <p><strong>Customer:</strong> ${order.customer_name}</p>
+            <p><strong>Customer ID:</strong> ${customerInfo.customerId || 'N/A'}</p>
+            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
+            ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
+          </div>
+          
+          <p class="section-title">ITEMS ORDERED</p>
           <div class="items">
             ${order.items.map(item => `
               <div class="item">
                 <span>
                   ${item.name} x${item.quantity}
-                  ${item.variantDetails && Object.keys(item.variantDetails).length > 0 
-                    ? `<br><small style="padding-left: 10px; color: #666; font-size: 10px;">
-                        ${Object.entries(item.variantDetails).map(([type, value]) => 
-                          `${type}: ${value}`
-                        ).join(', ')}
-                      </small>`
-                    : ''
-                  }
                 </span>
                 <span>₱${(item.price * item.quantity).toFixed(2)}</span>
               </div>
+              ${item.variantDetails && Object.keys(item.variantDetails).length > 0 
+                ? `<div class="item-details">
+                    (${Object.entries(item.variantDetails).map(([type, value]) => 
+                      `${type}: ${value}`
+                    ).join(', ')})
+                  </div>`
+                : ''
+              }
             `).join('')}
           </div>
+          
           <div class="footer">
-            <div class="item"><span>Subtotal:</span><span>₱${order.subtotal.toFixed(2)}</span></div>
-            ${order.vat_amount > 0 ? `<div class="item"><span>VAT:</span><span>₱${order.vat_amount.toFixed(2)}</span></div>` : ''}
-            ${order.delivery_fee > 0 ? `<div class="item"><span>Delivery Fee:</span><span>₱${order.delivery_fee.toFixed(2)}</span></div>` : ''}
-            ${order.points_used > 0 ? `<div class="item"><span>Less: Points:</span><span>-₱${order.points_used.toFixed(2)}</span></div>` : ''}
-            <div class="item total"><span>Net Amount:</span><span>₱${order.total_amount.toFixed(2)}</span></div>
-            ${paymentMethod === 'cash' ? `
-              <div class="item"><span>Cash Tendered:</span><span>₱${cashTendered.toFixed(2)}</span></div>
-              <div class="item"><span>Change:</span><span>₱${change.toFixed(2)}</span></div>
-            ` : ''}
+            <table>
+              <tr>
+                <td><strong>Subtotal:</strong></td>
+                <td style="text-align: right;">₱${subtotal.toFixed(2)}</td>
+              </tr>
+              ${deliveryFee > 0 ? `
+              <tr>
+                <td><strong>Delivery Fee:</strong></td>
+                <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
+              </tr>
+              ` : ''}
+              <tr class="total">
+                <td style="padding-top: 5px; border-top: 2px solid #000;"><strong>Total:</strong></td>
+                <td style="text-align: right; padding-top: 5px; border-top: 2px solid #000;">₱${total.toFixed(2)}</td>
+              </tr>
+              ${pointsClaimed > 0 ? `
+              <tr>
+                <td><strong>Points Claimed:</strong></td>
+                <td style="text-align: right;">-₱${pointsClaimed.toFixed(2)}</td>
+              </tr>
+              ` : ''}
+              <tr class="total">
+                <td style="padding-top: 5px; border-top: 1px solid #000;"><strong>Net Amount:</strong></td>
+                <td style="text-align: right; padding-top: 5px; border-top: 1px solid #000;">₱${netAmount.toFixed(2)}</td>
+              </tr>
+              ${amountTendered > 0 ? `
+              <tr>
+                <td><strong>Amount Tendered:</strong></td>
+                <td style="text-align: right;">₱${amountTendered.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td><strong>Change:</strong></td>
+                <td style="text-align: right;">₱${change.toFixed(2)}</td>
+              </tr>
+              ` : ''}
+              <tr>
+                <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
+                <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${order.payment_method}</td>
+              </tr>
+            </table>
           </div>
+          
+          ${order.special_request ? `
+          <div style="margin-top: 15px;">
+            <p class="section-title">SPECIAL INSTRUCTIONS</p>
+            <p style="font-size: 11px;">${order.special_request}</p>
+          </div>
+          ` : ''}
+          
           <div style="text-align: center; margin-top: 20px;">
-            <p>Thank you for your order!</p>
+            <p>Thank you for your order, Biter!</p>
           </div>
         </body>
       </html>
