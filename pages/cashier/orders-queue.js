@@ -91,26 +91,43 @@ export default function OrdersQueue() {
 
 
 
-  const handleMarkServed = async (orderId) => {
+  const handleItemServed = async (orderId, itemId) => {
     if (!supabase) return;
-    if (!confirm('Mark this order as served? This will complete the order and remove it from the queue.')) return;
 
     try {
-      // Update order status to 'completed' instead of deleting
+      // Mark the item as served
       const { error } = await supabase
-        .from('orders')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', orderId);
+        .from('order_items')
+        .update({ served: true })
+        .eq('id', itemId);
 
       if (error) throw error;
 
+      // Check if all items in the order are served
+      const { data: allItems, error: fetchError } = await supabase
+        .from('order_items')
+        .select('served')
+        .eq('order_id', orderId);
+
+      if (fetchError) throw fetchError;
+
+      // If all items are served, mark the order as completed
+      if (allItems && allItems.every(item => item.served)) {
+        const { error: updateOrderError } = await supabase
+          .from('orders')
+          .update({
+            status: 'completed',
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', orderId);
+
+        if (updateOrderError) throw updateOrderError;
+      }
+
       fetchOrders();
     } catch (err) {
-      console.error('[OrdersQueue] Failed to mark as served:', err?.message ?? err);
-      alert('Failed to update order status. Please try again.');
+      console.error('[OrdersQueue] Failed to mark item as served:', err?.message ?? err);
+      alert('Failed to update item status. Please try again.');
     }
   };
 
@@ -363,8 +380,10 @@ export default function OrdersQueue() {
 
                   <div style={styles.itemsList}>
                     {/* Display order_items if available, otherwise fall back to items array */}
-                    {(order.order_items && order.order_items.length > 0 ? order.order_items : order.items || []).map((item, index) => (
-                      <div key={index} style={styles.itemRow}>
+                    {(order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [])
+                      .filter(item => !item.served) // Only show unserved items
+                      .map((item, index) => (
+                      <div key={item.id || index} style={styles.itemRow}>
                         <div style={styles.itemInfo}>
                           <span style={styles.itemName}>{item.name}</span>
                           <span style={styles.itemQty}>x{item.quantity}</span>
@@ -373,9 +392,25 @@ export default function OrdersQueue() {
                           <span style={styles.itemPrice}>
                             ₱{((item.price || 0) * (item.quantity || 0)).toFixed(2)}
                           </span>
+                          {/* Show Served button for dine-in and take-out orders */}
+                          {(order.order_mode === 'dine-in' || order.order_mode === 'take-out') && item.id && (
+                            <button
+                              style={styles.itemServedBtn}
+                              onClick={() => handleItemServed(order.id, item.id)}
+                            >
+                              ✓ Served
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
+                    {/* Show message if all items are served */}
+                    {(order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [])
+                      .every(item => item.served) && (
+                      <div style={styles.allServedMessage}>
+                        ✓ All items served
+                      </div>
+                    )}
                   </div>
 
                   <div style={styles.orderFooter}>
@@ -410,15 +445,7 @@ export default function OrdersQueue() {
                           ✓ Order Complete
                         </button>
                       )}
-                      {/* Show Mark as Served button for dine-in and take-out orders */}
-                      {(order.order_mode === 'dine-in' || order.order_mode === 'take-out') && (
-                        <button
-                          style={styles.servedBtn}
-                          onClick={() => handleMarkServed(order.id)}
-                        >
-                          ✓ Mark as Served
-                        </button>
-                      )}
+                      {/* Removed "Mark as Served" button - individual item serving is now handled per-item */}
                     </div>
                   </div>
                 </div>
@@ -667,6 +694,17 @@ const styles = {
     color: '#ffc107',
     fontWeight: '600',
   },
+  itemServedBtn: {
+    padding: '4px 12px',
+    backgroundColor: '#4caf50',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+  },
   removeItemBtn: {
     padding: '4px 8px',
     backgroundColor: 'transparent',
@@ -675,6 +713,13 @@ const styles = {
     borderRadius: '4px',
     fontSize: '12px',
     cursor: 'pointer',
+  },
+  allServedMessage: {
+    textAlign: 'center',
+    padding: '12px',
+    color: '#4caf50',
+    fontSize: '14px',
+    fontWeight: '600',
   },
   orderFooter: {
     display: 'flex',
