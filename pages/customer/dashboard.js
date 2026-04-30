@@ -18,7 +18,8 @@ export default function CustomerDashboard() {
     currentOrder: null,
     totalEarnings: 0,
     mostPurchasedItems: [],
-    pendingOrdersCount: 0
+    pendingOrdersCount: 0,
+    publishedReviews: []
   });
 
   useEffect(() => {
@@ -177,12 +178,39 @@ export default function CustomerDashboard() {
         mostPurchasedItems = purchasesData;
       }
 
+      // Get all published reviews (not just user's own reviews)
+      const { data: reviewsData, error: reviewsError } = await supabase
+        .from('customer_reviews')
+        .select(`
+          id,
+          customer_id,
+          title,
+          review_text,
+          star_rating,
+          image_urls,
+          published_at,
+          users (full_name)
+        `)
+        .eq('status', 'published')
+        .order('published_at', { ascending: false })
+        .limit(10);
+
+      let publishedReviews = [];
+      if (reviewsError) {
+        if (reviewsError.code !== 'PGRST116') {
+          console.error('[CustomerDashboard] Error fetching reviews:', reviewsError.message);
+        }
+      } else if (reviewsData) {
+        publishedReviews = reviewsData;
+      }
+
       setDashboardData({
         loyaltyBalance,
         currentOrder: currentOrderData,
         totalEarnings,
         mostPurchasedItems,
-        pendingOrdersCount: pendingCount || 0
+        pendingOrdersCount: pendingCount || 0,
+        publishedReviews
       });
     } catch (err) {
       console.error('[CustomerDashboard] Failed to fetch dashboard data:', err);
@@ -325,17 +353,17 @@ export default function CustomerDashboard() {
               )}
             </Link>
 
-            {/* Total Earnings */}
-            <div style={{...styles.actionCard, cursor: 'default'}}>
-              <span style={styles.cardIcon}>💵</span>
-              <h3 style={styles.cardTitle}>Total Earnings</h3>
-              <p style={{...styles.cardDesc, fontSize: '20px', fontWeight: 'bold', color: '#4caf50'}}>
-                ₱{dashboardData.totalEarnings.toFixed(2)}
+            {/* Biter's Review */}
+            <Link href="#reviews-section" style={{...styles.actionCard, textDecoration: 'none'}}>
+              <span style={styles.cardIcon}>⭐</span>
+              <h3 style={styles.cardTitle}>Biter's Review</h3>
+              <p style={{...styles.cardDesc, fontSize: '20px', fontWeight: 'bold', color: '#ffc107'}}>
+                {dashboardData.publishedReviews.length}
               </p>
               <p style={{...styles.cardDesc, fontSize: '12px'}}>
-                Can be used as payment option
+                {dashboardData.publishedReviews.length === 1 ? 'Published review' : 'Published reviews'}
               </p>
-            </div>
+            </Link>
           </div>
 
           {/* Most Purchased Items */}
@@ -374,6 +402,72 @@ export default function CustomerDashboard() {
                 <span style={styles.emptyIcon}>📦</span>
                 <p style={styles.emptyText}>No purchase history yet</p>
                 <p style={styles.emptySubtext}>Start ordering to see your favorites here!</p>
+              </div>
+            )}
+          </div>
+
+          {/* Biter's Review Gallery */}
+          <div id="reviews-section" style={styles.section}>
+            <h3 style={styles.sectionTitle}>⭐ Biter's Review</h3>
+            <p style={styles.sectionSubtitle}>See what our customers are saying about us!</p>
+            {dashboardData.publishedReviews.length > 0 ? (
+              <div style={styles.reviewsGrid}>
+                {dashboardData.publishedReviews.map((review) => (
+                  <div key={review.id} style={styles.reviewCard}>
+                    <div style={styles.reviewHeader}>
+                      <div style={styles.starsContainer}>
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <span
+                            key={star}
+                            style={{
+                              ...styles.star,
+                              color: star <= review.star_rating ? '#ffc107' : '#444'
+                            }}
+                          >
+                            ★
+                          </span>
+                        ))}
+                      </div>
+                      <p style={styles.reviewAuthor}>
+                        {review.users?.full_name || 'Anonymous'}
+                      </p>
+                    </div>
+                    
+                    {review.title && (
+                      <h4 style={styles.reviewTitle}>{review.title}</h4>
+                    )}
+                    
+                    <p style={styles.reviewText}>{review.review_text}</p>
+                    
+                    {/* Display review images */}
+                    {review.image_urls && review.image_urls.length > 0 && (
+                      <div style={styles.reviewImages}>
+                        {review.image_urls.map((url, index) => (
+                          <img
+                            key={index}
+                            src={url}
+                            alt={`Review image ${index + 1}`}
+                            style={styles.reviewImage}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    
+                    <p style={styles.reviewDate}>
+                      {new Date(review.published_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={styles.emptyState}>
+                <span style={styles.emptyIcon}>⭐</span>
+                <p style={styles.emptyText}>No reviews yet</p>
+                <p style={styles.emptySubtext}>Be the first to share your experience!</p>
               </div>
             )}
           </div>
@@ -630,5 +724,70 @@ const styles = {
   emptySubtext: {
     fontSize: '14px',
     color: '#888',
+  },
+  sectionSubtitle: {
+    fontSize: '14px',
+    color: '#999',
+    marginTop: '-16px',
+    marginBottom: '24px',
+  },
+  reviewsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+    gap: '24px',
+  },
+  reviewCard: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: '12px',
+    padding: '24px',
+    border: '1px solid #444',
+    transition: 'all 0.3s',
+  },
+  reviewHeader: {
+    marginBottom: '12px',
+  },
+  starsContainer: {
+    display: 'flex',
+    gap: '4px',
+    marginBottom: '8px',
+  },
+  star: {
+    fontSize: '20px',
+  },
+  reviewAuthor: {
+    fontSize: '14px',
+    color: '#ccc',
+    fontWeight: 'bold',
+    margin: 0,
+  },
+  reviewTitle: {
+    fontSize: '18px',
+    fontWeight: 'bold',
+    color: '#ffc107',
+    margin: '0 0 12px 0',
+  },
+  reviewText: {
+    fontSize: '14px',
+    color: '#ccc',
+    lineHeight: '1.6',
+    marginBottom: '16px',
+  },
+  reviewImages: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+    gap: '8px',
+    marginBottom: '16px',
+  },
+  reviewImage: {
+    width: '100%',
+    height: '100px',
+    objectFit: 'cover',
+    borderRadius: '8px',
+    border: '1px solid #444',
+  },
+  reviewDate: {
+    fontSize: '12px',
+    color: '#888',
+    margin: 0,
   },
 };
