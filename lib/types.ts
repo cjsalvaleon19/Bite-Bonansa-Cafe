@@ -47,4 +47,16 @@ export interface MenuItemAddon {
   price: number
 }
 
+/**
+ * Payment method types supported by the system.
+ * - 'gcash': Payment via GCash only
+ * - 'cash': Payment via cash only
+ * - 'points': Payment using loyalty points only
+ * - 'points+gcash': Partial payment with points, remainder paid via GCash
+ * - 'points+cash': Partial payment with points, remainder paid via cash
+ * 
+ * Note: Combined methods (points+X) are explicitly defined rather than using
+ * template literals to ensure only valid combinations are allowed. Only points
+ * can be combined with other payment methods for partial payments.
+ */
 export type PaymentMethod = 'gcash' | 'cash' | 'points' | 'points+gcash' | 'points+cash'
