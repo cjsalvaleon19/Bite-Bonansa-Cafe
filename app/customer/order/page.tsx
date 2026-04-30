@@ -135,6 +135,8 @@ function CustomerOrderPage() {
   const [loyaltyBalance, setLoyaltyBalance] = useState(0)
   const [pointsToUse, setPointsToUse] = useState(0)
   const [secondaryPaymentMethod, setSecondaryPaymentMethod] = useState<'cash' | 'gcash'>('cash')
+  // State for customer full name
+  const [customerFullName, setCustomerFullName] = useState<string>('')
 
   // Check delivery enabled setting
   useEffect(() => {
@@ -173,6 +175,28 @@ function CustomerOrderPage() {
       }
     }
     fetchLoyaltyBalance()
+  }, [user?.id])
+
+  // Fetch customer full name from users table
+  useEffect(() => {
+    async function fetchCustomerProfile() {
+      if (!user?.id) return
+      
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('full_name')
+          .eq('id', user.id)
+          .maybeSingle()
+        
+        if (!error && data?.full_name) {
+          setCustomerFullName(data.full_name)
+        }
+      } catch (err) {
+        console.error('Failed to fetch customer profile:', err)
+      }
+    }
+    fetchCustomerProfile()
   }, [user?.id])
 
   // Switch to pickup if delivery gets disabled
@@ -624,7 +648,7 @@ function CustomerOrderPage() {
         .from('orders')
         .insert({
           customer_id: user?.id,
-          customer_name: user?.name || 'Customer',
+          customer_name: customerFullName || 'Customer',
           contact_number: user?.phone || '',
           customer_address: isDelivery ? deliveryAddress : null,
           delivery_latitude: isDelivery ? deliveryLat : null,

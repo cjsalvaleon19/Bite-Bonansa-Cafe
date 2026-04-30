@@ -62,7 +62,8 @@ export default function OrdersQueue() {
             price,
             quantity,
             subtotal,
-            notes
+            notes,
+            served
           )
         `)
         .in('status', ['order_in_queue', 'order_in_process', 'out_for_delivery'])
@@ -73,7 +74,17 @@ export default function OrdersQueue() {
       // Filter to show only:
       // 1. All orders in 'order_in_queue' or 'order_in_process'
       // 2. Pick-up orders in 'out_for_delivery' status (waiting to be completed)
+      // 3. Exclude orders where all items are already served (dine-in/take-out completed orders)
       const filteredOrders = (data || []).filter(order => {
+        // Check if all items in the order are served
+        const orderItems = order.order_items || order.items || [];
+        const allItemsServed = orderItems.length > 0 && orderItems.every(item => item.served);
+        
+        // Exclude orders where all items are served (they should be completed)
+        if (allItemsServed && (order.order_mode === 'dine-in' || order.order_mode === 'take-out')) {
+          return false;
+        }
+        
         if (order.status === 'order_in_queue' || order.status === 'order_in_process') {
           return true;
         }

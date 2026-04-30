@@ -563,7 +563,7 @@ export default function CashierPOS() {
             <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
             <p><strong>Order Type:</strong> ${order.order_mode}</p>
             <p><strong>Customer:</strong> ${order.customer_name}</p>
-            <p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>
+            ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
             ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
           </div>
@@ -616,7 +616,7 @@ export default function CashierPOS() {
               </tr>
               ${amountTendered > 0 ? `
               <tr>
-                <td><strong>Amount Tendered:</strong></td>
+                <td><strong>Cash Tendered:</strong></td>
                 <td style="text-align: right;">₱${amountTendered.toFixed(2)}</td>
               </tr>
               <tr>

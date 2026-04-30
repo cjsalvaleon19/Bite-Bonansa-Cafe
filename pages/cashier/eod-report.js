@@ -150,7 +150,7 @@ export default function EndOfDayReport() {
               <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
               <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
               <p><strong>Customer:</strong> ${order.customer_name || 'Walk-in'}</p>
-              <p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>
+              ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
               ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
               ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
             </div>
@@ -203,7 +203,7 @@ export default function EndOfDayReport() {
                 </tr>
                 ${amountTendered > 0 ? `
                 <tr>
-                  <td><strong>Amount Tendered:</strong></td>
+                  <td><strong>Cash Tendered:</strong></td>
                   <td style="text-align: right;">₱${amountTendered.toFixed(2)}</td>
                 </tr>
                 <tr>
@@ -307,7 +307,7 @@ export default function EndOfDayReport() {
             <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
             <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
             <p><strong>Customer:</strong> ${order.customer_name || 'Walk-in'}</p>
-            <p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>
+            ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
             ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
           </div>
@@ -360,7 +360,7 @@ export default function EndOfDayReport() {
               </tr>
               ${amountTendered > 0 ? `
               <tr>
-                <td><strong>Amount Tendered:</strong></td>
+                <td><strong>Cash Tendered:</strong></td>
                 <td style="text-align: right;">₱${amountTendered.toFixed(2)}</td>
               </tr>
               <tr>

@@ -388,7 +388,7 @@ export default function CashierDashboard() {
           <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
           <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
           ${order.customer_name ? `<p><strong>Customer:</strong> ${order.customer_name}</p>` : ''}
-          <p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>
+          ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
           ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
           ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
         </div>
@@ -438,7 +438,7 @@ export default function CashierDashboard() {
             </tr>
             ${amountTendered > 0 ? `
             <tr>
-              <td style="padding: 4px 0;"><strong>Amount Tendered:</strong></td>
+              <td style="padding: 4px 0;"><strong>Cash Tendered:</strong></td>
               <td style="text-align: right;">₱${amountTendered.toFixed(2)}</td>
             </tr>
             <tr>
