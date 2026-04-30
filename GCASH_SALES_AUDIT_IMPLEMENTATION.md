@@ -46,9 +46,10 @@ File: `supabase/migrations/049_add_payment_adjustment_type.sql`
    - Tracks the type of adjustment
    - Values: 'cash-to-gcash', 'gcash-to-cash', 'correction', etc.
 
-2. `reference_order_id` (UUID)
+2. `reference_order_id` (TEXT)
    - Links adjustment to original order if applicable
    - Foreign key to `orders.id`
+   - **Note:** Uses TEXT type to match the orders.id column type
 
 **Indexes:**
 - `idx_cash_drawer_adjustment_type`: For filtering by adjustment type

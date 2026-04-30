@@ -6,8 +6,10 @@ This migration adds support for tracking payment method adjustments, specificall
 
 ### Changes Made
 1. Adds `payment_adjustment_type` column to `cash_drawer_transactions` table
-2. Adds `reference_order_id` column to link adjustments to specific orders
+2. Adds `reference_order_id` column (TEXT type) to link adjustments to specific orders
 3. Creates indexes for efficient querying of adjustments
+
+**Note:** The `reference_order_id` column uses TEXT type to match the `orders.id` column type in the database.
 
 ### Use Case
 When a customer initially pays cash but the payment is later converted to GCash (e.g., cashier deposits cash and registers it as GCash in the system), this adjustment needs to be tracked for audit and reconciliation purposes.
@@ -47,7 +49,7 @@ AND column_name IN ('payment_adjustment_type', 'reference_order_id');
 
 -- Should return:
 -- payment_adjustment_type | character varying
--- reference_order_id | uuid
+-- reference_order_id | text
 ```
 
 ## Testing the Feature

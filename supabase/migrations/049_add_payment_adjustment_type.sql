@@ -14,8 +14,9 @@ ALTER TABLE cash_drawer_transactions
 ADD COLUMN IF NOT EXISTS payment_adjustment_type VARCHAR(50);
 
 -- Add reference_order_id to link adjustment to original order
+-- Note: Using TEXT type to match orders.id column type
 ALTER TABLE cash_drawer_transactions 
-ADD COLUMN IF NOT EXISTS reference_order_id UUID REFERENCES orders(id);
+ADD COLUMN IF NOT EXISTS reference_order_id TEXT REFERENCES orders(id);
 
 -- Add comments for clarity
 COMMENT ON COLUMN cash_drawer_transactions.payment_adjustment_type IS 
