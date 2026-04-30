@@ -73,6 +73,7 @@ interface CartItem {
   selectedVariety?: string
   selectedSize?: string
   selectedAddons: MenuItemAddon[]
+  variantDetails?: Record<string, string> | null
 }
 
 const GCASH_OWNER = {
