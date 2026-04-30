@@ -91,12 +91,14 @@ BEGIN
   -- Insert a test order
   INSERT INTO orders (
     customer_id,
+    customer_name,
     total_amount,
     status,
     order_mode,
     created_at
   ) VALUES (
     NULL,  -- No customer for test
+    'Test Customer',
     100.00,
     'test',
     'dine-in',
@@ -142,11 +144,13 @@ BEGIN
   FOR i IN 1..5 LOOP
     INSERT INTO orders (
       customer_id,
+      customer_name,
       total_amount,
       status,
       order_mode
     ) VALUES (
       NULL,
+      'Test Customer',
       100.00,
       'test',
       'dine-in'
@@ -198,11 +202,13 @@ BEGIN
   -- Create an order
   INSERT INTO orders (
     customer_id,
+    customer_name,
     total_amount,
     status,
     order_mode
   ) VALUES (
     NULL,
+    'Test Customer',
     100.00,
     'test',
     'dine-in'
@@ -214,12 +220,14 @@ BEGIN
     INSERT INTO orders (
       order_number,
       customer_id,
+      customer_name,
       total_amount,
       status,
       order_mode
     ) VALUES (
       test_order_number,  -- Duplicate!
       NULL,
+      'Test Customer',
       100.00,
       'test',
       'dine-in'
@@ -254,11 +262,13 @@ BEGIN
   FOR i IN 1..10 LOOP
     INSERT INTO orders (
       customer_id,
+      customer_name,
       total_amount,
       status,
       order_mode
     ) VALUES (
       NULL,
+      'Test Customer',
       100.00,
       'test',
       'dine-in'
@@ -305,11 +315,13 @@ BEGIN
   -- Create an order
   INSERT INTO orders (
     customer_id,
+    customer_name,
     total_amount,
     status,
     order_mode
   ) VALUES (
     NULL,
+    'Test Customer',
     100.00,
     'test',
     'dine-in'
