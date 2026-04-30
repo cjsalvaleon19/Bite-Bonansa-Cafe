@@ -1170,7 +1170,7 @@ const styles = {
   gcashModalContent: {
     maxWidth: '900px',
     maxHeight: '90vh',
-    overflow: 'auto',
+    overflowY: 'auto',
   },
   modalSubtitle: {
     fontSize: '13px',
