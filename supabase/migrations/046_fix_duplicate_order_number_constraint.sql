@@ -16,9 +16,10 @@ BEGIN
     SELECT 1 
     FROM pg_constraint c
     JOIN pg_class t ON c.conrelid = t.oid
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
     WHERE t.relname = 'orders' 
       AND c.contype = 'u'
-      AND c.conkey::text LIKE '%order_number%'
+      AND a.attname = 'order_number'
   ) INTO constraint_exists;
   
   IF constraint_exists THEN
