@@ -205,34 +205,40 @@ export default function CustomerDashboard() {
         publishedReviews = reviewsData;
       }
 
-      // Get order history (completed orders, sorted by date)
+      // Get order history items (all items from completed orders)
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
         .select(`
-          id,
-          order_number,
-          total_amount,
-          order_mode,
-          status,
-          created_at,
           order_items (
-            id,
+            menu_item_id,
             name,
-            quantity,
-            price,
-            subtotal
+            menu_items (id, name, price, image_url, category, has_variants, variant_types)
           )
         `)
         .eq('customer_id', userId)
         .eq('status', 'order_delivered')
-        .order('created_at', { ascending: false })
-        .limit(10);
+        .order('created_at', { ascending: false });
 
       let orderHistory = [];
       if (ordersError) {
         console.error('[CustomerDashboard] Error fetching order history:', ordersError.message);
       } else if (ordersData) {
-        orderHistory = ordersData;
+        // Extract and deduplicate items from all orders
+        const itemsMap = new Map();
+        ordersData.forEach(order => {
+          if (order.order_items) {
+            order.order_items.forEach(item => {
+              if (item.menu_item_id && item.menu_items) {
+                // Use menu_item_id as key to avoid duplicates
+                if (!itemsMap.has(item.menu_item_id)) {
+                  itemsMap.set(item.menu_item_id, item.menu_items);
+                }
+              }
+            });
+          }
+        });
+        // Convert map to array
+        orderHistory = Array.from(itemsMap.values());
       }
 
       setDashboardData({
@@ -441,46 +447,26 @@ export default function CustomerDashboard() {
           {/* Order History */}
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>📋 Order History</h3>
-            <p style={styles.sectionSubtitle}>Your recent completed orders</p>
+            <p style={styles.sectionSubtitle}>Items you've ordered before - quick reorder!</p>
             {dashboardData.orderHistory.length > 0 ? (
-              <div style={styles.orderHistoryList}>
-                {dashboardData.orderHistory.map((order) => (
-                  <div key={order.id} style={styles.orderHistoryCard}>
-                    <div style={styles.orderHistoryHeader}>
-                      <div>
-                        <h4 style={styles.orderNumber}>
-                          Order #{order.order_number || order.id.slice(0, 8)}
-                        </h4>
-                        <p style={styles.orderDate}>
-                          {new Date(order.created_at).toLocaleString('en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      </div>
-                      <div style={styles.orderTotalContainer}>
-                        <p style={styles.orderTotal}>₱{order.total_amount.toFixed(2)}</p>
-                        <p style={styles.orderMode}>{order.order_mode}</p>
-                      </div>
+              <div style={styles.itemsGrid}>
+                {dashboardData.orderHistory.map((item) => (
+                  <div key={item.id} style={styles.itemCard}>
+                    <div style={styles.itemImagePlaceholder}>
+                      {item.image_url ? (
+                        <img src={item.image_url} alt={item.name} style={styles.itemImage} />
+                      ) : (
+                        <span style={styles.itemPlaceholder}>🍕</span>
+                      )}
                     </div>
-                    
-                    {order.order_items && order.order_items.length > 0 && (
-                      <div style={styles.orderItemsList}>
-                        {order.order_items.map((item, idx) => (
-                          <div key={item.id || idx} style={styles.orderHistoryItem}>
-                            <span style={styles.orderItemName}>
-                              {item.quantity}x {item.name}
-                            </span>
-                            <span style={styles.orderItemPrice}>
-                              ₱{item.subtotal.toFixed(2)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <h4 style={styles.itemName}>{item.name || 'Unknown Item'}</h4>
+                    <p style={styles.itemPrice}>₱{item.price?.toFixed(2) || '0.00'}</p>
+                    <button
+                      style={styles.addToCartBtn}
+                      onClick={() => handleAddToCart(item)}
+                    >
+                      🛒 Add to Cart
+                    </button>
                   </div>
                 ))}
               </div>
@@ -895,71 +881,5 @@ const styles = {
     fontSize: '12px',
     color: '#888',
     margin: 0,
-  },
-  orderHistoryList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-  },
-  orderHistoryCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: '12px',
-    padding: '20px',
-    border: '1px solid #444',
-    transition: 'all 0.3s',
-  },
-  orderHistoryHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: '16px',
-    paddingBottom: '12px',
-    borderBottom: '1px solid #444',
-  },
-  orderNumber: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: '#ffc107',
-    margin: '0 0 4px 0',
-  },
-  orderDate: {
-    fontSize: '13px',
-    color: '#999',
-    margin: 0,
-  },
-  orderTotalContainer: {
-    textAlign: 'right',
-  },
-  orderTotal: {
-    fontSize: '20px',
-    fontWeight: 'bold',
-    color: '#4caf50',
-    margin: '0 0 4px 0',
-  },
-  orderMode: {
-    fontSize: '12px',
-    color: '#ccc',
-    textTransform: 'capitalize',
-    margin: 0,
-  },
-  orderItemsList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-  },
-  orderHistoryItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '8px 0',
-  },
-  orderItemName: {
-    fontSize: '14px',
-    color: '#ccc',
-  },
-  orderItemPrice: {
-    fontSize: '14px',
-    color: '#4caf50',
-    fontWeight: 'bold',
   },
 };
