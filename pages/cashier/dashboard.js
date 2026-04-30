@@ -532,6 +532,7 @@ export default function CashierDashboard() {
 
     try {
       // Update order status to 'order_in_process' and set accepted_at timestamp
+      // Note: Database trigger will automatically create notification for customer
       const { error } = await supabase
         .from('orders')
         .update({
@@ -557,18 +558,6 @@ export default function CashierDashboard() {
         setTimeout(() => {
           printReceipt(order, 'kitchen');
         }, 500);
-      }
-
-      // Send notification to customer
-      if (order && order.customer_id) {
-        await supabase.from('notifications').insert({
-          user_id: order.customer_id,
-          title: 'Order Accepted',
-          message: `Your order #${order.order_number} is now being prepared!`,
-          type: 'order_update',
-          related_id: order.id,
-          related_type: 'order'  // For consistency with database schema
-        });
       }
 
       fetchPendingOnlineOrders();
