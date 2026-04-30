@@ -662,8 +662,13 @@ export default function CashierDashboard() {
             <div 
               style={{ ...styles.statCard, ...styles.statCardClickable }}
               onClick={async () => {
-                await fetchGCashTransactions();
-                setShowGCashReport(true);
+                try {
+                  await fetchGCashTransactions();
+                  setShowGCashReport(true);
+                } catch (err) {
+                  console.error('[Dashboard] Failed to load GCash report:', err);
+                  alert('Failed to load GCash report. Please try again.');
+                }
               }}
             >
               <div style={styles.statIcon}>📱</div>
