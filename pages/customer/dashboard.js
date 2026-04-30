@@ -452,7 +452,7 @@ export default function CustomerDashboard() {
                           Order #{order.order_number || order.id.slice(0, 8)}
                         </h4>
                         <p style={styles.orderDate}>
-                          {new Date(order.created_at).toLocaleDateString('en-US', {
+                          {new Date(order.created_at).toLocaleString('en-US', {
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric',
@@ -532,9 +532,20 @@ export default function CustomerDashboard() {
                         {review.image_urls.map((url, index) => {
                           const reviewerName = review.users?.full_name || 'Customer';
                           const reviewTitle = review.title || '';
-                          const altText = reviewTitle 
-                            ? `${reviewTitle} - ${reviewerName}'s review image ${index + 1}`
-                            : `${reviewerName}'s review image ${index + 1}`;
+                          const imageCount = review.image_urls.length;
+                          let altText;
+                          
+                          if (imageCount === 1) {
+                            // For single image, omit the image number
+                            altText = reviewTitle 
+                              ? `${reviewTitle} - ${reviewerName}'s review image`
+                              : `${reviewerName}'s review image`;
+                          } else {
+                            // For multiple images, include the image number
+                            altText = reviewTitle 
+                              ? `${reviewTitle} - ${reviewerName}'s review image ${index + 1}`
+                              : `${reviewerName}'s review image ${index + 1}`;
+                          }
                           
                           return (
                             <img
