@@ -18,7 +18,8 @@ export default function CustomerDashboard() {
     currentOrder: null,
     totalEarnings: 0,
     mostPurchasedItems: [],
-    pendingOrdersCount: 0
+    pendingOrdersCount: 0,
+    publishedReviewsCount: 0
   });
 
   useEffect(() => {
@@ -177,12 +178,28 @@ export default function CustomerDashboard() {
         mostPurchasedItems = purchasesData;
       }
 
+      // Get count of published reviews
+      const { count: reviewsCount, error: reviewsError } = await supabase
+        .from('customer_reviews')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'published');
+
+      let publishedReviewsCount = 0;
+      if (reviewsError) {
+        if (reviewsError.code !== 'PGRST116') {
+          console.error('[CustomerDashboard] Error fetching reviews count:', reviewsError.message);
+        }
+      } else {
+        publishedReviewsCount = reviewsCount || 0;
+      }
+
       setDashboardData({
         loyaltyBalance,
         currentOrder: currentOrderData,
         totalEarnings,
         mostPurchasedItems,
-        pendingOrdersCount: pendingCount || 0
+        pendingOrdersCount: pendingCount || 0,
+        publishedReviewsCount
       });
     } catch (err) {
       console.error('[CustomerDashboard] Failed to fetch dashboard data:', err);
@@ -323,6 +340,18 @@ export default function CustomerDashboard() {
               ) : (
                 <p style={styles.cardDesc}>No Active Orders</p>
               )}
+            </Link>
+
+            {/* Biter's Review */}
+            <Link href="/customer/reviews" style={{...styles.actionCard, textDecoration: 'none'}}>
+              <span style={styles.cardIcon}>⭐</span>
+              <h3 style={styles.cardTitle}>Biter's Review</h3>
+              <p style={{...styles.cardDesc, fontSize: '20px', fontWeight: 'bold', color: '#ffc107'}}>
+                {dashboardData.publishedReviewsCount}
+              </p>
+              <p style={{...styles.cardDesc, fontSize: '12px'}}>
+                {dashboardData.publishedReviewsCount === 1 ? 'Published review' : 'Published reviews'}
+              </p>
             </Link>
           </div>
 
