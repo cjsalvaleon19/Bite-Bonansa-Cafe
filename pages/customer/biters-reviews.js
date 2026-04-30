@@ -261,7 +261,7 @@ export default function BitersReviews() {
 const styles = {
   container: {
     minHeight: '100vh',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#0f0f0f',
     paddingBottom: '80px'
   },
   loadingContainer: {
@@ -270,11 +270,11 @@ const styles = {
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: '100vh',
-    backgroundColor: '#f8f9fa'
+    backgroundColor: '#0f0f0f'
   },
   spinner: {
-    border: '4px solid #f3f3f3',
-    borderTop: '4px solid #ff6b35',
+    border: '4px solid #2a2a2a',
+    borderTop: '4px solid #ffc107',
     borderRadius: '50%',
     width: '50px',
     height: '50px',
@@ -283,15 +283,15 @@ const styles = {
   loadingText: {
     marginTop: '20px',
     fontSize: '16px',
-    color: '#666'
+    color: '#ffc107'
   },
   header: {
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #e0e0e0',
+    backgroundColor: '#1a1a1a',
+    borderBottom: '1px solid #ffc107',
     position: 'sticky',
     top: 0,
     zIndex: 100,
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    boxShadow: '0 2px 4px rgba(255, 193, 7, 0.2)'
   },
   headerContent: {
     maxWidth: '1200px',
@@ -303,7 +303,7 @@ const styles = {
   },
   backButton: {
     fontSize: '16px',
-    color: '#ff6b35',
+    color: '#ffc107',
     textDecoration: 'none',
     fontWeight: '500',
     padding: '8px 16px',
@@ -314,7 +314,7 @@ const styles = {
   headerTitle: {
     fontSize: '20px',
     fontWeight: 'bold',
-    color: '#333',
+    color: '#ffc107',
     margin: 0,
     flex: 1,
     textAlign: 'center'
@@ -331,12 +331,12 @@ const styles = {
   pageTitle: {
     fontSize: '32px',
     fontWeight: 'bold',
-    color: '#333',
+    color: '#ffc107',
     margin: '0 0 10px 0'
   },
   pageSubtitle: {
     fontSize: '16px',
-    color: '#666',
+    color: '#fff',
     margin: 0
   },
   reviewsGrid: {
@@ -346,10 +346,11 @@ const styles = {
     marginTop: '30px'
   },
   reviewCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#1a1a1a',
     borderRadius: '12px',
     padding: '24px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    boxShadow: '0 2px 8px rgba(255, 193, 7, 0.1)',
+    border: '1px solid #2a2a2a',
     transition: 'transform 0.2s, box-shadow 0.2s',
     cursor: 'default'
   },
@@ -363,8 +364,8 @@ const styles = {
     width: '50px',
     height: '50px',
     borderRadius: '50%',
-    backgroundColor: '#ff6b35',
-    color: '#fff',
+    backgroundColor: '#ffc107',
+    color: '#1a1a1a',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -378,7 +379,7 @@ const styles = {
   customerName: {
     fontSize: '16px',
     fontWeight: 'bold',
-    color: '#333',
+    color: '#fff',
     margin: '0 0 4px 0'
   },
   ratingContainer: {
@@ -395,18 +396,18 @@ const styles = {
   },
   ratingText: {
     fontSize: '14px',
-    color: '#666',
+    color: '#ffc107',
     fontWeight: '500'
   },
   reviewTitle: {
     fontSize: '18px',
     fontWeight: 'bold',
-    color: '#333',
+    color: '#ffc107',
     margin: '0 0 12px 0'
   },
   reviewText: {
     fontSize: '15px',
-    color: '#555',
+    color: '#ddd',
     lineHeight: '1.6',
     margin: '0 0 16px 0'
   },
@@ -421,7 +422,8 @@ const styles = {
     paddingBottom: '100%',
     borderRadius: '8px',
     overflow: 'hidden',
-    backgroundColor: '#f0f0f0'
+    backgroundColor: '#2a2a2a',
+    border: '1px solid #ffc107'
   },
   reviewImage: {
     position: 'absolute',
@@ -439,9 +441,10 @@ const styles = {
   emptyState: {
     textAlign: 'center',
     padding: '60px 20px',
-    backgroundColor: '#fff',
+    backgroundColor: '#1a1a1a',
     borderRadius: '12px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+    boxShadow: '0 2px 8px rgba(255, 193, 7, 0.1)',
+    border: '1px solid #2a2a2a'
   },
   emptyIcon: {
     fontSize: '64px',
@@ -451,19 +454,19 @@ const styles = {
   emptyTitle: {
     fontSize: '24px',
     fontWeight: 'bold',
-    color: '#333',
+    color: '#ffc107',
     margin: '0 0 10px 0'
   },
   emptyText: {
     fontSize: '16px',
-    color: '#666',
+    color: '#fff',
     margin: '0 0 24px 0'
   },
   shareButton: {
     display: 'inline-block',
     padding: '12px 32px',
-    backgroundColor: '#ff6b35',
-    color: '#fff',
+    backgroundColor: '#ffc107',
+    color: '#1a1a1a',
     textDecoration: 'none',
     borderRadius: '8px',
     fontSize: '16px',
