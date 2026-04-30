@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 
 const DEFAULT_DELIVERY_FEE = 50;
+const RIDER_COMMISSION_RATE = 0.60; // Rider gets 60% of delivery fee
 
 export default function RiderDashboard() {
   const router = useRouter();
@@ -122,7 +123,7 @@ export default function RiderDashboard() {
 
         // Calculate today's earnings (60% of total delivery fees)
         const todayTotalFees = todayDeliveries?.reduce((sum, d) => sum + (parseFloat(d.delivery_fee) || DEFAULT_DELIVERY_FEE), 0) || 0;
-        const todayEarnings = todayTotalFees * 0.60; // Rider gets 60% of delivery fee
+        const todayEarnings = todayTotalFees * RIDER_COMMISSION_RATE; // Rider gets 60% of delivery fee
 
         setStats({
           pendingDeliveries: pendingCount || 0,
