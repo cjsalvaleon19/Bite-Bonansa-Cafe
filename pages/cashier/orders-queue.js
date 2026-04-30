@@ -77,7 +77,7 @@ export default function OrdersQueue() {
       // 3. Exclude orders where all items are already served (dine-in/take-out completed orders)
       const filteredOrders = (data || []).filter(order => {
         // Check if all items in the order are served
-        const orderItems = order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
+        const orderItems = order.order_items || order.items || [];
         const allItemsServed = orderItems.length > 0 && orderItems.every(item => item.served);
         
         // Exclude orders where all items are served (they should be completed)
