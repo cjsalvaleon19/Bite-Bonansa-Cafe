@@ -47,4 +47,4 @@ export interface MenuItemAddon {
   price: number
 }
 
-export type PaymentMethod = 'gcash' | 'cash' | 'points'
+export type PaymentMethod = 'gcash' | 'cash' | 'points' | 'points+gcash' | 'points+cash'
