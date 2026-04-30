@@ -100,7 +100,7 @@ BEGIN
     NULL,  -- No customer for test
     'Test Customer',
     100.00,
-    'test',
+    'pending',
     'dine-in',
     NOW()
   )
@@ -152,7 +152,7 @@ BEGIN
       NULL,
       'Test Customer',
       100.00,
-      'test',
+      'pending',
       'dine-in'
     )
     RETURNING order_number INTO order_numbers[i];
@@ -210,7 +210,7 @@ BEGIN
     NULL,
     'Test Customer',
     100.00,
-    'test',
+    'pending',
     'dine-in'
   )
   RETURNING order_number INTO test_order_number;
@@ -229,7 +229,7 @@ BEGIN
       NULL,
       'Test Customer',
       100.00,
-      'test',
+      'pending',
       'dine-in'
     );
     
@@ -270,7 +270,7 @@ BEGIN
       NULL,
       'Test Customer',
       100.00,
-      'test',
+      'pending',
       'dine-in'
     )
     RETURNING order_number INTO order_numbers[i];
@@ -323,7 +323,7 @@ BEGIN
     NULL,
     'Test Customer',
     100.00,
-    'test',
+    'pending',
     'dine-in'
   )
   RETURNING order_number INTO test_order_number;
