@@ -773,6 +773,14 @@ function CustomerOrderPage() {
               handlePlaceOrder={handlePlaceOrder}
               isSubmitting={isSubmitting}
               orderType={orderType}
+              loyaltyBalance={loyaltyBalance}
+              pointsToUse={pointsToUse}
+              setPointsToUse={setPointsToUse}
+              secondaryPaymentMethod={secondaryPaymentMethod}
+              setSecondaryPaymentMethod={setSecondaryPaymentMethod}
+              maxPointsUsable={maxPointsUsable}
+              actualPointsToUse={actualPointsToUse}
+              remainingBalance={remainingBalance}
             />
           </SheetContent>
         </Sheet>
@@ -995,6 +1003,14 @@ function CustomerOrderPage() {
                 handlePlaceOrder={handlePlaceOrder}
                 isSubmitting={isSubmitting}
                 orderType={orderType}
+                loyaltyBalance={loyaltyBalance}
+                pointsToUse={pointsToUse}
+                setPointsToUse={setPointsToUse}
+                secondaryPaymentMethod={secondaryPaymentMethod}
+                setSecondaryPaymentMethod={setSecondaryPaymentMethod}
+                maxPointsUsable={maxPointsUsable}
+                actualPointsToUse={actualPointsToUse}
+                remainingBalance={remainingBalance}
               />
             </CardContent>
           </Card>
@@ -1416,6 +1432,14 @@ interface CartContentProps {
   handlePlaceOrder: () => void
   isSubmitting: boolean
   orderType?: 'delivery' | 'pickup'
+  loyaltyBalance: number
+  pointsToUse: number
+  setPointsToUse: (points: number) => void
+  secondaryPaymentMethod: 'cash' | 'gcash'
+  setSecondaryPaymentMethod: (method: 'cash' | 'gcash') => void
+  maxPointsUsable: number
+  actualPointsToUse: number
+  remainingBalance: number
 }
 
 function CartContent({
@@ -1423,6 +1447,8 @@ function CartContent({
   deliveryOutOfRange = false, total, earnedPoints, deliveryAddress, setDeliveryAddress,
   openLocationPicker, paymentMethod, setPaymentMethod, orderNotes, setOrderNotes,
   cashTendered, setCashTendered, handlePlaceOrder, isSubmitting, orderType = 'delivery',
+  loyaltyBalance, pointsToUse, setPointsToUse, secondaryPaymentMethod, setSecondaryPaymentMethod,
+  maxPointsUsable, actualPointsToUse, remainingBalance,
 }: CartContentProps) {
   const change = paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
 
