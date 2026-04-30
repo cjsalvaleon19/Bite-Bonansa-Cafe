@@ -303,7 +303,7 @@ export default function CustomerReviews() {
           .insert(reviewData);
 
         if (error) throw error;
-        alert('Review submitted successfully! Admin will review it before publishing.');
+        alert('Review submitted successfully! Thank you for sharing your experience with us.');
       }
 
       // Refresh reviews list
