@@ -524,7 +524,7 @@ export default function CashierPOS() {
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
             .item { display: flex; justify-content: space-between; margin: 5px 0; }
-            .item-details { font-size: 10px; color: #666; padding-left: 10px; margin-top: 2px; }
+            .variant-details { font-size: 10px; color: #666; padding-left: 10px; margin-top: 2px; }
             .footer { border-top: 2px dashed #000; padding-top: 10px; margin-top: 20px; }
             .total { font-weight: bold; font-size: 14px; }
             table { width: 100%; }
@@ -559,7 +559,7 @@ export default function CashierPOS() {
                 <span>₱${(item.price * item.quantity).toFixed(2)}</span>
               </div>
               ${item.variantDetails && Object.keys(item.variantDetails).length > 0 
-                ? `<div class="item-details">
+                ? `<div class="variant-details">
                     (${Object.entries(item.variantDetails).map(([type, value]) => 
                       `${type}: ${value}`
                     ).join(', ')})
