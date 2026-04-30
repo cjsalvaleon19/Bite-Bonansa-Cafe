@@ -396,12 +396,34 @@ export default function EndOfDayReport() {
   };
 
   const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_amount || 0), 0);
-  const totalCash = orders.reduce((sum, order) => 
-    sum + (order.payment_method === 'cash' ? parseFloat(order.cash_amount || order.total_amount || 0) : 0), 0
-  );
-  const totalGcash = orders.reduce((sum, order) => 
-    sum + (order.payment_method === 'gcash' ? parseFloat(order.gcash_amount || 0) : 0), 0
-  );
+  
+  // Cash Sales = actual sales amount paid in cash, not cash tendered
+  const totalCash = orders.reduce((sum, order) => {
+    if (order.payment_method === 'cash') {
+      // Pure cash payment - use total_amount (the actual sale amount)
+      return sum + parseFloat(order.total_amount || 0);
+    } else if (order.payment_method === 'points+cash') {
+      // Combined payment - only count the cash portion (total - points)
+      const totalAmount = parseFloat(order.total_amount || 0);
+      const pointsUsed = parseFloat(order.points_used || 0);
+      return sum + Math.max(0, totalAmount - pointsUsed);
+    }
+    return sum;
+  }, 0);
+  
+  const totalGcash = orders.reduce((sum, order) => {
+    if (order.payment_method === 'gcash') {
+      // Pure gcash payment
+      return sum + parseFloat(order.total_amount || 0);
+    } else if (order.payment_method === 'points+gcash') {
+      // Combined payment - only count the gcash portion (total - points)
+      const totalAmount = parseFloat(order.total_amount || 0);
+      const pointsUsed = parseFloat(order.points_used || 0);
+      return sum + Math.max(0, totalAmount - pointsUsed);
+    }
+    return sum;
+  }, 0);
+  
   const totalPoints = orders.reduce((sum, order) => sum + parseFloat(order.points_used || 0), 0);
 
   if (authLoading || loading) {

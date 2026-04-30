@@ -187,12 +187,27 @@ export default function CashierDashboard() {
           totalSales += parseFloat(order.total_amount || 0);
           
           // Payment method breakdown
-          if (order.payment_method === 'cash' || order.cash_amount > 0) {
-            cashSales += parseFloat(order.cash_amount || order.total_amount || 0);
+          // Cash Sales = actual sales amount paid in cash, not cash tendered
+          if (order.payment_method === 'cash') {
+            // Pure cash payment - use total_amount (the actual sale amount)
+            cashSales += parseFloat(order.total_amount || 0);
+          } else if (order.payment_method === 'points+cash') {
+            // Combined payment - only count the cash portion (total - points)
+            const totalAmount = parseFloat(order.total_amount || 0);
+            const pointsUsed = parseFloat(order.points_used || 0);
+            cashSales += Math.max(0, totalAmount - pointsUsed);
           }
-          if (order.payment_method === 'gcash' || order.gcash_amount > 0) {
-            gcashSales += parseFloat(order.gcash_amount || 0);
+          
+          if (order.payment_method === 'gcash') {
+            // Pure gcash payment
+            gcashSales += parseFloat(order.total_amount || 0);
+          } else if (order.payment_method === 'points+gcash') {
+            // Combined payment - only count the gcash portion (total - points)
+            const totalAmount = parseFloat(order.total_amount || 0);
+            const pointsUsed = parseFloat(order.points_used || 0);
+            gcashSales += Math.max(0, totalAmount - pointsUsed);
           }
+          
           if (order.points_used > 0) {
             pointsSales += parseFloat(order.points_used || 0);
           }
