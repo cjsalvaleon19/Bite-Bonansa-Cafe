@@ -15,13 +15,14 @@
  *    Returns a 503 on cache-miss + network failure instead of throwing, to prevent
  *    the browser error page.
  *
- * BREAKING CHANGE (v7): Cache version bumped to 'bite-bonansa-v7'.
- *  The activate handler purges all older caches ('bite-bonansa-v1' through 'bite-bonansa-v6')
+ * BREAKING CHANGE (v8): Cache version bumped to 'bite-bonansa-v8'.
+ *  The activate handler purges all older caches ('bite-bonansa-v1' through 'bite-bonansa-v7')
  *  automatically so stale or corrupt cache entries do not persist.
  *  Added cashier pages to precache list.
+ *  Fixed: Skip caching partial responses (HTTP 206) to prevent cache.put() errors.
  */
 
-const CACHE_NAME = 'bite-bonansa-v7';
+const CACHE_NAME = 'bite-bonansa-v8';
 
 // Key pages and assets to pre-cache on service worker install so they are
 // available offline even on first visit (including the dashboard).
@@ -221,7 +222,8 @@ self.addEventListener('fetch', (event) => {
     caches.match(request).then((cached) => {
       const network = fetch(request)
         .then((response) => {
-          if (response.ok) {
+          // Only cache successful, complete responses (not partial 206 responses)
+          if (response.ok && response.status !== 206) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           }
