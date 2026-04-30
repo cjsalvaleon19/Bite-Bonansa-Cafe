@@ -39,23 +39,23 @@ BEGIN
         AND constraint_type = 'FOREIGN KEY'
         LIMIT 1
       );
-      RAISE NOTICE 'â Dropped existing FK constraint on order_id';
+      RAISE NOTICE '✓ Dropped existing FK constraint on order_id';
     END IF;
     
     -- Alter column type from UUID to TEXT
     ALTER TABLE deliveries 
     ALTER COLUMN order_id TYPE TEXT USING order_id::TEXT;
     
-    RAISE NOTICE 'â Changed deliveries.order_id type to TEXT';
+    RAISE NOTICE '✓ Changed deliveries.order_id type to TEXT';
     
     -- Re-add FK constraint with correct type
     ALTER TABLE deliveries
     ADD CONSTRAINT deliveries_order_id_fkey 
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE;
     
-    RAISE NOTICE 'â Re-added FK constraint: deliveries.order_id -> orders.id';
+    RAISE NOTICE '✓ Re-added FK constraint: deliveries.order_id -> orders.id';
   ELSE
-    RAISE NOTICE 'â deliveries table does not exist yet, will be created with correct type';
+    RAISE NOTICE '→ deliveries table does not exist yet, will be created with correct type';
   END IF;
   
   RAISE NOTICE 'Fix completed successfully';
