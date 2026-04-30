@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
-import { calculateSalesBreakdown } from '../../utils/salesCalculations';
+import { calculateSalesBreakdown, getGCashAmount } from '../../utils/salesCalculations';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
@@ -289,10 +289,16 @@ export default function CashierDashboard() {
 
       setGCashTransactions(orders || []);
 
-      // Fetch payment adjustments (cash-to-gcash conversions)
+      // Fetch payment adjustments (cash-to-gcash conversions) with cashier info
       const { data: adjustments, error: adjustmentsError } = await supabase
         .from('cash_drawer_transactions')
-        .select('*')
+        .select(`
+          *,
+          users:cashier_id (
+            full_name,
+            email
+          )
+        `)
         .gte('created_at', today.toISOString())
         .lt('created_at', tomorrow.toISOString())
         .eq('transaction_type', 'adjustment')
@@ -740,34 +746,23 @@ export default function CashierDashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {gcashTransactions.map((order) => {
-                            const gcashAmount = order.payment_method === 'gcash' 
-                              ? parseFloat(order.total_amount || 0)
-                              : parseFloat(order.total_amount || 0) - parseFloat(order.points_used || 0);
-                            
-                            return (
-                              <tr key={order.id} style={styles.reportTableRow}>
-                                <td style={styles.reportTd}>{order.order_number || order.id.slice(0, 8)}</td>
-                                <td style={styles.reportTd}>{new Date(order.created_at).toLocaleTimeString()}</td>
-                                <td style={styles.reportTd}>{order.customer_name || 'N/A'}</td>
-                                <td style={styles.reportTd}>
-                                  {order.gcash_reference || 'N/A'}
-                                </td>
-                                <td style={styles.reportTd}>₱{parseFloat(order.total_amount || 0).toFixed(2)}</td>
-                                <td style={styles.reportTd}>₱{parseFloat(order.points_used || 0).toFixed(2)}</td>
-                                <td style={styles.reportTdHighlight}>₱{gcashAmount.toFixed(2)}</td>
-                              </tr>
-                            );
-                          })}
+                          {gcashTransactions.map((order) => (
+                            <tr key={order.id} style={styles.reportTableRow}>
+                              <td style={styles.reportTd}>{order.order_number || order.id.slice(0, 8)}</td>
+                              <td style={styles.reportTd}>{new Date(order.created_at).toLocaleTimeString()}</td>
+                              <td style={styles.reportTd}>{order.customer_name || 'N/A'}</td>
+                              <td style={styles.reportTd}>
+                                {order.gcash_reference || 'N/A'}
+                              </td>
+                              <td style={styles.reportTd}>₱{parseFloat(order.total_amount || 0).toFixed(2)}</td>
+                              <td style={styles.reportTd}>₱{parseFloat(order.points_used || 0).toFixed(2)}</td>
+                              <td style={styles.reportTdHighlight}>₱{getGCashAmount(order).toFixed(2)}</td>
+                            </tr>
+                          ))}
                           <tr style={styles.reportTotalRow}>
                             <td colSpan="6" style={styles.reportTotalLabel}>Total GCash Sales:</td>
                             <td style={styles.reportTotalValue}>
-                              ₱{gcashTransactions.reduce((sum, order) => {
-                                const gcashAmount = order.payment_method === 'gcash' 
-                                  ? parseFloat(order.total_amount || 0)
-                                  : parseFloat(order.total_amount || 0) - parseFloat(order.points_used || 0);
-                                return sum + gcashAmount;
-                              }, 0).toFixed(2)}
+                              ₱{gcashTransactions.reduce((sum, order) => sum + getGCashAmount(order), 0).toFixed(2)}
                             </td>
                           </tr>
                         </tbody>
@@ -798,7 +793,7 @@ export default function CashierDashboard() {
                           {gcashAdjustments.map((adj) => (
                             <tr key={adj.id} style={styles.reportTableRow}>
                               <td style={styles.reportTd}>{new Date(adj.created_at).toLocaleTimeString()}</td>
-                              <td style={styles.reportTd}>Cashier</td>
+                              <td style={styles.reportTd}>{adj.users?.full_name || adj.users?.email || 'Cashier'}</td>
                               <td style={styles.reportTd}>{adj.description || adj.adjustment_reason || 'Cash to GCash'}</td>
                               <td style={styles.reportTd}>{adj.reference_number || 'N/A'}</td>
                               <td style={styles.reportTdHighlight}>₱{parseFloat(adj.amount || 0).toFixed(2)}</td>
@@ -820,12 +815,7 @@ export default function CashierDashboard() {
                   <div style={styles.summaryItem}>
                     <span style={styles.summaryLabel}>Total GCash from Sales:</span>
                     <span style={styles.summaryValue}>
-                      ₱{gcashTransactions.reduce((sum, order) => {
-                        const gcashAmount = order.payment_method === 'gcash' 
-                          ? parseFloat(order.total_amount || 0)
-                          : parseFloat(order.total_amount || 0) - parseFloat(order.points_used || 0);
-                        return sum + gcashAmount;
-                      }, 0).toFixed(2)}
+                      ₱{gcashTransactions.reduce((sum, order) => sum + getGCashAmount(order), 0).toFixed(2)}
                     </span>
                   </div>
                   <div style={styles.summaryItem}>
@@ -838,12 +828,7 @@ export default function CashierDashboard() {
                     <span style={styles.summaryLabelTotal}>Expected in GCash App:</span>
                     <span style={styles.summaryValueTotal}>
                       ₱{(
-                        gcashTransactions.reduce((sum, order) => {
-                          const gcashAmount = order.payment_method === 'gcash' 
-                            ? parseFloat(order.total_amount || 0)
-                            : parseFloat(order.total_amount || 0) - parseFloat(order.points_used || 0);
-                          return sum + gcashAmount;
-                        }, 0) +
+                        gcashTransactions.reduce((sum, order) => sum + getGCashAmount(order), 0) +
                         gcashAdjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0)
                       ).toFixed(2)}
                     </span>

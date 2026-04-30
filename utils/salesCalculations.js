@@ -63,3 +63,19 @@ export function getPaymentPortion(order) {
   const pointsUsed = parseFloat(order.points_used || 0);
   return Math.max(0, totalAmount - pointsUsed);
 }
+
+/**
+ * Calculate GCash amount for an order
+ * Handles both pure GCash and points+gcash payments
+ * 
+ * @param {Object} order - Order object
+ * @returns {number} GCash amount paid
+ */
+export function getGCashAmount(order) {
+  if (order.payment_method === 'gcash') {
+    return parseFloat(order.total_amount || 0);
+  } else if (order.payment_method === 'points+gcash') {
+    return getPaymentPortion(order);
+  }
+  return 0;
+}
