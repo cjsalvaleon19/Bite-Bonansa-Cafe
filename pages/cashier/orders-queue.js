@@ -172,6 +172,7 @@ export default function OrdersQueue() {
 
     try {
       // Update order status to out_for_delivery (which will be displayed as "Ready for Pick-up" for pick-up orders)
+      // Note: Database trigger will automatically create notification for customer
       const { error } = await supabase
         .from('orders')
         .update({
@@ -181,18 +182,6 @@ export default function OrdersQueue() {
         .eq('id', order.id);
 
       if (error) throw error;
-
-      // Send notification to customer
-      if (order.customer_id) {
-        await supabase.from('notifications').insert({
-          user_id: order.customer_id,
-          title: 'Order Ready for Pick-up',
-          message: `Your order #${order.order_number} is ready for pick-up!`,
-          type: 'order_update',
-          related_id: order.id,
-          related_type: 'order'
-        });
-      }
 
       alert('Order marked as ready for pick-up!');
       fetchOrders();
@@ -208,6 +197,7 @@ export default function OrdersQueue() {
 
     try {
       // Update order status to order_delivered (completed)
+      // Note: Database trigger will automatically create notification for customer
       const { error } = await supabase
         .from('orders')
         .update({
@@ -217,18 +207,6 @@ export default function OrdersQueue() {
         .eq('id', order.id);
 
       if (error) throw error;
-
-      // Send notification to customer
-      if (order.customer_id) {
-        await supabase.from('notifications').insert({
-          user_id: order.customer_id,
-          title: 'Order Complete',
-          message: `Your order #${order.order_number} has been completed. Thank you!`,
-          type: 'order_update',
-          related_id: order.id,
-          related_type: 'order'
-        });
-      }
 
       alert('Order marked as complete!');
       fetchOrders();
@@ -243,6 +221,7 @@ export default function OrdersQueue() {
 
     try {
       // Update order with rider and status
+      // Note: Database trigger will automatically create notification for customer
       const { error } = await supabase
         .from('orders')
         .update({
@@ -254,7 +233,7 @@ export default function OrdersQueue() {
 
       if (error) throw error;
 
-      // Send notification to rider
+      // Send notification to rider (not handled by trigger)
       await supabase.from('notifications').insert({
         user_id: riderId,
         title: 'New Delivery Assignment',
@@ -263,18 +242,6 @@ export default function OrdersQueue() {
         related_id: selectedOrderForRider.id,
         related_type: 'order'
       });
-
-      // Send notification to customer
-      if (selectedOrderForRider.customer_id) {
-        await supabase.from('notifications').insert({
-          user_id: selectedOrderForRider.customer_id,
-          title: 'Order Out for Delivery',
-          message: `Your order #${selectedOrderForRider.order_number} is out for delivery!`,
-          type: 'order_update',
-          related_id: selectedOrderForRider.id,
-          related_type: 'order'
-        });
-      }
 
       alert('Rider assigned successfully!');
       setShowRiderModal(false);
