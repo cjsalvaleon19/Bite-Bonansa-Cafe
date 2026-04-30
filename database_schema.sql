@@ -322,7 +322,7 @@ CREATE INDEX IF NOT EXISTS idx_riders_available ON riders(is_available);
 -- 14. Deliveries table - Delivery assignments and tracking
 CREATE TABLE IF NOT EXISTS deliveries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id UUID NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+  order_id TEXT NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
   rider_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   
   -- Customer information (denormalized for quick access)
