@@ -94,8 +94,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_order_number_date_unique
 ON orders (order_number, (created_at::date))
 WHERE order_number IS NOT NULL;
 
-RAISE NOTICE '✓ Created composite unique index for daily order number resets';
-
 -- Step 3: Verify the fix
 DO $$
 DECLARE
