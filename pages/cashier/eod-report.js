@@ -90,7 +90,15 @@ export default function EndOfDayReport() {
     const total = subtotal + deliveryFee;
     const pointsClaimed = order.points_used || 0;
     const netAmount = total - pointsClaimed;
-    const amountTendered = order.cash_amount || 0;
+    
+    // Backwards compatibility: Parse cash_amount from special_request if not in cash_amount field
+    let amountTendered = order.cash_amount || 0;
+    if (amountTendered === 0 && order.special_request && order.special_request.includes('Cash tendered:')) {
+      const match = order.special_request.match(/Cash tendered:\s*₱?(\d+\.?\d*)/i);
+      if (match) {
+        amountTendered = parseFloat(match[1]) || 0;
+      }
+    }
     const change = Math.max(0, amountTendered - netAmount);
     
     // Get customer loyalty ID
@@ -218,7 +226,7 @@ export default function EndOfDayReport() {
               </table>
             </div>
             
-            ${order.special_request ? `
+            ${order.special_request && !order.special_request.includes('Cash tendered:') ? `
             <div style="margin-top: 15px;">
               <p class="section-title">SPECIAL INSTRUCTIONS</p>
               <p style="font-size: 11px;">${order.special_request}</p>
@@ -253,7 +261,15 @@ export default function EndOfDayReport() {
     const total = subtotal + deliveryFee;
     const pointsClaimed = order.points_used || 0;
     const netAmount = total - pointsClaimed;
-    const amountTendered = order.cash_amount || 0;
+    
+    // Backwards compatibility: Parse cash_amount from special_request if not in cash_amount field
+    let amountTendered = order.cash_amount || 0;
+    if (amountTendered === 0 && order.special_request && order.special_request.includes('Cash tendered:')) {
+      const match = order.special_request.match(/Cash tendered:\s*₱?(\d+\.?\d*)/i);
+      if (match) {
+        amountTendered = parseFloat(match[1]) || 0;
+      }
+    }
     const change = Math.max(0, amountTendered - netAmount);
     
     // Get customer loyalty ID
@@ -375,7 +391,7 @@ export default function EndOfDayReport() {
             </table>
           </div>
           
-          ${order.special_request ? `
+          ${order.special_request && !order.special_request.includes('Cash tendered:') ? `
           <div style="margin-top: 15px;">
             <p class="section-title">SPECIAL INSTRUCTIONS</p>
             <p style="font-size: 11px;">${order.special_request}</p>
