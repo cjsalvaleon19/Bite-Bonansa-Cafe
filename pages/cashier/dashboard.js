@@ -238,7 +238,11 @@ export default function CashierDashboard() {
             price,
             quantity,
             subtotal,
-            notes
+            notes,
+            variant_details
+          ),
+          users:customer_id (
+            customer_id
           )
         `)
         .in('order_mode', ['delivery', 'pick-up'])
@@ -280,16 +284,69 @@ export default function CashierDashboard() {
     }
 
     const items = order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
-    const itemsHtml = items.map(item => `
-      <tr>
-        <td style="padding: 4px 0; border-bottom: 1px dashed #ccc;">${item.name}</td>
-        <td style="padding: 4px 8px; text-align: center; border-bottom: 1px dashed #ccc;">x${item.quantity}</td>
-        <td style="padding: 4px 0; text-align: right; border-bottom: 1px dashed #ccc;">₱${((item.price || 0) * (item.quantity || 0)).toFixed(2)}</td>
-      </tr>
-    `).join('');
+    
+    // Build items HTML with variant details
+    const itemsHtml = items.map(item => {
+      const itemPrice = (item.price || 0) * (item.quantity || 0);
+      let variantDetailsHtml = '';
+      
+      // Check if variant_details exists and has content
+      if (item.variant_details && typeof item.variant_details === 'object' && Object.keys(item.variant_details).length > 0) {
+        const variantEntries = Object.entries(item.variant_details)
+          .map(([type, value]) => `${type}: ${value}`)
+          .join(', ');
+        variantDetailsHtml = `
+          <tr>
+            <td colspan="3" style="padding: 2px 0 4px 15px; font-size: 10px; color: #666; border-bottom: 1px dashed #ccc;">
+              (${variantEntries})
+            </td>
+          </tr>
+        `;
+      }
+      
+      return `
+        <tr>
+          <td style="padding: 4px 0; ${!variantDetailsHtml ? 'border-bottom: 1px dashed #ccc;' : ''}">${item.name}</td>
+          <td style="padding: 4px 8px; text-align: center; ${!variantDetailsHtml ? 'border-bottom: 1px dashed #ccc;' : ''}">x${item.quantity}</td>
+          <td style="padding: 4px 0; text-align: right; ${!variantDetailsHtml ? 'border-bottom: 1px dashed #ccc;' : ''}">₱${itemPrice.toFixed(2)}</td>
+        </tr>
+        ${variantDetailsHtml}
+      `;
+    }).join('');
 
     const isKitchenCopy = receiptType === 'kitchen';
     const title = isKitchenCopy ? 'KITCHEN ORDER SLIP' : 'SALES INVOICE';
+    
+    // Calculate values based on the new flow
+    const subtotal = order.subtotal || 0;
+    const deliveryFee = order.delivery_fee || 0;
+    const total = subtotal + deliveryFee;
+    const pointsClaimed = order.points_used || 0;
+    const netAmount = total - pointsClaimed;
+    const amountTendered = order.cash_amount || 0;
+    const change = Math.max(0, amountTendered - netAmount);
+    
+    // Get customer loyalty ID
+    const customerLoyaltyId = order.users && order.users.customer_id ? order.users.customer_id : 'N/A';
+    
+    // Determine display payment method based on points usage
+    let displayPaymentMethod = order.payment_method || 'N/A';
+    if (pointsClaimed > 0) {
+      if (pointsClaimed >= total) {
+        // Fully paid by points
+        displayPaymentMethod = 'Points';
+      } else {
+        // Partial payment with points - show the secondary payment method
+        // Extract secondary method from payment_method field (e.g., "points+cash" -> "cash")
+        if (order.payment_method && order.payment_method.includes('points+')) {
+          displayPaymentMethod = order.payment_method.split('points+')[1];
+        } else if (order.payment_method && order.payment_method.includes('+')) {
+          // Handle other formats like "cash+points" -> extract non-points part
+          const parts = order.payment_method.split('+');
+          displayPaymentMethod = parts.find(p => p !== 'points') || order.payment_method;
+        }
+      }
+    }
     
     const receiptHtml = `
       <!DOCTYPE html>
@@ -327,12 +384,13 @@ export default function CashierDashboard() {
         </div>
 
         <div class="section">
-          <p><strong>Order #:</strong> ${order.order_number || order.id.slice(0, 8)}</p>
+          <p><strong>Order Number:</strong> ${order.order_number || order.id.slice(0, 8)}</p>
           <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
           <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
           ${order.customer_name ? `<p><strong>Customer:</strong> ${order.customer_name}</p>` : ''}
-          ${order.contact_number ? `<p><strong>Contact:</strong> ${order.contact_number}</p>` : ''}
-          ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Address:</strong> ${order.delivery_address}</p>` : ''}
+          <p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>
+          ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
+          ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
         </div>
 
         <div class="section">
@@ -356,21 +414,41 @@ export default function CashierDashboard() {
           <table>
             <tr>
               <td style="padding: 4px 0;"><strong>Subtotal:</strong></td>
-              <td style="text-align: right;">₱${(order.subtotal || 0).toFixed(2)}</td>
+              <td style="text-align: right;">₱${subtotal.toFixed(2)}</td>
             </tr>
-            ${order.delivery_fee > 0 ? `
+            ${deliveryFee > 0 ? `
             <tr>
               <td style="padding: 4px 0;"><strong>Delivery Fee:</strong></td>
-              <td style="text-align: right;">₱${(order.delivery_fee || 0).toFixed(2)}</td>
+              <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
             </tr>
             ` : ''}
             <tr class="total-row">
-              <td style="padding: 8px 0; border-top: 2px solid #000;"><strong>TOTAL:</strong></td>
-              <td style="text-align: right; border-top: 2px solid #000;">₱${(order.total_amount || 0).toFixed(2)}</td>
+              <td style="padding: 4px 0; border-top: 2px solid #000;"><strong>Total:</strong></td>
+              <td style="text-align: right; border-top: 2px solid #000;">₱${total.toFixed(2)}</td>
+            </tr>
+            ${pointsClaimed > 0 ? `
+            <tr>
+              <td style="padding: 4px 0;"><strong>Points Claimed:</strong></td>
+              <td style="text-align: right;">-₱${pointsClaimed.toFixed(2)}</td>
+            </tr>
+            ` : ''}
+            <tr class="total-row">
+              <td style="padding: 4px 0; border-top: 1px solid #000;"><strong>Net Amount:</strong></td>
+              <td style="text-align: right; border-top: 1px solid #000;">₱${netAmount.toFixed(2)}</td>
+            </tr>
+            ${amountTendered > 0 ? `
+            <tr>
+              <td style="padding: 4px 0;"><strong>Amount Tendered:</strong></td>
+              <td style="text-align: right;">₱${amountTendered.toFixed(2)}</td>
             </tr>
             <tr>
-              <td style="padding: 4px 0;"><strong>Payment Method:</strong></td>
-              <td style="text-align: right;">${order.payment_method || 'N/A'}</td>
+              <td style="padding: 4px 0;"><strong>Change:</strong></td>
+              <td style="text-align: right;">₱${change.toFixed(2)}</td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td style="padding: 8px 0 4px 0; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
+              <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
             </tr>
           </table>
         </div>
@@ -384,7 +462,7 @@ export default function CashierDashboard() {
         ` : ''}
 
         <div class="footer">
-          <p>Thank you for your order!</p>
+          <p>Thank you for your order, Biter!</p>
           ${isKitchenCopy ? '<p style="margin-top: 10px; font-weight: bold;">⚠️ KITCHEN COPY - DO NOT GIVE TO CUSTOMER ⚠️</p>' : ''}
           <p style="margin-top: 10px;">Accepted by: ${user?.full_name || 'Cashier'}</p>
           <p>${new Date().toLocaleString()}</p>
