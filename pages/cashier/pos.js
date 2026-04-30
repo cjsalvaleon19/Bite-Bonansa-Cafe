@@ -440,6 +440,7 @@ export default function CashierPOS() {
             price: item.finalPrice || item.price || item.base_price || 0,
             quantity: item.quantity || 1,
             subtotal: (item.finalPrice || item.price || item.base_price || 0) * (item.quantity || 1),
+            variant_details: item.variantDetails || null,
           };
         });
 

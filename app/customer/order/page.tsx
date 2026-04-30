@@ -73,6 +73,7 @@ interface CartItem {
   selectedVariety?: string
   selectedSize?: string
   selectedAddons: MenuItemAddon[]
+  variantDetails?: Record<string, string> | null
 }
 
 const GCASH_OWNER = {
@@ -363,6 +364,7 @@ function CustomerOrderPage() {
         selectedVariety: variantSummary,
         selectedSize: undefined,
         selectedAddons: [],
+        variantDetails: variantDetails,
       }]
     })
     
@@ -654,6 +656,7 @@ function CustomerOrderPage() {
           price: item.basePrice + item.addonPrice,
           quantity: item.quantity,
           subtotal: item.price,
+          variant_details: item.variantDetails || null,
         }
       })
       const { error: itemsError } = await supabase.from('order_items').insert(orderItems as any)
