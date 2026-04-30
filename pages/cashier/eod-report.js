@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
+import { calculateSalesBreakdown } from '../../utils/salesCalculations';
 
 export default function EndOfDayReport() {
   const router = useRouter();
@@ -395,36 +396,8 @@ export default function EndOfDayReport() {
     }, 250);
   };
 
-  const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_amount || 0), 0);
-  
-  // Cash Sales = actual sales amount paid in cash, not cash tendered
-  const totalCash = orders.reduce((sum, order) => {
-    if (order.payment_method === 'cash') {
-      // Pure cash payment - use total_amount (the actual sale amount)
-      return sum + parseFloat(order.total_amount || 0);
-    } else if (order.payment_method === 'points+cash') {
-      // Combined payment - only count the cash portion (total - points)
-      const totalAmount = parseFloat(order.total_amount || 0);
-      const pointsUsed = parseFloat(order.points_used || 0);
-      return sum + Math.max(0, totalAmount - pointsUsed);
-    }
-    return sum;
-  }, 0);
-  
-  const totalGcash = orders.reduce((sum, order) => {
-    if (order.payment_method === 'gcash') {
-      // Pure gcash payment
-      return sum + parseFloat(order.total_amount || 0);
-    } else if (order.payment_method === 'points+gcash') {
-      // Combined payment - only count the gcash portion (total - points)
-      const totalAmount = parseFloat(order.total_amount || 0);
-      const pointsUsed = parseFloat(order.points_used || 0);
-      return sum + Math.max(0, totalAmount - pointsUsed);
-    }
-    return sum;
-  }, 0);
-  
-  const totalPoints = orders.reduce((sum, order) => sum + parseFloat(order.points_used || 0), 0);
+  // Use utility function for sales calculations
+  const { totalSales, cashSales: totalCash, gcashSales: totalGcash, pointsSales: totalPoints } = calculateSalesBreakdown(orders);
 
   if (authLoading || loading) {
     return (

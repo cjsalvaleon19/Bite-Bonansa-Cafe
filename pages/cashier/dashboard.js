@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
+import { calculateSalesBreakdown } from '../../utils/salesCalculations';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
@@ -174,44 +175,15 @@ export default function CashierDashboard() {
       if (error) throw error;
 
       if (orders && orders.length > 0) {
-        let totalSales = 0;
-        let cashSales = 0;
-        let gcashSales = 0;
-        let pointsSales = 0;
         let dineInCount = 0;
         let takeOutCount = 0;
         let pickUpCount = 0;
         let deliveryCount = 0;
 
-        orders.forEach(order => {
-          totalSales += parseFloat(order.total_amount || 0);
-          
-          // Payment method breakdown
-          // Cash Sales = actual sales amount paid in cash, not cash tendered
-          if (order.payment_method === 'cash') {
-            // Pure cash payment - use total_amount (the actual sale amount)
-            cashSales += parseFloat(order.total_amount || 0);
-          } else if (order.payment_method === 'points+cash') {
-            // Combined payment - only count the cash portion (total - points)
-            const totalAmount = parseFloat(order.total_amount || 0);
-            const pointsUsed = parseFloat(order.points_used || 0);
-            cashSales += Math.max(0, totalAmount - pointsUsed);
-          }
-          
-          if (order.payment_method === 'gcash') {
-            // Pure gcash payment
-            gcashSales += parseFloat(order.total_amount || 0);
-          } else if (order.payment_method === 'points+gcash') {
-            // Combined payment - only count the gcash portion (total - points)
-            const totalAmount = parseFloat(order.total_amount || 0);
-            const pointsUsed = parseFloat(order.points_used || 0);
-            gcashSales += Math.max(0, totalAmount - pointsUsed);
-          }
-          
-          if (order.points_used > 0) {
-            pointsSales += parseFloat(order.points_used || 0);
-          }
+        // Use utility function for sales calculations
+        const { totalSales, cashSales, gcashSales, pointsSales } = calculateSalesBreakdown(orders);
 
+        orders.forEach(order => {
           // Order mode breakdown
           const orderMode = order.order_mode || '';
           if (orderMode === 'dine-in') dineInCount++;
