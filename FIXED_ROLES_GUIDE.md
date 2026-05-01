@@ -15,7 +15,6 @@ The following email addresses have fixed role assignments:
 | `cjsalvaleon19@gmail.com` | **Admin** | Full administrative access to all features |
 | `arclitacj@gmail.com` | **Cashier** | Access to POS and order management |
 | `bantecj@bitebonansacafe.com` | **Cashier** | Access to POS and order management |
-| `johndave0991@gmail.com` | **Rider** | Access to delivery management and tracking |
 | `johndave0991@bitebonansacafe.com` | **Rider** | Access to delivery management and tracking |
 
 **All other accounts** automatically receive the **Customer** role with access to the customer portal.
