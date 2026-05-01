@@ -108,12 +108,13 @@ setIsAssigningRider(true); // Still update state for UI feedback
 
 Created database function that eliminates the timing gap:
 
-#### Migration 058: `assign_rider_to_order()`
+#### Migration 058: `assign_rider_to_order()` (Corrected in Migration 059)
 
 ```sql
+-- CORRECTED VERSION (after migration 059):
 CREATE OR REPLACE FUNCTION assign_rider_to_order(
-  p_order_id UUID,
-  p_rider_id UUID
+  p_order_id TEXT,   -- ✓ TEXT to match orders.id type
+  p_rider_id UUID    -- ✓ UUID to match users.id type
 )
 RETURNS JSON AS $$
 BEGIN
@@ -413,14 +414,14 @@ This atomic function pattern should be used for:
 3. **Test Function Directly**
    ```sql
    SELECT assign_rider_to_order(
-     '<valid-order-id>'::UUID,
+     '<valid-order-id>',        -- TEXT (no cast needed)
      '<valid-rider-id>'::UUID
    );
    ```
 
 4. **Check User Permissions**
    ```sql
-   SELECT has_function_privilege('authenticated', 'assign_rider_to_order(UUID, UUID)', 'EXECUTE');
+   SELECT has_function_privilege('authenticated', 'assign_rider_to_order(TEXT, UUID)', 'EXECUTE');
    ```
 
 5. **Review Application Logs**
