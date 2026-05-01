@@ -84,7 +84,7 @@ BEGIN
     RAISE NOTICE 'Archived % rider record(s)', v_orphaned_count;
     
     -- Step 4: Delete orphaned riders
-    DELETE FROM riders
+    DELETE FROM riders r
     WHERE NOT EXISTS (
       SELECT 1 FROM users u WHERE u.id = r.user_id
     );
