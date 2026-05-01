@@ -466,7 +466,9 @@ export default function OrdersQueue() {
       console.log('[OrdersQueue] Validation passed, updating order...', {
         originalRiderId: riderId,
         validatedRiderId: validatedRiderId,
-        idsMatch: riderId === validatedRiderId,
+        typeMatch: typeof riderId === typeof validatedRiderId,
+        valueMatch: String(riderId) === String(validatedRiderId),
+        idsStrictEqual: riderId === validatedRiderId,
         riderEmail: riderUser.email,
         riderName: riderUser.full_name
       });
@@ -1168,7 +1170,7 @@ const styles = {
     textAlign: 'left',
   },
   riderItemDisabled: {
-    opacity: '0.5',
+    opacity: 0.5,
     cursor: 'not-allowed',
   },
   riderIcon: {
