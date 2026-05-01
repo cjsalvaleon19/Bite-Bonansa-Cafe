@@ -207,7 +207,10 @@ CREATE TRIGGER validate_rider_assignment_trigger
 COMMENT ON FUNCTION validate_rider_assignment() IS 
   'Validates that rider_id references a user with role=''rider'' before assignment to orders';
 
-RAISE NOTICE '✓ Created validation trigger for rider assignments';
+DO $$
+BEGIN
+  RAISE NOTICE '✓ Created validation trigger for rider assignments';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 5: Create Helper Function to Get Valid Riders
@@ -246,7 +249,10 @@ $$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION get_available_riders() IS 
   'Returns all valid riders (users with role=''rider''), including those who haven''t completed their rider profile yet. Use user_id for orders.rider_id assignment.';
 
-RAISE NOTICE '✓ Created get_available_riders() helper function';
+DO $$
+BEGIN
+  RAISE NOTICE '✓ Created get_available_riders() helper function';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 6: Add Indexes for Performance
@@ -258,7 +264,10 @@ CREATE INDEX IF NOT EXISTS idx_orders_rider_id ON orders(rider_id) WHERE rider_i
 -- Composite index on users for rider queries
 CREATE INDEX IF NOT EXISTS idx_users_role_rider ON users(role) WHERE role = 'rider';
 
-RAISE NOTICE '✓ Created performance indexes';
+DO $$
+BEGIN
+  RAISE NOTICE '✓ Created performance indexes';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 7: Final Validation Report
