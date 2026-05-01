@@ -1,10 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
+
+// Configuration constant for fallback rider availability
+// When riders are found in users table but not in riders table (incomplete profile),
+// this determines their default availability status for emergency assignments.
+// Set to true to allow assignment with warnings, false to require profile completion.
+const DEFAULT_FALLBACK_AVAILABILITY = true;
 
 export default function OrdersQueue() {
   const router = useRouter();
@@ -164,7 +170,8 @@ export default function OrdersQueue() {
       // Transform users data to match the expected structure with is_available field
       // 
       // IMPORTANT DESIGN DECISION:
-      // We default to available=true here as a TEMPORARY fallback for edge cases where:
+      // We use DEFAULT_FALLBACK_AVAILABILITY constant for the is_available field
+      // This is a TEMPORARY fallback for edge cases where:
       // 1. Rider just created account and hasn't completed profile yet
       // 2. Emergency assignment needed before profile completion
       // 3. Rider record was deleted from riders table but user exists
@@ -179,6 +186,10 @@ export default function OrdersQueue() {
       // - Tooltip instructs rider to complete profile
       // - Cashier must consciously verify rider is ready
       //
+      // CONFIGURATION:
+      // - Change DEFAULT_FALLBACK_AVAILABILITY constant at top of file to modify behavior
+      // - Set to false to require profile completion before assignment
+      //
       // LONG-TERM SOLUTION:
       // Require riders to complete profile at /rider/profile before allowing assignment.
       // This would involve checking riders table has record before showing in list.
@@ -187,7 +198,7 @@ export default function OrdersQueue() {
         id: user.id,
         full_name: user.full_name,
         email: user.email,
-        is_available: true, // FALLBACK DEFAULT - see comment above for rationale
+        is_available: DEFAULT_FALLBACK_AVAILABILITY, // Use constant - see documentation above
         incomplete_profile: true // Triggers UI warnings
       }));
     } catch (err) {
@@ -378,6 +389,12 @@ export default function OrdersQueue() {
     ? orders 
     : orders.filter(order => order.order_mode === filterMode);
 
+  // Memoize check for riders with incomplete profiles to avoid unnecessary re-computation
+  const hasIncompleteProfiles = useMemo(() => 
+    riders.some(r => r.incomplete_profile), 
+    [riders]
+  );
+
   if (authLoading || loading) {
     return (
       <div style={styles.center}>
@@ -565,7 +582,7 @@ export default function OrdersQueue() {
                   <p style={styles.noRidersText}>No riders available</p>
                 ) : (
                   <>
-                    {riders.some(r => r.incomplete_profile) && (
+                    {hasIncompleteProfiles && (
                       <div style={styles.warningBanner}>
                         <span>⚠️</span>
                         <span style={{ marginLeft: '8px' }}>
