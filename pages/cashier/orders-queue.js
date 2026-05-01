@@ -1159,7 +1159,6 @@ const styles = {
   riderItemDisabled: {
     opacity: '0.5',
     cursor: 'not-allowed',
-    pointerEvents: 'none',
   },
   riderIcon: {
     fontSize: '24px',
