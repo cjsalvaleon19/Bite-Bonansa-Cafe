@@ -162,16 +162,33 @@ export default function OrdersQueue() {
       });
       
       // Transform users data to match the expected structure with is_available field
-      // NOTE: We default to available=true as a fallback to allow emergency assignments
-      // This is a trade-off: riders without profiles can be assigned, but may not be ready
-      // The UI shows a warning badge to alert cashiers - they should verify before assigning
-      // RECOMMENDATION: Require riders to complete their profile at /rider/profile first
+      // 
+      // IMPORTANT DESIGN DECISION:
+      // We default to available=true here as a TEMPORARY fallback for edge cases where:
+      // 1. Rider just created account and hasn't completed profile yet
+      // 2. Emergency assignment needed before profile completion
+      // 3. Rider record was deleted from riders table but user exists
+      //
+      // TRADE-OFFS:
+      // - PRO: Allows assignment in edge cases, unblocks cashier workflow
+      // - CON: Rider might not actually be available (mitigated by UI warnings)
+      //
+      // MITIGATION:
+      // - Prominent orange warning banner shown to cashier
+      // - Warning badge (⚠️) shown next to rider name
+      // - Tooltip instructs rider to complete profile
+      // - Cashier must consciously verify rider is ready
+      //
+      // LONG-TERM SOLUTION:
+      // Require riders to complete profile at /rider/profile before allowing assignment.
+      // This would involve checking riders table has record before showing in list.
+      // For now, this fallback with warnings provides flexibility while alerting cashier.
       return (usersData || []).map(user => ({
         id: user.id,
         full_name: user.full_name,
         email: user.email,
-        is_available: true, // Fallback default - VERIFY rider is ready before assigning
-        incomplete_profile: true // Flag to show warning in UI
+        is_available: true, // FALLBACK DEFAULT - see comment above for rationale
+        incomplete_profile: true // Triggers UI warnings
       }));
     } catch (err) {
       console.error('[OrdersQueue] Failed to fetch riders from users table:', err?.message ?? err);
