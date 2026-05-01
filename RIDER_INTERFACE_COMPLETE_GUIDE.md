@@ -4,8 +4,8 @@
 The Rider's Interface has been fully implemented for the Bite Bonansa Cafe application. This interface is designed exclusively for riders to manage their delivery assignments, track earnings, and bill cashiers for their services.
 
 ## Rider Login Credentials
-**Email:** johndave0991@bitebonansacafe.com or johndave0991@gmail.com  
-(Both email addresses are configured for the rider role)
+**Email:** johndave0991@bitebonansacafe.com  
+(Only the @bitebonansacafe.com email has rider role access)
 
 ## Interface Components
 
