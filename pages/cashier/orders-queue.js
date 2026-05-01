@@ -22,6 +22,7 @@ export default function OrdersQueue() {
   const [riders, setRiders] = useState([]);
   const [selectedOrderForRider, setSelectedOrderForRider] = useState(null);
   const [showRiderModal, setShowRiderModal] = useState(false);
+  const [isAssigningRider, setIsAssigningRider] = useState(false); // Prevent concurrent assignments
 
   useEffect(() => {
     if (!authLoading) {
@@ -325,6 +326,8 @@ export default function OrdersQueue() {
   const handleOutForDelivery = (order) => {
     setSelectedOrderForRider(order);
     setShowRiderModal(true);
+    // Reset assignment lock when opening modal (in case of previous errors)
+    setIsAssigningRider(false);
   };
 
   const handleReadyForPickup = async (order) => {
@@ -380,7 +383,15 @@ export default function OrdersQueue() {
   const handleAssignRider = async (riderId) => {
     if (!supabase || !selectedOrderForRider) return;
 
+    // Prevent concurrent assignment requests (double-clicks, race conditions)
+    if (isAssigningRider) {
+      console.log('[OrdersQueue] ⚠️ Assignment already in progress, ignoring duplicate request');
+      return;
+    }
+
     try {
+      setIsAssigningRider(true); // Lock to prevent concurrent requests
+
       // Validate riderId is not null/undefined before proceeding
       if (riderId === null || riderId === undefined) {
         console.error('[OrdersQueue] Invalid rider ID:', { riderId });
@@ -391,6 +402,8 @@ export default function OrdersQueue() {
       console.log('[OrdersQueue] Attempting to assign rider:', {
         riderId,
         riderIdType: typeof riderId,
+        riderIdValue: String(riderId),
+        riderIdLength: String(riderId).length,
         orderId: selectedOrderForRider.id
       });
 
@@ -404,7 +417,9 @@ export default function OrdersQueue() {
 
       console.log('[OrdersQueue] Rider validation result:', {
         found: !!riderUser,
-        riderId: riderUser?.id,
+        validatedId: riderUser?.id,
+        validatedIdType: typeof riderUser?.id,
+        parameterIdMatches: riderUser?.id === riderId,
         email: riderUser?.email,
         role: riderUser?.role,
         error: checkError?.message
@@ -444,8 +459,16 @@ export default function OrdersQueue() {
       }
 
       // All validations passed - proceed with assignment
+      // IMPORTANT: Use riderUser.id (the validated ID from database) instead of riderId parameter
+      // This ensures we're using the exact value and type that the database recognizes
+      const validatedRiderId = riderUser.id;
+      
       console.log('[OrdersQueue] Validation passed, updating order...', {
-        riderId: riderUser.id,
+        originalRiderId: riderId,
+        validatedRiderId: validatedRiderId,
+        typeMatch: typeof riderId === typeof validatedRiderId,
+        valueMatch: String(riderId) === String(validatedRiderId),
+        idsStrictEqual: riderId === validatedRiderId,
         riderEmail: riderUser.email,
         riderName: riderUser.full_name
       });
@@ -456,7 +479,7 @@ export default function OrdersQueue() {
         .from('orders')
         .update({
           status: 'out_for_delivery',
-          rider_id: riderId,
+          rider_id: validatedRiderId, // Use validated ID from database
           out_for_delivery_at: new Date().toISOString()
         })
         .eq('id', selectedOrderForRider.id);
@@ -468,7 +491,8 @@ export default function OrdersQueue() {
           code: updateError?.code,
           details: updateError?.details,
           hint: updateError?.hint,
-          riderId,
+          originalRiderId: riderId,
+          validatedRiderId: validatedRiderId,
           orderId: selectedOrderForRider.id
         });
         
@@ -490,7 +514,7 @@ export default function OrdersQueue() {
 
       // Send notification to rider (not handled by trigger)
       await supabase.from('notifications').insert({
-        user_id: riderId,
+        user_id: validatedRiderId, // Use validated ID
         title: 'New Delivery Assignment',
         message: `You have been assigned to deliver order #${selectedOrderForRider.order_number}`,
         type: 'delivery_assignment',
@@ -505,6 +529,9 @@ export default function OrdersQueue() {
     } catch (err) {
       console.error('[OrdersQueue] Failed to assign rider:', err?.message ?? err);
       alert(`Failed to assign rider: ${err?.message || 'Please try again.'}`);
+    } finally {
+      // Always reset the assignment lock, even if there was an error
+      setIsAssigningRider(false);
     }
   };
 
@@ -694,12 +721,26 @@ export default function OrdersQueue() {
 
           {/* Rider Selection Modal */}
           {showRiderModal && selectedOrderForRider && (
-            <div style={styles.modal} onClick={() => setShowRiderModal(false)}>
+            <div style={styles.modal} onClick={() => {
+              if (!isAssigningRider) {
+                setShowRiderModal(false);
+                setSelectedOrderForRider(null);
+              }
+            }}>
               <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
                 <h3 style={styles.modalTitle}>Select Delivery Rider</h3>
                 <p style={styles.modalSubtext}>
                   Order #{selectedOrderForRider.order_number || selectedOrderForRider.id.slice(0, 8)}
                 </p>
+                
+                {isAssigningRider && (
+                  <div style={styles.loadingBanner}>
+                    <span>⏳</span>
+                    <span style={{ marginLeft: '8px' }}>
+                      Assigning rider, please wait...
+                    </span>
+                  </div>
+                )}
                 
                 {riders.length === 0 ? (
                   <p style={styles.noRidersText}>No riders available</p>
@@ -717,8 +758,12 @@ export default function OrdersQueue() {
                       {riders.map((rider) => (
                         <button
                           key={rider.id}
-                          style={styles.riderItem}
+                          style={{
+                            ...styles.riderItem,
+                            ...(isAssigningRider ? styles.riderItemDisabled : {})
+                          }}
                           onClick={() => handleAssignRider(rider.id)}
+                          disabled={isAssigningRider}
                         >
                           <span style={styles.riderIcon}>🏍️</span>
                           <div style={styles.riderInfo}>
@@ -732,7 +777,9 @@ export default function OrdersQueue() {
                             </div>
                             <div style={styles.riderEmail}>{rider.email}</div>
                           </div>
-                          <span style={styles.selectArrow}>→</span>
+                          <span style={styles.selectArrow}>
+                            {isAssigningRider ? '⏳' : '→'}
+                          </span>
                         </button>
                     ))}
                     </div>
@@ -744,7 +791,9 @@ export default function OrdersQueue() {
                   onClick={() => {
                     setShowRiderModal(false);
                     setSelectedOrderForRider(null);
+                    setIsAssigningRider(false); // Reset lock when closing modal
                   }}
+                  disabled={isAssigningRider}
                 >
                   Cancel
                 </button>
@@ -1089,6 +1138,17 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
   },
+  loadingBanner: {
+    backgroundColor: '#2196f3',
+    color: '#fff',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    fontSize: '13px',
+    fontWeight: '500',
+    display: 'flex',
+    alignItems: 'center',
+  },
   ridersList: {
     display: 'flex',
     flexDirection: 'column',
@@ -1108,6 +1168,10 @@ const styles = {
     fontFamily: "'Poppins', sans-serif",
     width: '100%',
     textAlign: 'left',
+  },
+  riderItemDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
   },
   riderIcon: {
     fontSize: '24px',
