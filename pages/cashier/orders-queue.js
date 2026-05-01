@@ -146,18 +146,55 @@ export default function OrdersQueue() {
     if (!supabase) return;
 
     try {
-      // Fetch available riders
+      // Fetch available riders from riders table joined with users
+      // We need user_id (not riders.id) for the orders.rider_id foreign key
       const { data: ridersData, error } = await supabase
-        .from('users')
-        .select('id, full_name, email')
-        .eq('role', 'rider')
-        .order('full_name');
+        .from('riders')
+        .select(`
+          user_id,
+          is_available,
+          users!riders_user_id_fkey (
+            id,
+            full_name,
+            email
+          )
+        `)
+        .eq('is_available', true);
 
       if (error) throw error;
 
-      setRiders(ridersData || []);
+      // Transform the data to have a flat structure with user_id as the ID to use
+      const transformedRiders = (ridersData || []).map(rider => ({
+        id: rider.user_id, // Use user_id for assignment (matches orders.rider_id FK)
+        full_name: rider.users?.full_name,
+        email: rider.users?.email,
+        is_available: rider.is_available
+      }));
+
+      // Sort by full_name
+      transformedRiders.sort((a, b) => {
+        const nameA = (a.full_name || '').toLowerCase();
+        const nameB = (b.full_name || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+
+      setRiders(transformedRiders);
     } catch (err) {
       console.error('[OrdersQueue] Failed to fetch riders:', err?.message ?? err);
+      
+      // Fallback: try fetching from users table directly (for backward compatibility)
+      try {
+        const { data: usersData, error: usersError } = await supabase
+          .from('users')
+          .select('id, full_name, email')
+          .eq('role', 'rider')
+          .order('full_name');
+
+        if (usersError) throw usersError;
+        setRiders(usersData || []);
+      } catch (fallbackErr) {
+        console.error('[OrdersQueue] Fallback fetch also failed:', fallbackErr?.message ?? fallbackErr);
+      }
     }
   };
 
@@ -220,6 +257,17 @@ export default function OrdersQueue() {
     if (!supabase || !selectedOrderForRider) return;
 
     try {
+      // Validate that the rider exists in users table before assigning
+      const { data: riderExists, error: checkError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', riderId)
+        .single();
+
+      if (checkError || !riderExists) {
+        throw new Error('Selected rider does not exist in the system. Please refresh and try again.');
+      }
+
       // Update order with rider and status
       // Note: Database trigger will automatically create notification for customer
       const { error } = await supabase
@@ -249,7 +297,7 @@ export default function OrdersQueue() {
       fetchOrders();
     } catch (err) {
       console.error('[OrdersQueue] Failed to assign rider:', err?.message ?? err);
-      alert('Failed to assign rider. Please try again.');
+      alert(`Failed to assign rider: ${err?.message || 'Please try again.'}`);
     }
   };
 
