@@ -57,13 +57,17 @@ const Login = () => {
         
         // Generate a unique customer ID only for customer role
         const generateCustomerId = () => {
-          // Use crypto.randomUUID if available, otherwise fallback to timestamp + random
+          // Use timestamp + UUID suffix for readable yet unique IDs
           if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-            return `CUST-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+            const uuid = crypto.randomUUID();
+            const timestamp = Date.now().toString().slice(-6);
+            // Use last 12 chars of UUID for uniqueness
+            return `CUST-${timestamp}-${uuid.slice(-12).toUpperCase()}`;
           }
-          const timestamp = Date.now().toString().slice(-6);
+          // Fallback for environments without crypto.randomUUID
+          const timestamp = Date.now().toString();
           const random = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
-          return `CUST-${timestamp}${random}`;
+          return `CUST-${timestamp}-${random}`;
         };
 
         const profileData = {

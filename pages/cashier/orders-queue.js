@@ -162,14 +162,16 @@ export default function OrdersQueue() {
       });
       
       // Transform users data to match the expected structure with is_available field
-      // Note: We default to available=true to allow assignment even without a complete profile
-      // The cashier should verify the rider is actually ready before assigning
+      // NOTE: We default to available=true as a fallback to allow emergency assignments
+      // This is a trade-off: riders without profiles can be assigned, but may not be ready
+      // The UI shows a warning badge to alert cashiers - they should verify before assigning
+      // RECOMMENDATION: Require riders to complete their profile at /rider/profile first
       return (usersData || []).map(user => ({
         id: user.id,
         full_name: user.full_name,
         email: user.email,
-        is_available: true, // Default to available - rider should complete profile at /rider/profile
-        incomplete_profile: true // Flag to indicate this rider hasn't completed their profile
+        is_available: true, // Fallback default - VERIFY rider is ready before assigning
+        incomplete_profile: true // Flag to show warning in UI
       }));
     } catch (err) {
       console.error('[OrdersQueue] Failed to fetch riders from users table:', err?.message ?? err);
@@ -545,29 +547,39 @@ export default function OrdersQueue() {
                 {riders.length === 0 ? (
                   <p style={styles.noRidersText}>No riders available</p>
                 ) : (
-                  <div style={styles.ridersList}>
-                    {riders.map((rider) => (
-                      <button
-                        key={rider.id}
-                        style={styles.riderItem}
-                        onClick={() => handleAssignRider(rider.id)}
-                      >
-                        <span style={styles.riderIcon}>🏍️</span>
-                        <div style={styles.riderInfo}>
-                          <div style={styles.riderName}>
-                            {rider.full_name || 'Unnamed Rider'}
-                            {rider.incomplete_profile && (
-                              <span style={styles.incompleteProfileBadge} title="Profile incomplete - rider should complete at /rider/profile">
-                                ⚠️
-                              </span>
-                            )}
+                  <>
+                    {riders.some(r => r.incomplete_profile) && (
+                      <div style={styles.warningBanner}>
+                        <span>⚠️</span>
+                        <span style={{ marginLeft: '8px' }}>
+                          Some riders haven't completed their profile. Verify availability before assigning.
+                        </span>
+                      </div>
+                    )}
+                    <div style={styles.ridersList}>
+                      {riders.map((rider) => (
+                        <button
+                          key={rider.id}
+                          style={styles.riderItem}
+                          onClick={() => handleAssignRider(rider.id)}
+                        >
+                          <span style={styles.riderIcon}>🏍️</span>
+                          <div style={styles.riderInfo}>
+                            <div style={styles.riderName}>
+                              {rider.full_name || 'Unnamed Rider'}
+                              {rider.incomplete_profile && (
+                                <span style={styles.incompleteProfileBadge} title="Profile incomplete - rider should complete at /rider/profile">
+                                  ⚠️
+                                </span>
+                              )}
+                            </div>
+                            <div style={styles.riderEmail}>{rider.email}</div>
                           </div>
-                          <div style={styles.riderEmail}>{rider.email}</div>
-                        </div>
-                        <span style={styles.selectArrow}>→</span>
-                      </button>
+                          <span style={styles.selectArrow}>→</span>
+                        </button>
                     ))}
-                  </div>
+                    </div>
+                  </>
                 )}
                 
                 <button 
@@ -908,6 +920,17 @@ const styles = {
     color: '#888',
     textAlign: 'center',
     padding: '20px',
+  },
+  warningBanner: {
+    backgroundColor: '#ff9800',
+    color: '#000',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    fontSize: '13px',
+    fontWeight: '500',
+    display: 'flex',
+    alignItems: 'center',
   },
   ridersList: {
     display: 'flex',
