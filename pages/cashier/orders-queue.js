@@ -228,13 +228,36 @@ export default function OrdersQueue() {
 
       if (error) throw error;
 
+      // Log the raw data for debugging
+      console.log('[OrdersQueue] Fetched riders from riders table:', {
+        count: ridersData?.length || 0,
+        sample: ridersData?.slice(0, 2).map(r => ({ 
+          user_id: r.user_id, 
+          has_users: !!r.users,
+          user_email: r.users?.email 
+        }))
+      });
+
       // Transform the data to have a flat structure with user_id as the ID to use
-      const transformedRiders = (ridersData || []).map(rider => ({
-        id: rider.user_id, // Use user_id for assignment (matches orders.rider_id FK)
-        full_name: rider.users?.full_name,
-        email: rider.users?.email,
-        is_available: rider.is_available
-      }));
+      // Filter out any riders with null user_id to prevent FK constraint violations
+      const transformedRiders = (ridersData || [])
+        .filter(rider => {
+          if (rider.user_id === null || rider.user_id === undefined) {
+            console.warn('[OrdersQueue] Skipping rider with null user_id:', rider);
+            return false;
+          }
+          if (rider.users === null || rider.users === undefined) {
+            console.warn('[OrdersQueue] Skipping rider with null users data:', { user_id: rider.user_id });
+            return false;
+          }
+          return true;
+        })
+        .map(rider => ({
+          id: rider.user_id, // Use user_id for assignment (matches orders.rider_id FK)
+          full_name: rider.users.full_name,
+          email: rider.users.email,
+          is_available: rider.is_available
+        }));
 
       // If no riders found in riders table, fallback to users table
       // This handles cases where a user has 'rider' role but hasn't completed their rider profile
@@ -250,6 +273,11 @@ export default function OrdersQueue() {
         const nameA = (a.full_name || '').toLowerCase();
         const nameB = (b.full_name || '').toLowerCase();
         return nameA.localeCompare(nameB);
+      });
+
+      console.log('[OrdersQueue] Final riders list:', {
+        count: transformedRiders.length,
+        riders: transformedRiders.map(r => ({ id: r.id, email: r.email }))
       });
 
       setRiders(transformedRiders);
@@ -321,6 +349,13 @@ export default function OrdersQueue() {
     if (!supabase || !selectedOrderForRider) return;
 
     try {
+      // Validate riderId is not null/undefined before proceeding
+      if (riderId === null || riderId === undefined) {
+        console.error('[OrdersQueue] Invalid rider ID:', { riderId });
+        alert('Invalid rider selected. Please refresh the page and try again.');
+        return;
+      }
+
       console.log('[OrdersQueue] Attempting to assign rider:', {
         riderId,
         riderIdType: typeof riderId,
@@ -341,6 +376,11 @@ export default function OrdersQueue() {
 
       if (checkError || !riderExists) {
         throw new Error('Selected rider does not exist in the system. Please refresh and try again.');
+      }
+      
+      // Additional check: Ensure the rider has the 'rider' role
+      if (riderExists.role !== 'rider') {
+        throw new Error(`User ${riderExists.email} is not a rider (role: ${riderExists.role}). Cannot assign to order.`);
       }
 
       // Update order with rider and status
