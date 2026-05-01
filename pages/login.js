@@ -55,23 +55,33 @@ const Login = () => {
         console.log('[Login] User not found in users table, creating profile for:', data.user.email);
         const userRole = getRoleForEmail(data.user.email);
         
-        // Generate a simple customer ID for the user
+        // Generate a unique customer ID only for customer role
         const generateCustomerId = () => {
+          // Use crypto.randomUUID if available, otherwise fallback to timestamp + random
+          if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return `CUST-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+          }
           const timestamp = Date.now().toString().slice(-6);
-          const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+          const random = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
           return `CUST-${timestamp}${random}`;
         };
 
+        const profileData = {
+          id: data.user.id,
+          email: data.user.email,
+          full_name: data.user.user_metadata?.full_name || null,
+          phone: data.user.user_metadata?.phone || null,
+          role: userRole
+        };
+
+        // Only add customer_id for customer role
+        if (userRole === 'customer') {
+          profileData.customer_id = generateCustomerId();
+        }
+
         const { error: insertError } = await supabase
           .from('users')
-          .insert({
-            id: data.user.id,
-            email: data.user.email,
-            full_name: data.user.user_metadata?.full_name || null,
-            phone: data.user.user_metadata?.phone || null,
-            customer_id: generateCustomerId(),
-            role: userRole
-          });
+          .insert(profileData);
 
         if (insertError) {
           console.error('[Login] Failed to create user profile:', insertError.message);

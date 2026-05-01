@@ -162,11 +162,14 @@ export default function OrdersQueue() {
       });
       
       // Transform users data to match the expected structure with is_available field
+      // Note: We default to available=true to allow assignment even without a complete profile
+      // The cashier should verify the rider is actually ready before assigning
       return (usersData || []).map(user => ({
         id: user.id,
         full_name: user.full_name,
         email: user.email,
-        is_available: true // Default to available for riders without a profile
+        is_available: true, // Default to available - rider should complete profile at /rider/profile
+        incomplete_profile: true // Flag to indicate this rider hasn't completed their profile
       }));
     } catch (err) {
       console.error('[OrdersQueue] Failed to fetch riders from users table:', err?.message ?? err);
@@ -551,7 +554,14 @@ export default function OrdersQueue() {
                       >
                         <span style={styles.riderIcon}>🏍️</span>
                         <div style={styles.riderInfo}>
-                          <div style={styles.riderName}>{rider.full_name || 'Unnamed Rider'}</div>
+                          <div style={styles.riderName}>
+                            {rider.full_name || 'Unnamed Rider'}
+                            {rider.incomplete_profile && (
+                              <span style={styles.incompleteProfileBadge} title="Profile incomplete - rider should complete at /rider/profile">
+                                ⚠️
+                              </span>
+                            )}
+                          </div>
                           <div style={styles.riderEmail}>{rider.email}</div>
                         </div>
                         <span style={styles.selectArrow}>→</span>
@@ -930,6 +940,18 @@ const styles = {
     color: '#fff',
     fontWeight: '600',
     marginBottom: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  incompleteProfileBadge: {
+    fontSize: '12px',
+    padding: '2px 6px',
+    backgroundColor: '#ff9800',
+    color: '#000',
+    borderRadius: '4px',
+    fontWeight: '600',
+    cursor: 'help',
   },
   riderEmail: {
     fontSize: '12px',
