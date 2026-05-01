@@ -83,6 +83,7 @@ BEGIN
   
   -- Step 3: Update the order atomically
   -- Since we're in the same transaction, the rider validation is still valid
+  -- Note: 'out_for_delivery' status is consistent with notification trigger expectations
   UPDATE orders
   SET 
     status = 'out_for_delivery',

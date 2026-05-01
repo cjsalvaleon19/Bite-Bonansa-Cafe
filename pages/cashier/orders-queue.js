@@ -27,6 +27,9 @@ export default function OrdersQueue() {
   // Use ref for synchronous concurrency control to prevent race conditions from double-clicks
   // React state updates are asynchronous, so rapid clicks could both see false before either sets true
   // Refs update synchronously, providing immediate protection against concurrent requests
+  // This ref works in conjunction with isAssigningRider state:
+  //   - Ref: Immediate synchronous lock check to prevent race conditions
+  //   - State: UI feedback to disable buttons and show assignment in progress
   const isAssigningRiderRef = useRef(false);
 
   useEffect(() => {
