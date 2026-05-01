@@ -183,10 +183,18 @@ export default function OrdersQueue() {
 
         if (usersError) {
           console.error('[OrdersQueue] Fallback fetch failed:', usersError?.message ?? usersError);
+          setRiders([]);
         } else {
-          setRiders(usersData || []);
-          return;
+          // Transform users data to match the expected structure with is_available field
+          const transformedUsers = (usersData || []).map(user => ({
+            id: user.id,
+            full_name: user.full_name,
+            email: user.email,
+            is_available: true // Default to available for riders without a profile
+          }));
+          setRiders(transformedUsers);
         }
+        return;
       }
 
       // Sort by full_name
@@ -209,9 +217,18 @@ export default function OrdersQueue() {
           .order('full_name');
 
         if (usersError) throw usersError;
-        setRiders(usersData || []);
+        
+        // Transform users data to match the expected structure with is_available field
+        const transformedUsers = (usersData || []).map(user => ({
+          id: user.id,
+          full_name: user.full_name,
+          email: user.email,
+          is_available: true // Default to available for riders without a profile
+        }));
+        setRiders(transformedUsers);
       } catch (fallbackErr) {
         console.error('[OrdersQueue] Fallback fetch also failed:', fallbackErr?.message ?? fallbackErr);
+        setRiders([]);
       }
     }
   };
