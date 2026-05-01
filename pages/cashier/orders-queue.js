@@ -221,7 +221,8 @@ export default function OrdersQueue() {
           users!riders_user_id_fkey (
             id,
             full_name,
-            email
+            email,
+            role
           )
         `)
         .eq('is_available', true);
@@ -234,26 +235,57 @@ export default function OrdersQueue() {
         sample: ridersData?.slice(0, 2).map(r => ({ 
           user_id: r.user_id, 
           has_users: !!r.users,
-          user_email: r.users?.email 
+          user_email: r.users?.email,
+          user_role: r.users?.role
         }))
       });
 
       // Transform the data to have a flat structure with user_id as the ID to use
-      // Filter out any riders with null user_id to prevent FK constraint violations
+      // CRITICAL FILTERING: Only include riders that meet ALL these criteria:
+      // 1. user_id is not null (required for FK constraint)
+      // 2. users data is not null (user account exists)
+      // 3. users.id matches user_id (data consistency check)
+      // 4. users.role is 'rider' (role validation)
       const transformedRiders = (ridersData || [])
         .filter(rider => {
+          // Check 1: user_id must not be null
           if (rider.user_id === null || rider.user_id === undefined) {
-            console.warn('[OrdersQueue] Skipping rider with null user_id:', rider);
+            console.warn('[OrdersQueue] ❌ Skipping rider with null user_id:', rider);
             return false;
           }
+          
+          // Check 2: users data must not be null (user exists)
           if (rider.users === null || rider.users === undefined) {
-            console.warn('[OrdersQueue] Skipping rider with null users data:', { user_id: rider.user_id });
+            console.warn('[OrdersQueue] ❌ Skipping rider with null users data:', { user_id: rider.user_id });
             return false;
           }
+          
+          // Check 3: Verify user_id matches users.id (data consistency)
+          if (rider.users.id !== rider.user_id) {
+            console.error('[OrdersQueue] ❌ Data inconsistency - user_id mismatch:', {
+              rider_user_id: rider.user_id,
+              users_id: rider.users.id,
+              email: rider.users.email
+            });
+            return false;
+          }
+          
+          // Check 4: Verify user has 'rider' role
+          if (rider.users.role !== 'rider') {
+            console.warn('[OrdersQueue] ❌ Skipping user with wrong role:', {
+              user_id: rider.user_id,
+              email: rider.users.email,
+              role: rider.users.role,
+              expected: 'rider'
+            });
+            return false;
+          }
+          
+          // All checks passed
           return true;
         })
         .map(rider => ({
-          id: rider.user_id, // Use user_id for assignment (matches orders.rider_id FK)
+          id: rider.user_id, // IMPORTANT: Use user_id for assignment (matches orders.rider_id FK)
           full_name: rider.users.full_name,
           email: rider.users.email,
           is_available: rider.is_available
@@ -275,7 +307,7 @@ export default function OrdersQueue() {
         return nameA.localeCompare(nameB);
       });
 
-      console.log('[OrdersQueue] Final riders list:', {
+      console.log('[OrdersQueue] ✅ Final riders list validated:', {
         count: transformedRiders.length,
         riders: transformedRiders.map(r => ({ id: r.id, email: r.email }))
       });
@@ -362,30 +394,65 @@ export default function OrdersQueue() {
         orderId: selectedOrderForRider.id
       });
 
-      // Validate that the rider exists in users table before assigning
-      const { data: riderExists, error: checkError } = await supabase
+      // CRITICAL VALIDATION: Verify the rider exists in users table with role 'rider'
+      // This prevents FK constraint violations (orders.rider_id -> users.id)
+      const { data: riderUser, error: checkError } = await supabase
         .from('users')
-        .select('id, email, role')
+        .select('id, email, role, full_name')
         .eq('id', riderId)
-        .single();
+        .maybeSingle(); // Use maybeSingle to avoid error when no row found
 
       console.log('[OrdersQueue] Rider validation result:', {
-        riderExists,
-        checkError: checkError?.message
+        found: !!riderUser,
+        riderId: riderUser?.id,
+        email: riderUser?.email,
+        role: riderUser?.role,
+        error: checkError?.message
       });
 
-      if (checkError || !riderExists) {
-        throw new Error('Selected rider does not exist in the system. Please refresh and try again.');
+      // Enhanced error handling for database query errors
+      if (checkError) {
+        console.error('[OrdersQueue] Database error during rider validation:', checkError);
+        alert(`Database error: ${checkError.message}. Please contact support.`);
+        return;
+      }
+
+      // Check if user was found
+      if (!riderUser) {
+        console.error('[OrdersQueue] Rider not found in users table:', { riderId });
+        alert('The selected rider does not exist in the system. This may happen if:\n\n' +
+              '1. The rider account was deleted\n2. The rider data is corrupted\n3. The page data is stale\n\n' +
+              'Please refresh the page and try again. If the problem persists, contact support.');
+        // Refresh riders list to show current data
+        await fetchRiders();
+        return;
       }
       
-      // Additional check: Ensure the rider has the 'rider' role
-      if (riderExists.role !== 'rider') {
-        throw new Error(`User ${riderExists.email} is not a rider (role: ${riderExists.role}). Cannot assign to order.`);
+      // Ensure the user has the 'rider' role
+      if (riderUser.role !== 'rider') {
+        console.error('[OrdersQueue] User is not a rider:', { 
+          riderId, 
+          email: riderUser.email, 
+          actualRole: riderUser.role 
+        });
+        alert(`Cannot assign order: ${riderUser.email || 'Selected user'} is not a rider.\n\n` +
+              `Current role: ${riderUser.role}\n\n` +
+              'Please refresh the page to see the updated rider list.');
+        // Refresh riders list
+        await fetchRiders();
+        return;
       }
+
+      // All validations passed - proceed with assignment
+      console.log('[OrdersQueue] Validation passed, updating order...', {
+        riderId: riderUser.id,
+        riderEmail: riderUser.email,
+        riderName: riderUser.full_name
+      });
 
       // Update order with rider and status
       // Note: Database trigger will automatically create notification for customer
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from('orders')
         .update({
           status: 'out_for_delivery',
@@ -394,15 +461,31 @@ export default function OrdersQueue() {
         })
         .eq('id', selectedOrderForRider.id);
 
-      if (error) {
+      if (updateError) {
         console.error('[OrdersQueue] Order update error details:', {
-          error,
-          message: error?.message,
-          code: error?.code,
-          details: error?.details,
-          hint: error?.hint
+          error: updateError,
+          message: updateError?.message,
+          code: updateError?.code,
+          details: updateError?.details,
+          hint: updateError?.hint,
+          riderId,
+          orderId: selectedOrderForRider.id
         });
-        throw error;
+        
+        // Provide specific error message based on error type
+        if (updateError.message?.includes('foreign key constraint') || 
+            updateError.message?.includes('orders_rider_id_fkey')) {
+          alert('Failed to assign rider: The rider ID is not valid in the database.\n\n' +
+                'This is a data integrity issue. Please:\n' +
+                '1. Refresh the page\n' +
+                '2. Try selecting a different rider\n' +
+                '3. Contact support if the problem persists\n\n' +
+                `Technical details: ${updateError.message}`);
+        } else {
+          alert(`Failed to assign rider: ${updateError.message}\n\n` +
+                'Please try again or contact support if the problem persists.');
+        }
+        return;
       }
 
       // Send notification to rider (not handled by trigger)
