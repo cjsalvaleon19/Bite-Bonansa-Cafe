@@ -1,8 +1,41 @@
-# Fix for Persistent 409 Rider Assignment Errors
+# Fix for Persistent Rider Assignment Errors
+
+## Latest Issue: Type Mismatch Error (Migration 059)
+
+**Error**: "Failed to assign rider: operator does not exist: text = uuid"
+
+### Root Cause
+Migration 058 incorrectly declared the `assign_rider_to_order()` function with:
+- `p_order_id UUID` ❌ **WRONG**
+
+But `orders.id` is actually **TEXT type**, not UUID (see migration 051).
+
+When the function tried to compare `WHERE id = p_order_id`, PostgreSQL threw:
+```
+operator does not exist: text = uuid
+```
+
+### Fix
+**Migration 059** corrects the function signature:
+```sql
+CREATE OR REPLACE FUNCTION assign_rider_to_order(
+  p_order_id TEXT,    -- ✓ Correct: matches orders.id type
+  p_rider_id UUID     -- ✓ Correct: matches users.id type
+)
+```
+
+### Deployment
+1. Run migration 059 on production database
+2. Function will now work correctly
+3. No application code changes needed
+
+---
+
+## Previous Issue: 409 Conflict Errors (Migrations 057-058)
 
 ## Problem Statement
 
-Users continued experiencing 409 (Conflict) errors when assigning riders to delivery orders, even after migration 057 and comprehensive validation were implemented:
+Users experienced 409 (Conflict) errors when assigning riders to delivery orders, even after migration 057 and comprehensive validation were implemented:
 
 ```
 Failed to load resource: the server responded with a status of 409 ()
@@ -208,14 +241,34 @@ RPC: assign_rider_to_order(...)      ┌─────────┐
 - Atomic validation + update in single transaction
 - Returns detailed JSON response
 - Granted to authenticated users (cashiers)
+- **Fixed in migration 059**: Corrected p_order_id type from UUID to TEXT
 
-### 2. `pages/cashier/orders-queue.js`
+### 2. `supabase/migrations/059_fix_assign_rider_type_mismatch.sql` ⭐ **NEW**
+- **Critical fix for type mismatch error**
+- Drops incorrect function signature (UUID, UUID)
+- Recreates with correct signature (TEXT, UUID)
+- Fixes "operator does not exist: text = uuid" error
+- **Must be run on production databases**
+
+### 3. `pages/cashier/orders-queue.js`
 - Import `useRef` from React
 - Add `isAssigningRiderRef` for synchronous locking
 - Replace validation + update with single RPC call
 - Handle 7 different error modes with specific messages
 - Auto-refresh on validation failures
 - Enhanced documentation
+
+## Migration Order
+
+**For fresh databases:**
+1. Migrations 001-057 (existing setup)
+2. Migration 058 (atomic function - updated with correct types)
+3. Migration 059 (skip - only needed for databases with broken 058)
+
+**For production databases that ran migration 058:**
+1. ⚠️ **MUST run migration 059 immediately**
+2. This fixes the type mismatch error
+3. No data loss, just function signature fix
 
 ## Validation Results
 
