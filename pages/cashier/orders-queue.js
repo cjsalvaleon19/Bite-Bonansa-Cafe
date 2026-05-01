@@ -402,6 +402,8 @@ export default function OrdersQueue() {
       console.log('[OrdersQueue] Attempting to assign rider:', {
         riderId,
         riderIdType: typeof riderId,
+        riderIdValue: String(riderId),
+        riderIdLength: String(riderId).length,
         orderId: selectedOrderForRider.id
       });
 
@@ -415,7 +417,9 @@ export default function OrdersQueue() {
 
       console.log('[OrdersQueue] Rider validation result:', {
         found: !!riderUser,
-        riderId: riderUser?.id,
+        validatedId: riderUser?.id,
+        validatedIdType: typeof riderUser?.id,
+        parameterIdMatches: riderUser?.id === riderId,
         email: riderUser?.email,
         role: riderUser?.role,
         error: checkError?.message
@@ -455,8 +459,14 @@ export default function OrdersQueue() {
       }
 
       // All validations passed - proceed with assignment
+      // IMPORTANT: Use riderUser.id (the validated ID from database) instead of riderId parameter
+      // This ensures we're using the exact value and type that the database recognizes
+      const validatedRiderId = riderUser.id;
+      
       console.log('[OrdersQueue] Validation passed, updating order...', {
-        riderId: riderUser.id,
+        originalRiderId: riderId,
+        validatedRiderId: validatedRiderId,
+        idsMatch: riderId === validatedRiderId,
         riderEmail: riderUser.email,
         riderName: riderUser.full_name
       });
@@ -467,7 +477,7 @@ export default function OrdersQueue() {
         .from('orders')
         .update({
           status: 'out_for_delivery',
-          rider_id: riderId,
+          rider_id: validatedRiderId, // Use validated ID from database
           out_for_delivery_at: new Date().toISOString()
         })
         .eq('id', selectedOrderForRider.id);
@@ -479,7 +489,8 @@ export default function OrdersQueue() {
           code: updateError?.code,
           details: updateError?.details,
           hint: updateError?.hint,
-          riderId,
+          originalRiderId: riderId,
+          validatedRiderId: validatedRiderId,
           orderId: selectedOrderForRider.id
         });
         
@@ -501,7 +512,7 @@ export default function OrdersQueue() {
 
       // Send notification to rider (not handled by trigger)
       await supabase.from('notifications').insert({
-        user_id: riderId,
+        user_id: validatedRiderId, // Use validated ID
         title: 'New Delivery Assignment',
         message: `You have been assigned to deliver order #${selectedOrderForRider.order_number}`,
         type: 'delivery_assignment',
