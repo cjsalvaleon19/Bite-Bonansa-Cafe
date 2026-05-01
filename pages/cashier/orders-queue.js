@@ -22,6 +22,7 @@ export default function OrdersQueue() {
   const [riders, setRiders] = useState([]);
   const [selectedOrderForRider, setSelectedOrderForRider] = useState(null);
   const [showRiderModal, setShowRiderModal] = useState(false);
+  const [isAssigningRider, setIsAssigningRider] = useState(false); // Prevent concurrent assignments
 
   useEffect(() => {
     if (!authLoading) {
@@ -380,7 +381,15 @@ export default function OrdersQueue() {
   const handleAssignRider = async (riderId) => {
     if (!supabase || !selectedOrderForRider) return;
 
+    // Prevent concurrent assignment requests (double-clicks, race conditions)
+    if (isAssigningRider) {
+      console.log('[OrdersQueue] ⚠️ Assignment already in progress, ignoring duplicate request');
+      return;
+    }
+
     try {
+      setIsAssigningRider(true); // Lock to prevent concurrent requests
+
       // Validate riderId is not null/undefined before proceeding
       if (riderId === null || riderId === undefined) {
         console.error('[OrdersQueue] Invalid rider ID:', { riderId });
@@ -505,6 +514,9 @@ export default function OrdersQueue() {
     } catch (err) {
       console.error('[OrdersQueue] Failed to assign rider:', err?.message ?? err);
       alert(`Failed to assign rider: ${err?.message || 'Please try again.'}`);
+    } finally {
+      // Always reset the assignment lock, even if there was an error
+      setIsAssigningRider(false);
     }
   };
 
@@ -701,6 +713,15 @@ export default function OrdersQueue() {
                   Order #{selectedOrderForRider.order_number || selectedOrderForRider.id.slice(0, 8)}
                 </p>
                 
+                {isAssigningRider && (
+                  <div style={styles.loadingBanner}>
+                    <span>⏳</span>
+                    <span style={{ marginLeft: '8px' }}>
+                      Assigning rider, please wait...
+                    </span>
+                  </div>
+                )}
+                
                 {riders.length === 0 ? (
                   <p style={styles.noRidersText}>No riders available</p>
                 ) : (
@@ -717,8 +738,12 @@ export default function OrdersQueue() {
                       {riders.map((rider) => (
                         <button
                           key={rider.id}
-                          style={styles.riderItem}
+                          style={{
+                            ...styles.riderItem,
+                            ...(isAssigningRider ? styles.riderItemDisabled : {})
+                          }}
                           onClick={() => handleAssignRider(rider.id)}
+                          disabled={isAssigningRider}
                         >
                           <span style={styles.riderIcon}>🏍️</span>
                           <div style={styles.riderInfo}>
@@ -732,7 +757,9 @@ export default function OrdersQueue() {
                             </div>
                             <div style={styles.riderEmail}>{rider.email}</div>
                           </div>
-                          <span style={styles.selectArrow}>→</span>
+                          <span style={styles.selectArrow}>
+                            {isAssigningRider ? '⏳' : '→'}
+                          </span>
                         </button>
                     ))}
                     </div>
@@ -1089,6 +1116,17 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
   },
+  loadingBanner: {
+    backgroundColor: '#2196f3',
+    color: '#fff',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    fontSize: '13px',
+    fontWeight: '500',
+    display: 'flex',
+    alignItems: 'center',
+  },
   ridersList: {
     display: 'flex',
     flexDirection: 'column',
@@ -1108,6 +1146,11 @@ const styles = {
     fontFamily: "'Poppins', sans-serif",
     width: '100%',
     textAlign: 'left',
+  },
+  riderItemDisabled: {
+    opacity: '0.5',
+    cursor: 'not-allowed',
+    pointerEvents: 'none',
   },
   riderIcon: {
     fontSize: '24px',
