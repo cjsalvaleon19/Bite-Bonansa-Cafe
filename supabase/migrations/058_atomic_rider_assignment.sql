@@ -14,11 +14,15 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- Drop function if it exists (for idempotency)
+-- Note: Drop both old signatures (UUID, UUID) and new (TEXT, UUID) for idempotency
 DROP FUNCTION IF EXISTS assign_rider_to_order(UUID, UUID);
+DROP FUNCTION IF EXISTS assign_rider_to_order(TEXT, UUID);
 
 -- Create atomic rider assignment function
+-- IMPORTANT: p_order_id is TEXT because orders.id is TEXT type (not UUID)
+-- See migration 051 for explanation of orders.id type
 CREATE OR REPLACE FUNCTION assign_rider_to_order(
-  p_order_id UUID,
+  p_order_id TEXT,
   p_rider_id UUID
 )
 RETURNS JSON AS $$
@@ -123,13 +127,14 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Add helpful comment
-COMMENT ON FUNCTION assign_rider_to_order(UUID, UUID) IS 
+COMMENT ON FUNCTION assign_rider_to_order(TEXT, UUID) IS 
   'Atomically assigns a rider to a delivery order with validation. '
   'Returns JSON with success status and details. '
-  'Validates rider exists and has role=''rider'' within the same transaction as the update.';
+  'Validates rider exists and has role=''rider'' within the same transaction as the update. '
+  'Note: order_id is TEXT type to match orders.id column type.';
 
 -- Grant execute permission to authenticated users (cashiers)
-GRANT EXECUTE ON FUNCTION assign_rider_to_order(UUID, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION assign_rider_to_order(TEXT, UUID) TO authenticated;
 
 -- Log completion
 DO $$
