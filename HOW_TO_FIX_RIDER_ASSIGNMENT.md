@@ -108,8 +108,8 @@ If the fix doesn't work:
 
 If you got this error:
 ```
-ERROR: 42601: syntax error at or near "#"
-LINE 1: # Connect to your Supabase database and run:
+ERROR: 42601: syntax error at or near "\"
+LINE 8: \echo '═══════════════════════════════════════════════════════════════════════════'
 ```
 
-This means you tried to run a file with bash comments (`#`) in the Supabase SQL Editor. Use the `DIAGNOSE_RIDER_FOR_SUPABASE.sql` and `FIX_RIDER_FOR_SUPABASE.sql` files instead - they're designed specifically for Supabase SQL Editor.
+This error occurred with older versions of the SQL files that used psql-specific `\echo` commands. All SQL files in this repository have been updated to use standard PostgreSQL syntax (`RAISE NOTICE` in `DO` blocks) and are now compatible with Supabase SQL Editor.
