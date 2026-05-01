@@ -150,11 +150,16 @@ export default function OrdersQueue() {
     try {
       const { data: usersData, error: usersError } = await supabase
         .from('users')
-        .select('id, full_name, email')
+        .select('id, full_name, email, role')
         .eq('role', 'rider')
         .order('full_name');
 
       if (usersError) throw usersError;
+      
+      console.log('[OrdersQueue] Fetched riders from users table:', {
+        count: usersData?.length || 0,
+        riders: usersData?.map(u => ({ id: u.id, email: u.email, role: u.role }))
+      });
       
       // Transform users data to match the expected structure with is_available field
       return (usersData || []).map(user => ({
@@ -283,12 +288,23 @@ export default function OrdersQueue() {
     if (!supabase || !selectedOrderForRider) return;
 
     try {
+      console.log('[OrdersQueue] Attempting to assign rider:', {
+        riderId,
+        riderIdType: typeof riderId,
+        orderId: selectedOrderForRider.id
+      });
+
       // Validate that the rider exists in users table before assigning
       const { data: riderExists, error: checkError } = await supabase
         .from('users')
-        .select('id')
+        .select('id, email, role')
         .eq('id', riderId)
         .single();
+
+      console.log('[OrdersQueue] Rider validation result:', {
+        riderExists,
+        checkError: checkError?.message
+      });
 
       if (checkError || !riderExists) {
         throw new Error('Selected rider does not exist in the system. Please refresh and try again.');
@@ -305,7 +321,16 @@ export default function OrdersQueue() {
         })
         .eq('id', selectedOrderForRider.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('[OrdersQueue] Order update error details:', {
+          error,
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint
+        });
+        throw error;
+      }
 
       // Send notification to rider (not handled by trigger)
       await supabase.from('notifications').insert({
