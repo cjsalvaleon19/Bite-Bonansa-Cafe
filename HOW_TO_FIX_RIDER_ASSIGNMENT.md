@@ -90,8 +90,7 @@ When a user signs up, they're added to `auth.users` (Supabase authentication), b
 
 ## Important Notes
 
-- ✅ The `DIAGNOSE_RIDER_FOR_SUPABASE.sql` and `FIX_RIDER_FOR_SUPABASE.sql` files work in **Supabase SQL Editor**
-- ❌ The `diagnose_rider_fk_issue.sql` and `fix_rider_user_sync.sql` files contain bash comments and psql commands - they won't work in Supabase SQL Editor
+- ✅ All SQL diagnostic and fix files are now compatible with **Supabase SQL Editor** (updated to use `RAISE NOTICE` instead of `\echo`)
 - ⚠️ The fix is safe to run multiple times (it's idempotent)
 - ⚠️ The rider MUST complete their profile at `/rider/profile` after the fix
 

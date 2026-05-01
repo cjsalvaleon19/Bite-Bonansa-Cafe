@@ -3,17 +3,24 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Purpose: Ensure johndave0991@bitebonansacafe.com exists in public.users
 --          with the correct ID from auth.users and role='rider'
+-- NOTE: This version is compatible with Supabase SQL Editor
 -- ═══════════════════════════════════════════════════════════════════════════
 
-\echo '═══════════════════════════════════════════════════════════════════════════'
-\echo 'FIX: Syncing Rider User from auth.users to public.users'
-\echo '═══════════════════════════════════════════════════════════════════════════'
-\echo ''
+DO $$
+BEGIN
+  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE 'FIX: Syncing Rider User from auth.users to public.users';
+  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE '';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 1: Get the correct ID from auth.users
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'STEP 1: Getting user ID from auth.users...'
+DO $$
+BEGIN
+  RAISE NOTICE 'STEP 1: Getting user ID from auth.users...';
+END $$;
 DO $$
 DECLARE
   v_auth_id UUID;
@@ -56,12 +63,14 @@ BEGIN
   END IF;
 END $$;
 
-\echo ''
-
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 2: Delete existing record if ID mismatch (to fix data corruption)
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'STEP 2: Checking for ID mismatch and cleaning up if needed...'
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE 'STEP 2: Checking for ID mismatch and cleaning up if needed...';
+END $$;
 DO $$
 DECLARE
   v_auth_id UUID;
@@ -93,12 +102,14 @@ BEGIN
   END IF;
 END $$;
 
-\echo ''
-
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 3: Insert/Update user in public.users with correct data
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'STEP 3: Creating/updating user in public.users...'
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE 'STEP 3: Creating/updating user in public.users...';
+END $$;
 INSERT INTO public.users (id, email, full_name, role, created_at, updated_at)
 SELECT 
   a.id,
@@ -116,16 +127,23 @@ SET
   role = 'rider',  -- Force role to 'rider'
   updated_at = NOW();
 
-\echo ''
-\echo '✓ User record created/updated in public.users'
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE '✓ User record created/updated in public.users';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 4: Verify the fix
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo ''
-\echo 'STEP 4: Verifying the fix...'
-\echo '------------------------------------------------------------------------'
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE 'STEP 4: Verifying the fix...';
+  RAISE NOTICE '------------------------------------------------------------------------';
+END $$;
 SELECT 
+  '=== STEP 4: Verification ===' AS diagnostic_step,
   a.id AS auth_id,
   p.id AS public_id,
   p.email,
@@ -141,23 +159,26 @@ FROM auth.users a
 JOIN public.users p ON a.email = p.email
 WHERE a.email = 'johndave0991@bitebonansacafe.com';
 
-\echo ''
-\echo '═══════════════════════════════════════════════════════════════════════════'
-\echo 'FIX COMPLETE'
-\echo '═══════════════════════════════════════════════════════════════════════════'
-\echo ''
-\echo 'NEXT STEPS:'
-\echo ''
-\echo '1. ✓ User now exists in public.users with correct ID and role=''rider'''
-\echo ''
-\echo '2. RIDER MUST complete their profile:'
-\echo '   → Login as johndave0991@bitebonansacafe.com'
-\echo '   → Navigate to /rider/profile'
-\echo '   → Fill in vehicle details and save'
-\echo '   → This creates the required record in the riders table'
-\echo ''
-\echo '3. After profile completion, rider will appear in the cashier''s rider list'
-\echo ''
-\echo '4. Test rider assignment from cashier orders queue'
-\echo ''
-\echo '═══════════════════════════════════════════════════════════════════════════'
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE 'FIX COMPLETE';
+  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE '';
+  RAISE NOTICE 'NEXT STEPS:';
+  RAISE NOTICE '';
+  RAISE NOTICE '1. ✓ User now exists in public.users with correct ID and role=''rider''';
+  RAISE NOTICE '';
+  RAISE NOTICE '2. RIDER MUST complete their profile:';
+  RAISE NOTICE '   → Login as johndave0991@bitebonansacafe.com';
+  RAISE NOTICE '   → Navigate to /rider/profile';
+  RAISE NOTICE '   → Fill in vehicle details and save';
+  RAISE NOTICE '   → This creates the required record in the riders table';
+  RAISE NOTICE '';
+  RAISE NOTICE '3. After profile completion, rider will appear in the cashier''s rider list';
+  RAISE NOTICE '';
+  RAISE NOTICE '4. Test rider assignment from cashier orders queue';
+  RAISE NOTICE '';
+  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+END $$;
