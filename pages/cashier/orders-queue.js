@@ -159,8 +159,7 @@ export default function OrdersQueue() {
             email
           )
         `)
-        .eq('is_available', true)
-        .order('users(full_name)');
+        .eq('is_available', true);
 
       if (error) throw error;
 
@@ -171,6 +170,13 @@ export default function OrdersQueue() {
         email: rider.users?.email,
         is_available: rider.is_available
       }));
+
+      // Sort by full_name
+      transformedRiders.sort((a, b) => {
+        const nameA = (a.full_name || '').toLowerCase();
+        const nameB = (b.full_name || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
 
       setRiders(transformedRiders);
     } catch (err) {

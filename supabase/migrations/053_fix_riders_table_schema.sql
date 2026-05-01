@@ -36,15 +36,19 @@ BEGIN
     ) THEN
       RAISE NOTICE '✗ user_id column missing, adding it now...';
       
-      -- Add user_id column
+      -- Add user_id column as nullable first
       ALTER TABLE riders 
-      ADD COLUMN user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE;
+      ADD COLUMN user_id UUID REFERENCES users(id) ON DELETE CASCADE;
       
       RAISE NOTICE '✓ Added user_id column to riders table';
       
       -- Create index on user_id if it doesn't exist
       CREATE INDEX IF NOT EXISTS idx_riders_user_id ON riders(user_id);
       RAISE NOTICE '✓ Created index on user_id';
+      
+      -- Add UNIQUE constraint separately (allows existing NULL values)
+      ALTER TABLE riders ADD CONSTRAINT riders_user_id_key UNIQUE (user_id);
+      RAISE NOTICE '✓ Added UNIQUE constraint on user_id';
     ELSE
       RAISE NOTICE '✓ user_id column already exists';
     END IF;

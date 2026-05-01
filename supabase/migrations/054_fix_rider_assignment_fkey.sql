@@ -147,7 +147,6 @@ CREATE OR REPLACE VIEW available_riders_view AS
 SELECT 
   r.id as rider_table_id,
   r.user_id,
-  u.id as user_id_duplicate,  -- Same as user_id, for clarity
   u.full_name,
   u.email,
   u.role,
