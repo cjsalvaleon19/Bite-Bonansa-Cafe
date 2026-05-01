@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../utils/supabaseClient';
+import { getRoleForEmail } from '../utils/roleMapping';
 
 const Login = () => {
   const router = useRouter();
@@ -36,7 +37,7 @@ const Login = () => {
       localStorage.setItem('token', data.session.access_token);
       
       // Fetch user role from database to redirect appropriately
-      const { data: userData, error: userError } = await supabase
+      let { data: userData, error: userError } = await supabase
         .from('users')
         .select('role')
         .eq('id', data.user.id)
@@ -49,11 +50,60 @@ const Login = () => {
         return;
       }
 
+      // If user doesn't exist in users table, create them with role from roleMapping
       if (!userData) {
-        console.error('[Login] User not found in users table:', data.user.id);
-        setError('User profile not found. Please contact support.');
-        setLoading(false);
-        return;
+        console.log('[Login] User not found in users table, creating profile for:', data.user.email);
+        const userRole = getRoleForEmail(data.user.email);
+        
+        // Generate a unique customer ID only for customer role
+        const generateCustomerId = () => {
+          // Use full timestamp + UUID suffix for maximum uniqueness
+          // Modern browsers support crypto.randomUUID natively
+          const uuid = crypto.randomUUID();
+          const timestamp = Date.now().toString(); // Full timestamp
+          // Use last 12 chars of UUID for additional entropy
+          return `CUST-${timestamp}-${uuid.slice(-12).toUpperCase()}`;
+        };
+
+        const profileData = {
+          id: data.user.id,
+          email: data.user.email,
+          full_name: data.user.user_metadata?.full_name || null,
+          phone: data.user.user_metadata?.phone || null,
+          role: userRole
+        };
+
+        // Only add customer_id for customer role
+        if (userRole === 'customer') {
+          profileData.customer_id = generateCustomerId();
+        }
+
+        const { error: insertError } = await supabase
+          .from('users')
+          .insert(profileData);
+
+        if (insertError) {
+          console.error('[Login] Failed to create user profile:', insertError.message);
+          setError('Failed to create user profile. Please contact support.');
+          setLoading(false);
+          return;
+        }
+
+        // Fetch the newly created user data
+        const { data: newUserData, error: fetchError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+
+        if (fetchError || !newUserData) {
+          console.error('[Login] Failed to fetch newly created user:', fetchError?.message);
+          setError('Profile created but failed to fetch. Please try logging in again.');
+          setLoading(false);
+          return;
+        }
+
+        userData = newUserData;
       }
 
       if (!userData.role) {

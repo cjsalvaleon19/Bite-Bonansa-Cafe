@@ -1,10 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
+
+// Configuration constant for fallback rider availability
+// When riders are found in users table but not in riders table (incomplete profile),
+// this determines their default availability status for emergency assignments.
+// Set to true to allow assignment with warnings, false to require profile completion.
+const DEFAULT_FALLBACK_AVAILABILITY = true;
 
 export default function OrdersQueue() {
   const router = useRouter();
@@ -142,6 +148,65 @@ export default function OrdersQueue() {
     }
   };
 
+  // Helper function to fetch riders from users table
+  // Used as fallback when riders table has no records or on error
+  const fetchRidersFromUsersTable = async () => {
+    if (!supabase) return [];
+    
+    try {
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select('id, full_name, email, role')
+        .eq('role', 'rider')
+        .order('full_name');
+
+      if (usersError) throw usersError;
+      
+      console.log('[OrdersQueue] Fetched riders from users table:', {
+        count: usersData?.length || 0,
+        riders: usersData?.map(u => ({ id: u.id, email: u.email, role: u.role }))
+      });
+      
+      // Transform users data to match the expected structure with is_available field
+      // 
+      // IMPORTANT DESIGN DECISION:
+      // We use DEFAULT_FALLBACK_AVAILABILITY constant for the is_available field
+      // This is a TEMPORARY fallback for edge cases where:
+      // 1. Rider just created account and hasn't completed profile yet
+      // 2. Emergency assignment needed before profile completion
+      // 3. Rider record was deleted from riders table but user exists
+      //
+      // TRADE-OFFS:
+      // - PRO: Allows assignment in edge cases, unblocks cashier workflow
+      // - CON: Rider might not actually be available (mitigated by UI warnings)
+      //
+      // MITIGATION:
+      // - Prominent orange warning banner shown to cashier
+      // - Warning badge (⚠️) shown next to rider name
+      // - Tooltip instructs rider to complete profile
+      // - Cashier must consciously verify rider is ready
+      //
+      // CONFIGURATION:
+      // - Change DEFAULT_FALLBACK_AVAILABILITY constant at top of file to modify behavior
+      // - Set to false to require profile completion before assignment
+      //
+      // LONG-TERM SOLUTION:
+      // Require riders to complete profile at /rider/profile before allowing assignment.
+      // This would involve checking riders table has record before showing in list.
+      // For now, this fallback with warnings provides flexibility while alerting cashier.
+      return (usersData || []).map(user => ({
+        id: user.id,
+        full_name: user.full_name,
+        email: user.email,
+        is_available: DEFAULT_FALLBACK_AVAILABILITY, // Use constant - see documentation above
+        incomplete_profile: true // Triggers UI warnings
+      }));
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to fetch riders from users table:', err?.message ?? err);
+      return [];
+    }
+  };
+
   const fetchRiders = async () => {
     if (!supabase) return;
 
@@ -171,6 +236,15 @@ export default function OrdersQueue() {
         is_available: rider.is_available
       }));
 
+      // If no riders found in riders table, fallback to users table
+      // This handles cases where a user has 'rider' role but hasn't completed their rider profile
+      if (transformedRiders.length === 0) {
+        console.warn('[OrdersQueue] No riders found in riders table, checking users table');
+        const fallbackRiders = await fetchRidersFromUsersTable();
+        setRiders(fallbackRiders);
+        return;
+      }
+
       // Sort by full_name
       transformedRiders.sort((a, b) => {
         const nameA = (a.full_name || '').toLowerCase();
@@ -183,18 +257,8 @@ export default function OrdersQueue() {
       console.error('[OrdersQueue] Failed to fetch riders:', err?.message ?? err);
       
       // Fallback: try fetching from users table directly (for backward compatibility)
-      try {
-        const { data: usersData, error: usersError } = await supabase
-          .from('users')
-          .select('id, full_name, email')
-          .eq('role', 'rider')
-          .order('full_name');
-
-        if (usersError) throw usersError;
-        setRiders(usersData || []);
-      } catch (fallbackErr) {
-        console.error('[OrdersQueue] Fallback fetch also failed:', fallbackErr?.message ?? fallbackErr);
-      }
+      const fallbackRiders = await fetchRidersFromUsersTable();
+      setRiders(fallbackRiders);
     }
   };
 
@@ -257,12 +321,23 @@ export default function OrdersQueue() {
     if (!supabase || !selectedOrderForRider) return;
 
     try {
+      console.log('[OrdersQueue] Attempting to assign rider:', {
+        riderId,
+        riderIdType: typeof riderId,
+        orderId: selectedOrderForRider.id
+      });
+
       // Validate that the rider exists in users table before assigning
       const { data: riderExists, error: checkError } = await supabase
         .from('users')
-        .select('id')
+        .select('id, email, role')
         .eq('id', riderId)
         .single();
+
+      console.log('[OrdersQueue] Rider validation result:', {
+        riderExists,
+        checkError: checkError?.message
+      });
 
       if (checkError || !riderExists) {
         throw new Error('Selected rider does not exist in the system. Please refresh and try again.');
@@ -279,7 +354,16 @@ export default function OrdersQueue() {
         })
         .eq('id', selectedOrderForRider.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('[OrdersQueue] Order update error details:', {
+          error,
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint
+        });
+        throw error;
+      }
 
       // Send notification to rider (not handled by trigger)
       await supabase.from('notifications').insert({
@@ -304,6 +388,12 @@ export default function OrdersQueue() {
   const filteredOrders = filterMode === 'all' 
     ? orders 
     : orders.filter(order => order.order_mode === filterMode);
+
+  // Memoize check for riders with incomplete profiles to avoid unnecessary re-computation
+  const hasIncompleteProfiles = useMemo(() => 
+    riders.some(r => r.incomplete_profile), 
+    [riders]
+  );
 
   if (authLoading || loading) {
     return (
@@ -491,22 +581,39 @@ export default function OrdersQueue() {
                 {riders.length === 0 ? (
                   <p style={styles.noRidersText}>No riders available</p>
                 ) : (
-                  <div style={styles.ridersList}>
-                    {riders.map((rider) => (
-                      <button
-                        key={rider.id}
-                        style={styles.riderItem}
-                        onClick={() => handleAssignRider(rider.id)}
-                      >
-                        <span style={styles.riderIcon}>🏍️</span>
-                        <div style={styles.riderInfo}>
-                          <div style={styles.riderName}>{rider.full_name || 'Unnamed Rider'}</div>
-                          <div style={styles.riderEmail}>{rider.email}</div>
-                        </div>
-                        <span style={styles.selectArrow}>→</span>
-                      </button>
+                  <>
+                    {hasIncompleteProfiles && (
+                      <div style={styles.warningBanner}>
+                        <span>⚠️</span>
+                        <span style={{ marginLeft: '8px' }}>
+                          Some riders haven't completed their profile. Verify availability before assigning.
+                        </span>
+                      </div>
+                    )}
+                    <div style={styles.ridersList}>
+                      {riders.map((rider) => (
+                        <button
+                          key={rider.id}
+                          style={styles.riderItem}
+                          onClick={() => handleAssignRider(rider.id)}
+                        >
+                          <span style={styles.riderIcon}>🏍️</span>
+                          <div style={styles.riderInfo}>
+                            <div style={styles.riderName}>
+                              {rider.full_name || 'Unnamed Rider'}
+                              {rider.incomplete_profile && (
+                                <span style={styles.incompleteProfileBadge} title="Profile incomplete - rider should complete at /rider/profile">
+                                  ⚠️
+                                </span>
+                              )}
+                            </div>
+                            <div style={styles.riderEmail}>{rider.email}</div>
+                          </div>
+                          <span style={styles.selectArrow}>→</span>
+                        </button>
                     ))}
-                  </div>
+                    </div>
+                  </>
                 )}
                 
                 <button 
@@ -848,6 +955,17 @@ const styles = {
     textAlign: 'center',
     padding: '20px',
   },
+  warningBanner: {
+    backgroundColor: '#ff9800',
+    color: '#000',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    fontSize: '13px',
+    fontWeight: '500',
+    display: 'flex',
+    alignItems: 'center',
+  },
   ridersList: {
     display: 'flex',
     flexDirection: 'column',
@@ -879,6 +997,18 @@ const styles = {
     color: '#fff',
     fontWeight: '600',
     marginBottom: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  incompleteProfileBadge: {
+    fontSize: '12px',
+    padding: '2px 6px',
+    backgroundColor: '#ff9800',
+    color: '#000',
+    borderRadius: '4px',
+    fontWeight: '600',
+    cursor: 'help',
   },
   riderEmail: {
     fontSize: '12px',
