@@ -60,6 +60,46 @@ BEGIN
     
     IF NOT EXISTS (
       SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'vehicle_type'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN vehicle_type VARCHAR(50);
+      RAISE NOTICE '✓ Added vehicle_type column';
+    END IF;
+    
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'vehicle_plate'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN vehicle_plate VARCHAR(20);
+      RAISE NOTICE '✓ Added vehicle_plate column';
+    END IF;
+    
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'cellphone_number'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN cellphone_number VARCHAR(20);
+      RAISE NOTICE '✓ Added cellphone_number column';
+    END IF;
+    
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'emergency_contact'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN emergency_contact VARCHAR(255);
+      RAISE NOTICE '✓ Added emergency_contact column';
+    END IF;
+    
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'emergency_phone'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN emergency_phone VARCHAR(20);
+      RAISE NOTICE '✓ Added emergency_phone column';
+    END IF;
+    
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
       WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'total_earnings'
     ) THEN
       ALTER TABLE riders ADD COLUMN total_earnings DECIMAL(10,2) DEFAULT 0;
@@ -80,6 +120,22 @@ BEGIN
     ) THEN
       ALTER TABLE riders ADD COLUMN is_available BOOLEAN DEFAULT true;
       RAISE NOTICE '✓ Added is_available column';
+    END IF;
+    
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'created_at'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN created_at TIMESTAMP DEFAULT NOW();
+      RAISE NOTICE '✓ Added created_at column';
+    END IF;
+    
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'updated_at'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN updated_at TIMESTAMP DEFAULT NOW();
+      RAISE NOTICE '✓ Added updated_at column';
     END IF;
     
   ELSE

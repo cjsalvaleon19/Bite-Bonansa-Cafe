@@ -22,6 +22,70 @@ BEGIN
 END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
+-- 0. Ensure Riders Table Has All Required Columns
+-- ═══════════════════════════════════════════════════════════════════════════
+
+DO $$
+BEGIN
+  -- Only proceed if riders table exists
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'public' AND table_name = 'riders'
+  ) THEN
+    RAISE NOTICE '→ Checking riders table schema...';
+    
+    -- Add vehicle_type if missing
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'vehicle_type'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN vehicle_type VARCHAR(50);
+      RAISE NOTICE '✓ Added vehicle_type column';
+    END IF;
+    
+    -- Add vehicle_plate if missing
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'vehicle_plate'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN vehicle_plate VARCHAR(20);
+      RAISE NOTICE '✓ Added vehicle_plate column';
+    END IF;
+    
+    -- Add cellphone_number if missing
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'cellphone_number'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN cellphone_number VARCHAR(20);
+      RAISE NOTICE '✓ Added cellphone_number column';
+    END IF;
+    
+    -- Add emergency_contact if missing
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'emergency_contact'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN emergency_contact VARCHAR(255);
+      RAISE NOTICE '✓ Added emergency_contact column';
+    END IF;
+    
+    -- Add emergency_phone if missing
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'emergency_phone'
+    ) THEN
+      ALTER TABLE riders ADD COLUMN emergency_phone VARCHAR(20);
+      RAISE NOTICE '✓ Added emergency_phone column';
+    END IF;
+    
+    RAISE NOTICE '✓ Riders table schema validation complete';
+  ELSE
+    RAISE NOTICE '→ Riders table does not exist, skipping schema checks';
+  END IF;
+END $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- 1. Verify Foreign Key Relationships
 -- ═══════════════════════════════════════════════════════════════════════════
 

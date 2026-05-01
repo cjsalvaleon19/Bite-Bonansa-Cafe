@@ -62,19 +62,39 @@ The foreign key constraint `orders_rider_id_fkey` validates that the rider_id ex
 
 ## Solution
 
-### 1. Run Migration 054
+### 1. Run Migrations in Order
 
-Migration 054 (`054_fix_rider_assignment_fkey.sql`) fixes data inconsistencies:
+**IMPORTANT**: Run migrations in this specific order to ensure the riders table has all required columns:
 
-- Clears orphaned rider_id references in orders table
-- Removes riders without valid user accounts
-- Creates `available_riders_view` for easy querying
-- Adds helpful column comments
-- Creates `validate_rider_exists()` function
+**Step 1: Run Migration 053 (if riders table exists with incomplete schema)**
+```sql
+-- Copy and paste contents of supabase/migrations/053_fix_riders_table_schema.sql
+-- This ensures the riders table has all columns: user_id, driver_id, vehicle_type, 
+-- vehicle_plate, cellphone_number, emergency_contact, emergency_phone, is_available, etc.
+```
+
+**Step 2: Run Migration 054 (fix data consistency and create views)**
+```sql
+-- Copy and paste contents of supabase/migrations/054_fix_rider_assignment_fkey.sql
+-- This migration also adds missing columns as a safety check, then creates the view
+```
+
+Migration 054 (`054_fix_rider_assignment_fkey.sql`) performs:
+
+- **Schema validation**: Ensures all rider table columns exist (vehicle_type, vehicle_plate, etc.)
+- **Data cleanup**: Clears orphaned rider_id references in orders table
+- **Removes invalid riders**: Deletes riders without valid user accounts
+- **Creates `available_riders_view`**: For easy querying
+- **Adds helpful column comments**: Clarifies ID field usage
+- **Creates `validate_rider_exists()`** function
 
 **Run in Supabase SQL Editor:**
 ```sql
--- Copy and paste contents of supabase/migrations/054_fix_rider_assignment_fkey.sql
+-- If riders table exists but is incomplete, run 053 first:
+-- Copy contents of supabase/migrations/053_fix_riders_table_schema.sql
+
+-- Then run 054:
+-- Copy contents of supabase/migrations/054_fix_rider_assignment_fkey.sql
 ```
 
 ### 2. Updated Code
