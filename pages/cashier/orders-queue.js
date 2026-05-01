@@ -242,11 +242,11 @@ export default function OrdersQueue() {
       // Filter out any riders with null user_id to prevent FK constraint violations
       const transformedRiders = (ridersData || [])
         .filter(rider => {
-          if (rider.user_id == null) {
+          if (rider.user_id === null || rider.user_id === undefined) {
             console.warn('[OrdersQueue] Skipping rider with null user_id:', rider);
             return false;
           }
-          if (rider.users == null) {
+          if (rider.users === null || rider.users === undefined) {
             console.warn('[OrdersQueue] Skipping rider with null users data:', { user_id: rider.user_id });
             return false;
           }
@@ -350,7 +350,7 @@ export default function OrdersQueue() {
 
     try {
       // Validate riderId is not null/undefined before proceeding
-      if (!riderId) {
+      if (riderId === null || riderId === undefined) {
         console.error('[OrdersQueue] Invalid rider ID:', { riderId });
         alert('Invalid rider selected. Please refresh the page and try again.');
         return;

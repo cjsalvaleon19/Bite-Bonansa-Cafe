@@ -59,7 +59,7 @@ const transformedRiders = (ridersData || [])
 
 **Why**: Prevents riders with invalid data from appearing in the UI, eliminating the chance of trying to assign a NULL or invalid ID.
 
-#### B. Validate Rider Before Assignment (Lines 326-349)
+#### B. Validate Rider Before Assignment
 ```javascript
 // 1. Check riderId is not null/undefined
 if (!riderId) {
