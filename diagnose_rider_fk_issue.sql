@@ -3,57 +3,90 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Purpose: Identify why rider assignment fails with FK constraint violation
 -- Run this script to understand the root cause of the issue
+-- NOTE: This version is compatible with Supabase SQL Editor
 -- ═══════════════════════════════════════════════════════════════════════════
 
-\echo '═══════════════════════════════════════════════════════════════════════════'
-\echo 'DIAGNOSTIC REPORT: Rider FK Constraint Violation'
-\echo '═══════════════════════════════════════════════════════════════════════════'
-\echo ''
+DO $$
+BEGIN
+  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE 'DIAGNOSTIC REPORT: Rider FK Constraint Violation';
+  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE '';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 1: Check if the user exists in public.users table
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'STEP 1: Checking public.users table for johndave0991@bitebonansacafe.com'
-\echo '------------------------------------------------------------------------'
+DO $$
+BEGIN
+  RAISE NOTICE 'STEP 1: Checking public.users table for johndave0991@bitebonansacafe.com';
+  RAISE NOTICE '------------------------------------------------------------------------';
+END $$;
+
 SELECT 
+  '=== STEP 1: public.users ===' AS diagnostic_step,
   id,
   email,
   full_name,
   role,
-  created_at
+  created_at,
+  CASE 
+    WHEN role = 'rider' THEN '✓ Role is correct'
+    ELSE '✗ Wrong role: ' || COALESCE(role, 'NULL')
+  END AS status
 FROM public.users
 WHERE email = 'johndave0991@bitebonansacafe.com';
 
-\echo ''
-\echo 'Expected: Should return ONE row with role = ''rider'''
-\echo 'If NO rows: User does not exist in public.users table'
-\echo 'If role != ''rider'': User has wrong role'
-\echo ''
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE 'Expected: Should return ONE row with role = ''rider''';
+  RAISE NOTICE 'If NO rows: User does not exist in public.users table';
+  RAISE NOTICE 'If role != ''rider'': User has wrong role';
+  RAISE NOTICE '';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 2: Check if user exists in auth.users (Supabase Auth)
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'STEP 2: Checking auth.users (Supabase Auth) table'
-\echo '------------------------------------------------------------------------'
+DO $$
+BEGIN
+  RAISE NOTICE 'STEP 2: Checking auth.users (Supabase Auth) table';
+  RAISE NOTICE '------------------------------------------------------------------------';
+END $$;
+
 SELECT 
+  '=== STEP 2: auth.users ===' AS diagnostic_step,
   id,
   email,
   created_at,
-  confirmed_at
+  confirmed_at,
+  CASE 
+    WHEN confirmed_at IS NOT NULL THEN '✓ Email confirmed'
+    ELSE '✗ Email not confirmed'
+  END AS status
 FROM auth.users
 WHERE email = 'johndave0991@bitebonansacafe.com';
 
-\echo ''
-\echo 'Expected: Should return ONE row (user authenticated successfully)'
-\echo 'If NO rows: User never signed up'
-\echo ''
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE 'Expected: Should return ONE row (user authenticated successfully)';
+  RAISE NOTICE 'If NO rows: User never signed up';
+  RAISE NOTICE '';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 3: Check ID consistency between auth.users and public.users
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'STEP 3: Checking ID consistency between auth.users and public.users'
-\echo '------------------------------------------------------------------------'
+DO $$
+BEGIN
+  RAISE NOTICE 'STEP 3: Checking ID consistency between auth.users and public.users';
+  RAISE NOTICE '------------------------------------------------------------------------';
+END $$;
+
 SELECT 
+  '=== STEP 3: ID Consistency ===' AS diagnostic_step,
   a.id AS auth_id,
   a.email AS auth_email,
   p.id AS public_id,
@@ -70,17 +103,25 @@ FULL OUTER JOIN public.users p ON a.email = p.email
 WHERE a.email = 'johndave0991@bitebonansacafe.com' 
    OR p.email = 'johndave0991@bitebonansacafe.com';
 
-\echo ''
-\echo 'Expected: status = ''✓ IDs MATCH'''
-\echo 'If ID MISMATCH: auth.id and public.id are different - THIS IS THE ROOT CAUSE'
-\echo ''
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE 'Expected: status = ''✓ IDs MATCH''';
+  RAISE NOTICE 'If ID MISMATCH: auth.id and public.id are different - THIS IS THE ROOT CAUSE';
+  RAISE NOTICE '';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 4: Check riders table for this user
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'STEP 4: Checking riders table'
-\echo '------------------------------------------------------------------------'
+DO $$
+BEGIN
+  RAISE NOTICE 'STEP 4: Checking riders table';
+  RAISE NOTICE '------------------------------------------------------------------------';
+END $$;
+
 SELECT 
+  '=== STEP 4: riders table ===' AS diagnostic_step,
   r.id AS rider_id,
   r.user_id,
   u.email,
@@ -99,39 +140,55 @@ WHERE u.email = 'johndave0991@bitebonansacafe.com'
      SELECT id FROM users WHERE email = 'johndave0991@bitebonansacafe.com'
    );
 
-\echo ''
-\echo 'Expected: Should return ONE row with fk_status = ''✓ FK Valid'''
-\echo 'If NO rows: Rider profile not created (needs to visit /rider/profile)'
-\echo 'If fk_status = ''✗ FK Invalid'': user_id doesn''t match users.id'
-\echo ''
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE 'Expected: Should return ONE row with fk_status = ''✓ FK Valid''';
+  RAISE NOTICE 'If NO rows: Rider profile not created (needs to visit /rider/profile)';
+  RAISE NOTICE 'If fk_status = ''✗ FK Invalid'': user_id doesn''t match users.id';
+  RAISE NOTICE '';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 5: Check the orders.rider_id foreign key constraint
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'STEP 5: Checking orders.rider_id foreign key constraint definition'
-\echo '------------------------------------------------------------------------'
+DO $$
+BEGIN
+  RAISE NOTICE 'STEP 5: Checking orders.rider_id foreign key constraint definition';
+  RAISE NOTICE '------------------------------------------------------------------------';
+END $$;
+
 SELECT
+  '=== STEP 5: FK Constraint ===' AS diagnostic_step,
   conname AS constraint_name,
   conrelid::regclass AS table_name,
   a.attname AS column_name,
   confrelid::regclass AS referenced_table,
-  af.attname AS referenced_column
+  af.attname AS referenced_column,
+  '✓ Configured' AS status
 FROM pg_constraint c
 JOIN pg_attribute a ON a.attnum = ANY(c.conkey) AND a.attrelid = c.conrelid
 JOIN pg_attribute af ON af.attnum = ANY(c.confkey) AND af.attrelid = c.confrelid
 WHERE c.conname = 'orders_rider_id_fkey';
 
-\echo ''
-\echo 'Expected: orders.rider_id -> users.id'
-\echo 'This shows which table and column rider_id references'
-\echo ''
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE 'Expected: orders.rider_id -> users.id';
+  RAISE NOTICE 'This shows which table and column rider_id references';
+  RAISE NOTICE '';
+END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STEP 6: Test the atomic assignment function
 -- ═══════════════════════════════════════════════════════════════════════════
-\echo 'STEP 6: Testing atomic assignment function with actual user ID'
-\echo '------------------------------------------------------------------------'
-\echo 'Getting user ID for johndave0991@bitebonansacafe.com...'
+DO $$
+BEGIN
+  RAISE NOTICE 'STEP 6: Testing atomic assignment function with actual user ID';
+  RAISE NOTICE '------------------------------------------------------------------------';
+  RAISE NOTICE 'Getting user ID for johndave0991@bitebonansacafe.com...';
+END $$;
+
 DO $$
 DECLARE
   v_user_id UUID;
@@ -177,27 +234,30 @@ BEGIN
   END IF;
 END $$;
 
-\echo ''
-\echo '═══════════════════════════════════════════════════════════════════════════'
-\echo 'DIAGNOSIS COMPLETE'
-\echo '═══════════════════════════════════════════════════════════════════════════'
-\echo ''
-\echo 'Review the results above to identify the issue:'
-\echo ''
-\echo '1. If STEP 1 shows NO rows:'
-\echo '   → User does not exist in public.users table'
-\echo '   → ACTION: Run fix_rider_user_missing.sql'
-\echo ''
-\echo '2. If STEP 1 shows role != ''rider'':'
-\echo '   → User has wrong role'
-\echo '   → ACTION: Run UPDATE users SET role = ''rider'' WHERE email = ''johndave0991@bitebonansacafe.com'';'
-\echo ''
-\echo '3. If STEP 3 shows ID MISMATCH:'
-\echo '   → auth.users.id != public.users.id (DATA CORRUPTION)'
-\echo '   → ACTION: Delete and recreate user in public.users with correct ID from auth.users'
-\echo ''
-\echo '4. If STEP 4 shows NO rows:'
-\echo '   → Rider profile not created'
-\echo '   → ACTION: Have rider visit /rider/profile and complete their profile'
-\echo ''
-\echo '═══════════════════════════════════════════════════════════════════════════'
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE 'DIAGNOSIS COMPLETE';
+  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE '';
+  RAISE NOTICE 'Review the results above to identify the issue:';
+  RAISE NOTICE '';
+  RAISE NOTICE '1. If STEP 1 shows NO rows:';
+  RAISE NOTICE '   → User does not exist in public.users table';
+  RAISE NOTICE '   → ACTION: Run fix_rider_user_sync.sql';
+  RAISE NOTICE '';
+  RAISE NOTICE '2. If STEP 1 shows role != ''rider'':';
+  RAISE NOTICE '   → User has wrong role';
+  RAISE NOTICE '   → ACTION: Run UPDATE users SET role = ''rider'' WHERE email = ''johndave0991@bitebonansacafe.com'';';
+  RAISE NOTICE '';
+  RAISE NOTICE '3. If STEP 3 shows ID MISMATCH:';
+  RAISE NOTICE '   → auth.users.id != public.users.id (DATA CORRUPTION)';
+  RAISE NOTICE '   → ACTION: Delete and recreate user in public.users with correct ID from auth.users';
+  RAISE NOTICE '';
+  RAISE NOTICE '4. If STEP 4 shows NO rows:';
+  RAISE NOTICE '   → Rider profile not created';
+  RAISE NOTICE '   → ACTION: Have rider visit /rider/profile and complete their profile';
+  RAISE NOTICE '';
+  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+END $$;
