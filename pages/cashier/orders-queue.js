@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -22,7 +22,12 @@ export default function OrdersQueue() {
   const [riders, setRiders] = useState([]);
   const [selectedOrderForRider, setSelectedOrderForRider] = useState(null);
   const [showRiderModal, setShowRiderModal] = useState(false);
-  const [isAssigningRider, setIsAssigningRider] = useState(false); // Prevent concurrent assignments
+  const [isAssigningRider, setIsAssigningRider] = useState(false); // Visual feedback for UI
+  
+  // Use ref for synchronous concurrency control to prevent race conditions from double-clicks
+  // React state updates are asynchronous, so rapid clicks could both see false before either sets true
+  // Refs update synchronously, providing immediate protection against concurrent requests
+  const isAssigningRiderRef = useRef(false);
 
   useEffect(() => {
     if (!authLoading) {
@@ -326,7 +331,8 @@ export default function OrdersQueue() {
   const handleOutForDelivery = (order) => {
     setSelectedOrderForRider(order);
     setShowRiderModal(true);
-    // Reset assignment lock when opening modal (in case of previous errors)
+    // Reset BOTH assignment locks when opening modal (in case of previous errors)
+    isAssigningRiderRef.current = false;
     setIsAssigningRider(false);
   };
 
@@ -383,14 +389,17 @@ export default function OrdersQueue() {
   const handleAssignRider = async (riderId) => {
     if (!supabase || !selectedOrderForRider) return;
 
-    // Prevent concurrent assignment requests (double-clicks, race conditions)
-    if (isAssigningRider) {
-      console.log('[OrdersQueue] ⚠️ Assignment already in progress, ignoring duplicate request');
+    // Prevent concurrent assignment requests using synchronous ref check
+    // Must check ref BEFORE any async operations to ensure immediate protection
+    if (isAssigningRiderRef.current) {
+      console.log('[OrdersQueue] ⚠️ Assignment already in progress (ref check), ignoring duplicate request');
       return;
     }
 
     try {
-      setIsAssigningRider(true); // Lock to prevent concurrent requests
+      // Set BOTH ref (synchronous) and state (for UI feedback)
+      isAssigningRiderRef.current = true;
+      setIsAssigningRider(true);
 
       // Validate riderId is not null/undefined before proceeding
       if (riderId === null || riderId === undefined) {
@@ -530,7 +539,8 @@ export default function OrdersQueue() {
       console.error('[OrdersQueue] Failed to assign rider:', err?.message ?? err);
       alert(`Failed to assign rider: ${err?.message || 'Please try again.'}`);
     } finally {
-      // Always reset the assignment lock, even if there was an error
+      // Always reset BOTH locks, even if there was an error
+      isAssigningRiderRef.current = false;
       setIsAssigningRider(false);
     }
   };
