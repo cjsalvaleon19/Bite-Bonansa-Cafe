@@ -8,6 +8,53 @@
 -- Plus triggers for automatic notifications and earnings updates
 -- ═══════════════════════════════════════════════════════════════════════════
 
+-- Prerequisite check: Verify required tables exist
+DO $$
+BEGIN
+  -- Check if users table exists
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public' 
+    AND table_name = 'users'
+  ) THEN
+    RAISE EXCEPTION 'users table does not exist. Please ensure earlier migrations have been run.';
+  END IF;
+  
+  -- Check if users table has id column
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'users' 
+    AND column_name = 'id'
+  ) THEN
+    RAISE EXCEPTION 'users table does not have id column. Database schema may be incorrect.';
+  END IF;
+  
+  -- Check if orders table exists
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public' 
+    AND table_name = 'orders'
+  ) THEN
+    RAISE EXCEPTION 'orders table does not exist. Please ensure earlier migrations have been run.';
+  END IF;
+  
+  -- Check if notifications table exists (required for triggers)
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public' 
+    AND table_name = 'notifications'
+  ) THEN
+    RAISE EXCEPTION 'notifications table does not exist. Please run migration 018 first.';
+  END IF;
+  
+  RAISE NOTICE 'Prerequisites verified: users, orders, and notifications tables exist';
+END $$;
+
 -- 1. Create riders table
 CREATE TABLE IF NOT EXISTS riders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
