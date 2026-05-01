@@ -326,6 +326,8 @@ export default function OrdersQueue() {
   const handleOutForDelivery = (order) => {
     setSelectedOrderForRider(order);
     setShowRiderModal(true);
+    // Reset assignment lock when opening modal (in case of previous errors)
+    setIsAssigningRider(false);
   };
 
   const handleReadyForPickup = async (order) => {
@@ -706,7 +708,12 @@ export default function OrdersQueue() {
 
           {/* Rider Selection Modal */}
           {showRiderModal && selectedOrderForRider && (
-            <div style={styles.modal} onClick={() => setShowRiderModal(false)}>
+            <div style={styles.modal} onClick={() => {
+              if (!isAssigningRider) {
+                setShowRiderModal(false);
+                setSelectedOrderForRider(null);
+              }
+            }}>
               <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
                 <h3 style={styles.modalTitle}>Select Delivery Rider</h3>
                 <p style={styles.modalSubtext}>
@@ -771,7 +778,9 @@ export default function OrdersQueue() {
                   onClick={() => {
                     setShowRiderModal(false);
                     setSelectedOrderForRider(null);
+                    setIsAssigningRider(false); // Reset lock when closing modal
                   }}
+                  disabled={isAssigningRider}
                 >
                   Cancel
                 </button>
