@@ -171,6 +171,24 @@ export default function OrdersQueue() {
         is_available: rider.is_available
       }));
 
+      // If no riders found in riders table, fallback to users table
+      // This handles cases where a user has 'rider' role but hasn't completed their rider profile
+      if (transformedRiders.length === 0) {
+        console.warn('[OrdersQueue] No riders found in riders table, checking users table');
+        const { data: usersData, error: usersError } = await supabase
+          .from('users')
+          .select('id, full_name, email')
+          .eq('role', 'rider')
+          .order('full_name');
+
+        if (usersError) {
+          console.error('[OrdersQueue] Fallback fetch failed:', usersError?.message ?? usersError);
+        } else {
+          setRiders(usersData || []);
+          return;
+        }
+      }
+
       // Sort by full_name
       transformedRiders.sort((a, b) => {
         const nameA = (a.full_name || '').toLowerCase();
