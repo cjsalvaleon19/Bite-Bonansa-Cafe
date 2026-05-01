@@ -1,21 +1,18 @@
 # Fix for Persistent Rider Assignment Errors
 
-## Latest Issue: Type Mismatch Error (Migration 059)
+## Latest Issues & Fixes
+
+### Issue 1: Type Mismatch Error (Migration 059) ✅ FIXED
 
 **Error**: "Failed to assign rider: operator does not exist: text = uuid"
 
-### Root Cause
+#### Root Cause
 Migration 058 incorrectly declared the `assign_rider_to_order()` function with:
 - `p_order_id UUID` ❌ **WRONG**
 
 But `orders.id` is actually **TEXT type**, not UUID (see migration 051).
 
-When the function tried to compare `WHERE id = p_order_id`, PostgreSQL threw:
-```
-operator does not exist: text = uuid
-```
-
-### Fix
+#### Fix
 **Migration 059** corrects the function signature:
 ```sql
 CREATE OR REPLACE FUNCTION assign_rider_to_order(
@@ -24,23 +21,45 @@ CREATE OR REPLACE FUNCTION assign_rider_to_order(
 )
 ```
 
-### Deployment
-1. Run migration 059 on production database
-2. Function will now work correctly
-3. No application code changes needed
+### Issue 2: Orphaned Riders (Migration 060) ✅ FIXED
+
+**Error**: "Failed to assign rider: Database foreign key constraint violation"
+
+**Details**: "Foreign key constraint violation: insert or update on table "orders" violates foreign key constraint "orders_rider_id_fkey""
+
+#### Root Cause
+The `riders` table contained orphaned records where `user_id` referenced users that no longer existed:
+- User accounts were deleted (account deletion, admin cleanup, etc.)
+- Rider records remained in database
+- Attempting to assign orphaned rider → FK constraint violation
+
+#### Fix
+**Migration 060** cleans up orphaned data and prevents future occurrences:
+
+1. **Identifies** orphaned riders (user_id not in users table)
+2. **Archives** orphaned data to `riders_archived` table (for recovery)
+3. **Deletes** orphaned riders from active table
+4. **Adds ON DELETE CASCADE** constraint:
+   ```sql
+   ALTER TABLE riders 
+     ADD CONSTRAINT riders_user_id_fkey 
+     FOREIGN KEY (user_id) REFERENCES users(id) 
+     ON DELETE CASCADE;
+   ```
+
+**Result**: When a user is deleted, their rider record is automatically deleted, maintaining referential integrity.
+
+### Deployment Order
+
+**For production databases:**
+1. ⚠️ **CRITICAL**: Run migration 059 first (fixes type mismatch)
+2. ⚠️ **CRITICAL**: Run migration 060 second (cleans orphaned riders)
+3. Verify both migrations completed successfully
+4. Test rider assignment functionality
 
 ---
 
 ## Previous Issue: 409 Conflict Errors (Migrations 057-058)
-
-## Problem Statement
-
-Users experienced 409 (Conflict) errors when assigning riders to delivery orders, even after migration 057 and comprehensive validation were implemented:
-
-```
-Failed to load resource: the server responded with a status of 409 ()
-[OrdersQueue] Order update error details: insert or update on table "orders" violates foreign key constraint "orders_rider_id_fkey"
-```
 
 ## Root Cause Analysis
 
@@ -244,14 +263,21 @@ RPC: assign_rider_to_order(...)      ┌─────────┐
 - Granted to authenticated users (cashiers)
 - **Fixed in migration 059**: Corrected p_order_id type from UUID to TEXT
 
-### 2. `supabase/migrations/059_fix_assign_rider_type_mismatch.sql` ⭐ **NEW**
-- **Critical fix for type mismatch error**
+### 2. `supabase/migrations/059_fix_assign_rider_type_mismatch.sql` ⭐ **CRITICAL**
+- **Fixes type mismatch error**
 - Drops incorrect function signature (UUID, UUID)
 - Recreates with correct signature (TEXT, UUID)
 - Fixes "operator does not exist: text = uuid" error
 - **Must be run on production databases**
 
-### 3. `pages/cashier/orders-queue.js`
+### 3. `supabase/migrations/060_cleanup_orphaned_riders.sql` ⭐ **CRITICAL**
+- **Fixes FK constraint violations from orphaned riders**
+- Archives orphaned rider data to `riders_archived` table
+- Deletes riders whose user_id doesn't exist in users table
+- Adds ON DELETE CASCADE to prevent future orphans
+- **Must be run after migration 059**
+
+### 4. `pages/cashier/orders-queue.js`
 - Import `useRef` from React
 - Add `isAssigningRiderRef` for synchronous locking
 - Replace validation + update with single RPC call
@@ -264,12 +290,15 @@ RPC: assign_rider_to_order(...)      ┌─────────┐
 **For fresh databases:**
 1. Migrations 001-057 (existing setup)
 2. Migration 058 (atomic function - updated with correct types)
-3. Migration 059 (skip - only needed for databases with broken 058)
+3. Migration 059 (only needed if 058 was deployed with wrong types)
+4. Migration 060 (cleanup orphaned riders)
 
-**For production databases that ran migration 058:**
-1. ⚠️ **MUST run migration 059 immediately**
-2. This fixes the type mismatch error
-3. No data loss, just function signature fix
+**For production databases:**
+1. ⚠️ **MUST run migration 059 immediately** (fixes type mismatch)
+2. ⚠️ **MUST run migration 060 next** (cleans orphaned riders)
+3. Verify migrations completed successfully
+4. Test rider assignment end-to-end
+5. Monitor for any remaining issues
 
 ## Validation Results
 
