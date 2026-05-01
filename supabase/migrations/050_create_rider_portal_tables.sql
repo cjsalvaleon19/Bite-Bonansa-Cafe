@@ -55,32 +55,48 @@ BEGIN
   RAISE NOTICE 'Prerequisites verified: users, orders, and notifications tables exist';
 END $$;
 
--- 1. Create riders table
-CREATE TABLE IF NOT EXISTS riders (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+-- 1. Create riders table (or ensure it has correct schema)
+DO $$
+BEGIN
+  -- Create table if it doesn't exist
+  CREATE TABLE IF NOT EXISTS riders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- Driver identification
+    driver_id VARCHAR(50) UNIQUE NOT NULL, -- Unique driver ID number
+    
+    -- Vehicle information
+    vehicle_type VARCHAR(50), -- 'motorcycle', 'scooter', 'bicycle', 'car'
+    vehicle_plate VARCHAR(20), -- Plate number
+    
+    -- Contact information
+    cellphone_number VARCHAR(20),
+    emergency_contact VARCHAR(255),
+    emergency_phone VARCHAR(20),
+    
+    -- Status and tracking
+    is_available BOOLEAN DEFAULT true,
+    total_earnings DECIMAL(10,2) DEFAULT 0,
+    deliveries_completed INT DEFAULT 0,
+    
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  );
   
-  -- Driver identification
-  driver_id VARCHAR(50) UNIQUE NOT NULL, -- Unique driver ID number
+  -- If table already exists but is missing critical columns, add them
+  -- This handles the case where table was partially created or has old schema
   
-  -- Vehicle information
-  vehicle_type VARCHAR(50), -- 'motorcycle', 'scooter', 'bicycle', 'car'
-  vehicle_plate VARCHAR(20), -- Plate number
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'user_id'
+  ) THEN
+    RAISE EXCEPTION 'riders table exists but is missing user_id column. Please run migration 053_fix_riders_table_schema.sql first to fix the schema.';
+  END IF;
   
-  -- Contact information
-  cellphone_number VARCHAR(20),
-  emergency_contact VARCHAR(255),
-  emergency_phone VARCHAR(20),
-  
-  -- Status and tracking
-  is_available BOOLEAN DEFAULT true,
-  total_earnings DECIMAL(10,2) DEFAULT 0,
-  deliveries_completed INT DEFAULT 0,
-  
-  -- Timestamps
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
+  RAISE NOTICE '✓ riders table validated';
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_riders_user_id ON riders(user_id);
 CREATE INDEX IF NOT EXISTS idx_riders_driver_id ON riders(driver_id);
