@@ -3,7 +3,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Problem: Migration 050 incorrectly defined deliveries.order_id as UUID type,
 -- but orders.id is TEXT type. This causes FK constraint errors and potential
--- "column does not exist" errors when PostgREST tries to resolve relationships.
+-- "column does not exist" errors when PostgreSQL tries to resolve relationships.
 -- 
 -- Solution: Alter deliveries.order_id to TEXT type to match orders.id
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -55,7 +55,9 @@ BEGIN
     
     RAISE NOTICE '✓ Re-added FK constraint: deliveries.order_id -> orders.id';
   ELSE
-    RAISE NOTICE '→ deliveries table does not exist yet, will be created with correct type';
+    -- Table doesn't exist - this migration will be a no-op
+    -- Migration 050 will create the table with correct type
+    RAISE NOTICE '→ deliveries table does not exist, skipping (migration 050 will create it correctly)';
   END IF;
   
   RAISE NOTICE 'Fix completed successfully';

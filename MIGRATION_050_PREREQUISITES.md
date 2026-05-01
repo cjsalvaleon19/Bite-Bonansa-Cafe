@@ -29,7 +29,7 @@ Before running migration 050, ensure these migrations have been run:
 - role VARCHAR (for RLS policies)
 
 -- orders table must have:
-- id TEXT (note: TEXT type, not UUID - see migration 049, 051)
+- id TEXT (note: TEXT type, not UUID - see migrations 049 and 051)
 
 -- notifications table must have:
 - user_id UUID
@@ -75,6 +75,7 @@ psql $DATABASE_URL -f supabase/migrations/050_create_rider_portal_tables.sql
 
 You'll see clear error messages like:
 - "users table does not exist"
+- "orders table does not exist"
 - "notifications table does not exist"
 - "users table does not have id column"
 
