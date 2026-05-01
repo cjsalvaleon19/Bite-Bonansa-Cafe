@@ -142,6 +142,33 @@ export default function OrdersQueue() {
     }
   };
 
+  // Helper function to fetch riders from users table
+  // Used as fallback when riders table has no records or on error
+  const fetchRidersFromUsersTable = async () => {
+    if (!supabase) return [];
+    
+    try {
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .eq('role', 'rider')
+        .order('full_name');
+
+      if (usersError) throw usersError;
+      
+      // Transform users data to match the expected structure with is_available field
+      return (usersData || []).map(user => ({
+        id: user.id,
+        full_name: user.full_name,
+        email: user.email,
+        is_available: true // Default to available for riders without a profile
+      }));
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to fetch riders from users table:', err?.message ?? err);
+      return [];
+    }
+  };
+
   const fetchRiders = async () => {
     if (!supabase) return;
 
@@ -175,25 +202,8 @@ export default function OrdersQueue() {
       // This handles cases where a user has 'rider' role but hasn't completed their rider profile
       if (transformedRiders.length === 0) {
         console.warn('[OrdersQueue] No riders found in riders table, checking users table');
-        const { data: usersData, error: usersError } = await supabase
-          .from('users')
-          .select('id, full_name, email')
-          .eq('role', 'rider')
-          .order('full_name');
-
-        if (usersError) {
-          console.error('[OrdersQueue] Fallback fetch failed:', usersError?.message ?? usersError);
-          setRiders([]);
-        } else {
-          // Transform users data to match the expected structure with is_available field
-          const transformedUsers = (usersData || []).map(user => ({
-            id: user.id,
-            full_name: user.full_name,
-            email: user.email,
-            is_available: true // Default to available for riders without a profile
-          }));
-          setRiders(transformedUsers);
-        }
+        const fallbackRiders = await fetchRidersFromUsersTable();
+        setRiders(fallbackRiders);
         return;
       }
 
@@ -209,27 +219,8 @@ export default function OrdersQueue() {
       console.error('[OrdersQueue] Failed to fetch riders:', err?.message ?? err);
       
       // Fallback: try fetching from users table directly (for backward compatibility)
-      try {
-        const { data: usersData, error: usersError } = await supabase
-          .from('users')
-          .select('id, full_name, email')
-          .eq('role', 'rider')
-          .order('full_name');
-
-        if (usersError) throw usersError;
-        
-        // Transform users data to match the expected structure with is_available field
-        const transformedUsers = (usersData || []).map(user => ({
-          id: user.id,
-          full_name: user.full_name,
-          email: user.email,
-          is_available: true // Default to available for riders without a profile
-        }));
-        setRiders(transformedUsers);
-      } catch (fallbackErr) {
-        console.error('[OrdersQueue] Fallback fetch also failed:', fallbackErr?.message ?? fallbackErr);
-        setRiders([]);
-      }
+      const fallbackRiders = await fetchRidersFromUsersTable();
+      setRiders(fallbackRiders);
     }
   };
 
