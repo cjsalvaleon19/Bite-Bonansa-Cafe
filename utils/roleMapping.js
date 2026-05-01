@@ -11,6 +11,7 @@ const FIXED_ROLES = {
   'bantecj@bitebonansacafe.com': 'cashier',
   'cjsalvaleon19@gmail.com': 'admin',
   'johndave0991@bitebonansacafe.com': 'rider',
+  'rider@youremail.com': 'rider',
 };
 
 /**
