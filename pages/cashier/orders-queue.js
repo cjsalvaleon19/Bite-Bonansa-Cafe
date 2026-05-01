@@ -416,114 +416,90 @@ export default function OrdersQueue() {
         orderId: selectedOrderForRider.id
       });
 
-      // CRITICAL VALIDATION: Verify the rider exists in users table with role 'rider'
-      // This prevents FK constraint violations (orders.rider_id -> users.id)
-      const { data: riderUser, error: checkError } = await supabase
-        .from('users')
-        .select('id, email, role, full_name')
-        .eq('id', riderId)
-        .maybeSingle(); // Use maybeSingle to avoid error when no row found
+      // Call atomic database function for assignment
+      // This performs validation and update in a single transaction, eliminating timing gaps
+      const { data: assignmentResult, error: assignmentError } = await supabase
+        .rpc('assign_rider_to_order', {
+          p_order_id: selectedOrderForRider.id,
+          p_rider_id: riderId
+        });
 
-      console.log('[OrdersQueue] Rider validation result:', {
-        found: !!riderUser,
-        validatedId: riderUser?.id,
-        validatedIdType: typeof riderUser?.id,
-        parameterIdMatches: riderUser?.id === riderId,
-        email: riderUser?.email,
-        role: riderUser?.role,
-        error: checkError?.message
+      console.log('[OrdersQueue] Atomic assignment result:', {
+        result: assignmentResult,
+        error: assignmentError
       });
 
-      // Enhanced error handling for database query errors
-      if (checkError) {
-        console.error('[OrdersQueue] Database error during rider validation:', checkError);
-        alert(`Database error: ${checkError.message}. Please contact support.`);
+      // Handle RPC call errors (network, permissions, etc.)
+      if (assignmentError) {
+        console.error('[OrdersQueue] RPC error during rider assignment:', assignmentError);
+        alert(`Failed to assign rider: ${assignmentError.message}\n\n` +
+              'Please try again or contact support if the problem persists.');
         return;
       }
 
-      // Check if user was found
-      if (!riderUser) {
-        console.error('[OrdersQueue] Rider not found in users table:', { riderId });
-        alert('The selected rider does not exist in the system. This may happen if:\n\n' +
-              '1. The rider account was deleted\n2. The rider data is corrupted\n3. The page data is stale\n\n' +
-              'Please refresh the page and try again. If the problem persists, contact support.');
-        // Refresh riders list to show current data
-        await fetchRiders();
-        return;
-      }
-      
-      // Ensure the user has the 'rider' role
-      if (riderUser.role !== 'rider') {
-        console.error('[OrdersQueue] User is not a rider:', { 
-          riderId, 
-          email: riderUser.email, 
-          actualRole: riderUser.role 
-        });
-        alert(`Cannot assign order: ${riderUser.email || 'Selected user'} is not a rider.\n\n` +
-              `Current role: ${riderUser.role}\n\n` +
-              'Please refresh the page to see the updated rider list.');
-        // Refresh riders list
-        await fetchRiders();
-        return;
-      }
-
-      // All validations passed - proceed with assignment
-      // IMPORTANT: Use riderUser.id (the validated ID from database) instead of riderId parameter
-      // This ensures we're using the exact value and type that the database recognizes
-      const validatedRiderId = riderUser.id;
-      
-      console.log('[OrdersQueue] Validation passed, updating order...', {
-        originalRiderId: riderId,
-        validatedRiderId: validatedRiderId,
-        typeMatch: typeof riderId === typeof validatedRiderId,
-        valueMatch: String(riderId) === String(validatedRiderId),
-        idsStrictEqual: riderId === validatedRiderId,
-        riderEmail: riderUser.email,
-        riderName: riderUser.full_name
-      });
-
-      // Update order with rider and status
-      // Note: Database trigger will automatically create notification for customer
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({
-          status: 'out_for_delivery',
-          rider_id: validatedRiderId, // Use validated ID from database
-          out_for_delivery_at: new Date().toISOString()
-        })
-        .eq('id', selectedOrderForRider.id);
-
-      if (updateError) {
-        console.error('[OrdersQueue] Order update error details:', {
-          error: updateError,
-          message: updateError?.message,
-          code: updateError?.code,
-          details: updateError?.details,
-          hint: updateError?.hint,
-          originalRiderId: riderId,
-          validatedRiderId: validatedRiderId,
-          orderId: selectedOrderForRider.id
-        });
+      // Handle function-level errors (validation failures, FK violations, etc.)
+      if (!assignmentResult || !assignmentResult.success) {
+        const errorType = assignmentResult?.error || 'UNKNOWN_ERROR';
+        const errorMessage = assignmentResult?.message || 'Unknown error occurred';
         
-        // Provide specific error message based on error type
-        if (updateError.message?.includes('foreign key constraint') || 
-            updateError.message?.includes('orders_rider_id_fkey')) {
-          alert('Failed to assign rider: The rider ID is not valid in the database.\n\n' +
-                'This is a data integrity issue. Please:\n' +
-                '1. Refresh the page\n' +
-                '2. Try selecting a different rider\n' +
-                '3. Contact support if the problem persists\n\n' +
-                `Technical details: ${updateError.message}`);
-        } else {
-          alert(`Failed to assign rider: ${updateError.message}\n\n` +
-                'Please try again or contact support if the problem persists.');
+        console.error('[OrdersQueue] Rider assignment failed:', {
+          errorType,
+          errorMessage,
+          fullResult: assignmentResult
+        });
+
+        // Provide specific error messages based on error type
+        switch (errorType) {
+          case 'RIDER_NOT_FOUND':
+            alert('Failed to assign rider: The selected rider no longer exists in the system.\n\n' +
+                  'This may happen if the rider account was deleted.\n\n' +
+                  'Please refresh the page and try selecting a different rider.');
+            await fetchRiders(); // Refresh riders list
+            break;
+            
+          case 'INVALID_RIDER_ROLE':
+            alert(`Failed to assign rider: ${assignmentResult.rider_email || 'Selected user'} is not a rider.\n\n` +
+                  `Current role: ${assignmentResult.actual_role}\n` +
+                  `Expected role: ${assignmentResult.expected_role}\n\n` +
+                  'Please refresh the page to see the updated rider list.');
+            await fetchRiders(); // Refresh riders list
+            break;
+            
+          case 'ORDER_NOT_FOUND':
+            alert('Failed to assign rider: The order no longer exists.\n\n' +
+                  'Please refresh the page.');
+            await fetchOrders(); // Refresh orders
+            break;
+            
+          case 'INVALID_ORDER_MODE':
+            alert(`Failed to assign rider: This order is for ${assignmentResult.order_mode}, not delivery.\n\n` +
+                  'Only delivery orders can be assigned to riders.');
+            break;
+            
+          case 'FK_VIOLATION':
+            alert('Failed to assign rider: Database foreign key constraint violation.\n\n' +
+                  `Details: ${errorMessage}\n\n` +
+                  'This is a data integrity issue. Please contact support.');
+            break;
+            
+          default:
+            alert(`Failed to assign rider: ${errorMessage}\n\n` +
+                  'Please try again or contact support if the problem persists.');
         }
         return;
       }
 
-      // Send notification to rider (not handled by trigger)
+      // Success! Log the details
+      console.log('[OrdersQueue] ✅ Rider assigned successfully:', {
+        orderId: assignmentResult.order_id,
+        riderId: assignmentResult.rider_id,
+        riderEmail: assignmentResult.rider_email,
+        riderName: assignmentResult.rider_name
+      });
+
+      // Send notification to rider (not handled by database trigger)
       await supabase.from('notifications').insert({
-        user_id: validatedRiderId, // Use validated ID
+        user_id: assignmentResult.rider_id,
         title: 'New Delivery Assignment',
         message: `You have been assigned to deliver order #${selectedOrderForRider.order_number}`,
         type: 'delivery_assignment',
