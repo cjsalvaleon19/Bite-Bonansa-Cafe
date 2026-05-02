@@ -2,8 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
 import { STORE_LOCATION } from '../../utils/deliveryCalculator';
+
+// Dynamically import RouteMapModal to avoid SSR issues with Leaflet
+const RouteMapModal = dynamic(
+  () => import('../../components/RouteMapModal'),
+  { ssr: false }
+);
 
 const DEFAULT_DELIVERY_FEE = 50;
 
@@ -23,6 +30,8 @@ export default function RiderDeliveries() {
   const [deliveries, setDeliveries] = useState([]);
   const [filter, setFilter] = useState('active'); // 'active', 'completed', 'all'
   const [updatingStatus, setUpdatingStatus] = useState(null);
+  const [showRouteModal, setShowRouteModal] = useState(false);
+  const [selectedDelivery, setSelectedDelivery] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -158,6 +167,24 @@ export default function RiderDeliveries() {
     } catch (err) {
       console.error('[RiderDeliveries] Failed to fetch deliveries:', err?.message ?? err);
     }
+  };
+
+  const handleStartDelivery = (delivery) => {
+    setSelectedDelivery(delivery);
+    setShowRouteModal(true);
+  };
+
+  const handleConfirmStartDelivery = async () => {
+    if (!selectedDelivery) return;
+    
+    await handleUpdateStatus(selectedDelivery.id, 'in_progress');
+    setShowRouteModal(false);
+    setSelectedDelivery(null);
+  };
+
+  const handleCloseRouteModal = () => {
+    setShowRouteModal(false);
+    setSelectedDelivery(null);
   };
 
   const handleUpdateStatus = async (deliveryId, newStatus) => {
@@ -456,7 +483,7 @@ export default function RiderDeliveries() {
                             {delivery.status === 'accepted' && (
                               <button
                                 style={{ ...styles.actionBtn, ...styles.actionBtnOrange }}
-                                onClick={() => handleUpdateStatus(delivery.id, 'in_progress')}
+                                onClick={() => handleStartDelivery(delivery)}
                                 disabled={updatingStatus === delivery.id}
                               >
                                 {updatingStatus === delivery.id ? '⏳' : '🚀'} Start Delivery
@@ -481,6 +508,16 @@ export default function RiderDeliveries() {
             )}
           </div>
         </main>
+
+        {/* Route Map Modal */}
+        {showRouteModal && selectedDelivery && (
+          <RouteMapModal
+            delivery={selectedDelivery}
+            onClose={handleCloseRouteModal}
+            onConfirm={handleConfirmStartDelivery}
+            loading={updatingStatus === selectedDelivery.id}
+          />
+        )}
       </div>
     </>
   );
