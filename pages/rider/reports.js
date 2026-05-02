@@ -533,7 +533,7 @@ export default function RiderReports() {
                     <strong>Total Deliveries:</strong> {viewingReport.total_deliveries || 0}
                   </p>
                   <p style={styles.modalSummaryItem}>
-                    <strong>Total Billable Delivery Fees:</strong> ₱{viewingReport.rider_earnings?.toFixed(2) || '0.00'}
+                    <strong>Rider Earnings (60%):</strong> ₱{viewingReport.rider_earnings?.toFixed(2) || '0.00'}
                   </p>
                 </div>
                 <hr style={styles.modalDivider} />
