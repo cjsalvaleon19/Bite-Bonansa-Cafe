@@ -10,6 +10,12 @@ export default function ReceiptModal({ delivery, onClose }) {
   const order = delivery.orders || {};
   const items = order.items || [];
   
+  // Helper function to strip variant details from item name (for legacy data)
+  const stripVariantsFromName = (name) => {
+    // Remove anything in parentheses at the end of the name (e.g., "Americano (12oz Hot | Extra Shot)" -> "Americano")
+    return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  };
+  
   // Calculate totals - handle case where order.total may already include delivery fee
   const deliveryFee = order.delivery_fee || delivery.delivery_fee || 0;
   const riderDeliveryFee = deliveryFee * RIDER_FEE_PERCENTAGE;
@@ -95,10 +101,12 @@ export default function ReceiptModal({ delivery, onClose }) {
             <div style={styles.section}>
               <p style={styles.sectionTitle}>ITEMS ORDERED</p>
               <div style={styles.items}>
-                {items.map((item, idx) => (
+                {items.map((item, idx) => {
+                  const displayName = stripVariantsFromName(item.name);
+                  return (
                   <div key={idx} style={styles.itemRow}>
                     <div style={styles.itemInfo}>
-                      <span>{item.name} x{item.quantity}</span>
+                      <span>{displayName} x{item.quantity}</span>
                       {((item.variantDetails && Object.keys(item.variantDetails).length > 0) || 
                         (item.variant_details && Object.keys(item.variant_details).length > 0)) && (
                         <div style={styles.variantDetails}>
@@ -110,7 +118,7 @@ export default function ReceiptModal({ delivery, onClose }) {
                     </div>
                     <span style={styles.itemPrice}>₱{(item.price * item.quantity).toFixed(2)}</span>
                   </div>
-                ))}
+                )})}
               </div>
             </div>
 

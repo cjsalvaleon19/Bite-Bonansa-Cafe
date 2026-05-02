@@ -494,6 +494,12 @@ export default function CashierPOS() {
     const receiptWindow = window.open('', '_blank', 'width=300,height=600');
     if (!receiptWindow) return;
 
+    // Helper function to strip variant details from item name (for legacy data)
+    const stripVariantsFromName = (name) => {
+      // Remove anything in parentheses at the end of the name (e.g., "Americano (12oz Hot | Extra Shot)" -> "Americano")
+      return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    };
+
     const cashTendered = parseFloat(paymentDetails.cashTendered || 0);
     
     // Calculate values based on the new flow
@@ -564,10 +570,12 @@ export default function CashierPOS() {
           
           <p class="section-title">ITEMS ORDERED</p>
           <div class="items">
-            ${order.items.map(item => `
+            ${order.items.map(item => {
+              const displayName = stripVariantsFromName(item.name);
+              return `
               <div class="item">
                 <span>
-                  ${item.name} x${item.quantity}
+                  ${displayName} x${item.quantity}
                 </span>
                 <span>₱${(item.price * item.quantity).toFixed(2)}</span>
               </div>
@@ -579,7 +587,7 @@ export default function CashierPOS() {
                   </div>`
                 : ''
               }
-            `).join('')}
+            `}).join('')}
           </div>
           
           <div class="footer">
