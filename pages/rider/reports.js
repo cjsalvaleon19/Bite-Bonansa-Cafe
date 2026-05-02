@@ -414,7 +414,7 @@ export default function RiderReports() {
                             📅 {new Date(delivery.completed_at).toLocaleString()}
                           </p>
                           <div style={styles.deliveryFee}>
-                            Billable Delivery Fee (60%): ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee || delivery.delivery_fee).toFixed(2)}
+                            Billable Delivery Fee: ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee || delivery.delivery_fee).toFixed(2)}
                           </div>
                         </div>
                       </div>
@@ -429,15 +429,8 @@ export default function RiderReports() {
                           <span style={styles.breakdownValue}>{selectedDeliveries.length} {selectedDeliveries.length === 1 ? 'delivery' : 'deliveries'}</span>
                         </div>
                         <div style={styles.breakdownRow}>
-                          <span style={styles.breakdownLabel}>Total Delivery Fees:</span>
-                          <span style={styles.breakdownValue}>₱{calculateTotalFees().toFixed(2)}</span>
-                        </div>
-                        <div style={styles.breakdownRow}>
-                          <span style={styles.breakdownLabel}>Total Billable Delivery Fees (60%):</span>
+                          <span style={styles.breakdownLabel}>Total Billable Delivery Fees:</span>
                           <span style={styles.breakdownEarnings}>₱{calculateRiderEarnings().toFixed(2)}</span>
-                        </div>
-                        <div style={styles.breakdownNote}>
-                          <small>💡 You earn 60% commission from each delivery fee</small>
                         </div>
                       </div>
                       <button
@@ -539,10 +532,7 @@ export default function RiderReports() {
                     <strong>Total Deliveries:</strong> {viewingReport.total_deliveries || 0}
                   </p>
                   <p style={styles.modalSummaryItem}>
-                    <strong>Total Delivery Fees:</strong> ₱{viewingReport.total_delivery_fees?.toFixed(2) || '0.00'}
-                  </p>
-                  <p style={styles.modalSummaryItem}>
-                    <strong>Your Earnings (60%):</strong> ₱{viewingReport.rider_earnings?.toFixed(2) || '0.00'}
+                    <strong>Total Billable Delivery Fees:</strong> ₱{viewingReport.rider_earnings?.toFixed(2) || '0.00'}
                   </p>
                 </div>
                 <hr style={styles.modalDivider} />
@@ -564,10 +554,7 @@ export default function RiderReports() {
                             📅 {new Date(delivery.completed_at).toLocaleString()}
                           </p>
                           <p style={styles.modalDeliveryFee}>
-                            Total Delivery Fee: ₱{delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE} 
-                            <span style={styles.modalBillableFee}>
-                              {' '}(Your Billable Fee 60%: ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee || delivery.delivery_fee).toFixed(2)})
-                            </span>
+                            Billable Delivery Fee: ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee || delivery.delivery_fee).toFixed(2)}
                           </p>
                         </div>
                       </div>
