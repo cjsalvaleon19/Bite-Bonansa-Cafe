@@ -188,7 +188,8 @@ export default function RiderReports() {
   };
 
   const calculateBillableDeliveryFee = (deliveryFee) => {
-    return (deliveryFee || DEFAULT_DELIVERY_FEE) * RIDER_COMMISSION_RATE;
+    // Don't fallback to DEFAULT_DELIVERY_FEE - use actual delivery fee or 0
+    return (deliveryFee || 0) * RIDER_COMMISSION_RATE;
   };
 
   const viewReportDetails = async (report) => {
@@ -414,7 +415,7 @@ export default function RiderReports() {
                             📅 {new Date(delivery.completed_at).toLocaleString()}
                           </p>
                           <div style={styles.deliveryFee}>
-                            Billable Delivery Fee: ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee || delivery.delivery_fee).toFixed(2)}
+                            Billable Delivery Fee: ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee).toFixed(2)}
                           </div>
                         </div>
                       </div>
