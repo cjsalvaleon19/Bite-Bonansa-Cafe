@@ -497,7 +497,7 @@ export default function RiderDeliveries() {
                                 </p>
                               )}
                               <p style={styles.infoItem}>
-                                <strong>Delivery Fee:</strong> ₱{delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
+                                <strong>Delivery Fee (Rider's Share):</strong> ₱{((delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE) * 0.6).toFixed(2)}
                               </p>
                               {delivery.orders?.items && Array.isArray(delivery.orders.items) && delivery.orders.items.length > 0 && (
                                 <div style={styles.infoItem}>
@@ -529,14 +529,15 @@ export default function RiderDeliveries() {
                           </div>
                         )}
 
-                        {!isLocked && delivery.status !== 'completed' && delivery.status !== 'cancelled' && (
-                          <div style={styles.actions}>
-                            <button
-                              style={styles.viewReceiptBtn}
-                              onClick={() => handleViewReceipt(delivery)}
-                            >
-                              📄 View Receipt
-                            </button>
+                        <div style={styles.actions}>
+                          <button
+                            style={styles.viewReceiptBtn}
+                            onClick={() => handleViewReceipt(delivery)}
+                          >
+                            📄 View Receipt
+                          </button>
+                          {!isLocked && delivery.status !== 'completed' && delivery.status !== 'cancelled' && (
+                            <>
                             {delivery.status === 'pending' && (
                               <button
                                 style={styles.actionBtn}
@@ -564,8 +565,9 @@ export default function RiderDeliveries() {
                                 {updatingStatus === delivery.id ? '⏳' : '📦'} Order Delivered
                               </button>
                             )}
-                          </div>
-                        )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );

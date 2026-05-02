@@ -8,6 +8,7 @@ export default function ReceiptModal({ delivery, onClose }) {
   
   // Calculate totals - handle case where order.total may already include delivery fee
   const deliveryFee = order.delivery_fee || delivery.delivery_fee || 0;
+  const riderDeliveryFee = deliveryFee * 0.6; // Rider receives 60% of delivery fee
   let subtotal, total;
   
   if (order.subtotal) {
@@ -82,10 +83,16 @@ export default function ReceiptModal({ delivery, onClose }) {
                 <span>₱{subtotal.toFixed(2)}</span>
               </div>
               {deliveryFee > 0 && (
-                <div style={styles.totalRow}>
-                  <span><strong>Delivery Fee:</strong></span>
-                  <span>₱{deliveryFee.toFixed(2)}</span>
-                </div>
+                <>
+                  <div style={styles.totalRow}>
+                    <span><strong>Delivery Fee (Customer Paid):</strong></span>
+                    <span>₱{deliveryFee.toFixed(2)}</span>
+                  </div>
+                  <div style={styles.totalRow}>
+                    <span><strong>Delivery Fee (Rider's Share - 60%):</strong></span>
+                    <span style={{ color: '#4caf50', fontWeight: 'bold' }}>₱{riderDeliveryFee.toFixed(2)}</span>
+                  </div>
+                </>
               )}
               <div style={{ ...styles.totalRow, ...styles.grandTotal }}>
                 <span><strong>Total:</strong></span>
