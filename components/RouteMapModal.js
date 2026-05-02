@@ -29,6 +29,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
   const [routeLoading, setRouteLoading] = useState(true);
   const [error, setError] = useState(null);
   const [directions, setDirections] = useState([]);
+  const [routeCache, setRouteCache] = useState({});
 
   useEffect(() => {
     if (!delivery?.customer_latitude || !delivery?.customer_longitude) {
@@ -48,6 +49,17 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
       const start = `${STORE_LOCATION.longitude},${STORE_LOCATION.latitude}`;
       const end = `${delivery.customer_longitude},${delivery.customer_latitude}`;
       
+      // Create cache key based on coordinates
+      const cacheKey = `${start}-${end}`;
+      
+      // Check if route is already cached
+      if (routeCache[cacheKey]) {
+        setRoute(routeCache[cacheKey].route);
+        setDirections(routeCache[cacheKey].directions);
+        setRouteLoading(false);
+        return;
+      }
+      
       // OSRM API endpoint for route calculation
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start};${end}?overview=full&geometries=geojson&steps=true`;
       
@@ -59,9 +71,10 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
         
         // Convert route geometry to Leaflet format
         const coordinates = routeData.geometry.coordinates.map(coord => [coord[1], coord[0]]);
-        setRoute(coordinates);
 
         // Extract turn-by-turn directions
+        // Note: 'depart' and 'arrive' steps are excluded as they are implicit
+        // (rider knows they start from store and arrive at customer address)
         const steps = [];
         routeData.legs.forEach(leg => {
           leg.steps.forEach(step => {
@@ -76,6 +89,14 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
             }
           });
         });
+        
+        // Cache the route for this delivery
+        setRouteCache(prev => ({
+          ...prev,
+          [cacheKey]: { route: coordinates, directions: steps }
+        }));
+        
+        setRoute(coordinates);
         setDirections(steps);
       } else {
         setError('Unable to calculate route');
