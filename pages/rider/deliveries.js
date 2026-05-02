@@ -14,6 +14,9 @@ const RouteMapModal = dynamic(
 
 const DEFAULT_DELIVERY_FEE = 50;
 
+// Query string for fetching deliveries with related order data
+const DELIVERIES_SELECT_QUERY = '*, orders(id, order_number, total, customer_name, customer_phone, delivery_fee, items)';
+
 // Helper function to format distance
 const formatDistance = (meters) => {
   if (!meters) return 'N/A';
@@ -106,7 +109,7 @@ export default function RiderDeliveries() {
       try {
         const { data, error } = await supabase
           .from('deliveries')
-          .select('*, orders(id, order_number, total, customer_name, customer_phone, delivery_fee, items)')
+          .select(DELIVERIES_SELECT_QUERY)
           .eq('rider_id', userId)
           .order('created_at', { ascending: false });
 
@@ -149,7 +152,7 @@ export default function RiderDeliveries() {
     try {
       let query = supabase
         .from('deliveries')
-        .select('*, orders(id, order_number, total, customer_name, customer_phone, delivery_fee, items)')
+        .select(DELIVERIES_SELECT_QUERY)
         .eq('rider_id', userId);
 
       if (filter === 'pending') {
