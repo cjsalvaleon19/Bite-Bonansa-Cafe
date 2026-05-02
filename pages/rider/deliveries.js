@@ -317,6 +317,16 @@ export default function RiderDeliveries() {
   };
 
   const getFilteredDeliveries = () => {
+    // Apply client-side filtering as defensive measure
+    // Database query should already filter, but this prevents stale data from showing
+    if (filter === 'pending') {
+      return deliveries.filter(d => d.status === 'pending');
+    } else if (filter === 'for_delivery') {
+      return deliveries.filter(d => d.status === 'accepted' || d.status === 'in_progress');
+    } else if (filter === 'completed') {
+      return deliveries.filter(d => d.status === 'completed');
+    }
+    // 'all' filter returns everything
     return deliveries;
   };
 
