@@ -224,7 +224,7 @@ export default function RiderDashboard() {
             <div style={styles.statCard}>
               <div style={styles.statIcon}>💰</div>
               <div style={styles.statValue}>₱{stats.todayEarnings.toFixed(2)}</div>
-              <div style={styles.statLabel}>Total Billable Delivery Fees for the Day</div>
+              <div style={styles.statLabel}>Today's Earnings (60% Commission)</div>
             </div>
           </div>
 
