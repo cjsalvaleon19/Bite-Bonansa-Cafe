@@ -1,6 +1,6 @@
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 -- Migration 062: Comprehensive Fix for orders_rider_id_fkey Error
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 -- Issue: Foreign key constraint violation when assigning riders to orders
 -- Error: insert or update on table "orders" violates foreign key constraint 
 --        "orders_rider_id_fkey"
@@ -9,20 +9,20 @@
 --   2. Riders exist in auth.users but not in public.users
 --   3. Missing FK relationship validation
 -- Solution: Make customer_id nullable, sync users, validate constraints
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 
 DO $$
 BEGIN
   RAISE NOTICE '';
-  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE '===========================================================================';
   RAISE NOTICE 'Migration 062: Comprehensive Fix for orders_rider_id_fkey Error';
-  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE '===========================================================================';
   RAISE NOTICE '';
 END $$;
 
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 -- STEP 1: Make customer_id nullable (if not already)
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 DO $$
 DECLARE
   v_is_nullable TEXT;
@@ -50,9 +50,9 @@ BEGIN
   RAISE NOTICE '';
 END $$;
 
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 -- STEP 2: Sync riders from auth.users to public.users
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 DO $$
 DECLARE
   v_synced_count INTEGER := 0;
@@ -104,9 +104,9 @@ BEGIN
   RAISE NOTICE '';
 END $$;
 
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 -- STEP 3: Update existing users with rider emails to have 'rider' role
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 DO $$
 DECLARE
   v_updated_count INTEGER := 0;
@@ -136,9 +136,9 @@ BEGIN
   RAISE NOTICE '';
 END $$;
 
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 -- STEP 4: Cleanup orphaned riders (riders without valid user_id)
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 DO $$
 DECLARE
   v_orphaned_count INTEGER := 0;
@@ -174,9 +174,9 @@ BEGIN
   RAISE NOTICE '';
 END $$;
 
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 -- STEP 5: Ensure riders table has ON DELETE CASCADE for user_id FK
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 DO $$
 DECLARE
   v_fk_exists BOOLEAN;
@@ -242,9 +242,9 @@ BEGIN
   RAISE NOTICE '';
 END $$;
 
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 -- STEP 6: Validate orders.rider_id FK constraint
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 DO $$
 DECLARE
   v_invalid_count INTEGER := 0;
@@ -298,9 +298,9 @@ BEGIN
   RAISE NOTICE '';
 END $$;
 
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 -- STEP 7: Verification Report
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 DO $$
 DECLARE
   v_rider_count INTEGER := 0;
@@ -349,32 +349,32 @@ LEFT JOIN riders r ON u.id = r.user_id
 WHERE u.role = 'rider'
 ORDER BY u.email;
 
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 -- COMPLETION NOTICE
--- ═══════════════════════════════════════════════════════════════════════════
+-- ===========================================================================
 DO $$
 BEGIN
   RAISE NOTICE '';
-  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE '===========================================================================';
   RAISE NOTICE 'Migration 062 Complete - orders_rider_id_fkey Error Fixed!';
-  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE '===========================================================================';
   RAISE NOTICE '';
   RAISE NOTICE 'What was fixed:';
-  RAISE NOTICE '  ✓ customer_id is now nullable (riders don''t need it)';
-  RAISE NOTICE '  ✓ Riders synced from auth.users to public.users';
-  RAISE NOTICE '  ✓ All rider emails have correct ''rider'' role';
-  RAISE NOTICE '  ✓ Orphaned riders cleaned up';
-  RAISE NOTICE '  ✓ FK constraints validated and repaired';
+  RAISE NOTICE '  - customer_id is now nullable (riders don''t need it)';
+  RAISE NOTICE '  - Riders synced from auth.users to public.users';
+  RAISE NOTICE '  - All rider emails have correct ''rider'' role';
+  RAISE NOTICE '  - Orphaned riders cleaned up';
+  RAISE NOTICE '  - FK constraints validated and repaired';
   RAISE NOTICE '';
   RAISE NOTICE 'Next steps:';
   RAISE NOTICE '  1. Refresh your browser (Ctrl+Shift+R or Cmd+Shift+R)';
-  RAISE NOTICE '  2. Go to Cashier Dashboard → Orders Queue';
+  RAISE NOTICE '  2. Go to Cashier Dashboard -> Orders Queue';
   RAISE NOTICE '  3. Try assigning a rider to an order';
   RAISE NOTICE '  4. If rider appears but assignment fails, rider needs to:';
   RAISE NOTICE '     - Log in to rider account';
   RAISE NOTICE '     - Visit /rider/profile';
   RAISE NOTICE '     - Complete their profile';
   RAISE NOTICE '';
-  RAISE NOTICE '═══════════════════════════════════════════════════════════════════════════';
+  RAISE NOTICE '===========================================================================';
   RAISE NOTICE '';
 END $$;
