@@ -99,9 +99,10 @@ export default function ReceiptModal({ delivery, onClose }) {
                   <div key={idx} style={styles.itemRow}>
                     <div style={styles.itemInfo}>
                       <span>{item.name} x{item.quantity}</span>
-                      {item.variantDetails && Object.keys(item.variantDetails).length > 0 && (
+                      {((item.variantDetails && Object.keys(item.variantDetails).length > 0) || 
+                        (item.variant_details && Object.keys(item.variant_details).length > 0)) && (
                         <div style={styles.variantDetails}>
-                          ({Object.entries(item.variantDetails).map(([type, value]) => 
+                          ({Object.entries(item.variantDetails || item.variant_details).map(([type, value]) => 
                             `${type}: ${value}`
                           ).join(', ')})
                         </div>

@@ -384,11 +384,12 @@ export default function CashierPOS() {
       }
 
       const orderData = {
-        items: items.map(({ id, name, price, quantity }) => ({
+        items: items.map(({ id, name, price, quantity, variantDetails }) => ({
           id,
           name,
           price,
           quantity,
+          variantDetails: variantDetails || null,
         })),
         order_mode: orderMode,
         customer_name: customerInfo.customerName,
