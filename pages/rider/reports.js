@@ -201,7 +201,7 @@ export default function RiderReports() {
     try {
       const { data, error } = await supabase
         .from('deliveries')
-        .select('*, orders(id, order_number, total)')
+        .select('*, orders(id, order_number, total, delivery_fee)')
         .in('id', report.delivery_ids);
 
       if (error) {
