@@ -341,7 +341,7 @@ export default function CashierDashboard() {
           .join(', ');
         variantDetailsHtml = `
           <tr>
-            <td colspan="3" style="padding: 2px 0 8px 0; font-size: 10px; color: #666;">
+            <td colspan="3" style="padding: 2px 0 8px 15px; font-size: 10px; color: #666;">
               (Add Ons: ${variantValues})
             </td>
           </tr>

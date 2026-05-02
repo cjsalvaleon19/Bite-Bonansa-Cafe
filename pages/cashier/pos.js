@@ -543,7 +543,7 @@ export default function CashierPOS() {
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
             .item { display: flex; justify-content: space-between; margin: 5px 0; }
-            .variant-details { font-size: 10px; color: #666; padding-left: 10px; margin-top: 2px; }
+            .variant-details { font-size: 10px; color: #666; padding-left: 15px; margin-top: 2px; }
             .footer { border-top: 2px dashed #000; padding-top: 10px; margin-top: 20px; }
             .total { font-weight: bold; font-size: 14px; }
             table { width: 100%; }

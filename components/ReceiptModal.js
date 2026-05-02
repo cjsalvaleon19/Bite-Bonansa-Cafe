@@ -311,7 +311,7 @@ const styles = {
     fontSize: '10px',
     color: '#666',
     marginTop: '3px',
-    paddingLeft: '0px',
+    paddingLeft: '15px',
   },
   itemPrice: {
     whiteSpace: 'nowrap',
