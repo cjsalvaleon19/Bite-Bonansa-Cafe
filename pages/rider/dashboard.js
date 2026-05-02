@@ -116,13 +116,17 @@ export default function RiderDashboard() {
         // Fetch today's completed deliveries with fees to calculate today's earnings (60% of delivery fees)
         const { data: todayDeliveries } = await supabase
           .from('deliveries')
-          .select('delivery_fee')
+          .select('delivery_fee, orders(delivery_fee)')
           .eq('rider_id', userId)
           .eq('status', 'completed')
           .gte('completed_at', today.toISOString());
 
         // Calculate today's earnings (60% of total delivery fees)
-        const todayTotalFees = todayDeliveries?.reduce((sum, d) => sum + (parseFloat(d.delivery_fee) || DEFAULT_DELIVERY_FEE), 0) || 0;
+        // Use orders.delivery_fee as primary source, fallback to deliveries.delivery_fee only if orders data is missing
+        const todayTotalFees = todayDeliveries?.reduce((sum, d) => {
+          const deliveryFee = d.orders?.delivery_fee || d.delivery_fee || 0;
+          return sum + parseFloat(deliveryFee);
+        }, 0) || 0;
         const todayEarnings = todayTotalFees * RIDER_COMMISSION_RATE; // Rider gets 60% of delivery fee
 
         setStats({
