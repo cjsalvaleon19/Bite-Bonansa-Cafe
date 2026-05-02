@@ -2,10 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
 import { STORE_LOCATION } from '../../utils/deliveryCalculator';
+import ReceiptModal from '../../components/ReceiptModal';
+
+// Dynamically import RouteMapModal to avoid SSR issues with Leaflet
+const RouteMapModal = dynamic(
+  () => import('../../components/RouteMapModal'),
+  { ssr: false }
+);
 
 const DEFAULT_DELIVERY_FEE = 50;
+
+// Query string for fetching deliveries with related order data
+const DELIVERIES_SELECT_QUERY = '*, orders(id, order_number, total, customer_name, customer_phone, customer_address, delivery_fee, items, customer_latitude, customer_longitude)';
 
 // Helper function to format distance
 const formatDistance = (meters) => {
@@ -21,8 +32,13 @@ export default function RiderDeliveries() {
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deliveries, setDeliveries] = useState([]);
-  const [filter, setFilter] = useState('active'); // 'active', 'completed', 'all'
+  const [filter, setFilter] = useState('pending'); // 'pending', 'for_delivery', 'completed', 'all'
   const [updatingStatus, setUpdatingStatus] = useState(null);
+  const [showRouteModal, setShowRouteModal] = useState(false);
+  const [selectedDelivery, setSelectedDelivery] = useState(null);
+  const [expandedDeliveries, setExpandedDeliveries] = useState({});
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -96,7 +112,7 @@ export default function RiderDeliveries() {
       try {
         const { data, error } = await supabase
           .from('deliveries')
-          .select('*, orders(id, total, customer_name, customer_phone)')
+          .select(DELIVERIES_SELECT_QUERY)
           .eq('rider_id', userId)
           .order('created_at', { ascending: false });
 
@@ -139,14 +155,17 @@ export default function RiderDeliveries() {
     try {
       let query = supabase
         .from('deliveries')
-        .select('*, orders(id, total, customer_name, customer_phone)')
+        .select(DELIVERIES_SELECT_QUERY)
         .eq('rider_id', userId);
 
-      if (filter === 'active') {
-        query = query.in('status', ['pending', 'in_progress']);
+      if (filter === 'pending') {
+        query = query.eq('status', 'pending');
+      } else if (filter === 'for_delivery') {
+        query = query.in('status', ['accepted', 'in_progress']);
       } else if (filter === 'completed') {
         query = query.eq('status', 'completed');
       }
+      // 'all' filter doesn't add any status filter
 
       const { data, error } = await query.order('created_at', { ascending: false });
 
@@ -158,6 +177,41 @@ export default function RiderDeliveries() {
     } catch (err) {
       console.error('[RiderDeliveries] Failed to fetch deliveries:', err?.message ?? err);
     }
+  };
+
+  const handleStartDelivery = (delivery) => {
+    setSelectedDelivery(delivery);
+    setShowRouteModal(true);
+  };
+
+  const handleConfirmStartDelivery = async () => {
+    if (!selectedDelivery) return;
+    
+    await handleUpdateStatus(selectedDelivery.id, 'in_progress');
+    setShowRouteModal(false);
+    setSelectedDelivery(null);
+  };
+
+  const handleCloseRouteModal = () => {
+    setShowRouteModal(false);
+    setSelectedDelivery(null);
+  };
+
+  const toggleDeliveryDetails = (deliveryId) => {
+    setExpandedDeliveries(prev => ({
+      ...prev,
+      [deliveryId]: !prev[deliveryId]
+    }));
+  };
+
+  const handleViewReceipt = (delivery) => {
+    setSelectedReceipt(delivery);
+    setShowReceiptModal(true);
+  };
+
+  const handleCloseReceipt = () => {
+    setShowReceiptModal(false);
+    setSelectedReceipt(null);
   };
 
   const handleUpdateStatus = async (deliveryId, newStatus) => {
@@ -263,6 +317,16 @@ export default function RiderDeliveries() {
   };
 
   const getFilteredDeliveries = () => {
+    // Apply client-side filtering as defensive measure
+    // Database query should already filter, but this prevents stale data from showing
+    if (filter === 'pending') {
+      return deliveries.filter(d => d.status === 'pending');
+    } else if (filter === 'for_delivery') {
+      return deliveries.filter(d => d.status === 'accepted' || d.status === 'in_progress');
+    } else if (filter === 'completed') {
+      return deliveries.filter(d => d.status === 'completed');
+    }
+    // 'all' filter returns everything
     return deliveries;
   };
 
@@ -316,11 +380,20 @@ export default function RiderDeliveries() {
             <button
               style={{
                 ...styles.filterTab,
-                ...(filter === 'active' ? styles.filterTabActive : {}),
+                ...(filter === 'pending' ? styles.filterTabActive : {}),
               }}
-              onClick={() => setFilter('active')}
+              onClick={() => setFilter('pending')}
             >
-              🔵 Active Deliveries
+              📌 Pending Orders
+            </button>
+            <button
+              style={{
+                ...styles.filterTab,
+                ...(filter === 'for_delivery' ? styles.filterTabActive : {}),
+              }}
+              onClick={() => setFilter('for_delivery')}
+            >
+              🚚 For Delivery
             </button>
             <button
               style={{
@@ -347,7 +420,8 @@ export default function RiderDeliveries() {
               <div style={styles.emptyState}>
                 <span style={styles.emptyIcon}>📦</span>
                 <p style={styles.emptyText}>
-                  {filter === 'active' && 'No active deliveries'}
+                  {filter === 'pending' && 'No pending orders'}
+                  {filter === 'for_delivery' && 'No deliveries in progress'}
                   {filter === 'completed' && 'No completed deliveries'}
                   {filter === 'all' && 'No deliveries assigned yet'}
                 </p>
@@ -371,53 +445,81 @@ export default function RiderDeliveries() {
                     >
                       <div style={styles.deliveryHeader}>
                         <h3 style={styles.deliveryTitle}>
-                          Order #{delivery.order_id}
+                          {delivery.orders?.order_number || `Order #${delivery.order_id}`}
                         </h3>
-                        <span
-                          style={{
-                            ...styles.status,
-                            backgroundColor: getStatusColor(delivery.status),
-                          }}
-                        >
-                          {delivery.status.replace('_', ' ').toUpperCase()}
-                        </span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button
+                            style={styles.viewDetailsBtn}
+                            onClick={() => toggleDeliveryDetails(delivery.id)}
+                          >
+                            {expandedDeliveries[delivery.id] ? '▼ Hide Details' : '▶ View Details'}
+                          </button>
+                          <span
+                            style={{
+                              ...styles.status,
+                              backgroundColor: getStatusColor(delivery.status),
+                            }}
+                          >
+                            {delivery.status.replace('_', ' ').toUpperCase()}
+                          </span>
+                        </div>
                       </div>
 
                       <div style={styles.deliveryBody}>
                         <div style={styles.deliveryInfo}>
                           <p style={styles.infoItem}>
-                            <strong>Customer:</strong> {delivery.customer_name || 'N/A'}
+                            <strong>Customer:</strong> {delivery.orders?.customer_name || delivery.customer_name || 'N/A'}
                           </p>
                           <p style={styles.infoItem}>
-                            <strong>Phone:</strong> {delivery.customer_phone || 'N/A'}
+                            <strong>Phone:</strong> {delivery.orders?.customer_phone || delivery.customer_phone || 'N/A'}
                           </p>
-                          <p style={styles.infoItem}>
-                            <strong>Address:</strong> {delivery.customer_address || 'N/A'}
-                          </p>
-                          {mapsUrl && (
-                            <p style={styles.infoItem}>
-                              <a 
-                                href={mapsUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                style={styles.mapsLink}
-                              >
-                                📍 Open in Google Maps (Directions)
-                              </a>
-                            </p>
-                          )}
-                          {delivery.distance_meters && (
-                            <p style={styles.infoItem}>
-                              <strong>Distance:</strong> {formatDistance(delivery.distance_meters)}
-                            </p>
-                          )}
-                          <p style={styles.infoItem}>
-                            <strong>Delivery Fee:</strong> ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
-                          </p>
-                          {delivery.special_instructions && (
-                            <p style={styles.infoItem}>
-                              <strong>Special Instructions:</strong> {delivery.special_instructions}
-                            </p>
+                          
+                          {expandedDeliveries[delivery.id] && (
+                            <>
+                              <p style={styles.infoItem}>
+                                <strong>Address:</strong> {delivery.customer_address || 'N/A'}
+                              </p>
+                              {mapsUrl && (
+                                <p style={styles.infoItem}>
+                                  <a 
+                                    href={mapsUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    style={styles.mapsLink}
+                                  >
+                                    📍 Open in Google Maps (Directions)
+                                  </a>
+                                </p>
+                              )}
+                              {delivery.distance_meters && (
+                                <p style={styles.infoItem}>
+                                  <strong>Distance:</strong> {formatDistance(delivery.distance_meters)}
+                                </p>
+                              )}
+                              <p style={styles.infoItem}>
+                                <strong>Delivery Fee:</strong> ₱{delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
+                              </p>
+                              {delivery.orders?.items && Array.isArray(delivery.orders.items) && delivery.orders.items.length > 0 && (
+                                <div style={styles.infoItem}>
+                                  <strong>Items:</strong>
+                                  <ul style={styles.itemsList}>
+                                    {delivery.orders.items.map((item, idx) => (
+                                      <li key={`${item.id || item.name}-${idx}`} style={styles.itemsListItem}>
+                                        {item.quantity}x {item.name} @ ₱{item.price}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  <p style={{ margin: '8px 0 0 0', fontWeight: 'bold' }}>
+                                    Total: ₱{delivery.orders.total || 0}
+                                  </p>
+                                </div>
+                              )}
+                              {delivery.special_instructions && (
+                                <p style={styles.infoItem}>
+                                  <strong>Special Instructions:</strong> {delivery.special_instructions}
+                                </p>
+                              )}
+                            </>
                           )}
                         </div>
 
@@ -429,6 +531,12 @@ export default function RiderDeliveries() {
 
                         {!isLocked && delivery.status !== 'completed' && delivery.status !== 'cancelled' && (
                           <div style={styles.actions}>
+                            <button
+                              style={styles.viewReceiptBtn}
+                              onClick={() => handleViewReceipt(delivery)}
+                            >
+                              📄 View Receipt
+                            </button>
                             {delivery.status === 'pending' && (
                               <button
                                 style={styles.actionBtn}
@@ -441,7 +549,7 @@ export default function RiderDeliveries() {
                             {delivery.status === 'accepted' && (
                               <button
                                 style={{ ...styles.actionBtn, ...styles.actionBtnOrange }}
-                                onClick={() => handleUpdateStatus(delivery.id, 'in_progress')}
+                                onClick={() => handleStartDelivery(delivery)}
                                 disabled={updatingStatus === delivery.id}
                               >
                                 {updatingStatus === delivery.id ? '⏳' : '🚀'} Start Delivery
@@ -466,6 +574,24 @@ export default function RiderDeliveries() {
             )}
           </div>
         </main>
+
+        {/* Route Map Modal */}
+        {showRouteModal && selectedDelivery && (
+          <RouteMapModal
+            delivery={selectedDelivery}
+            onClose={handleCloseRouteModal}
+            onConfirm={handleConfirmStartDelivery}
+            loading={updatingStatus === selectedDelivery.id}
+          />
+        )}
+
+        {/* Receipt Modal */}
+        {showReceiptModal && selectedReceipt && (
+          <ReceiptModal
+            delivery={selectedReceipt}
+            onClose={handleCloseReceipt}
+          />
+        )}
       </div>
     </>
   );
@@ -632,6 +758,18 @@ const styles = {
     fontWeight: '700',
     textTransform: 'uppercase',
   },
+  viewDetailsBtn: {
+    padding: '6px 12px',
+    backgroundColor: '#444',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s ease',
+  },
   deliveryBody: {
     display: 'flex',
     flexDirection: 'column',
@@ -659,6 +797,18 @@ const styles = {
     backgroundColor: '#2196f3',
     color: '#fff',
     border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s ease',
+  },
+  viewReceiptBtn: {
+    padding: '10px 24px',
+    backgroundColor: '#444',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
     borderRadius: '6px',
     fontSize: '14px',
     fontWeight: '600',
@@ -694,5 +844,15 @@ const styles = {
     alignItems: 'center',
     gap: '4px',
     transition: 'color 0.3s ease',
+  },
+  itemsList: {
+    margin: '8px 0 0 0',
+    paddingLeft: '20px',
+    listStyle: 'disc',
+  },
+  itemsListItem: {
+    fontSize: '14px',
+    color: '#ccc',
+    marginBottom: '4px',
   },
 };

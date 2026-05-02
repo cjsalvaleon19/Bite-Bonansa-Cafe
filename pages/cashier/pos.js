@@ -394,7 +394,10 @@ export default function CashierPOS() {
         customer_name: customerInfo.customerName,
         customer_id: customerInfo.userId || null, // Use UUID, not loyalty card ID
         contact_number: customerInfo.contactNumber || null,
+        customer_phone: customerInfo.contactNumber || null, // Duplicate for rider interface compatibility
         customer_address: orderMode === 'delivery' ? customerInfo.address : null,
+        customer_latitude: orderMode === 'delivery' ? deliveryCoordinates.lat : null,
+        customer_longitude: orderMode === 'delivery' ? deliveryCoordinates.lng : null,
         delivery_address: orderMode === 'delivery' ? customerInfo.address : null,
         delivery_latitude: orderMode === 'delivery' ? deliveryCoordinates.lat : null,
         delivery_longitude: orderMode === 'delivery' ? deliveryCoordinates.lng : null,
