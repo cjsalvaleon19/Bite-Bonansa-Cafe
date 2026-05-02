@@ -433,11 +433,7 @@ export default function RiderReports() {
                           <span style={styles.breakdownValue}>₱{calculateTotalFees().toFixed(2)}</span>
                         </div>
                         <div style={styles.breakdownRow}>
-                          <span style={styles.breakdownLabel}>Business Revenue (40%):</span>
-                          <span style={styles.breakdownHighlight}>₱{calculateBusinessRevenue().toFixed(2)}</span>
-                        </div>
-                        <div style={styles.breakdownRow}>
-                          <span style={styles.breakdownLabel}>Billable Rider's Fee (60%):</span>
+                          <span style={styles.breakdownLabel}>Total Billable Delivery Fees (60%):</span>
                           <span style={styles.breakdownEarnings}>₱{calculateRiderEarnings().toFixed(2)}</span>
                         </div>
                         <div style={styles.breakdownNote}>
