@@ -555,7 +555,7 @@ export default function RiderReports() {
                             📅 {new Date(delivery.completed_at).toLocaleString()}
                           </p>
                           <p style={styles.modalDeliveryFee}>
-                            Billable Delivery Fee: ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee || delivery.delivery_fee).toFixed(2)}
+                            Billable Delivery Fee: ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee).toFixed(2)}
                           </p>
                         </div>
                       </div>
