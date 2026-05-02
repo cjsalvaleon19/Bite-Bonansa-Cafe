@@ -7,8 +7,15 @@ export default function ReceiptModal({ delivery, onClose }) {
 
   if (!delivery) return null;
 
+  // Debug logging to understand data structure
+  console.log('[ReceiptModal] Full delivery object:', delivery);
+  console.log('[ReceiptModal] delivery.orders:', delivery.orders);
+  
   const order = delivery.orders || {};
   const items = order.items || [];
+  
+  console.log('[ReceiptModal] Extracted items:', items);
+  console.log('[ReceiptModal] Items count:', items.length);
   
   // Helper function to strip variant details from item name (for legacy data)
   const stripVariantsFromName = (name) => {
@@ -101,28 +108,34 @@ export default function ReceiptModal({ delivery, onClose }) {
             <div style={styles.section}>
               <p style={styles.sectionTitle}>ITEMS ORDERED</p>
               <div style={styles.items}>
-                {items.map((item, idx) => {
-                  const displayName = stripVariantsFromName(item.name);
-                  const variants = item.variantDetails || item.variant_details;
-                  const hasVariants = variants && typeof variants === 'object' && Object.keys(variants).length > 0;
-                  
-                  return (
-                  <div key={idx} style={styles.itemRow}>
-                    <div style={styles.itemInfo}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <span>{displayName} x{item.quantity}</span>
-                        <span style={styles.itemPrice}>₱{(item.price * item.quantity).toFixed(2)}</span>
-                      </div>
-                      {hasVariants && (
-                        <div style={styles.variantDetails}>
-                          (Add Ons: {Object.entries(variants).map(([type, value]) => 
-                            `${value}`
-                          ).join(', ')})
+                {items.length > 0 ? (
+                  items.map((item, idx) => {
+                    const displayName = stripVariantsFromName(item.name);
+                    const variants = item.variantDetails || item.variant_details;
+                    const hasVariants = variants && typeof variants === 'object' && Object.keys(variants).length > 0;
+                    
+                    return (
+                    <div key={idx} style={styles.itemRow}>
+                      <div style={styles.itemInfo}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <span>{displayName} x{item.quantity}</span>
+                          <span style={styles.itemPrice}>₱{(item.price * item.quantity).toFixed(2)}</span>
                         </div>
-                      )}
+                        {hasVariants && (
+                          <div style={styles.variantDetails}>
+                            (Add Ons: {Object.entries(variants).map(([type, value]) => 
+                              `${value}`
+                            ).join(', ')})
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )})}
+                  )})
+                ) : (
+                  <p style={{ fontStyle: 'italic', color: '#666', padding: '10px 0' }}>
+                    No items found. Please check the order data.
+                  </p>
+                )}
               </div>
             </div>
 
