@@ -78,7 +78,8 @@ export default function OrdersQueue() {
             quantity,
             subtotal,
             notes,
-            served
+            served,
+            variant_details
           )
         `)
         .in('status', ['order_in_queue', 'order_in_process', 'out_for_delivery'])
@@ -640,7 +641,18 @@ export default function OrdersQueue() {
                       .map((item, index) => (
                       <div key={item.id || index} style={styles.itemRow}>
                         <div style={styles.itemInfo}>
-                          <span style={styles.itemName}>{item.name}</span>
+                          <div style={styles.itemNameContainer}>
+                            <span style={styles.itemName}>{item.name}</span>
+                            {/* Display variant details if available */}
+                            {((item.variant_details && Object.keys(item.variant_details).length > 0) ||
+                              (item.variantDetails && Object.keys(item.variantDetails).length > 0)) && (
+                              <span style={styles.itemVariants}>
+                                ({Object.entries(item.variant_details || item.variantDetails).map(([type, value]) => 
+                                  `${type}: ${value}`
+                                ).join(', ')})
+                              </span>
+                            )}
+                          </div>
                           <span style={styles.itemQty}>x{item.quantity}</span>
                         </div>
                         <div style={styles.itemActions}>
@@ -973,6 +985,16 @@ const styles = {
   itemName: {
     fontSize: '14px',
     color: '#fff',
+  },
+  itemNameContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  itemVariants: {
+    fontSize: '11px',
+    color: '#ffc107',
+    fontStyle: 'italic',
   },
   itemQty: {
     fontSize: '12px',
