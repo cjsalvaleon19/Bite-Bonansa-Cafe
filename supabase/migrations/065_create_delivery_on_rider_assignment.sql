@@ -109,7 +109,7 @@ BEGIN
       v_order_record.customer_address,
       v_order_record.customer_latitude,
       v_order_record.customer_longitude,
-      COALESCE(v_order_record.delivery_fee, 50), -- Default 50 if null
+      COALESCE(v_order_record.delivery_fee, 50), -- Default 50 matches deliveries.delivery_fee DEFAULT from migration 050
       'pending',
       NOW()
     )
