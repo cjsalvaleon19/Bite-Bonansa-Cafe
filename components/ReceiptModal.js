@@ -103,20 +103,24 @@ export default function ReceiptModal({ delivery, onClose }) {
               <div style={styles.items}>
                 {items.map((item, idx) => {
                   const displayName = stripVariantsFromName(item.name);
+                  const variants = item.variantDetails || item.variant_details;
+                  const hasVariants = variants && typeof variants === 'object' && Object.keys(variants).length > 0;
+                  
                   return (
                   <div key={idx} style={styles.itemRow}>
                     <div style={styles.itemInfo}>
-                      <span>{displayName} x{item.quantity}</span>
-                      {((item.variantDetails && Object.keys(item.variantDetails).length > 0) || 
-                        (item.variant_details && Object.keys(item.variant_details).length > 0)) && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <span>{displayName} x{item.quantity}</span>
+                        <span style={styles.itemPrice}>₱{(item.price * item.quantity).toFixed(2)}</span>
+                      </div>
+                      {hasVariants && (
                         <div style={styles.variantDetails}>
-                          ({Object.entries(item.variantDetails || item.variant_details).map(([type, value]) => 
-                            `${type}: ${value}`
+                          (Add Ons: {Object.entries(variants).map(([type, value]) => 
+                            `${value}`
                           ).join(', ')})
                         </div>
                       )}
                     </div>
-                    <span style={styles.itemPrice}>₱{(item.price * item.quantity).toFixed(2)}</span>
                   </div>
                 )})}
               </div>
@@ -297,22 +301,19 @@ const styles = {
     marginBottom: '15px',
   },
   itemRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    marginBottom: '8px',
+    marginBottom: '12px',
     fontSize: '12px',
   },
   itemInfo: {
-    flex: 1,
+    width: '100%',
   },
   variantDetails: {
     fontSize: '10px',
     color: '#666',
     marginTop: '3px',
-    paddingLeft: '10px',
+    paddingLeft: '0px',
   },
   itemPrice: {
-    marginLeft: '10px',
     whiteSpace: 'nowrap',
   },
   totals: {

@@ -336,13 +336,13 @@ export default function CashierDashboard() {
       // Check if variant_details (snake_case from order_items) or variantDetails (camelCase from orders.items) exists and has content
       const variants = item.variant_details || item.variantDetails;
       if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
-        const variantEntries = Object.entries(variants)
-          .map(([type, value]) => `${type}: ${value}`)
+        const variantValues = Object.entries(variants)
+          .map(([type, value]) => `${value}`)
           .join(', ');
         variantDetailsHtml = `
           <tr>
-            <td colspan="3" style="padding: 2px 0 4px 15px; font-size: 10px; color: #666; border-bottom: 1px dashed #ccc;">
-              (${variantEntries})
+            <td colspan="3" style="padding: 2px 0 8px 0; font-size: 10px; color: #666;">
+              (Add Ons: ${variantValues})
             </td>
           </tr>
         `;
@@ -353,9 +353,9 @@ export default function CashierDashboard() {
       
       return `
         <tr>
-          <td style="padding: 4px 0; ${!variantDetailsHtml ? 'border-bottom: 1px dashed #ccc;' : ''}">${displayName}</td>
-          <td style="padding: 4px 8px; text-align: center; ${!variantDetailsHtml ? 'border-bottom: 1px dashed #ccc;' : ''}">x${item.quantity}</td>
-          <td style="padding: 4px 0; text-align: right; ${!variantDetailsHtml ? 'border-bottom: 1px dashed #ccc;' : ''}">₱${itemPrice.toFixed(2)}</td>
+          <td style="padding: 4px 0;">${displayName}</td>
+          <td style="padding: 4px 8px; text-align: center;">x${item.quantity}</td>
+          <td style="padding: 4px 0; text-align: right;">₱${itemPrice.toFixed(2)}</td>
         </tr>
         ${variantDetailsHtml}
       `;

@@ -572,21 +572,23 @@ export default function CashierPOS() {
           <div class="items">
             ${order.items.map(item => {
               const displayName = stripVariantsFromName(item.name);
+              const hasVariants = item.variantDetails && Object.keys(item.variantDetails).length > 0;
+              
               return `
-              <div class="item">
-                <span>
-                  ${displayName} x${item.quantity}
-                </span>
-                <span>₱${(item.price * item.quantity).toFixed(2)}</span>
+              <div style="margin-bottom: 10px;">
+                <div class="item">
+                  <span>${displayName} x${item.quantity}</span>
+                  <span>₱${(item.price * item.quantity).toFixed(2)}</span>
+                </div>
+                ${hasVariants
+                  ? `<div class="variant-details">
+                      (Add Ons: ${Object.entries(item.variantDetails).map(([type, value]) => 
+                        `${value}`
+                      ).join(', ')})
+                    </div>`
+                  : ''
+                }
               </div>
-              ${item.variantDetails && Object.keys(item.variantDetails).length > 0 
-                ? `<div class="variant-details">
-                    (${Object.entries(item.variantDetails).map(([type, value]) => 
-                      `${type}: ${value}`
-                    ).join(', ')})
-                  </div>`
-                : ''
-              }
             `}).join('')}
           </div>
           
