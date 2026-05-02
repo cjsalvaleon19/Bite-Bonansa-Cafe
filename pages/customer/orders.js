@@ -352,7 +352,16 @@ export default function CustomerOrders() {
                           <h4 style={styles.detailsTitle}>Order Items</h4>
                           {order.items?.map((item, idx) => (
                             <div key={idx} style={styles.itemRow}>
-                              <span>{item.name}</span>
+                              <div style={styles.itemDetails}>
+                                <span>{item.name}</span>
+                                {item.variantDetails && Object.keys(item.variantDetails).length > 0 && (
+                                  <span style={styles.variantInfo}>
+                                    ({Object.entries(item.variantDetails).map(([type, value]) => 
+                                      `${type}: ${value}`
+                                    ).join(', ')})
+                                  </span>
+                                )}
+                              </div>
                               <span>x{item.quantity}</span>
                               <span>₱{(item.price * item.quantity).toFixed(2)}</span>
                             </div>
@@ -612,6 +621,16 @@ const styles = {
     marginBottom: '8px',
     paddingBottom: '8px',
     borderBottom: '1px solid #333',
+  },
+  itemDetails: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  variantInfo: {
+    fontSize: '11px',
+    color: '#ffc107',
+    fontStyle: 'italic',
   },
   specialRequest: {
     fontSize: '13px',
