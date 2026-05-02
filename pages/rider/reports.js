@@ -97,7 +97,7 @@ export default function RiderReports() {
         // Fetch all completed deliveries that haven't been submitted (no date filter for carry-over)
         const { data, error } = await supabase
           .from('deliveries')
-          .select('*, orders(id, order_number, total)')
+          .select('*, orders(id, order_number, total, delivery_fee)')
           .eq('rider_id', userId)
           .eq('status', 'completed')
           .or('report_submitted.is.null,report_submitted.eq.false')
@@ -174,7 +174,7 @@ export default function RiderReports() {
   const calculateTotalFees = () => {
     return completedDeliveries
       .filter((d) => selectedDeliveries.includes(d.id))
-      .reduce((sum, d) => sum + (d.delivery_fee || DEFAULT_DELIVERY_FEE), 0);
+      .reduce((sum, d) => sum + (d.orders?.delivery_fee || d.delivery_fee || DEFAULT_DELIVERY_FEE), 0);
   };
 
   const calculateBusinessRevenue = () => {
@@ -414,7 +414,7 @@ export default function RiderReports() {
                             📅 {new Date(delivery.completed_at).toLocaleString()}
                           </p>
                           <div style={styles.deliveryFee}>
-                            Billable Delivery Fee (60%): ₱{calculateBillableDeliveryFee(delivery.delivery_fee).toFixed(2)}
+                            Billable Delivery Fee (60%): ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee || delivery.delivery_fee).toFixed(2)}
                           </div>
                         </div>
                       </div>
@@ -564,9 +564,9 @@ export default function RiderReports() {
                             📅 {new Date(delivery.completed_at).toLocaleString()}
                           </p>
                           <p style={styles.modalDeliveryFee}>
-                            Total Delivery Fee: ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE} 
+                            Total Delivery Fee: ₱{delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE} 
                             <span style={styles.modalBillableFee}>
-                              {' '}(Your Billable Fee 60%: ₱{calculateBillableDeliveryFee(delivery.delivery_fee).toFixed(2)})
+                              {' '}(Your Billable Fee 60%: ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee || delivery.delivery_fee).toFixed(2)})
                             </span>
                           </p>
                         </div>
