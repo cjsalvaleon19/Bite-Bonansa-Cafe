@@ -122,9 +122,9 @@ export default function RiderDashboard() {
           .gte('completed_at', today.toISOString());
 
         // Calculate today's earnings (60% of total delivery fees)
-        // Use orders.delivery_fee as primary source, fallback to deliveries.delivery_fee only if orders data is missing
+        // Use orders.delivery_fee as the authoritative source, no fallback to prevent incorrect calculations
         const todayTotalFees = todayDeliveries?.reduce((sum, d) => {
-          const deliveryFee = d.orders?.delivery_fee || d.delivery_fee || 0;
+          const deliveryFee = d.orders?.delivery_fee || 0;
           return sum + parseFloat(deliveryFee);
         }, 0) || 0;
         const todayEarnings = todayTotalFees * RIDER_COMMISSION_RATE; // Rider gets 60% of delivery fee
