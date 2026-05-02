@@ -430,7 +430,7 @@ export default function RiderReports() {
                           <span style={styles.breakdownValue}>{selectedDeliveries.length} {selectedDeliveries.length === 1 ? 'delivery' : 'deliveries'}</span>
                         </div>
                         <div style={styles.breakdownRow}>
-                          <span style={styles.breakdownLabel}>Total Billable Delivery Fees:</span>
+                          <span style={styles.breakdownLabel}>Rider Earnings (60%):</span>
                           <span style={styles.breakdownEarnings}>₱{calculateRiderEarnings().toFixed(2)}</span>
                         </div>
                       </div>
