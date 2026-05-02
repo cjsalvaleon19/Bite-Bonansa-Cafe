@@ -400,7 +400,7 @@ export default function RiderDeliveries() {
               }}
               onClick={() => setFilter('for_delivery')}
             >
-              🚚 For Delivery
+              🚚 Delivery
             </button>
             <button
               style={{
@@ -428,7 +428,7 @@ export default function RiderDeliveries() {
                 <span style={styles.emptyIcon}>📦</span>
                 <p style={styles.emptyText}>
                   {filter === 'pending' && 'No pending orders'}
-                  {filter === 'for_delivery' && 'No deliveries in progress'}
+                  {filter === 'for_delivery' && 'No accepted deliveries ready to start'}
                   {filter === 'completed' && 'No completed deliveries'}
                   {filter === 'all' && 'No deliveries assigned yet'}
                 </p>
