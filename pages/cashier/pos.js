@@ -427,20 +427,10 @@ export default function CashierPOS() {
       if (order && items.length > 0) {
         const orderItems = items.map(item => {
           // Format item name with variant details if present
-          let displayName = item.name;
-          if (item.variantDetails) {
-            const variantParts = Object.entries(item.variantDetails)
-              .map(([type, value]) => value)
-              .filter(Boolean);
-            if (variantParts.length > 0) {
-              displayName = `${item.name} (${variantParts.join(' | ')})`;
-            }
-          }
-
           return {
             order_id: order.id,
             menu_item_id: item.id,
-            name: displayName,
+            name: item.name,
             price: item.finalPrice || item.price || item.base_price || 0,
             quantity: item.quantity || 1,
             subtotal: (item.finalPrice || item.price || item.base_price || 0) * (item.quantity || 1),
@@ -1000,17 +990,6 @@ export default function CashierPOS() {
               ) : (
                 <ul style={styles.cartList}>
                   {items.map((item) => {
-                    // Format item name with variant details if present
-                    let displayName = item.name;
-                    if (item.variantDetails) {
-                      const variantParts = Object.entries(item.variantDetails)
-                        .map(([type, value]) => value)
-                        .filter(Boolean);
-                      if (variantParts.length > 0) {
-                        displayName = `${item.name} (${variantParts.join(' | ')})`;
-                      }
-                    }
-                    
                     // Calculate price correctly using finalPrice if available
                     const itemPrice = item.finalPrice || item.price || item.base_price || 0;
                     const totalItemPrice = itemPrice * item.quantity;
@@ -1019,7 +998,7 @@ export default function CashierPOS() {
                     return (
                       <li key={itemKey} style={styles.cartItem}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
-                          <span style={styles.cartItemName}>{displayName}</span>
+                          <span style={styles.cartItemName}>{item.name}</span>
                           <button style={styles.removeBtn} onClick={() => removeItem(itemKey)}>✕</button>
                         </div>
                         <div style={styles.cartControls}>
