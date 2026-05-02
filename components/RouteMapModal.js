@@ -195,25 +195,33 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
               <div style={styles.mapOverlay}>
                 <div style={{ textAlign: 'center', padding: '20px' }}>
                   <p style={{ color: '#ffc107', marginBottom: '16px' }}>⚠️ {error}</p>
-                  <p style={{ color: '#ccc', marginBottom: '16px' }}>
-                    Use address-based navigation below to get directions.
-                  </p>
-                  <a
-                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(STORE_LOCATION.address)}&destination=${encodeURIComponent(delivery.customer_address)}&travelmode=driving`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'inline-block',
-                      padding: '12px 24px',
-                      backgroundColor: '#ff9800',
-                      color: '#fff',
-                      textDecoration: 'none',
-                      borderRadius: '6px',
-                      fontWeight: '600',
-                    }}
-                  >
-                    🗺️ Open Google Maps Navigation
-                  </a>
+                  {delivery.customer_address ? (
+                    <>
+                      <p style={{ color: '#ccc', marginBottom: '16px' }}>
+                        Use address-based navigation below to get directions.
+                      </p>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(STORE_LOCATION.address)}&destination=${encodeURIComponent(delivery.customer_address)}&travelmode=driving`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-block',
+                          padding: '12px 24px',
+                          backgroundColor: '#ff9800',
+                          color: '#fff',
+                          textDecoration: 'none',
+                          borderRadius: '6px',
+                          fontWeight: '600',
+                        }}
+                      >
+                        🗺️ Open Google Maps Navigation
+                      </a>
+                    </>
+                  ) : (
+                    <p style={{ color: '#ccc' }}>
+                      Contact customer for delivery location details.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
