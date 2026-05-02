@@ -1051,9 +1051,4 @@ const styles = {
     fontWeight: '600',
     marginTop: '8px',
   },
-  modalBillableFee: {
-    fontSize: '13px',
-    color: '#4caf50',
-    fontWeight: '600',
-  },
 };
