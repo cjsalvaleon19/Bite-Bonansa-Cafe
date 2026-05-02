@@ -5,6 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
 import { STORE_LOCATION } from '../../utils/deliveryCalculator';
+import ReceiptModal from '../../components/ReceiptModal';
 
 // Dynamically import RouteMapModal to avoid SSR issues with Leaflet
 const RouteMapModal = dynamic(
@@ -36,6 +37,8 @@ export default function RiderDeliveries() {
   const [showRouteModal, setShowRouteModal] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState(null);
   const [expandedDeliveries, setExpandedDeliveries] = useState({});
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -199,6 +202,16 @@ export default function RiderDeliveries() {
       ...prev,
       [deliveryId]: !prev[deliveryId]
     }));
+  };
+
+  const handleViewReceipt = (delivery) => {
+    setSelectedReceipt(delivery);
+    setShowReceiptModal(true);
+  };
+
+  const handleCloseReceipt = () => {
+    setShowReceiptModal(false);
+    setSelectedReceipt(null);
   };
 
   const handleUpdateStatus = async (deliveryId, newStatus) => {
@@ -508,6 +521,12 @@ export default function RiderDeliveries() {
 
                         {!isLocked && delivery.status !== 'completed' && delivery.status !== 'cancelled' && (
                           <div style={styles.actions}>
+                            <button
+                              style={styles.viewReceiptBtn}
+                              onClick={() => handleViewReceipt(delivery)}
+                            >
+                              📄 View Receipt
+                            </button>
                             {delivery.status === 'pending' && (
                               <button
                                 style={styles.actionBtn}
@@ -553,6 +572,14 @@ export default function RiderDeliveries() {
             onClose={handleCloseRouteModal}
             onConfirm={handleConfirmStartDelivery}
             loading={updatingStatus === selectedDelivery.id}
+          />
+        )}
+
+        {/* Receipt Modal */}
+        {showReceiptModal && selectedReceipt && (
+          <ReceiptModal
+            delivery={selectedReceipt}
+            onClose={handleCloseReceipt}
           />
         )}
       </div>
@@ -760,6 +787,18 @@ const styles = {
     backgroundColor: '#2196f3',
     color: '#fff',
     border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s ease',
+  },
+  viewReceiptBtn: {
+    padding: '10px 24px',
+    backgroundColor: '#444',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
     borderRadius: '6px',
     fontSize: '14px',
     fontWeight: '600',
