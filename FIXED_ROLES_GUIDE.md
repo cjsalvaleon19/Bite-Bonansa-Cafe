@@ -86,8 +86,11 @@ To add or modify fixed role assignments, edit the `FIXED_ROLES` object in `utils
 ```javascript
 const FIXED_ROLES = {
   'arclitacj@gmail.com': 'cashier',
+  'bantecj@bitebonansacafe.com': 'cashier',
   'cjsalvaleon19@gmail.com': 'admin',
-  'johndave0991@gmail.com': 'rider',
+  'johndave0991@bitebonansacafe.com': 'rider',
+  'rider@youremail.com': 'rider',
+  // johndave0991@gmail.com defaults to 'customer' (not in this list)
   // Add new fixed roles here:
   // 'newemail@example.com': 'admin',
 };
@@ -113,7 +116,7 @@ To test the fixed role assignments:
    - Expected: Redirected to `/cashier` with POS access
 
 3. **Test Rider Account**
-   - Register with: `johndave0991@gmail.com`
+   - Register with: `johndave0991@bitebonansacafe.com` or `rider@youremail.com`
    - Expected: Redirected to `/rider/dashboard` with delivery access
 
 4. **Test Customer Account**
