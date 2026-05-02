@@ -32,6 +32,7 @@ export default function RiderDeliveries() {
   const [updatingStatus, setUpdatingStatus] = useState(null);
   const [showRouteModal, setShowRouteModal] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState(null);
+  const [expandedDeliveries, setExpandedDeliveries] = useState({});
 
   useEffect(() => {
     let mounted = true;
@@ -188,6 +189,13 @@ export default function RiderDeliveries() {
   const handleCloseRouteModal = () => {
     setShowRouteModal(false);
     setSelectedDelivery(null);
+  };
+
+  const toggleDeliveryDetails = (deliveryId) => {
+    setExpandedDeliveries(prev => ({
+      ...prev,
+      [deliveryId]: !prev[deliveryId]
+    }));
   };
 
   const handleUpdateStatus = async (deliveryId, newStatus) => {
@@ -413,14 +421,22 @@ export default function RiderDeliveries() {
                         <h3 style={styles.deliveryTitle}>
                           {delivery.orders?.order_number || `Order #${delivery.order_id}`}
                         </h3>
-                        <span
-                          style={{
-                            ...styles.status,
-                            backgroundColor: getStatusColor(delivery.status),
-                          }}
-                        >
-                          {delivery.status.replace('_', ' ').toUpperCase()}
-                        </span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button
+                            style={styles.viewDetailsBtn}
+                            onClick={() => toggleDeliveryDetails(delivery.id)}
+                          >
+                            {expandedDeliveries[delivery.id] ? '▼ Hide Details' : '▶ View Details'}
+                          </button>
+                          <span
+                            style={{
+                              ...styles.status,
+                              backgroundColor: getStatusColor(delivery.status),
+                            }}
+                          >
+                            {delivery.status.replace('_', ' ').toUpperCase()}
+                          </span>
+                        </div>
                       </div>
 
                       <div style={styles.deliveryBody}>
@@ -431,48 +447,53 @@ export default function RiderDeliveries() {
                           <p style={styles.infoItem}>
                             <strong>Phone:</strong> {delivery.orders?.customer_phone || delivery.customer_phone || 'N/A'}
                           </p>
-                          <p style={styles.infoItem}>
-                            <strong>Address:</strong> {delivery.customer_address || 'N/A'}
-                          </p>
-                          {mapsUrl && (
-                            <p style={styles.infoItem}>
-                              <a 
-                                href={mapsUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                style={styles.mapsLink}
-                              >
-                                📍 Open in Google Maps (Directions)
-                              </a>
-                            </p>
-                          )}
-                          {delivery.distance_meters && (
-                            <p style={styles.infoItem}>
-                              <strong>Distance:</strong> {formatDistance(delivery.distance_meters)}
-                            </p>
-                          )}
-                          <p style={styles.infoItem}>
-                            <strong>Delivery Fee:</strong> ₱{delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
-                          </p>
-                          {delivery.orders?.items && Array.isArray(delivery.orders.items) && delivery.orders.items.length > 0 && (
-                            <div style={styles.infoItem}>
-                              <strong>Items:</strong>
-                              <ul style={styles.itemsList}>
-                                {delivery.orders.items.map((item, idx) => (
-                                  <li key={`${item.id || item.name}-${idx}`} style={styles.itemsListItem}>
-                                    {item.quantity}x {item.name} @ ₱{item.price}
-                                  </li>
-                                ))}
-                              </ul>
-                              <p style={{ margin: '8px 0 0 0', fontWeight: 'bold' }}>
-                                Total: ₱{delivery.orders.total || 0}
+                          
+                          {expandedDeliveries[delivery.id] && (
+                            <>
+                              <p style={styles.infoItem}>
+                                <strong>Address:</strong> {delivery.customer_address || 'N/A'}
                               </p>
-                            </div>
-                          )}
-                          {delivery.special_instructions && (
-                            <p style={styles.infoItem}>
-                              <strong>Special Instructions:</strong> {delivery.special_instructions}
-                            </p>
+                              {mapsUrl && (
+                                <p style={styles.infoItem}>
+                                  <a 
+                                    href={mapsUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    style={styles.mapsLink}
+                                  >
+                                    📍 Open in Google Maps (Directions)
+                                  </a>
+                                </p>
+                              )}
+                              {delivery.distance_meters && (
+                                <p style={styles.infoItem}>
+                                  <strong>Distance:</strong> {formatDistance(delivery.distance_meters)}
+                                </p>
+                              )}
+                              <p style={styles.infoItem}>
+                                <strong>Delivery Fee:</strong> ₱{delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
+                              </p>
+                              {delivery.orders?.items && Array.isArray(delivery.orders.items) && delivery.orders.items.length > 0 && (
+                                <div style={styles.infoItem}>
+                                  <strong>Items:</strong>
+                                  <ul style={styles.itemsList}>
+                                    {delivery.orders.items.map((item, idx) => (
+                                      <li key={`${item.id || item.name}-${idx}`} style={styles.itemsListItem}>
+                                        {item.quantity}x {item.name} @ ₱{item.price}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  <p style={{ margin: '8px 0 0 0', fontWeight: 'bold' }}>
+                                    Total: ₱{delivery.orders.total || 0}
+                                  </p>
+                                </div>
+                              )}
+                              {delivery.special_instructions && (
+                                <p style={styles.infoItem}>
+                                  <strong>Special Instructions:</strong> {delivery.special_instructions}
+                                </p>
+                              )}
+                            </>
                           )}
                         </div>
 
@@ -696,6 +717,18 @@ const styles = {
     fontSize: '12px',
     fontWeight: '700',
     textTransform: 'uppercase',
+  },
+  viewDetailsBtn: {
+    padding: '6px 12px',
+    backgroundColor: '#444',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s ease',
   },
   deliveryBody: {
     display: 'flex',
