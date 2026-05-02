@@ -20,6 +20,8 @@ export default function RiderReports() {
   const [submitting, setSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null);
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'submitted'
+  const [viewingReport, setViewingReport] = useState(null);
+  const [reportDeliveries, setReportDeliveries] = useState([]);
 
   useEffect(() => {
     let mounted = true;
@@ -92,16 +94,12 @@ export default function RiderReports() {
       if (!supabase) return;
 
       try {
-        // Get today's date at start of day
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
+        // Fetch all completed deliveries that haven't been submitted (no date filter for carry-over)
         const { data, error } = await supabase
           .from('deliveries')
-          .select('*, orders(id, total)')
+          .select('*, orders(id, order_number, total, delivery_fee)')
           .eq('rider_id', userId)
           .eq('status', 'completed')
-          .gte('completed_at', today.toISOString())
           .or('report_submitted.is.null,report_submitted.eq.false')
           .order('completed_at', { ascending: false });
 
@@ -176,7 +174,7 @@ export default function RiderReports() {
   const calculateTotalFees = () => {
     return completedDeliveries
       .filter((d) => selectedDeliveries.includes(d.id))
-      .reduce((sum, d) => sum + (d.delivery_fee || DEFAULT_DELIVERY_FEE), 0);
+      .reduce((sum, d) => sum + (d.orders?.delivery_fee || 0), 0);
   };
 
   const calculateBusinessRevenue = () => {
@@ -187,6 +185,43 @@ export default function RiderReports() {
   const calculateRiderEarnings = () => {
     const totalFees = calculateTotalFees();
     return totalFees * RIDER_COMMISSION_RATE;
+  };
+
+  const calculateBillableDeliveryFee = (deliveryFee) => {
+    // Don't fallback to DEFAULT_DELIVERY_FEE - use actual delivery fee or 0
+    return (deliveryFee || 0) * RIDER_COMMISSION_RATE;
+  };
+
+  const viewReportDetails = async (report) => {
+    if (!report.delivery_ids || report.delivery_ids.length === 0) {
+      setViewingReport(report);
+      setReportDeliveries([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('deliveries')
+        .select('*, orders(id, order_number, total, delivery_fee)')
+        .in('id', report.delivery_ids);
+
+      if (error) {
+        console.error('[RiderReports] Failed to fetch report deliveries:', error.message);
+        setReportDeliveries([]);
+      } else {
+        setReportDeliveries(data || []);
+      }
+      setViewingReport(report);
+    } catch (err) {
+      console.error('[RiderReports] Failed to fetch report deliveries:', err?.message ?? err);
+      setReportDeliveries([]);
+      setViewingReport(report);
+    }
+  };
+
+  const closeReportModal = () => {
+    setViewingReport(null);
+    setReportDeliveries([]);
   };
 
   const handleSubmitReport = async () => {
@@ -205,7 +240,8 @@ export default function RiderReports() {
       const { error: updateError } = await supabase
         .from('deliveries')
         .update({ 
-          report_submitted: true
+          report_submitted: true,
+          report_submitted_at: new Date().toISOString()
         })
         .in('id', selectedDeliveries);
 
@@ -225,6 +261,7 @@ export default function RiderReports() {
           total_delivery_fees: calculateTotalFees(),
           business_revenue: calculateBusinessRevenue(),
           rider_earnings: calculateRiderEarnings(),
+          delivery_ids: selectedDeliveries,
           status: 'submitted',
           submitted_at: new Date().toISOString(),
         });
@@ -319,7 +356,7 @@ export default function RiderReports() {
               }}
               onClick={() => setActiveTab('pending')}
             >
-              📋 Pending Deliveries ({completedDeliveries.length})
+              📋 Billable Delivery Fees ({completedDeliveries.length})
             </button>
             <button
               style={{
@@ -338,9 +375,9 @@ export default function RiderReports() {
               completedDeliveries.length === 0 ? (
                 <div style={styles.emptyState}>
                   <span style={styles.emptyIcon}>📄</span>
-                  <p style={styles.emptyText}>No deliveries for today</p>
+                  <p style={styles.emptyText}>No billable deliveries</p>
                   <p style={styles.emptySubtext}>
-                    Completed deliveries from today will appear here for billing
+                    Completed deliveries will appear here for billing
                   </p>
                 </div>
               ) : (
@@ -359,13 +396,17 @@ export default function RiderReports() {
                           <input
                             type="checkbox"
                             checked={selectedDeliveries.includes(delivery.id)}
-                            onChange={() => toggleDeliverySelection(delivery.id)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              toggleDeliverySelection(delivery.id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
                             style={styles.checkbox}
                           />
                         </div>
                         <div style={styles.deliveryInfo}>
                           <h3 style={styles.deliveryTitle}>
-                            Order #{delivery.order_id}
+                            Order #{delivery.orders?.order_number || delivery.order_id}
                           </h3>
                           <p style={styles.deliveryDetail}>
                             📍 {delivery.customer_address || 'Address not available'}
@@ -374,7 +415,7 @@ export default function RiderReports() {
                             📅 {new Date(delivery.completed_at).toLocaleString()}
                           </p>
                           <div style={styles.deliveryFee}>
-                            Delivery Fee: ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
+                            Billable Delivery Fee: ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee).toFixed(2)}
                           </div>
                         </div>
                       </div>
@@ -389,19 +430,8 @@ export default function RiderReports() {
                           <span style={styles.breakdownValue}>{selectedDeliveries.length} {selectedDeliveries.length === 1 ? 'delivery' : 'deliveries'}</span>
                         </div>
                         <div style={styles.breakdownRow}>
-                          <span style={styles.breakdownLabel}>Total Delivery Fees:</span>
-                          <span style={styles.breakdownValue}>₱{calculateTotalFees().toFixed(2)}</span>
-                        </div>
-                        <div style={styles.breakdownRow}>
-                          <span style={styles.breakdownLabel}>Business Revenue (40%):</span>
-                          <span style={styles.breakdownHighlight}>₱{calculateBusinessRevenue().toFixed(2)}</span>
-                        </div>
-                        <div style={styles.breakdownRow}>
-                          <span style={styles.breakdownLabel}>Billable Rider's Fee (60%):</span>
+                          <span style={styles.breakdownLabel}>Rider Earnings (60%):</span>
                           <span style={styles.breakdownEarnings}>₱{calculateRiderEarnings().toFixed(2)}</span>
-                        </div>
-                        <div style={styles.breakdownNote}>
-                          <small>💡 You earn 60% commission from each delivery fee</small>
                         </div>
                       </div>
                       <button
@@ -460,6 +490,12 @@ export default function RiderReports() {
                         <p style={styles.reportEarnings}>
                           <strong>Your Earnings (60%):</strong> ₱{report.rider_earnings?.toFixed(2) || '0.00'}
                         </p>
+                        <button
+                          style={styles.viewDetailsBtn}
+                          onClick={() => viewReportDetails(report)}
+                        >
+                          📋 View Delivery List
+                        </button>
                         {(report.status === 'submitted' || report.status === 'pending') && (
                           <div style={styles.pendingNote}>
                             ⏳ Waiting for cashier to process payment
@@ -478,6 +514,58 @@ export default function RiderReports() {
             )}
           </div>
         </main>
+
+        {/* Report Details Modal */}
+        {viewingReport && (
+          <div style={styles.modalOverlay} onClick={closeReportModal}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.modalHeader}>
+                <h2 style={styles.modalTitle}>
+                  Report #{viewingReport.id.substring(0, 8)} - Delivery List
+                </h2>
+                <button style={styles.modalCloseBtn} onClick={closeReportModal}>
+                  ✕
+                </button>
+              </div>
+              <div style={styles.modalBody}>
+                <div style={styles.modalSummary}>
+                  <p style={styles.modalSummaryItem}>
+                    <strong>Total Deliveries:</strong> {viewingReport.total_deliveries || 0}
+                  </p>
+                  <p style={styles.modalSummaryItem}>
+                    <strong>Rider Earnings (60%):</strong> ₱{viewingReport.rider_earnings?.toFixed(2) || '0.00'}
+                  </p>
+                </div>
+                <hr style={styles.modalDivider} />
+                {reportDeliveries.length === 0 ? (
+                  <p style={styles.modalNoData}>No delivery details available for this report.</p>
+                ) : (
+                  <div style={styles.modalDeliveryList}>
+                    {reportDeliveries.map((delivery, index) => (
+                      <div key={delivery.id} style={styles.modalDeliveryItem}>
+                        <div style={styles.modalDeliveryNumber}>{index + 1}.</div>
+                        <div style={styles.modalDeliveryDetails}>
+                          <p style={styles.modalDeliveryTitle}>
+                            Order #{delivery.orders?.order_number || delivery.order_id}
+                          </p>
+                          <p style={styles.modalDeliveryInfo}>
+                            📍 {delivery.customer_address || 'Address not available'}
+                          </p>
+                          <p style={styles.modalDeliveryInfo}>
+                            📅 {new Date(delivery.completed_at).toLocaleString()}
+                          </p>
+                          <p style={styles.modalDeliveryFee}>
+                            Billable Delivery Fee: ₱{calculateBillableDeliveryFee(delivery.orders?.delivery_fee).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
@@ -829,5 +917,138 @@ const styles = {
     fontSize: '13px',
     marginTop: '12px',
     border: '1px solid #90ee90',
+  },
+  viewDetailsBtn: {
+    padding: '10px 20px',
+    backgroundColor: '#ffc107',
+    color: '#0a0a0a',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    marginTop: '12px',
+    width: '100%',
+    transition: 'all 0.3s ease',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: '20px',
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: '12px',
+    maxWidth: '800px',
+    width: '100%',
+    maxHeight: '90vh',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    border: '2px solid #ffc107',
+  },
+  modalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '20px 24px',
+    borderBottom: '1px solid #333',
+    backgroundColor: '#0a0a0a',
+  },
+  modalTitle: {
+    fontSize: '20px',
+    color: '#ffc107',
+    margin: 0,
+    fontWeight: '600',
+  },
+  modalCloseBtn: {
+    backgroundColor: 'transparent',
+    border: 'none',
+    color: '#ccc',
+    fontSize: '24px',
+    cursor: 'pointer',
+    padding: '0',
+    width: '32px',
+    height: '32px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '4px',
+    transition: 'all 0.3s ease',
+  },
+  modalBody: {
+    padding: '24px',
+    overflowY: 'auto',
+    flex: 1,
+  },
+  modalSummary: {
+    backgroundColor: '#0a0a0a',
+    padding: '16px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+  },
+  modalSummaryItem: {
+    fontSize: '14px',
+    color: '#ccc',
+    margin: '8px 0',
+  },
+  modalDivider: {
+    border: 'none',
+    borderTop: '1px solid #333',
+    margin: '20px 0',
+  },
+  modalNoData: {
+    textAlign: 'center',
+    color: '#888',
+    padding: '40px 20px',
+    fontSize: '14px',
+  },
+  modalDeliveryList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  modalDeliveryItem: {
+    display: 'flex',
+    gap: '12px',
+    padding: '16px',
+    backgroundColor: '#0a0a0a',
+    borderRadius: '8px',
+    border: '1px solid #333',
+  },
+  modalDeliveryNumber: {
+    fontSize: '16px',
+    color: '#ffc107',
+    fontWeight: '700',
+    minWidth: '24px',
+  },
+  modalDeliveryDetails: {
+    flex: 1,
+  },
+  modalDeliveryTitle: {
+    fontSize: '16px',
+    color: '#ffc107',
+    fontWeight: '600',
+    margin: '0 0 8px 0',
+  },
+  modalDeliveryInfo: {
+    fontSize: '13px',
+    color: '#ccc',
+    margin: '4px 0',
+  },
+  modalDeliveryFee: {
+    fontSize: '14px',
+    color: '#fff',
+    fontWeight: '600',
+    marginTop: '8px',
   },
 };

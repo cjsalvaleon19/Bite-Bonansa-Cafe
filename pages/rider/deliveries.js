@@ -486,7 +486,7 @@ export default function RiderDeliveries() {
                                 </p>
                               )}
                               <p style={styles.infoItem}>
-                                <strong>Delivery Fee (Rider's Share):</strong> ₱{((delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE) * RIDER_FEE_PERCENTAGE).toFixed(2)}
+                                <strong>Billable Delivery Fee:</strong> ₱{((delivery.orders?.delivery_fee || 0) * RIDER_FEE_PERCENTAGE).toFixed(2)}
                               </p>
                               {delivery.orders?.items && Array.isArray(delivery.orders.items) && delivery.orders.items.length > 0 && (
                                 <div style={styles.infoItem}>
