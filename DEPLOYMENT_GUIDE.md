@@ -8,8 +8,8 @@ This implementation provides complete role-based access control and portal featu
 ### Fixed Email Roles
 - **Admin**: `cjsalvaleon19@gmail.com`
 - **Cashier**: `arclitacj@gmail.com`, `bantecj@bitebonansacafe.com`
-- **Rider**: `johndave0991@gmail.com`
-- **Customer**: All other email addresses
+- **Rider**: `johndave0991@bitebonansacafe.com`, `rider@youremail.com`
+- **Customer**: All other email addresses (including `johndave0991@gmail.com`)
 
 ## Deployment Steps
 
@@ -65,7 +65,7 @@ Features:
 - Profile
 
 ### Rider Portal (`/rider`)
-**Email**: johndave0991@gmail.com
+**Emails**: johndave0991@bitebonansacafe.com, rider@youremail.com
 
 Features:
 - Dashboard with delivery stats
@@ -102,9 +102,9 @@ Features:
 1. **Test Access Control**
 ```
 1. Register with arclitacj@gmail.com → Should go to /cashier/dashboard
-2. Register with johndave0991@gmail.com → Should go to /rider/dashboard
+2. Register with johndave0991@bitebonansacafe.com → Should go to /rider/dashboard
 3. Register with cjsalvaleon19@gmail.com → Should go to /dashboard
-4. Register with any other email → Should go to /customer/dashboard
+4. Register with any other email (e.g., johndave0991@gmail.com) → Should go to /customer/dashboard
 ```
 
 2. **Test Cashier POS**
@@ -139,7 +139,7 @@ Features:
 
 5. **Test Rider Billing**
 ```
-1. Login as rider (johndave0991@gmail.com)
+1. Login as rider (johndave0991@bitebonansacafe.com or rider@youremail.com)
 2. Go to Billing Portal
 3. Submit daily report
 4. Verify 60% commission calculation

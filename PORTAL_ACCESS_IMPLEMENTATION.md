@@ -6,11 +6,11 @@ This implementation adds comprehensive role-based access control and portal feat
 ## Access Control
 
 ### Fixed Role Assignments
-Three email addresses have fixed role assignments (configured in `utils/roleMapping.js`):
+The following email addresses have fixed role assignments (configured in `utils/roleMapping.js`):
 - **Admin**: cjsalvaleon19@gmail.com → `/dashboard`
-- **Cashier**: arclitacj@gmail.com → `/cashier/dashboard`
-- **Rider**: johndave0991@gmail.com → `/rider/dashboard`
-- **Customer**: All other email addresses → `/customer/dashboard`
+- **Cashier**: arclitacj@gmail.com, bantecj@bitebonansacafe.com → `/cashier/dashboard`
+- **Rider**: johndave0991@bitebonansacafe.com, rider@youremail.com → `/rider/dashboard`
+- **Customer**: All other email addresses (including johndave0991@gmail.com) → `/customer/dashboard`
 
 ### Role Guards
 All portal pages use the `useRoleGuard` hook (from `utils/useRoleGuard.js`) which:
