@@ -67,6 +67,11 @@ export const getDistanceBetweenCoordinates = (lat1, lon1, lat2, lon2) => {
 export const formatDistance = (meters) => meters < 1000 ? `${meters} m` : `${(meters / 1000).toFixed(2)} km`;
 
 /**
+ * Rider fee percentage - riders receive 60% of delivery fee, company keeps 40%
+ */
+export const RIDER_FEE_PERCENTAGE = 0.6;
+
+/**
  * Generates a Google Maps directions URL for delivery navigation
  * @param {Object} delivery - Delivery object containing customer location data
  * @returns {string|null} Google Maps URL or null if no navigation data available

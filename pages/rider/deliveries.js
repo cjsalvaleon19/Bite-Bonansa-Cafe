@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
-import { STORE_LOCATION, getGoogleMapsNavigationUrl } from '../../utils/deliveryCalculator';
+import { STORE_LOCATION, getGoogleMapsNavigationUrl, RIDER_FEE_PERCENTAGE } from '../../utils/deliveryCalculator';
 import ReceiptModal from '../../components/ReceiptModal';
 
 // Dynamically import RouteMapModal to avoid SSR issues with Leaflet
@@ -14,7 +14,6 @@ const RouteMapModal = dynamic(
 );
 
 const DEFAULT_DELIVERY_FEE = 50;
-const RIDER_FEE_PERCENTAGE = 0.6; // Rider receives 60% of delivery fee, company keeps 40%
 
 // Query string for fetching deliveries with related order data
 const DELIVERIES_SELECT_QUERY = '*, orders(id, order_number, total, customer_name, customer_phone, customer_address, delivery_fee, items, customer_latitude, customer_longitude)';

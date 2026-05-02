@@ -195,7 +195,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
               <div style={styles.mapOverlay}>
                 <div style={{ textAlign: 'center', padding: '20px' }}>
                   <p style={{ color: '#ffc107', marginBottom: '16px' }}>⚠️ {error}</p>
-                  {delivery.customer_address ? (
+                  {getGoogleMapsNavigationUrl(delivery) ? (
                     <>
                       <p style={{ color: '#ccc', marginBottom: '16px' }}>
                         Use address-based navigation below to get directions.
