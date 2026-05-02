@@ -16,7 +16,7 @@ const RouteMapModal = dynamic(
 const DEFAULT_DELIVERY_FEE = 50;
 
 // Query string for fetching deliveries with related order data
-const DELIVERIES_SELECT_QUERY = '*, orders(id, order_number, total, customer_name, customer_phone, delivery_fee, items)';
+const DELIVERIES_SELECT_QUERY = '*, orders(id, order_number, total, customer_name, customer_phone, delivery_fee, items, customer_latitude, customer_longitude)';
 
 // Helper function to format distance
 const formatDistance = (meters) => {

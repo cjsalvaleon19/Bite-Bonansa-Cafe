@@ -32,12 +32,20 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
   const [routeCache, setRouteCache] = useState({});
 
   useEffect(() => {
-    if (!delivery?.customer_latitude || !delivery?.customer_longitude) {
+    // Try to get customer location from delivery or fallback to orders
+    const customerLat = delivery?.customer_latitude || delivery?.orders?.customer_latitude;
+    const customerLng = delivery?.customer_longitude || delivery?.orders?.customer_longitude;
+    
+    if (!customerLat || !customerLng) {
       setError('Customer location not available');
       setRouteLoading(false);
       return;
     }
 
+    // Store coordinates for fetchRoute to use
+    delivery._latitude = customerLat;
+    delivery._longitude = customerLng;
+    
     fetchRoute();
   }, [delivery]);
 
@@ -46,8 +54,12 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
       setRouteLoading(true);
       setError(null);
 
+      // Use coordinates stored in useEffect (with fallback support)
+      const customerLat = delivery._latitude || delivery.customer_latitude || delivery?.orders?.customer_latitude;
+      const customerLng = delivery._longitude || delivery.customer_longitude || delivery?.orders?.customer_longitude;
+
       const start = `${STORE_LOCATION.longitude},${STORE_LOCATION.latitude}`;
-      const end = `${delivery.customer_longitude},${delivery.customer_latitude}`;
+      const end = `${customerLng},${customerLat}`;
       
       // Create cache key based on coordinates
       const cacheKey = `${start}-${end}`;
@@ -115,10 +127,13 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
   };
 
   // Calculate map center (midpoint between store and customer)
-  const mapCenter = delivery?.customer_latitude && delivery?.customer_longitude
+  const customerLat = delivery?.customer_latitude || delivery?.orders?.customer_latitude;
+  const customerLng = delivery?.customer_longitude || delivery?.orders?.customer_longitude;
+  
+  const mapCenter = customerLat && customerLng
     ? [
-        (STORE_LOCATION.latitude + delivery.customer_latitude) / 2,
-        (STORE_LOCATION.longitude + delivery.customer_longitude) / 2
+        (STORE_LOCATION.latitude + customerLat) / 2,
+        (STORE_LOCATION.longitude + customerLng) / 2
       ]
     : [STORE_LOCATION.latitude, STORE_LOCATION.longitude];
 
@@ -161,8 +176,8 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
                 </Marker>
 
                 {/* Customer Marker */}
-                {delivery?.customer_latitude && delivery?.customer_longitude && (
-                  <Marker position={[delivery.customer_latitude, delivery.customer_longitude]}>
+                {customerLat && customerLng && (
+                  <Marker position={[customerLat, customerLng]}>
                     <Popup>
                       <strong>Destination</strong><br />
                       {delivery.customer_address}
