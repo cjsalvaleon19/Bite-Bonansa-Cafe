@@ -414,7 +414,7 @@ export default function RiderReports() {
                             📅 {new Date(delivery.completed_at).toLocaleString()}
                           </p>
                           <div style={styles.deliveryFee}>
-                            Billable Delivery Fee: ₱{calculateBillableDeliveryFee(delivery.delivery_fee).toFixed(2)}
+                            Billable Delivery Fee (60%): ₱{calculateBillableDeliveryFee(delivery.delivery_fee).toFixed(2)}
                           </div>
                         </div>
                       </div>
@@ -568,9 +568,9 @@ export default function RiderReports() {
                             📅 {new Date(delivery.completed_at).toLocaleString()}
                           </p>
                           <p style={styles.modalDeliveryFee}>
-                            Delivery Fee: ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE} 
+                            Total Delivery Fee: ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE} 
                             <span style={styles.modalBillableFee}>
-                              {' '}(Billable: ₱{calculateBillableDeliveryFee(delivery.delivery_fee).toFixed(2)})
+                              {' '}(Your Billable Fee 60%: ₱{calculateBillableDeliveryFee(delivery.delivery_fee).toFixed(2)})
                             </span>
                           </p>
                         </div>
