@@ -30,6 +30,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
   const [error, setError] = useState(null);
   const [directions, setDirections] = useState([]);
   const [routeCache, setRouteCache] = useState({});
+  const [customerCoords, setCustomerCoords] = useState(null);
 
   useEffect(() => {
     // Try to get customer location from delivery or fallback to orders
@@ -42,24 +43,19 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
       return;
     }
 
-    // Store coordinates for fetchRoute to use
-    delivery._latitude = customerLat;
-    delivery._longitude = customerLng;
+    // Store coordinates in state instead of mutating delivery object
+    setCustomerCoords({ lat: customerLat, lng: customerLng });
     
-    fetchRoute();
+    fetchRoute(customerLat, customerLng);
   }, [delivery]);
 
-  const fetchRoute = async () => {
+  const fetchRoute = async (lat, lng) => {
     try {
       setRouteLoading(true);
       setError(null);
 
-      // Use coordinates stored in useEffect (with fallback support)
-      const customerLat = delivery._latitude || delivery.customer_latitude || delivery?.orders?.customer_latitude;
-      const customerLng = delivery._longitude || delivery.customer_longitude || delivery?.orders?.customer_longitude;
-
       const start = `${STORE_LOCATION.longitude},${STORE_LOCATION.latitude}`;
-      const end = `${customerLng},${customerLat}`;
+      const end = `${lng},${lat}`;
       
       // Create cache key based on coordinates
       const cacheKey = `${start}-${end}`;
@@ -127,13 +123,10 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
   };
 
   // Calculate map center (midpoint between store and customer)
-  const customerLat = delivery?.customer_latitude || delivery?.orders?.customer_latitude;
-  const customerLng = delivery?.customer_longitude || delivery?.orders?.customer_longitude;
-  
-  const mapCenter = customerLat && customerLng
+  const mapCenter = customerCoords
     ? [
-        (STORE_LOCATION.latitude + customerLat) / 2,
-        (STORE_LOCATION.longitude + customerLng) / 2
+        (STORE_LOCATION.latitude + customerCoords.lat) / 2,
+        (STORE_LOCATION.longitude + customerCoords.lng) / 2
       ]
     : [STORE_LOCATION.latitude, STORE_LOCATION.longitude];
 
@@ -176,8 +169,8 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
                 </Marker>
 
                 {/* Customer Marker */}
-                {customerLat && customerLng && (
-                  <Marker position={[customerLat, customerLng]}>
+                {customerCoords && (
+                  <Marker position={[customerCoords.lat, customerCoords.lng]}>
                     <Popup>
                       <strong>Destination</strong><br />
                       {delivery.customer_address}

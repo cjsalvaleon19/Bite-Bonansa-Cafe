@@ -5,9 +5,24 @@ export default function ReceiptModal({ delivery, onClose }) {
 
   const order = delivery.orders || {};
   const items = order.items || [];
-  const subtotal = order.subtotal || order.total || 0;
+  
+  // Calculate totals - handle case where order.total may already include delivery fee
   const deliveryFee = order.delivery_fee || delivery.delivery_fee || 0;
-  const total = subtotal + deliveryFee;
+  let subtotal, total;
+  
+  if (order.subtotal) {
+    // If subtotal exists, use it and add delivery fee
+    subtotal = order.subtotal;
+    total = subtotal + deliveryFee;
+  } else if (order.total) {
+    // If only total exists, it likely already includes delivery fee
+    total = order.total;
+    subtotal = total - deliveryFee;
+  } else {
+    // Fallback: calculate from items if neither exists
+    subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    total = subtotal + deliveryFee;
+  }
 
   return (
     <div style={styles.overlay} onClick={onClose}>

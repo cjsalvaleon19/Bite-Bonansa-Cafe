@@ -34,7 +34,7 @@ BEGIN
     SELECT 1 FROM information_schema.columns 
     WHERE table_name = 'orders' AND column_name = 'customer_latitude'
   ) THEN
-    ALTER TABLE orders ADD COLUMN customer_latitude DECIMAL(10,8);
+    ALTER TABLE orders ADD COLUMN customer_latitude DECIMAL(11,8);
     COMMENT ON COLUMN orders.customer_latitude IS 'Customer delivery location latitude (WGS84)';
   END IF;
 END $$;
