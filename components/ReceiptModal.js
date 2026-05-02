@@ -7,15 +7,8 @@ export default function ReceiptModal({ delivery, onClose }) {
 
   if (!delivery) return null;
 
-  // Debug logging to understand data structure
-  console.log('[ReceiptModal] Full delivery object:', delivery);
-  console.log('[ReceiptModal] delivery.orders:', delivery.orders);
-  
   const order = delivery.orders || {};
   const items = order.items || [];
-  
-  console.log('[ReceiptModal] Extracted items:', items);
-  console.log('[ReceiptModal] Items count:', items.length);
   
   // Helper function to strip variant details from item name (for legacy data)
   const stripVariantsFromName = (name) => {
