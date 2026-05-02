@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { RIDER_FEE_PERCENTAGE } from '../utils/deliveryCalculator';
+import { supabase } from '../utils/supabaseClient';
 
 export default function ReceiptModal({ delivery, onClose }) {
+  const [customerLoyaltyId, setCustomerLoyaltyId] = useState(null);
+
   if (!delivery) return null;
 
   const order = delivery.orders || {};
@@ -10,7 +13,9 @@ export default function ReceiptModal({ delivery, onClose }) {
   // Calculate totals - handle case where order.total may already include delivery fee
   const deliveryFee = order.delivery_fee || delivery.delivery_fee || 0;
   const riderDeliveryFee = deliveryFee * RIDER_FEE_PERCENTAGE;
-  let subtotal, total;
+  const pointsUsed = order.points_used || 0;
+  
+  let subtotal, total, netAmount, cashTendered, change;
   
   if (order.subtotal) {
     // If subtotal exists, use it and add delivery fee
@@ -25,6 +30,36 @@ export default function ReceiptModal({ delivery, onClose }) {
     subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     total = subtotal + deliveryFee;
   }
+  
+  // Calculate net amount (after points deduction)
+  netAmount = total - pointsUsed;
+  
+  // Get cash tendered and calculate change
+  cashTendered = order.cash_amount || 0;
+  change = Math.max(0, cashTendered - netAmount);
+  
+  // Fetch customer loyalty ID if customer_id exists
+  useEffect(() => {
+    const fetchCustomerLoyaltyId = async () => {
+      if (!order.customer_id || !supabase) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('customer_id')
+          .eq('id', order.customer_id)
+          .single();
+        
+        if (!error && data && data.customer_id) {
+          setCustomerLoyaltyId(data.customer_id);
+        }
+      } catch (err) {
+        console.error('Error fetching customer loyalty ID:', err);
+      }
+    };
+    
+    fetchCustomerLoyaltyId();
+  }, [order.customer_id]);
 
   return (
     <div style={styles.overlay} onClick={onClose}>
@@ -49,11 +84,11 @@ export default function ReceiptModal({ delivery, onClose }) {
               <p><strong>Date:</strong> {new Date(delivery.created_at || Date.now()).toLocaleString()}</p>
               <p><strong>Order Type:</strong> {order.order_mode || 'delivery'}</p>
               <p><strong>Customer:</strong> {order.customer_name || delivery.customer_name || 'N/A'}</p>
+              {customerLoyaltyId && (
+                <p><strong>Customer ID:</strong> {customerLoyaltyId}</p>
+              )}
               {(order.customer_phone || delivery.customer_phone) && (
                 <p><strong>Contact Number:</strong> {order.customer_phone || delivery.customer_phone}</p>
-              )}
-              {delivery.customer_address && (
-                <p><strong>Delivery Address:</strong> {delivery.customer_address}</p>
               )}
             </div>
 
@@ -84,20 +119,42 @@ export default function ReceiptModal({ delivery, onClose }) {
                 <span>₱{subtotal.toFixed(2)}</span>
               </div>
               {deliveryFee > 0 && (
-                <>
-                  <div style={styles.totalRow}>
-                    <span><strong>Delivery Fee (Customer Paid):</strong></span>
-                    <span>₱{deliveryFee.toFixed(2)}</span>
-                  </div>
-                  <div style={styles.totalRow}>
-                    <span><strong>Delivery Fee (Rider's Share - 60%):</strong></span>
-                    <span style={{ color: '#4caf50', fontWeight: 'bold' }}>₱{riderDeliveryFee.toFixed(2)}</span>
-                  </div>
-                </>
+                <div style={styles.totalRow}>
+                  <span><strong>Delivery Fee:</strong></span>
+                  <span>₱{deliveryFee.toFixed(2)}</span>
+                </div>
               )}
               <div style={{ ...styles.totalRow, ...styles.grandTotal }}>
                 <span><strong>Total:</strong></span>
                 <span><strong>₱{total.toFixed(2)}</strong></span>
+              </div>
+              {pointsUsed > 0 && (
+                <div style={styles.totalRow}>
+                  <span><strong>Points Claimed:</strong></span>
+                  <span>-₱{pointsUsed.toFixed(2)}</span>
+                </div>
+              )}
+              {pointsUsed > 0 && (
+                <div style={{ ...styles.totalRow, borderTop: '1px solid #000', paddingTop: '8px', marginTop: '4px' }}>
+                  <span><strong>Net Amount:</strong></span>
+                  <span><strong>₱{netAmount.toFixed(2)}</strong></span>
+                </div>
+              )}
+              {cashTendered > 0 && (
+                <>
+                  <div style={styles.totalRow}>
+                    <span><strong>Cash Tendered:</strong></span>
+                    <span>₱{cashTendered.toFixed(2)}</span>
+                  </div>
+                  <div style={styles.totalRow}>
+                    <span><strong>Change:</strong></span>
+                    <span>₱{change.toFixed(2)}</span>
+                  </div>
+                </>
+              )}
+              <div style={{ ...styles.totalRow, borderTop: '1px dashed #000', paddingTop: '8px', marginTop: '8px' }}>
+                <span><strong>Payment Method:</strong></span>
+                <span>{order.payment_method || 'cash'}</span>
               </div>
             </div>
 
