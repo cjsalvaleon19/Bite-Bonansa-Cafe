@@ -419,7 +419,7 @@ export default function RiderDeliveries() {
                               <strong>Items:</strong>
                               <ul style={styles.itemsList}>
                                 {delivery.orders.items.map((item, idx) => (
-                                  <li key={idx} style={styles.itemsListItem}>
+                                  <li key={`${item.id || item.name}-${idx}`} style={styles.itemsListItem}>
                                     {item.quantity}x {item.name} @ ₱{item.price}
                                   </li>
                                 ))}
