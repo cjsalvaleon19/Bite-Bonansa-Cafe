@@ -327,9 +327,10 @@ export default function CashierDashboard() {
       const itemPrice = (item.price || 0) * (item.quantity || 0);
       let variantDetailsHtml = '';
       
-      // Check if variant_details exists and has content
-      if (item.variant_details && typeof item.variant_details === 'object' && Object.keys(item.variant_details).length > 0) {
-        const variantEntries = Object.entries(item.variant_details)
+      // Check if variant_details (snake_case from order_items) or variantDetails (camelCase from orders.items) exists and has content
+      const variants = item.variant_details || item.variantDetails;
+      if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
+        const variantEntries = Object.entries(variants)
           .map(([type, value]) => `${type}: ${value}`)
           .join(', ');
         variantDetailsHtml = `
