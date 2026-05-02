@@ -65,7 +65,7 @@ BEGIN
       WHEN o.status = 'order_delivered' THEN 'completed'
       ELSE 'pending'
     END,
-    COALESCE(o.out_for_delivery_at, o.updated_at, o.created_at), -- Use best available timestamp
+    COALESCE(o.out_for_delivery_at, o.created_at), -- Use best available timestamp
     NOW()
   FROM orders o
   WHERE o.rider_id IS NOT NULL
