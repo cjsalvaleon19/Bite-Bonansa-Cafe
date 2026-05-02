@@ -306,14 +306,21 @@ export default function RiderDeliveries() {
   };
 
   const getGoogleMapsUrl = (delivery) => {
-    if (!delivery.customer_latitude || !delivery.customer_longitude) {
-      return null;
+    // If coordinates are available, use them for precise navigation
+    if (delivery.customer_latitude && delivery.customer_longitude) {
+      const origin = `${STORE_LOCATION.latitude},${STORE_LOCATION.longitude}`;
+      const destination = `${delivery.customer_latitude},${delivery.customer_longitude}`;
+      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
     }
     
-    // Create a Google Maps directions URL from store to customer location
-    const origin = `${STORE_LOCATION.latitude},${STORE_LOCATION.longitude}`;
-    const destination = `${delivery.customer_latitude},${delivery.customer_longitude}`;
-    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+    // Otherwise, fall back to address-based navigation
+    if (delivery.customer_address) {
+      const origin = encodeURIComponent(STORE_LOCATION.address);
+      const destination = encodeURIComponent(delivery.customer_address);
+      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+    }
+    
+    return null;
   };
 
   const getFilteredDeliveries = () => {

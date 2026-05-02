@@ -38,7 +38,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
     const customerLng = delivery?.customer_longitude || delivery?.orders?.customer_longitude;
     
     if (!customerLat || !customerLng) {
-      setError('Customer location not available');
+      setError('Customer location coordinates not available. Please use the address-based navigation below.');
       setRouteLoading(false);
       return;
     }
@@ -149,7 +149,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
 
           {/* Map */}
           <div style={styles.mapContainer}>
-            {typeof window !== 'undefined' && (
+            {!error && typeof window !== 'undefined' && customerCoords && (
               <MapContainer
                 center={mapCenter}
                 zoom={13}
@@ -185,7 +185,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
               </MapContainer>
             )}
 
-            {routeLoading && (
+            {routeLoading && !error && (
               <div style={styles.mapOverlay}>
                 <p>⏳ Calculating route...</p>
               </div>
@@ -193,7 +193,28 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
 
             {error && (
               <div style={styles.mapOverlay}>
-                <p style={{ color: '#f44336' }}>⚠️ {error}</p>
+                <div style={{ textAlign: 'center', padding: '20px' }}>
+                  <p style={{ color: '#ffc107', marginBottom: '16px' }}>⚠️ {error}</p>
+                  <p style={{ color: '#ccc', marginBottom: '16px' }}>
+                    Use address-based navigation below to get directions.
+                  </p>
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(STORE_LOCATION.address)}&destination=${encodeURIComponent(delivery.customer_address)}&travelmode=driving`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-block',
+                      padding: '12px 24px',
+                      backgroundColor: '#ff9800',
+                      color: '#fff',
+                      textDecoration: 'none',
+                      borderRadius: '6px',
+                      fontWeight: '600',
+                    }}
+                  >
+                    🗺️ Open Google Maps Navigation
+                  </a>
+                </div>
               </div>
             )}
           </div>
