@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { STORE_LOCATION } from '../utils/deliveryCalculator';
+import { STORE_LOCATION, getGoogleMapsNavigationUrl } from '../utils/deliveryCalculator';
 
 // Dynamically import Leaflet components to avoid SSR issues
 const MapContainer = dynamic(
@@ -38,7 +38,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
     const customerLng = delivery?.customer_longitude || delivery?.orders?.customer_longitude;
     
     if (!customerLat || !customerLng) {
-      setError('Customer location not available');
+      setError('Customer location coordinates not available.');
       setRouteLoading(false);
       return;
     }
@@ -149,7 +149,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
 
           {/* Map */}
           <div style={styles.mapContainer}>
-            {typeof window !== 'undefined' && (
+            {!error && typeof window !== 'undefined' && customerCoords && (
               <MapContainer
                 center={mapCenter}
                 zoom={13}
@@ -185,7 +185,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
               </MapContainer>
             )}
 
-            {routeLoading && (
+            {routeLoading && !error && (
               <div style={styles.mapOverlay}>
                 <p>⏳ Calculating route...</p>
               </div>
@@ -193,7 +193,36 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
 
             {error && (
               <div style={styles.mapOverlay}>
-                <p style={{ color: '#f44336' }}>⚠️ {error}</p>
+                <div style={{ textAlign: 'center', padding: '20px' }}>
+                  <p style={{ color: '#ffc107', marginBottom: '16px' }}>⚠️ {error}</p>
+                  {getGoogleMapsNavigationUrl(delivery) ? (
+                    <>
+                      <p style={{ color: '#ccc', marginBottom: '16px' }}>
+                        Use address-based navigation below to get directions.
+                      </p>
+                      <a
+                        href={getGoogleMapsNavigationUrl(delivery)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-block',
+                          padding: '12px 24px',
+                          backgroundColor: '#ff9800',
+                          color: '#fff',
+                          textDecoration: 'none',
+                          borderRadius: '6px',
+                          fontWeight: '600',
+                        }}
+                      >
+                        🗺️ Open Google Maps Navigation
+                      </a>
+                    </>
+                  ) : (
+                    <p style={{ color: '#ccc' }}>
+                      Contact customer for delivery location details.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </div>

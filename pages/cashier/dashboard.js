@@ -322,14 +322,21 @@ export default function CashierDashboard() {
 
     const items = order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
     
+    // Helper function to strip variant details from item name (for legacy data)
+    const stripVariantsFromName = (name) => {
+      // Remove anything in parentheses at the end of the name (e.g., "Americano (12oz Hot | Extra Shot)" -> "Americano")
+      return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    };
+    
     // Build items HTML with variant details
     const itemsHtml = items.map(item => {
       const itemPrice = (item.price || 0) * (item.quantity || 0);
       let variantDetailsHtml = '';
       
-      // Check if variant_details exists and has content
-      if (item.variant_details && typeof item.variant_details === 'object' && Object.keys(item.variant_details).length > 0) {
-        const variantEntries = Object.entries(item.variant_details)
+      // Check if variant_details (snake_case from order_items) or variantDetails (camelCase from orders.items) exists and has content
+      const variants = item.variant_details || item.variantDetails;
+      if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
+        const variantEntries = Object.entries(variants)
           .map(([type, value]) => `${type}: ${value}`)
           .join(', ');
         variantDetailsHtml = `
@@ -341,9 +348,12 @@ export default function CashierDashboard() {
         `;
       }
       
+      // Strip variants from name for display (handles legacy data)
+      const displayName = stripVariantsFromName(item.name);
+      
       return `
         <tr>
-          <td style="padding: 4px 0; ${!variantDetailsHtml ? 'border-bottom: 1px dashed #ccc;' : ''}">${item.name}</td>
+          <td style="padding: 4px 0; ${!variantDetailsHtml ? 'border-bottom: 1px dashed #ccc;' : ''}">${displayName}</td>
           <td style="padding: 4px 8px; text-align: center; ${!variantDetailsHtml ? 'border-bottom: 1px dashed #ccc;' : ''}">x${item.quantity}</td>
           <td style="padding: 4px 0; text-align: right; ${!variantDetailsHtml ? 'border-bottom: 1px dashed #ccc;' : ''}">₱${itemPrice.toFixed(2)}</td>
         </tr>

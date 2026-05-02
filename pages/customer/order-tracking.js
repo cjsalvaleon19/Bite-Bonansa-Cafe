@@ -113,7 +113,8 @@ export default function OrderTracking() {
               price,
               quantity,
               subtotal,
-              notes
+              notes,
+              variant_details
             )
           `)
           .eq('customer_id', user.id)
@@ -390,6 +391,14 @@ export default function OrderTracking() {
                             <div key={item.id || idx} style={styles.orderItem}>
                               <div style={styles.itemInfo}>
                                 <span style={styles.itemName}>{item.name}</span>
+                                {/* Display variant details if available */}
+                                {item.variant_details && Object.keys(item.variant_details).length > 0 && (
+                                  <span style={styles.itemVariants}>
+                                    ({Object.entries(item.variant_details).map(([type, value]) => 
+                                      `${type}: ${value}`
+                                    ).join(', ')})
+                                  </span>
+                                )}
                                 {/* Item notes: customization requests for individual items (e.g., "extra sugar", "no ice") */}
                                 {item.notes && (
                                   <span style={styles.itemNotes}>Note: {item.notes}</span>
@@ -689,6 +698,12 @@ const styles = {
     fontSize: '12px',
     color: '#999',
     fontStyle: 'italic',
+  },
+  itemVariants: {
+    fontSize: '11px',
+    color: '#ffc107',
+    display: 'block',
+    marginTop: '4px',
   },
   itemPriceInfo: {
     display: 'flex',

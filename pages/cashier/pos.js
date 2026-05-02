@@ -384,11 +384,12 @@ export default function CashierPOS() {
       }
 
       const orderData = {
-        items: items.map(({ id, name, price, quantity }) => ({
+        items: items.map(({ id, name, price, quantity, variantDetails }) => ({
           id,
           name,
           price,
           quantity,
+          variantDetails: variantDetails || null,
         })),
         order_mode: orderMode,
         customer_name: customerInfo.customerName,
@@ -426,20 +427,10 @@ export default function CashierPOS() {
       if (order && items.length > 0) {
         const orderItems = items.map(item => {
           // Format item name with variant details if present
-          let displayName = item.name;
-          if (item.variantDetails) {
-            const variantParts = Object.entries(item.variantDetails)
-              .map(([type, value]) => value)
-              .filter(Boolean);
-            if (variantParts.length > 0) {
-              displayName = `${item.name} (${variantParts.join(' | ')})`;
-            }
-          }
-
           return {
             order_id: order.id,
             menu_item_id: item.id,
-            name: displayName,
+            name: item.name,
             price: item.finalPrice || item.price || item.base_price || 0,
             quantity: item.quantity || 1,
             subtotal: (item.finalPrice || item.price || item.base_price || 0) * (item.quantity || 1),
@@ -502,6 +493,12 @@ export default function CashierPOS() {
   const printReceipt = (order, paidAmount) => {
     const receiptWindow = window.open('', '_blank', 'width=300,height=600');
     if (!receiptWindow) return;
+
+    // Helper function to strip variant details from item name (for legacy data)
+    const stripVariantsFromName = (name) => {
+      // Remove anything in parentheses at the end of the name (e.g., "Americano (12oz Hot | Extra Shot)" -> "Americano")
+      return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    };
 
     const cashTendered = parseFloat(paymentDetails.cashTendered || 0);
     
@@ -573,10 +570,12 @@ export default function CashierPOS() {
           
           <p class="section-title">ITEMS ORDERED</p>
           <div class="items">
-            ${order.items.map(item => `
+            ${order.items.map(item => {
+              const displayName = stripVariantsFromName(item.name);
+              return `
               <div class="item">
                 <span>
-                  ${item.name} x${item.quantity}
+                  ${displayName} x${item.quantity}
                 </span>
                 <span>₱${(item.price * item.quantity).toFixed(2)}</span>
               </div>
@@ -588,7 +587,7 @@ export default function CashierPOS() {
                   </div>`
                 : ''
               }
-            `).join('')}
+            `}).join('')}
           </div>
           
           <div class="footer">
@@ -999,17 +998,6 @@ export default function CashierPOS() {
               ) : (
                 <ul style={styles.cartList}>
                   {items.map((item) => {
-                    // Format item name with variant details if present
-                    let displayName = item.name;
-                    if (item.variantDetails) {
-                      const variantParts = Object.entries(item.variantDetails)
-                        .map(([type, value]) => value)
-                        .filter(Boolean);
-                      if (variantParts.length > 0) {
-                        displayName = `${item.name} (${variantParts.join(' | ')})`;
-                      }
-                    }
-                    
                     // Calculate price correctly using finalPrice if available
                     const itemPrice = item.finalPrice || item.price || item.base_price || 0;
                     const totalItemPrice = itemPrice * item.quantity;
@@ -1018,7 +1006,7 @@ export default function CashierPOS() {
                     return (
                       <li key={itemKey} style={styles.cartItem}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
-                          <span style={styles.cartItemName}>{displayName}</span>
+                          <span style={styles.cartItemName}>{item.name}</span>
                           <button style={styles.removeBtn} onClick={() => removeItem(itemKey)}>✕</button>
                         </div>
                         <div style={styles.cartControls}>

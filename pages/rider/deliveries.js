@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
-import { STORE_LOCATION } from '../../utils/deliveryCalculator';
+import { STORE_LOCATION, getGoogleMapsNavigationUrl, RIDER_FEE_PERCENTAGE } from '../../utils/deliveryCalculator';
 import ReceiptModal from '../../components/ReceiptModal';
 
 // Dynamically import RouteMapModal to avoid SSR issues with Leaflet
@@ -305,17 +305,6 @@ export default function RiderDeliveries() {
     }
   };
 
-  const getGoogleMapsUrl = (delivery) => {
-    if (!delivery.customer_latitude || !delivery.customer_longitude) {
-      return null;
-    }
-    
-    // Create a Google Maps directions URL from store to customer location
-    const origin = `${STORE_LOCATION.latitude},${STORE_LOCATION.longitude}`;
-    const destination = `${delivery.customer_latitude},${delivery.customer_longitude}`;
-    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-  };
-
   const getFilteredDeliveries = () => {
     // Apply client-side filtering as defensive measure
     // Database query should already filter, but this prevents stale data from showing
@@ -393,7 +382,7 @@ export default function RiderDeliveries() {
               }}
               onClick={() => setFilter('for_delivery')}
             >
-              🚚 For Delivery
+              🚚 Delivery
             </button>
             <button
               style={{
@@ -421,7 +410,7 @@ export default function RiderDeliveries() {
                 <span style={styles.emptyIcon}>📦</span>
                 <p style={styles.emptyText}>
                   {filter === 'pending' && 'No pending orders'}
-                  {filter === 'for_delivery' && 'No deliveries in progress'}
+                  {filter === 'for_delivery' && 'No accepted deliveries ready to start'}
                   {filter === 'completed' && 'No completed deliveries'}
                   {filter === 'all' && 'No deliveries assigned yet'}
                 </p>
@@ -432,7 +421,7 @@ export default function RiderDeliveries() {
             ) : (
               <div style={styles.deliveryList}>
                 {getFilteredDeliveries().map((delivery) => {
-                  const mapsUrl = getGoogleMapsUrl(delivery);
+                  const mapsUrl = getGoogleMapsNavigationUrl(delivery);
                   const isLocked = delivery.status === 'completed' && delivery.report_paid;
                   
                   return (
@@ -497,7 +486,7 @@ export default function RiderDeliveries() {
                                 </p>
                               )}
                               <p style={styles.infoItem}>
-                                <strong>Delivery Fee:</strong> ₱{delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
+                                <strong>Delivery Fee (Rider's Share):</strong> ₱{((delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE) * RIDER_FEE_PERCENTAGE).toFixed(2)}
                               </p>
                               {delivery.orders?.items && Array.isArray(delivery.orders.items) && delivery.orders.items.length > 0 && (
                                 <div style={styles.infoItem}>
@@ -529,14 +518,15 @@ export default function RiderDeliveries() {
                           </div>
                         )}
 
-                        {!isLocked && delivery.status !== 'completed' && delivery.status !== 'cancelled' && (
-                          <div style={styles.actions}>
-                            <button
-                              style={styles.viewReceiptBtn}
-                              onClick={() => handleViewReceipt(delivery)}
-                            >
-                              📄 View Receipt
-                            </button>
+                        <div style={styles.actions}>
+                          <button
+                            style={styles.viewReceiptBtn}
+                            onClick={() => handleViewReceipt(delivery)}
+                          >
+                            📄 View Receipt
+                          </button>
+                          {!isLocked && delivery.status !== 'completed' && delivery.status !== 'cancelled' && (
+                            <>
                             {delivery.status === 'pending' && (
                               <button
                                 style={styles.actionBtn}
@@ -564,8 +554,9 @@ export default function RiderDeliveries() {
                                 {updatingStatus === delivery.id ? '⏳' : '📦'} Order Delivered
                               </button>
                             )}
-                          </div>
-                        )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );

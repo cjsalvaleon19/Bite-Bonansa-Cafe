@@ -2,7 +2,9 @@ export const STORE_LOCATION = {
   name: 'Bite Bonansa',
   address: 'Laconon-Salacafe Rd, Brgy. Poblacion, T\'boli, South Cotabato',
   latitude: 6.2178483,
-  longitude: 124.8221226
+  longitude: 124.8221226,
+  placeId: 'ChIJb9G7JgDt9zIR_V8QCEeFiJk', // Google Maps Place ID for Bite Bonansa
+  googleMapsUrl: 'https://www.google.com/maps/place/Bite+Bonansa/@6.2178483,124.8195477,17z/data=!3m1!4b1!4m6!3m5!1s0x32f7ed0026bbd16f:0x9988854708105ffd!8m2!3d6.2178483!4d124.8221226!16s%2Fg%2F11xkmc_lhz'
 };
 
 export const calculateDeliveryFee = (distanceInMeters) => {
@@ -65,3 +67,35 @@ export const getDistanceBetweenCoordinates = (lat1, lon1, lat2, lon2) => {
 };
 
 export const formatDistance = (meters) => meters < 1000 ? `${meters} m` : `${(meters / 1000).toFixed(2)} km`;
+
+/**
+ * Rider fee percentage - riders receive 60% of delivery fee, company keeps 40%
+ */
+export const RIDER_FEE_PERCENTAGE = 0.6;
+
+/**
+ * Generates a Google Maps directions URL for delivery navigation
+ * Uses the official Bite Bonansa Google Maps place as the starting point
+ * @param {Object} delivery - Delivery object containing customer location data
+ * @returns {string|null} Google Maps URL or null if no navigation data available
+ */
+export const getGoogleMapsNavigationUrl = (delivery) => {
+  // Use the official Google Maps Place ID for Bite Bonansa as origin
+  const origin = STORE_LOCATION.placeId 
+    ? `place_id:${STORE_LOCATION.placeId}`
+    : `${STORE_LOCATION.latitude},${STORE_LOCATION.longitude}`;
+  
+  // If coordinates are available, use them for precise navigation
+  if (delivery.customer_latitude && delivery.customer_longitude) {
+    const destination = `${delivery.customer_latitude},${delivery.customer_longitude}`;
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+  }
+  
+  // Otherwise, fall back to address-based navigation
+  if (delivery.customer_address) {
+    const destination = encodeURIComponent(delivery.customer_address);
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+  }
+  
+  return null;
+};
