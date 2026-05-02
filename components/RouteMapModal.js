@@ -38,7 +38,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
     const customerLng = delivery?.customer_longitude || delivery?.orders?.customer_longitude;
     
     if (!customerLat || !customerLng) {
-      setError('Customer location coordinates not available. Please use the address-based navigation below.');
+      setError('Customer location coordinates not available.');
       setRouteLoading(false);
       return;
     }
