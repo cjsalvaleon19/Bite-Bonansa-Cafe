@@ -96,7 +96,7 @@ export default function RiderDeliveries() {
       try {
         const { data, error } = await supabase
           .from('deliveries')
-          .select('*, orders(id, total, customer_name, customer_phone)')
+          .select('*, orders(id, order_number, total, customer_name, customer_phone, delivery_fee, items)')
           .eq('rider_id', userId)
           .order('created_at', { ascending: false });
 
@@ -139,7 +139,7 @@ export default function RiderDeliveries() {
     try {
       let query = supabase
         .from('deliveries')
-        .select('*, orders(id, total, customer_name, customer_phone)')
+        .select('*, orders(id, order_number, total, customer_name, customer_phone, delivery_fee, items)')
         .eq('rider_id', userId);
 
       if (filter === 'active') {
@@ -371,7 +371,7 @@ export default function RiderDeliveries() {
                     >
                       <div style={styles.deliveryHeader}>
                         <h3 style={styles.deliveryTitle}>
-                          Order #{delivery.order_id}
+                          {delivery.orders?.order_number || `Order #${delivery.order_id}`}
                         </h3>
                         <span
                           style={{
@@ -386,10 +386,10 @@ export default function RiderDeliveries() {
                       <div style={styles.deliveryBody}>
                         <div style={styles.deliveryInfo}>
                           <p style={styles.infoItem}>
-                            <strong>Customer:</strong> {delivery.customer_name || 'N/A'}
+                            <strong>Customer:</strong> {delivery.orders?.customer_name || delivery.customer_name || 'N/A'}
                           </p>
                           <p style={styles.infoItem}>
-                            <strong>Phone:</strong> {delivery.customer_phone || 'N/A'}
+                            <strong>Phone:</strong> {delivery.orders?.customer_phone || delivery.customer_phone || 'N/A'}
                           </p>
                           <p style={styles.infoItem}>
                             <strong>Address:</strong> {delivery.customer_address || 'N/A'}
@@ -412,8 +412,23 @@ export default function RiderDeliveries() {
                             </p>
                           )}
                           <p style={styles.infoItem}>
-                            <strong>Delivery Fee:</strong> ₱{delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
+                            <strong>Delivery Fee:</strong> ₱{delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE}
                           </p>
+                          {delivery.orders?.items && Array.isArray(delivery.orders.items) && delivery.orders.items.length > 0 && (
+                            <div style={styles.infoItem}>
+                              <strong>Items:</strong>
+                              <ul style={styles.itemsList}>
+                                {delivery.orders.items.map((item, idx) => (
+                                  <li key={idx} style={styles.itemsListItem}>
+                                    {item.quantity}x {item.name} @ ₱{item.price}
+                                  </li>
+                                ))}
+                              </ul>
+                              <p style={{ margin: '8px 0 0 0', fontWeight: 'bold' }}>
+                                Total: ₱{delivery.orders.total || 0}
+                              </p>
+                            </div>
+                          )}
                           {delivery.special_instructions && (
                             <p style={styles.infoItem}>
                               <strong>Special Instructions:</strong> {delivery.special_instructions}
@@ -694,5 +709,15 @@ const styles = {
     alignItems: 'center',
     gap: '4px',
     transition: 'color 0.3s ease',
+  },
+  itemsList: {
+    margin: '8px 0 0 0',
+    paddingLeft: '20px',
+    listStyle: 'disc',
+  },
+  itemsListItem: {
+    fontSize: '14px',
+    color: '#ccc',
+    marginBottom: '4px',
   },
 };
