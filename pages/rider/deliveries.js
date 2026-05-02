@@ -28,7 +28,7 @@ export default function RiderDeliveries() {
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deliveries, setDeliveries] = useState([]);
-  const [filter, setFilter] = useState('active'); // 'active', 'completed', 'all'
+  const [filter, setFilter] = useState('pending'); // 'pending', 'for_delivery', 'completed', 'all'
   const [updatingStatus, setUpdatingStatus] = useState(null);
   const [showRouteModal, setShowRouteModal] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState(null);
@@ -151,11 +151,14 @@ export default function RiderDeliveries() {
         .select('*, orders(id, order_number, total, customer_name, customer_phone, delivery_fee, items)')
         .eq('rider_id', userId);
 
-      if (filter === 'active') {
-        query = query.in('status', ['pending', 'in_progress']);
+      if (filter === 'pending') {
+        query = query.eq('status', 'pending');
+      } else if (filter === 'for_delivery') {
+        query = query.in('status', ['accepted', 'in_progress']);
       } else if (filter === 'completed') {
         query = query.eq('status', 'completed');
       }
+      // 'all' filter doesn't add any status filter
 
       const { data, error } = await query.order('created_at', { ascending: false });
 
@@ -343,11 +346,20 @@ export default function RiderDeliveries() {
             <button
               style={{
                 ...styles.filterTab,
-                ...(filter === 'active' ? styles.filterTabActive : {}),
+                ...(filter === 'pending' ? styles.filterTabActive : {}),
               }}
-              onClick={() => setFilter('active')}
+              onClick={() => setFilter('pending')}
             >
-              🔵 Active Deliveries
+              📌 Pending Orders
+            </button>
+            <button
+              style={{
+                ...styles.filterTab,
+                ...(filter === 'for_delivery' ? styles.filterTabActive : {}),
+              }}
+              onClick={() => setFilter('for_delivery')}
+            >
+              🚚 For Delivery
             </button>
             <button
               style={{
@@ -374,7 +386,8 @@ export default function RiderDeliveries() {
               <div style={styles.emptyState}>
                 <span style={styles.emptyIcon}>📦</span>
                 <p style={styles.emptyText}>
-                  {filter === 'active' && 'No active deliveries'}
+                  {filter === 'pending' && 'No pending orders'}
+                  {filter === 'for_delivery' && 'No deliveries in progress'}
                   {filter === 'completed' && 'No completed deliveries'}
                   {filter === 'all' && 'No deliveries assigned yet'}
                 </p>
