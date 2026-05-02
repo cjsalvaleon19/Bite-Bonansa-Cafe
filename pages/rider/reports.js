@@ -174,7 +174,7 @@ export default function RiderReports() {
   const calculateTotalFees = () => {
     return completedDeliveries
       .filter((d) => selectedDeliveries.includes(d.id))
-      .reduce((sum, d) => sum + (d.orders?.delivery_fee || d.delivery_fee || DEFAULT_DELIVERY_FEE), 0);
+      .reduce((sum, d) => sum + (d.orders?.delivery_fee || 0), 0);
   };
 
   const calculateBusinessRevenue = () => {
