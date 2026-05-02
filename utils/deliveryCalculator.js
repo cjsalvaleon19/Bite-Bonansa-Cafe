@@ -65,3 +65,26 @@ export const getDistanceBetweenCoordinates = (lat1, lon1, lat2, lon2) => {
 };
 
 export const formatDistance = (meters) => meters < 1000 ? `${meters} m` : `${(meters / 1000).toFixed(2)} km`;
+
+/**
+ * Generates a Google Maps directions URL for delivery navigation
+ * @param {Object} delivery - Delivery object containing customer location data
+ * @returns {string|null} Google Maps URL or null if no navigation data available
+ */
+export const getGoogleMapsNavigationUrl = (delivery) => {
+  // If coordinates are available, use them for precise navigation
+  if (delivery.customer_latitude && delivery.customer_longitude) {
+    const origin = `${STORE_LOCATION.latitude},${STORE_LOCATION.longitude}`;
+    const destination = `${delivery.customer_latitude},${delivery.customer_longitude}`;
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+  }
+  
+  // Otherwise, fall back to address-based navigation
+  if (delivery.customer_address) {
+    const origin = encodeURIComponent(STORE_LOCATION.address);
+    const destination = encodeURIComponent(delivery.customer_address);
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+  }
+  
+  return null;
+};

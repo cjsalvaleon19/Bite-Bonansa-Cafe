@@ -8,7 +8,8 @@ export default function ReceiptModal({ delivery, onClose }) {
   
   // Calculate totals - handle case where order.total may already include delivery fee
   const deliveryFee = order.delivery_fee || delivery.delivery_fee || 0;
-  const riderDeliveryFee = deliveryFee * 0.6; // Rider receives 60% of delivery fee
+  const RIDER_FEE_PERCENTAGE = 0.6; // Rider receives 60% of delivery fee, company keeps 40%
+  const riderDeliveryFee = deliveryFee * RIDER_FEE_PERCENTAGE;
   let subtotal, total;
   
   if (order.subtotal) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { STORE_LOCATION } from '../utils/deliveryCalculator';
+import { STORE_LOCATION, getGoogleMapsNavigationUrl } from '../utils/deliveryCalculator';
 
 // Dynamically import Leaflet components to avoid SSR issues
 const MapContainer = dynamic(
@@ -201,7 +201,7 @@ export default function RouteMapModal({ delivery, onClose, onConfirm, loading })
                         Use address-based navigation below to get directions.
                       </p>
                       <a
-                        href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(STORE_LOCATION.address)}&destination=${encodeURIComponent(delivery.customer_address)}&travelmode=driving`}
+                        href={getGoogleMapsNavigationUrl(delivery)}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{

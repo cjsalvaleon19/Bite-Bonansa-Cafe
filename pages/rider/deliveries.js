@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
-import { STORE_LOCATION } from '../../utils/deliveryCalculator';
+import { STORE_LOCATION, getGoogleMapsNavigationUrl } from '../../utils/deliveryCalculator';
 import ReceiptModal from '../../components/ReceiptModal';
 
 // Dynamically import RouteMapModal to avoid SSR issues with Leaflet
@@ -14,6 +14,7 @@ const RouteMapModal = dynamic(
 );
 
 const DEFAULT_DELIVERY_FEE = 50;
+const RIDER_FEE_PERCENTAGE = 0.6; // Rider receives 60% of delivery fee, company keeps 40%
 
 // Query string for fetching deliveries with related order data
 const DELIVERIES_SELECT_QUERY = '*, orders(id, order_number, total, customer_name, customer_phone, customer_address, delivery_fee, items, customer_latitude, customer_longitude)';
@@ -305,24 +306,6 @@ export default function RiderDeliveries() {
     }
   };
 
-  const getGoogleMapsUrl = (delivery) => {
-    // If coordinates are available, use them for precise navigation
-    if (delivery.customer_latitude && delivery.customer_longitude) {
-      const origin = `${STORE_LOCATION.latitude},${STORE_LOCATION.longitude}`;
-      const destination = `${delivery.customer_latitude},${delivery.customer_longitude}`;
-      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-    }
-    
-    // Otherwise, fall back to address-based navigation
-    if (delivery.customer_address) {
-      const origin = encodeURIComponent(STORE_LOCATION.address);
-      const destination = encodeURIComponent(delivery.customer_address);
-      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-    }
-    
-    return null;
-  };
-
   const getFilteredDeliveries = () => {
     // Apply client-side filtering as defensive measure
     // Database query should already filter, but this prevents stale data from showing
@@ -439,7 +422,7 @@ export default function RiderDeliveries() {
             ) : (
               <div style={styles.deliveryList}>
                 {getFilteredDeliveries().map((delivery) => {
-                  const mapsUrl = getGoogleMapsUrl(delivery);
+                  const mapsUrl = getGoogleMapsNavigationUrl(delivery);
                   const isLocked = delivery.status === 'completed' && delivery.report_paid;
                   
                   return (
@@ -504,7 +487,7 @@ export default function RiderDeliveries() {
                                 </p>
                               )}
                               <p style={styles.infoItem}>
-                                <strong>Delivery Fee (Rider's Share):</strong> ₱{((delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE) * 0.6).toFixed(2)}
+                                <strong>Delivery Fee (Rider's Share):</strong> ₱{((delivery.orders?.delivery_fee || delivery.delivery_fee || DEFAULT_DELIVERY_FEE) * RIDER_FEE_PERCENTAGE).toFixed(2)}
                               </p>
                               {delivery.orders?.items && Array.isArray(delivery.orders.items) && delivery.orders.items.length > 0 && (
                                 <div style={styles.infoItem}>
