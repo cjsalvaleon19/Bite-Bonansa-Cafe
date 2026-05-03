@@ -56,7 +56,8 @@ export default function EndOfDayReport() {
             variant_details
           ),
           users:customer_id (
-            customer_id
+            customer_id,
+            phone
           )
         `)
         .gte('created_at', startDate.toISOString())
@@ -151,7 +152,7 @@ export default function EndOfDayReport() {
               <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
               <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
               <p><strong>Customer:</strong> ${order.customer_name || 'Walk-in'}</p>
-              <p><strong>Phone Number:</strong> ${order.customer_phone || order.contact_number || 'N/A'}</p>
+              <p><strong>Phone Number:</strong> ${(order.users && order.users.phone) || order.customer_phone || order.contact_number || 'N/A'}</p>
               ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
               ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
             </div>
@@ -165,13 +166,13 @@ export default function EndOfDayReport() {
                 const hasVariants = variants && typeof variants === 'object' && Object.keys(variants).length > 0;
                 
                 return `
-                <div class="item">
+                <div class="item" style="margin-bottom: 10px;">
                   <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
                     <span>${displayName} x${item.quantity}</span>
                     <span>₱${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
                   </div>
                   ${hasVariants 
-                    ? `<div class="variant-details" style="padding-left: 10px; margin-top: 3px;">
+                    ? `<div class="variant-details">
                         (Add Ons: ${Object.entries(variants).map(([type, value]) => `${value}`).join(', ')})
                       </div>`
                     : ''
@@ -186,7 +187,7 @@ export default function EndOfDayReport() {
                   <td><strong>Subtotal:</strong></td>
                   <td style="text-align: right;">₱${subtotal.toFixed(2)}</td>
                 </tr>
-                ${deliveryFee > 0 ? `
+                ${order.order_mode === 'delivery' ? `
                 <tr>
                   <td><strong>Delivery Fee:</strong></td>
                   <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
@@ -322,7 +323,7 @@ export default function EndOfDayReport() {
             <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
             <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
             <p><strong>Customer:</strong> ${order.customer_name || 'Walk-in'}</p>
-            <p><strong>Phone Number:</strong> ${order.customer_phone || order.contact_number || 'N/A'}</p>
+            <p><strong>Phone Number:</strong> ${(order.users && order.users.phone) || order.customer_phone || order.contact_number || 'N/A'}</p>
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
           </div>
@@ -342,7 +343,7 @@ export default function EndOfDayReport() {
                   <span>₱${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
                 </div>
                 ${hasVariants 
-                  ? `<div class="variant-details" style="padding-left: 10px; margin-top: 3px;">
+                  ? `<div class="variant-details">
                       (Add Ons: ${Object.entries(variants).map(([type, value]) => `${value}`).join(', ')})
                     </div>`
                   : ''
@@ -357,7 +358,7 @@ export default function EndOfDayReport() {
                 <td><strong>Subtotal:</strong></td>
                 <td style="text-align: right;">₱${subtotal.toFixed(2)}</td>
               </tr>
-              ${deliveryFee > 0 ? `
+              ${order.order_mode === 'delivery' ? `
               <tr>
                 <td><strong>Delivery Fee:</strong></td>
                 <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
