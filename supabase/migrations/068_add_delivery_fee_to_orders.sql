@@ -24,11 +24,11 @@ CREATE INDEX IF NOT EXISTS idx_orders_delivery_fee ON orders(delivery_fee) WHERE
 
 -- Backfill delivery_fee for existing delivery orders
 -- Set ₱30 as the base delivery fee (60% of ₱30 = ₱18 billable fee as expected)
--- Only update NULL values to preserve any explicit 0 values (e.g., promotional free deliveries)
 UPDATE orders
 SET delivery_fee = 30
 WHERE order_mode = 'delivery'
-  AND delivery_fee IS NULL;
+  AND (delivery_fee IS NULL OR delivery_fee = 0)
+  AND status IN ('out_for_delivery', 'completed', 'cancelled');
 
 -- Log the number of records updated
 DO $$
