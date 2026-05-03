@@ -281,7 +281,8 @@ export default function CustomerReviews() {
         review_text: form.review_text.trim(),
         star_rating: parseInt(form.star_rating),
         image_urls: imageUrls.length > 0 ? imageUrls : null,
-        status: 'pending'
+        status: 'published', // Auto-publish reviews instead of pending
+        published_at: new Date().toISOString() // Set published timestamp
       };
 
       if (editingReview) {
@@ -358,8 +359,8 @@ export default function CustomerReviews() {
 
   const getStatusInfo = (status) => {
     const statusMap = {
-      'pending': { label: 'Pending Review', color: '#ffc107', icon: '⏳' },
-      'published': { label: 'Published', color: '#4caf50', icon: '✓' },
+      'pending': { label: 'Posted', color: '#4caf50', icon: '✓' }, // Changed from 'Pending Review' to 'Posted'
+      'published': { label: 'Posted', color: '#4caf50', icon: '✓' }, // Show 'Posted' for published too
       'archived': { label: 'Archived', color: '#999', icon: '📦' }
     };
     return statusMap[status] || { label: status, color: '#999', icon: '?' };
@@ -375,6 +376,14 @@ export default function CustomerReviews() {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const canEditReview = (review) => {
+    if (!review.created_at) return false;
+    const createdDate = new Date(review.created_at);
+    const now = new Date();
+    const daysDiff = (now - createdDate) / (1000 * 60 * 60 * 24);
+    return daysDiff <= 7; // Can edit within 7 days
   };
 
   if (loading) {
@@ -423,6 +432,7 @@ export default function CustomerReviews() {
             <div style={styles.reviewsGrid}>
               {reviews.map(review => {
                 const statusInfo = getStatusInfo(review.status);
+                const canEdit = canEditReview(review);
                 return (
                   <div key={review.id} style={styles.reviewCard}>
                     <div style={styles.reviewHeader}>
@@ -461,12 +471,18 @@ export default function CustomerReviews() {
                     )}
 
                     <div style={styles.reviewActions}>
-                      <button
-                        style={styles.editBtn}
-                        onClick={() => handleOpenEditModal(review)}
-                      >
-                        ✏️ Edit
-                      </button>
+                      {canEdit ? (
+                        <button
+                          style={styles.editBtn}
+                          onClick={() => handleOpenEditModal(review)}
+                        >
+                          ✏️ Edit
+                        </button>
+                      ) : (
+                        <p style={styles.editDisabledText}>
+                          Edit window expired (7 days from creation)
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
@@ -571,12 +587,6 @@ export default function CustomerReviews() {
               {formError && (
                 <div style={styles.errorMessage}>{formError}</div>
               )}
-
-              <div style={styles.infoBox}>
-                <p style={styles.infoText}>
-                  📢 Your review will be submitted to the admin for approval before it's published on our website.
-                </p>
-              </div>
 
               <div style={styles.modalActions}>
                 <button
@@ -987,5 +997,12 @@ const styles = {
     fontWeight: 'bold',
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
+  },
+  editDisabledText: {
+    fontSize: '12px',
+    color: '#999',
+    fontStyle: 'italic',
+    margin: 0,
+    padding: '8px',
   },
 };
