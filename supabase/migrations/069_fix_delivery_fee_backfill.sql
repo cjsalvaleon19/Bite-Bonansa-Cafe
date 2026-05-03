@@ -8,16 +8,15 @@
 -- Backfill delivery_fee for ALL delivery orders that are missing it
 -- Set ₱30 as the base delivery fee (60% of ₱30 = ₱18 billable fee as expected)
 -- Only update NULL values to preserve any explicit 0 values (e.g., promotional free deliveries)
-UPDATE orders
-SET delivery_fee = 30
-WHERE order_mode = 'delivery'
-  AND delivery_fee IS NULL;
-
--- Log the number of records updated
 DO $$
 DECLARE
   updated_count INTEGER;
 BEGIN
+  UPDATE orders
+  SET delivery_fee = 30
+  WHERE order_mode = 'delivery'
+    AND delivery_fee IS NULL;
+  
   GET DIAGNOSTICS updated_count = ROW_COUNT;
   RAISE NOTICE 'Backfilled delivery_fee for % additional delivery orders', updated_count;
 END $$;
