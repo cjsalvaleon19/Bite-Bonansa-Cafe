@@ -232,7 +232,8 @@ export default function CashierDashboard() {
             variant_details
           ),
           users:customer_id (
-            customer_id
+            customer_id,
+            phone
           )
         `)
         .in('order_mode', ['delivery', 'pick-up'])
@@ -341,7 +342,7 @@ export default function CashierDashboard() {
           .join(', ');
         variantDetailsHtml = `
           <tr>
-            <td colspan="3" style="padding: 2px 0 8px 15px; font-size: 10px; color: #666;">
+            <td colspan="3" style="padding: 2px 0 8px 0; font-size: 10px; color: #666;">
               (Add Ons: ${variantValues})
             </td>
           </tr>
@@ -435,9 +436,9 @@ export default function CashierDashboard() {
           <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
           <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
           ${order.customer_name ? `<p><strong>Customer:</strong> ${order.customer_name}</p>` : ''}
+          <p><strong>Phone Number:</strong> ${(order.users && order.users.phone) || order.customer_phone || order.contact_number || 'N/A'}</p>
           ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
           ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
-          ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
         </div>
 
         <div class="section">
@@ -483,7 +484,6 @@ export default function CashierDashboard() {
               <td style="padding: 4px 0; border-top: 1px solid #000;"><strong>Net Amount:</strong></td>
               <td style="text-align: right; border-top: 1px solid #000;">₱${netAmount.toFixed(2)}</td>
             </tr>
-            ${amountTendered > 0 ? `
             <tr>
               <td style="padding: 4px 0;"><strong>Cash Tendered:</strong></td>
               <td style="text-align: right;">₱${amountTendered.toFixed(2)}</td>
@@ -492,7 +492,6 @@ export default function CashierDashboard() {
               <td style="padding: 4px 0;"><strong>Change:</strong></td>
               <td style="text-align: right;">₱${change.toFixed(2)}</td>
             </tr>
-            ` : ''}
             <tr>
               <td style="padding: 8px 0 4px 0; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
               <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
@@ -501,12 +500,22 @@ export default function CashierDashboard() {
         </div>
         ` : ''}
 
-        ${order.special_request ? `
-        <div class="section">
-          <p class="section-title">SPECIAL INSTRUCTIONS</p>
-          <p style="font-size: 12px;">${order.special_request}</p>
-        </div>
-        ` : ''}
+        ${(() => {
+          // Extract only customer order notes from special_request
+          // Remove GCash reference number and proof URL
+          let orderNotes = order.special_request || '';
+          if (orderNotes) {
+            // Split by | delimiter and take only the first part (customer notes)
+            orderNotes = orderNotes.split('|')[0].trim();
+          }
+          
+          return orderNotes ? `
+          <div class="section">
+            <p class="section-title">SPECIAL INSTRUCTIONS</p>
+            <p style="font-size: 12px;">${orderNotes}</p>
+          </div>
+          ` : '';
+        })()}
 
         <div class="footer">
           <p>Thank you for your order, Biter!</p>
