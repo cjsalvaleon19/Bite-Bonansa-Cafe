@@ -158,6 +158,37 @@ export default function OrdersQueue() {
     }
   };
 
+  const handleItemUnserve = async (orderId, itemId) => {
+    if (!supabase) return;
+
+    try {
+      // Mark the item as not served
+      const { error } = await supabase
+        .from('order_items')
+        .update({ served: false })
+        .eq('id', itemId);
+
+      if (error) throw error;
+
+      // Revert order status back to 'order_in_process' if it was completed
+      const { error: updateOrderError } = await supabase
+        .from('orders')
+        .update({
+          status: 'order_in_process',
+          completed_at: null
+        })
+        .eq('id', orderId)
+        .in('status', ['completed', 'order_delivered']);
+
+      if (updateOrderError) throw updateOrderError;
+
+      fetchOrders();
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to unserve item:', err?.message ?? err);
+      alert('Failed to update item status. Please try again.');
+    }
+  };
+
   // Helper function to fetch riders from users table
   // Used as fallback when riders table has no records or on error
   const fetchRidersFromUsersTable = async () => {
@@ -637,12 +668,13 @@ export default function OrdersQueue() {
                   <div style={styles.itemsList}>
                     {/* Display order_items if available, otherwise fall back to items array */}
                     {(order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [])
-                      .filter(item => !item.served) // Only show unserved items
                       .map((item, index) => (
-                      <div key={item.id || index} style={styles.itemRow}>
+                      <div key={item.id || index} style={item.served ? styles.itemRowServed : styles.itemRow}>
                         <div style={styles.itemInfo}>
                           <div style={styles.itemNameContainer}>
-                            <span style={styles.itemName}>{item.name}</span>
+                            <span style={item.served ? styles.itemNameServed : styles.itemName}>
+                              {item.served && '✓ '}{item.name}
+                            </span>
                             {/* Display variant details if available */}
                             {((item.variant_details && Object.keys(item.variant_details).length > 0) ||
                               (item.variantDetails && Object.keys(item.variantDetails).length > 0)) && (
@@ -659,14 +691,24 @@ export default function OrdersQueue() {
                           <span style={styles.itemPrice}>
                             ₱{((item.price || 0) * (item.quantity || 0)).toFixed(2)}
                           </span>
-                          {/* Show Served button for dine-in and take-out orders */}
+                          {/* Show Served/Unserve button for dine-in and take-out orders */}
                           {(order.order_mode === 'dine-in' || order.order_mode === 'take-out') && item.id && (
-                            <button
-                              style={styles.itemServedBtn}
-                              onClick={() => handleItemServed(order.id, item.id)}
-                            >
-                              ✓ Served
-                            </button>
+                            item.served ? (
+                              <button
+                                style={styles.itemUnserveBtn}
+                                onClick={() => handleItemUnserve(order.id, item.id)}
+                                title="Mark as not served"
+                              >
+                                ↩ Unserve
+                              </button>
+                            ) : (
+                              <button
+                                style={styles.itemServedBtn}
+                                onClick={() => handleItemServed(order.id, item.id)}
+                              >
+                                ✓ Served
+                              </button>
+                            )
                           )}
                         </div>
                       </div>
@@ -1020,6 +1062,30 @@ const styles = {
     fontWeight: '600',
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
+  },
+  itemUnserveBtn: {
+    padding: '4px 12px',
+    backgroundColor: '#ff9800',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  itemRowServed: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 0',
+    borderBottom: '1px solid #2a2a2a',
+    opacity: 0.6,
+  },
+  itemNameServed: {
+    fontSize: '14px',
+    color: '#4caf50',
+    textDecoration: 'line-through',
   },
   removeItemBtn: {
     padding: '4px 8px',
