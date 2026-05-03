@@ -229,6 +229,10 @@ function CustomerOrderPage() {
   }, [cart])
 
   // Handle pendingCartItem from dashboard variant selection
+  // This processes items added to cart from the dashboard after variant selection.
+  // The delay ensures the cart has been restored from localStorage (see line 212-220)
+  // before we attempt to add the pending item, preventing race conditions where
+  // the pending item might be processed before the saved cart is loaded.
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       try {
