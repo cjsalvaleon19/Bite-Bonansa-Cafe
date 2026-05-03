@@ -8,14 +8,20 @@
 
 -- Update all delivery orders that have delivery_fee = 0 to the base fee of ₱30
 -- This complements migration 069 which only handled NULL values
+-- Note: This assumes 0 values are from the DEFAULT 0 when the column was added,
+-- not intentional promotional free deliveries. If you have promotional free deliveries,
+-- they should be marked differently (e.g., with a promo_code field)
 DO $$
 DECLARE
   updated_count INTEGER;
 BEGIN
+  -- Only update orders created before this migration runs
+  -- This ensures we don't accidentally overwrite intentional 0 fees in the future
   UPDATE orders
   SET delivery_fee = 30
   WHERE order_mode = 'delivery'
-    AND delivery_fee = 0;
+    AND delivery_fee = 0
+    AND created_at < NOW();
   
   GET DIAGNOSTICS updated_count = ROW_COUNT;
   RAISE NOTICE 'Updated % delivery orders from 0 to base delivery_fee of 30', updated_count;
