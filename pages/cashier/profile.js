@@ -47,7 +47,7 @@ export default function CashierProfile() {
 
       const { data: userData, error } = await supabase
         .from('users')
-        .select('full_name, phone, cashier_id')
+        .select('full_name, phone')
         .eq('id', session.user.id)
         .maybeSingle();
 
@@ -55,7 +55,7 @@ export default function CashierProfile() {
 
       setProfile({
         full_name: userData?.full_name || '',
-        cashier_id: userData?.cashier_id || '',
+        cashier_id: '', // Not stored in database, just for display
         contact_number: userData?.phone || '',
       });
     } catch (err) {
@@ -77,7 +77,6 @@ export default function CashierProfile() {
         .update({
           full_name: profile.full_name,
           phone: profile.contact_number,
-          cashier_id: profile.cashier_id,
         })
         .eq('id', user.id);
 
