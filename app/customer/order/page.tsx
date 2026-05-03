@@ -528,6 +528,12 @@ function CustomerOrderPage() {
   const earnedPoints = calcEarnedPoints(subtotal)
 
   const handlePlaceOrder = async () => {
+    // Check if delivery is disabled but user is trying to order with delivery
+    if (orderType === 'delivery' && !deliveryEnabled) {
+      toast.error('Delivery is currently unavailable. Please select pick-up for your order.')
+      return
+    }
+    
     if (orderType === 'delivery' && !deliveryAddress.trim()) {
       toast.error('Please enter a delivery address')
       return
