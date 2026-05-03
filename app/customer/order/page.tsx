@@ -228,6 +228,27 @@ function CustomerOrderPage() {
     }
   }, [cart])
 
+  // Handle pendingCartItem from dashboard variant selection
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      try {
+        const pendingItem = localStorage.getItem('pendingCartItem')
+        if (pendingItem) {
+          const itemData = JSON.parse(pendingItem)
+          // Clear the pending item immediately
+          localStorage.removeItem('pendingCartItem')
+          // Add to cart using the variant confirm handler
+          handleVariantConfirm(itemData)
+        }
+      } catch (error) {
+        console.error('Failed to process pending cart item:', error)
+        localStorage.removeItem('pendingCartItem')
+      }
+    }, CART_LOAD_DELAY_MS)
+    
+    return () => clearTimeout(timeoutId)
+  }, [handleVariantConfirm])
+
   useEffect(() => {
     async function loadMenu() {
       const [{ data: items }, { data: cats }] = await Promise.all([
