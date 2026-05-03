@@ -225,7 +225,7 @@ export default function EndOfDayReport() {
             </div>
             
             ${(() => {
-              // Extract only customer order notes from special_instructions
+              // Extract only customer order notes from special_request
               // Remove GCash reference number and proof URL
               let orderNotes = order.special_instructions || order.special_request || '';
               if (orderNotes) {
@@ -396,7 +396,7 @@ export default function EndOfDayReport() {
           </div>
           
           ${(() => {
-            // Extract only customer order notes from special_instructions
+            // Extract only customer order notes from special_request
             // Remove GCash reference number and proof URL
             let orderNotes = order.special_instructions || order.special_request || '';
             if (orderNotes) {
