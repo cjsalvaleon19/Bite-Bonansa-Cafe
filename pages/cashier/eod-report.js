@@ -56,7 +56,8 @@ export default function EndOfDayReport() {
             variant_details
           ),
           users:customer_id (
-            customer_id
+            customer_id,
+            phone
           )
         `)
         .gte('created_at', startDate.toISOString())
@@ -151,29 +152,33 @@ export default function EndOfDayReport() {
               <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
               <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
               <p><strong>Customer:</strong> ${order.customer_name || 'Walk-in'}</p>
+              <p><strong>Phone Number:</strong> ${(order.users && order.users.phone) || order.customer_phone || order.contact_number || 'N/A'}</p>
               ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
               ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
-              ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
             </div>
             
             <p class="section-title">ITEMS ORDERED</p>
             <div class="items">
-              ${orderItems.map(item => `
-                <div class="item">
-                  <span>
-                    ${item.name} x${item.quantity}
-                    ${item.variant_details && Object.keys(item.variant_details).length > 0 
-                      ? `<br><small class="variant-details">
-                          (${Object.entries(item.variant_details).map(([type, value]) => 
-                            `${type}: ${value}`
-                          ).join(', ')})
-                        </small>`
-                      : ''
-                    }
-                  </span>
-                  <span>₱${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+              ${orderItems.map(item => {
+                // Strip variant details from name (for legacy data)
+                const displayName = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+                const variants = item.variant_details;
+                const hasVariants = variants && typeof variants === 'object' && Object.keys(variants).length > 0;
+                
+                return `
+                <div class="item" style="margin-bottom: 10px;">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+                    <span>${displayName} x${item.quantity}</span>
+                    <span>₱${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+                  </div>
+                  ${hasVariants 
+                    ? `<div class="variant-details">
+                        (Add Ons: ${Object.entries(variants).map(([type, value]) => `${value}`).join(', ')})
+                      </div>`
+                    : ''
+                  }
                 </div>
-              `).join('')}
+              `}).join('')}
             </div>
             
             <div class="footer">
@@ -182,7 +187,7 @@ export default function EndOfDayReport() {
                   <td><strong>Subtotal:</strong></td>
                   <td style="text-align: right;">₱${subtotal.toFixed(2)}</td>
                 </tr>
-                ${deliveryFee > 0 ? `
+                ${order.order_mode === 'delivery' ? `
                 <tr>
                   <td><strong>Delivery Fee:</strong></td>
                   <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
@@ -219,12 +224,22 @@ export default function EndOfDayReport() {
               </table>
             </div>
             
-            ${order.special_request ? `
-            <div style="margin-top: 15px;">
-              <p class="section-title">SPECIAL INSTRUCTIONS</p>
-              <p style="font-size: 11px;">${order.special_request}</p>
-            </div>
-            ` : ''}
+            ${(() => {
+              // Extract only customer order notes from special_request
+              // Remove GCash reference number and proof URL
+              let orderNotes = order.special_instructions || order.special_request || '';
+              if (orderNotes) {
+                // Split by | delimiter and take only the first part (customer notes)
+                orderNotes = orderNotes.split('|')[0].trim();
+              }
+              
+              return orderNotes ? `
+              <div style="margin-top: 15px;">
+                <p class="section-title">SPECIAL INSTRUCTIONS</p>
+                <p style="font-size: 11px;">${orderNotes}</p>
+              </div>
+              ` : '';
+            })()}
             
             <div style="text-align: center; margin-top: 20px;">
               <p>Thank you for your order, Biter!</p>
@@ -308,29 +323,33 @@ export default function EndOfDayReport() {
             <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
             <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
             <p><strong>Customer:</strong> ${order.customer_name || 'Walk-in'}</p>
+            <p><strong>Phone Number:</strong> ${(order.users && order.users.phone) || order.customer_phone || order.contact_number || 'N/A'}</p>
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
-            ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
           </div>
           
           <p class="section-title">ITEMS ORDERED</p>
           <div class="items">
-            ${orderItems.map(item => `
-              <div class="item">
-                <span>
-                  ${item.name} x${item.quantity}
-                  ${item.variant_details && Object.keys(item.variant_details).length > 0 
-                    ? `<br><small class="variant-details">
-                        (${Object.entries(item.variant_details).map(([type, value]) => 
-                          `${type}: ${value}`
-                        ).join(', ')})
-                      </small>`
-                    : ''
-                  }
-                </span>
-                <span>₱${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+            ${orderItems.map(item => {
+              // Strip variant details from name (for legacy data)
+              const displayName = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+              const variants = item.variant_details;
+              const hasVariants = variants && typeof variants === 'object' && Object.keys(variants).length > 0;
+              
+              return `
+              <div class="item" style="margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+                  <span>${displayName} x${item.quantity}</span>
+                  <span>₱${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+                </div>
+                ${hasVariants 
+                  ? `<div class="variant-details">
+                      (Add Ons: ${Object.entries(variants).map(([type, value]) => `${value}`).join(', ')})
+                    </div>`
+                  : ''
+                }
               </div>
-            `).join('')}
+            `}).join('')}
           </div>
           
           <div class="footer">
@@ -339,7 +358,7 @@ export default function EndOfDayReport() {
                 <td><strong>Subtotal:</strong></td>
                 <td style="text-align: right;">₱${subtotal.toFixed(2)}</td>
               </tr>
-              ${deliveryFee > 0 ? `
+              ${order.order_mode === 'delivery' ? `
               <tr>
                 <td><strong>Delivery Fee:</strong></td>
                 <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
@@ -376,12 +395,22 @@ export default function EndOfDayReport() {
             </table>
           </div>
           
-          ${order.special_request ? `
-          <div style="margin-top: 15px;">
-            <p class="section-title">SPECIAL INSTRUCTIONS</p>
-            <p style="font-size: 11px;">${order.special_request}</p>
-          </div>
-          ` : ''}
+          ${(() => {
+            // Extract only customer order notes from special_request
+            // Remove GCash reference number and proof URL
+            let orderNotes = order.special_instructions || order.special_request || '';
+            if (orderNotes) {
+              // Split by | delimiter and take only the first part (customer notes)
+              orderNotes = orderNotes.split('|')[0].trim();
+            }
+            
+            return orderNotes ? `
+            <div style="margin-top: 15px;">
+              <p class="section-title">SPECIAL INSTRUCTIONS</p>
+              <p style="font-size: 11px;">${orderNotes}</p>
+            </div>
+            ` : '';
+          })()}
           
           <div style="text-align: center; margin-top: 20px;">
             <p>Thank you for your order, Biter!</p>

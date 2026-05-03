@@ -96,6 +96,8 @@ export default function CashierSettings() {
           setting_key: 'delivery_enabled',
           setting_value: newValue.toString(),
           description: 'Whether delivery orders are currently accepted',
+        }, {
+          onConflict: 'setting_key'
         });
 
       if (error) throw error;

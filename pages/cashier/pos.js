@@ -543,7 +543,7 @@ export default function CashierPOS() {
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
             .item { display: flex; justify-content: space-between; margin: 5px 0; }
-            .variant-details { font-size: 10px; color: #666; padding-left: 15px; margin-top: 2px; }
+            .variant-details { font-size: 10px; color: #666; margin-top: 2px; }
             .footer { border-top: 2px dashed #000; padding-top: 10px; margin-top: 20px; }
             .total { font-weight: bold; font-size: 14px; }
             table { width: 100%; }
@@ -563,9 +563,9 @@ export default function CashierPOS() {
             <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
             <p><strong>Order Type:</strong> ${order.order_mode}</p>
             <p><strong>Customer:</strong> ${order.customer_name}</p>
+            <p><strong>Phone Number:</strong> ${order.customer_phone || order.contact_number || 'N/A'}</p>
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
-            ${order.contact_number ? `<p><strong>Contact Number:</strong> ${order.contact_number}</p>` : ''}
           </div>
           
           <p class="section-title">ITEMS ORDERED</p>
@@ -618,7 +618,6 @@ export default function CashierPOS() {
                 <td style="padding-top: 5px; border-top: 1px solid #000;"><strong>Net Amount:</strong></td>
                 <td style="text-align: right; padding-top: 5px; border-top: 1px solid #000;">₱${netAmount.toFixed(2)}</td>
               </tr>
-              ${amountTendered > 0 ? `
               <tr>
                 <td><strong>Cash Tendered:</strong></td>
                 <td style="text-align: right;">₱${amountTendered.toFixed(2)}</td>
@@ -627,7 +626,6 @@ export default function CashierPOS() {
                 <td><strong>Change:</strong></td>
                 <td style="text-align: right;">₱${change.toFixed(2)}</td>
               </tr>
-              ` : ''}
               <tr>
                 <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
                 <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
@@ -635,12 +633,22 @@ export default function CashierPOS() {
             </table>
           </div>
           
-          ${order.special_request ? `
-          <div style="margin-top: 15px;">
-            <p class="section-title">SPECIAL INSTRUCTIONS</p>
-            <p style="font-size: 11px;">${order.special_request}</p>
-          </div>
-          ` : ''}
+          ${(() => {
+            // Extract only customer order notes from special_request
+            // Remove GCash reference number and proof URL
+            let orderNotes = order.special_request || '';
+            if (orderNotes) {
+              // Split by | delimiter and take only the first part (customer notes)
+              orderNotes = orderNotes.split('|')[0].trim();
+            }
+            
+            return orderNotes ? `
+            <div style="margin-top: 15px;">
+              <p class="section-title">SPECIAL INSTRUCTIONS</p>
+              <p style="font-size: 11px;">${orderNotes}</p>
+            </div>
+            ` : '';
+          })()}
           
           <div style="text-align: center; margin-top: 20px;">
             <p>Thank you for your order, Biter!</p>
