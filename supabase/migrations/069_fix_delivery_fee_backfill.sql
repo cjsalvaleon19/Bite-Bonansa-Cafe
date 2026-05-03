@@ -26,7 +26,8 @@ DO $$
 DECLARE
   delivery_orders_count INTEGER;
   orders_with_fee_count INTEGER;
-  orders_without_fee_count INTEGER;
+  orders_with_zero_fee_count INTEGER;
+  orders_with_null_fee_count INTEGER;
 BEGIN
   SELECT COUNT(*) INTO delivery_orders_count
   FROM orders
@@ -34,13 +35,18 @@ BEGIN
   
   SELECT COUNT(*) INTO orders_with_fee_count
   FROM orders
-  WHERE order_mode = 'delivery' AND delivery_fee > 0;
+  WHERE order_mode = 'delivery' AND delivery_fee IS NOT NULL;
   
-  SELECT COUNT(*) INTO orders_without_fee_count
+  SELECT COUNT(*) INTO orders_with_zero_fee_count
   FROM orders
-  WHERE order_mode = 'delivery' AND (delivery_fee IS NULL OR delivery_fee = 0);
+  WHERE order_mode = 'delivery' AND delivery_fee = 0;
+  
+  SELECT COUNT(*) INTO orders_with_null_fee_count
+  FROM orders
+  WHERE order_mode = 'delivery' AND delivery_fee IS NULL;
   
   RAISE NOTICE 'Total delivery orders: %', delivery_orders_count;
-  RAISE NOTICE 'Orders with delivery_fee > 0: %', orders_with_fee_count;
-  RAISE NOTICE 'Orders with NULL or 0 delivery_fee: %', orders_without_fee_count;
+  RAISE NOTICE 'Orders with delivery_fee set (including 0): %', orders_with_fee_count;
+  RAISE NOTICE 'Orders with 0 delivery_fee: %', orders_with_zero_fee_count;
+  RAISE NOTICE 'Orders with NULL delivery_fee (should be 0 after backfill): %', orders_with_null_fee_count;
 END $$;
