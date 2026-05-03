@@ -461,7 +461,7 @@ export default function RiderReports() {
                     <div key={report.id} style={styles.reportCard}>
                       <div style={styles.reportHeader}>
                         <h3 style={styles.reportTitle}>
-                          Report #{report.id.substring(0, 8)}
+                          {report.bill_number ? `Bill #${report.bill_number}` : `Report #${report.id.substring(0, 8)}`}
                         </h3>
                         <span
                           style={{
@@ -473,6 +473,11 @@ export default function RiderReports() {
                         </span>
                       </div>
                       <div style={styles.reportBody}>
+                        {report.bill_number && (
+                          <p style={styles.reportDetail}>
+                            <strong>Bill Number:</strong> {report.bill_number}
+                          </p>
+                        )}
                         <p style={styles.reportDetail}>
                           <strong>Submitted:</strong> {new Date(report.submitted_at).toLocaleString()}
                         </p>
@@ -521,7 +526,7 @@ export default function RiderReports() {
             <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
               <div style={styles.modalHeader}>
                 <h2 style={styles.modalTitle}>
-                  Report #{viewingReport.id.substring(0, 8)} - Delivery List
+                  {viewingReport.bill_number ? `Bill #${viewingReport.bill_number}` : `Report #${viewingReport.id.substring(0, 8)}`} - Delivery List
                 </h2>
                 <button style={styles.modalCloseBtn} onClick={closeReportModal}>
                   ✕
@@ -529,6 +534,11 @@ export default function RiderReports() {
               </div>
               <div style={styles.modalBody}>
                 <div style={styles.modalSummary}>
+                  {viewingReport.bill_number && (
+                    <p style={styles.modalSummaryItem}>
+                      <strong>Bill Number:</strong> {viewingReport.bill_number}
+                    </p>
+                  )}
                   <p style={styles.modalSummaryItem}>
                     <strong>Total Deliveries:</strong> {viewingReport.total_deliveries || 0}
                   </p>

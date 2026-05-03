@@ -12,6 +12,7 @@ export default function OrderTracking() {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState(null);
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'completed'
 
   useEffect(() => {
     let mounted = true;
@@ -228,6 +229,22 @@ export default function OrderTracking() {
     return 'Not specified';
   };
 
+  const getFilteredOrders = () => {
+    if (activeTab === 'pending') {
+      // Pending orders: not yet delivered or completed
+      return orders.filter(order => {
+        const status = order.status?.toLowerCase();
+        return status !== 'order_delivered' && status !== 'delivered' && status !== 'completed' && status !== 'cancelled';
+      });
+    } else {
+      // Completed orders: delivered or completed
+      return orders.filter(order => {
+        const status = order.status?.toLowerCase();
+        return status === 'order_delivered' || status === 'delivered' || status === 'completed';
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div style={styles.center}>
@@ -257,6 +274,28 @@ export default function OrderTracking() {
         </header>
 
         <main style={styles.main}>
+          {/* Tabs */}
+          <div style={styles.tabsContainer}>
+            <button
+              style={{
+                ...styles.tab,
+                ...(activeTab === 'pending' ? styles.activeTab : {})
+              }}
+              onClick={() => setActiveTab('pending')}
+            >
+              📋 Pending Orders
+            </button>
+            <button
+              style={{
+                ...styles.tab,
+                ...(activeTab === 'completed' ? styles.activeTab : {})
+              }}
+              onClick={() => setActiveTab('completed')}
+            >
+              ✅ Completed Orders
+            </button>
+          </div>
+
           {loadingOrders && (
             <p style={styles.loadingText}>Loading orders...</p>
           )}
@@ -277,9 +316,23 @@ export default function OrderTracking() {
             </div>
           )}
 
-          {!loadingOrders && orders.length > 0 && (
+          {!loadingOrders && orders.length > 0 && getFilteredOrders().length === 0 && (
+            <div style={styles.emptyState}>
+              <span style={styles.emptyIcon}>📦</span>
+              <p style={styles.emptyText}>
+                {activeTab === 'pending' ? 'No pending orders' : 'No completed orders'}
+              </p>
+              <p style={styles.emptySubtext}>
+                {activeTab === 'pending' 
+                  ? 'Your active orders will appear here' 
+                  : 'Your order history will appear here'}
+              </p>
+            </div>
+          )}
+
+          {!loadingOrders && getFilteredOrders().length > 0 && (
             <div style={styles.ordersList}>
-              {orders.map(order => {
+              {getFilteredOrders().map(order => {
                 const progressSteps = getProgressSteps(order.status, order.order_mode);
                 const isExpanded = expandedOrderId === order.id;
                 const orderNumber = order.order_number || order.id?.slice(0, 8);
@@ -720,5 +773,29 @@ const styles = {
     fontSize: '14px',
     color: '#ffc107',
     fontWeight: '600',
+  },
+  tabsContainer: {
+    display: 'flex',
+    gap: '12px',
+    marginBottom: '24px',
+    borderBottom: '2px solid #2a2a2a',
+  },
+  tab: {
+    flex: 1,
+    padding: '14px 20px',
+    backgroundColor: 'transparent',
+    color: '#999',
+    border: 'none',
+    borderBottom: '3px solid transparent',
+    fontSize: '15px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.3s',
+    outline: 'none',
+  },
+  activeTab: {
+    color: '#ffc107',
+    borderBottom: '3px solid #ffc107',
   },
 };

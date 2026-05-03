@@ -75,15 +75,13 @@ export const RIDER_FEE_PERCENTAGE = 0.6;
 
 /**
  * Generates a Google Maps directions URL for delivery navigation
- * Uses the official Bite Bonansa Google Maps place as the starting point
+ * Uses the Bite Bonansa store address as the starting point
  * @param {Object} delivery - Delivery object containing customer location data
  * @returns {string|null} Google Maps URL or null if no navigation data available
  */
 export const getGoogleMapsNavigationUrl = (delivery) => {
-  // Use the official Google Maps Place ID for Bite Bonansa as origin
-  const origin = STORE_LOCATION.placeId 
-    ? `place_id:${STORE_LOCATION.placeId}`
-    : `${STORE_LOCATION.latitude},${STORE_LOCATION.longitude}`;
+  // Use the full store address as origin for better Google Maps compatibility
+  const origin = encodeURIComponent('Bite Bonansa, Laconon-Salacafe Rd, Brgy. Poblacion, T\'boli, South Cotabato');
   
   // If coordinates are available, use them for precise navigation
   if (delivery.customer_latitude && delivery.customer_longitude) {
