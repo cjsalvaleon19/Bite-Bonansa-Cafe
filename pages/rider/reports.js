@@ -23,6 +23,50 @@ export default function RiderReports() {
   const [viewingReport, setViewingReport] = useState(null);
   const [reportDeliveries, setReportDeliveries] = useState([]);
 
+  const fetchCompletedDeliveries = async (userId) => {
+    if (!supabase) return;
+
+    try {
+      // Fetch all completed deliveries that haven't been submitted (no date filter for carry-over)
+      const { data, error } = await supabase
+        .from('deliveries')
+        .select('*, orders(id, order_number, total, delivery_fee)')
+        .eq('rider_id', userId)
+        .eq('status', 'completed')
+        .or('report_submitted.is.null,report_submitted.eq.false')
+        .order('completed_at', { ascending: false });
+
+      if (error) {
+        console.error('[RiderReports] Failed to fetch deliveries:', error.message);
+      } else {
+        setCompletedDeliveries(data || []);
+      }
+    } catch (err) {
+      console.error('[RiderReports] Failed to fetch deliveries:', err?.message ?? err);
+    }
+  };
+
+  const fetchSubmittedReports = async (userId) => {
+    if (!supabase) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('delivery_reports')
+        .select('*')
+        .eq('rider_id', userId)
+        .order('submitted_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('[RiderReports] Failed to fetch submitted reports:', error.message);
+      } else {
+        setSubmittedReports(data || []);
+      }
+    } catch (err) {
+      console.error('[RiderReports] Failed to fetch submitted reports:', err?.message ?? err);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -87,50 +131,6 @@ export default function RiderReports() {
           setLoading(false);
           router.replace('/login').catch(console.error);
         }
-      }
-    }
-
-    async function fetchCompletedDeliveries(userId) {
-      if (!supabase) return;
-
-      try {
-        // Fetch all completed deliveries that haven't been submitted (no date filter for carry-over)
-        const { data, error } = await supabase
-          .from('deliveries')
-          .select('*, orders(id, order_number, total, delivery_fee)')
-          .eq('rider_id', userId)
-          .eq('status', 'completed')
-          .or('report_submitted.is.null,report_submitted.eq.false')
-          .order('completed_at', { ascending: false });
-
-        if (error) {
-          console.error('[RiderReports] Failed to fetch deliveries:', error.message);
-        } else {
-          setCompletedDeliveries(data || []);
-        }
-      } catch (err) {
-        console.error('[RiderReports] Failed to fetch deliveries:', err?.message ?? err);
-      }
-    }
-
-    async function fetchSubmittedReports(userId) {
-      if (!supabase) return;
-
-      try {
-        const { data, error } = await supabase
-          .from('delivery_reports')
-          .select('*')
-          .eq('rider_id', userId)
-          .order('submitted_at', { ascending: false })
-          .limit(10);
-
-        if (error) {
-          console.error('[RiderReports] Failed to fetch submitted reports:', error.message);
-        } else {
-          setSubmittedReports(data || []);
-        }
-      } catch (err) {
-        console.error('[RiderReports] Failed to fetch submitted reports:', err?.message ?? err);
       }
     }
 
