@@ -163,7 +163,7 @@ export default function CustomerDashboard() {
         .select(`
           menu_item_id,
           purchase_count,
-          menu_items (id, name, price, image_url, category, has_variants, variant_types)
+          menu_items (id, name, price, image_url, category, has_variants)
         `)
         .eq('customer_id', userId)
         .order('purchase_count', { ascending: false });
@@ -175,7 +175,44 @@ export default function CustomerDashboard() {
           console.error('[CustomerDashboard] Error fetching purchase history:', purchasesError.message);
         }
       } else if (purchasesData) {
-        mostPurchasedItems = purchasesData;
+        // For items with variants, fetch variant types and options
+        const itemsWithVariants = await Promise.all(
+          purchasesData.map(async (purchase) => {
+            const item = purchase.menu_items;
+            if (!item || !item.has_variants) {
+              return purchase;
+            }
+
+            // Fetch variant types with options for items that have variants
+            const { data: variantTypes } = await supabase
+              .from('menu_item_variant_types')
+              .select(`
+                id,
+                variant_type_name,
+                is_required,
+                allow_multiple,
+                display_order,
+                options:menu_item_variant_options(
+                  id,
+                  option_name,
+                  price_modifier,
+                  available,
+                  display_order
+                )
+              `)
+              .eq('menu_item_id', item.id)
+              .order('display_order');
+
+            return {
+              ...purchase,
+              menu_items: {
+                ...item,
+                variant_types: variantTypes || []
+              }
+            };
+          })
+        );
+        mostPurchasedItems = itemsWithVariants;
       }
 
       // Get count of published reviews

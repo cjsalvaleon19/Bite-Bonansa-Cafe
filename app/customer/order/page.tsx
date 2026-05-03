@@ -228,6 +228,71 @@ function CustomerOrderPage() {
     }
   }, [cart])
 
+  // Handle variant modal confirmation (new variant system)
+  // This function must be defined before the pendingCartItem useEffect below
+  const handleVariantConfirm = useCallback((itemWithVariants: any) => {
+    const { cartKey, finalPrice, quantity, variantDetails } = itemWithVariants
+    
+    // Extract variant summary for display (join all variant selections)
+    const variantSummary = variantDetails && typeof variantDetails === 'object'
+      ? Object.entries(variantDetails).map(([type, value]) => `${type}: ${value}`).join(', ')
+      : undefined
+    
+    setCart(prev => {
+      const existing = prev.find(c => c.comboKey === cartKey)
+      if (existing) {
+        return prev.map(c =>
+          c.comboKey === cartKey
+            ? { ...c, quantity: c.quantity + quantity, price: (c.quantity + quantity) * finalPrice }
+            : c
+        )
+      }
+      return [...prev, {
+        id: String(Date.now()),
+        comboKey: cartKey,
+        menuItemId: itemWithVariants.id,
+        menuItem: itemWithVariants,
+        quantity,
+        basePrice: finalPrice,
+        addonPrice: 0,
+        price: finalPrice * quantity,
+        selectedVariety: variantSummary,
+        selectedSize: undefined,
+        selectedAddons: [],
+        variantDetails: variantDetails,
+      }]
+    })
+    
+    setShowVariantModal(false)
+    setVariantModalItem(null)
+    toast.success(`Added ${itemWithVariants.name} to cart`)
+  }, [])
+
+  // Handle pendingCartItem from dashboard variant selection
+  // This processes items added to cart from the dashboard after variant selection.
+  // The delay ensures the cart has been restored from localStorage (see line 212-220)
+  // before we attempt to add the pending item, preventing race conditions where
+  // the pending item might be processed before the saved cart is loaded.
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      try {
+        const pendingItem = localStorage.getItem('pendingCartItem')
+        if (pendingItem) {
+          const itemData = JSON.parse(pendingItem)
+          // Clear the pending item immediately
+          localStorage.removeItem('pendingCartItem')
+          // Add to cart using the variant confirm handler
+          handleVariantConfirm(itemData)
+        }
+      } catch (error) {
+        console.error('Failed to process pending cart item:', error)
+        localStorage.removeItem('pendingCartItem')
+      }
+    }, CART_LOAD_DELAY_MS)
+    
+    return () => clearTimeout(timeoutId)
+  }, [handleVariantConfirm])
+
   useEffect(() => {
     async function loadMenu() {
       const [{ data: items }, { data: cats }] = await Promise.all([
@@ -356,45 +421,6 @@ function CustomerOrderPage() {
       }]
     })
     toast.success(`Added ${item.name} to cart`)
-  }, [])
-
-  // Handle variant modal confirmation (new variant system)
-  const handleVariantConfirm = useCallback((itemWithVariants: any) => {
-    const { cartKey, finalPrice, quantity, variantDetails } = itemWithVariants
-    
-    // Extract variant summary for display (join all variant selections)
-    const variantSummary = variantDetails && typeof variantDetails === 'object'
-      ? Object.entries(variantDetails).map(([type, value]) => `${type}: ${value}`).join(', ')
-      : undefined
-    
-    setCart(prev => {
-      const existing = prev.find(c => c.comboKey === cartKey)
-      if (existing) {
-        return prev.map(c =>
-          c.comboKey === cartKey
-            ? { ...c, quantity: c.quantity + quantity, price: (c.quantity + quantity) * finalPrice }
-            : c
-        )
-      }
-      return [...prev, {
-        id: String(Date.now()),
-        comboKey: cartKey,
-        menuItemId: itemWithVariants.id,
-        menuItem: itemWithVariants,
-        quantity,
-        basePrice: finalPrice,
-        addonPrice: 0,
-        price: finalPrice * quantity,
-        selectedVariety: variantSummary,
-        selectedSize: undefined,
-        selectedAddons: [],
-        variantDetails: variantDetails,
-      }]
-    })
-    
-    setShowVariantModal(false)
-    setVariantModalItem(null)
-    toast.success(`Added ${itemWithVariants.name} to cart`)
   }, [])
 
   // Handle URL parameter to auto-add items from dashboard
