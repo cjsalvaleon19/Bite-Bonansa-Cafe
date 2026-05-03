@@ -48,5 +48,5 @@ BEGIN
   RAISE NOTICE 'Total delivery orders: %', delivery_orders_count;
   RAISE NOTICE 'Orders with delivery_fee set (including 0): %', orders_with_fee_count;
   RAISE NOTICE 'Orders with 0 delivery_fee: %', orders_with_zero_fee_count;
-  RAISE NOTICE 'Orders with NULL delivery_fee (should be 0 after backfill): %', orders_with_null_fee_count;
+  RAISE NOTICE 'Orders with NULL delivery_fee remaining (should be 0 orders after backfill): %', orders_with_null_fee_count;
 END $$;
