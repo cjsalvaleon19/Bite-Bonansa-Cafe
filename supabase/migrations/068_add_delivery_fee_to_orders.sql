@@ -27,8 +27,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_delivery_fee ON orders(delivery_fee) WHERE
 UPDATE orders
 SET delivery_fee = 30
 WHERE order_mode = 'delivery'
-  AND (delivery_fee IS NULL OR delivery_fee = 0)
-  AND status IN ('out_for_delivery', 'completed', 'cancelled');
+  AND (delivery_fee IS NULL OR delivery_fee = 0);
 
 -- Log the number of records updated
 DO $$
