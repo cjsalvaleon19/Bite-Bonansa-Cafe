@@ -68,20 +68,33 @@ LIMIT 5;
 ```
 
 ### 5. Test Payment Flow (Optional)
-To test the payment notification:
+To test the payment notification, **first get a real UUID** from existing reports:
 
 ```sql
--- Mark a submitted report as paid (replace with actual report ID)
+-- Step 1: Get an actual delivery report UUID
+SELECT id, report_date, rider_id, status, rider_earnings
+FROM delivery_reports 
+WHERE status = 'submitted'
+ORDER BY created_at DESC 
+LIMIT 5;
+
+-- Step 2: Copy a real UUID from the results above and use it below
+-- Mark a submitted report as paid (replace <actual-uuid> with real UUID from step 1)
 UPDATE delivery_reports 
 SET status = 'paid', paid_at = NOW()
-WHERE id = '<report-uuid>';
+WHERE id = '<actual-uuid>';  -- Use real UUID here, not placeholder text
 
--- Check rider payment notification
+-- Step 3: Check rider payment notification
 SELECT * FROM notifications 
 WHERE type = 'report_paid'
 ORDER BY created_at DESC
 LIMIT 1;
 ```
+
+**Important:** 
+- The placeholder `<report-uuid>` or `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` will cause a UUID syntax error
+- You must use an **actual UUID value** from your database (format: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`)
+- The column is `rider_earnings`, not `total_earnings`
 
 ## Expected Results
 
