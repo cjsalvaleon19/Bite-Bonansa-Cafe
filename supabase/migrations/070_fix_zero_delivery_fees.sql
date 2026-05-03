@@ -8,23 +8,25 @@
 
 -- Update all delivery orders that have delivery_fee = 0 to the base fee of ₱30
 -- This complements migration 069 which only handled NULL values
--- Note: This assumes 0 values are from the DEFAULT 0 when the column was added,
--- not intentional promotional free deliveries. If you have promotional free deliveries,
--- they should be marked differently (e.g., with a promo_code field)
+-- 
+-- Root cause: Migration 068 added delivery_fee column with DEFAULT 0, causing all 
+-- existing orders to have delivery_fee = 0 instead of NULL. Migration 069 only 
+-- updated NULL values, so the 0 values were left unchanged.
+--
+-- Safety: The POS code always sets a non-zero delivery_fee for delivery orders 
+-- (either calculated or DELIVERY_FEE_DEFAULT=30). Therefore, any delivery order 
+-- with delivery_fee = 0 is incorrect and should be updated.
 DO $$
 DECLARE
   updated_count INTEGER;
 BEGIN
-  -- Only update orders created before this migration runs
-  -- This ensures we don't accidentally overwrite intentional 0 fees in the future
   UPDATE orders
   SET delivery_fee = 30
   WHERE order_mode = 'delivery'
-    AND delivery_fee = 0
-    AND created_at < NOW();
+    AND delivery_fee = 0;
   
   GET DIAGNOSTICS updated_count = ROW_COUNT;
-  RAISE NOTICE 'Updated % delivery orders from 0 to base delivery_fee of 30', updated_count;
+  RAISE NOTICE 'Updated % delivery orders from delivery_fee=0 to delivery_fee=30', updated_count;
 END $$;
 
 -- Verify the fix
@@ -58,7 +60,8 @@ BEGIN
   RAISE NOTICE 'Orders with NULL delivery_fee: % (should be 0)', orders_with_null_fee_count;
   
   IF orders_with_zero_fee_count > 0 OR orders_with_null_fee_count > 0 THEN
-    RAISE WARNING 'Some delivery orders still have 0 or NULL delivery_fee. Please investigate.';
+    RAISE WARNING 'Found % orders with zero fees and % orders with NULL fees. Please investigate these orders.', 
+      orders_with_zero_fee_count, orders_with_null_fee_count;
   ELSE
     RAISE NOTICE 'All delivery orders now have valid delivery_fee values!';
   END IF;
