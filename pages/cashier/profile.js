@@ -16,8 +16,8 @@ export default function CashierProfile() {
   const MIN_PASSWORD_LENGTH = 6;
   const [profile, setProfile] = useState({
     full_name: '',
-    cashier_id: '',
     contact_number: '',
+    cashier_id: '', // Display only - derived from user.id
   });
   const [showPassword, setShowPassword] = useState(false);
   const [passwordData, setPasswordData] = useState({
@@ -55,9 +55,13 @@ export default function CashierProfile() {
 
       setProfile({
         full_name: userData?.full_name || '',
-        cashier_id: '', // Not stored in database, just for display
         contact_number: userData?.phone || '',
       });
+      
+      // Display user ID as cashier ID (read-only)
+      if (session.user?.id) {
+        setProfile(prev => ({ ...prev, cashier_id: session.user.id.substring(0, 8) }));
+      }
     } catch (err) {
       console.error('[CashierProfile] Failed to fetch profile:', err?.message ?? err);
     } finally {
@@ -197,8 +201,9 @@ export default function CashierProfile() {
                   style={styles.input}
                   type="text"
                   value={profile.cashier_id}
-                  onChange={(e) => setProfile({ ...profile, cashier_id: e.target.value })}
-                  placeholder="Enter cashier ID"
+                  placeholder="Auto-generated ID"
+                  disabled
+                  readOnly
                 />
               </div>
 
