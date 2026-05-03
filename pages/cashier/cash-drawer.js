@@ -23,10 +23,15 @@ export default function CashDrawer() {
     reason: '',
     adminPassword: '',
     billType: '',
+    billNumber: '',
+    billReportId: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [cashOnHand, setCashOnHand] = useState(0);
   const [chartOfAccounts, setChartOfAccounts] = useState([]);
+  const [riders, setRiders] = useState([]);
+  const [deliveryReports, setDeliveryReports] = useState([]);
+  const [filteredReports, setFilteredReports] = useState([]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -47,6 +52,8 @@ export default function CashDrawer() {
       setUser(session.user);
       await fetchTransactions();
       await fetchChartOfAccounts();
+      await fetchRiders();
+      await fetchDeliveryReports();
     } catch (err) {
       console.error('[CashDrawer] Failed to initialize:', err?.message ?? err);
     } finally {
@@ -70,6 +77,44 @@ export default function CashDrawer() {
       setChartOfAccounts(data || []);
     } catch (err) {
       console.error('[CashDrawer] Failed to fetch chart of accounts:', err?.message ?? err);
+    }
+  };
+
+  const fetchRiders = async () => {
+    if (!supabase) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .eq('role', 'rider')
+        .order('full_name');
+
+      if (error) throw error;
+
+      setRiders(data || []);
+    } catch (err) {
+      console.error('[CashDrawer] Failed to fetch riders:', err?.message ?? err);
+    }
+  };
+
+  const fetchDeliveryReports = async () => {
+    if (!supabase) return;
+
+    try {
+      // Fetch only submitted (unpaid) delivery reports
+      const { data, error } = await supabase
+        .from('delivery_reports')
+        .select('id, rider_id, bill_number, report_date, rider_earnings, total_deliveries, status, submitted_at, users!delivery_reports_rider_id_fkey(full_name)')
+        .in('status', ['submitted', 'pending'])
+        .order('submitted_at', { ascending: false });
+
+      if (error) throw error;
+
+      setDeliveryReports(data || []);
+      setFilteredReports(data || []);
+    } catch (err) {
+      console.error('[CashDrawer] Failed to fetch delivery reports:', err?.message ?? err);
     }
   };
 
@@ -108,6 +153,40 @@ export default function CashDrawer() {
       setCashOnHand(cashIn - cashOut + adjustments);
     } catch (err) {
       console.error('[CashDrawer] Failed to fetch transactions:', err?.message ?? err);
+    }
+  };
+
+  const handlePayeeChange = (riderId) => {
+    setFormData({ ...formData, payeeName: riderId });
+    
+    // Filter reports by selected rider
+    if (riderId) {
+      const filtered = deliveryReports.filter(report => report.rider_id === riderId);
+      setFilteredReports(filtered);
+    } else {
+      setFilteredReports(deliveryReports);
+    }
+  };
+
+  const handleBillNumberChange = (reportId) => {
+    const selectedReport = deliveryReports.find(r => r.id === reportId);
+    
+    if (selectedReport) {
+      setFormData({
+        ...formData,
+        billNumber: reportId,
+        billReportId: reportId,
+        amount: selectedReport.rider_earnings?.toString() || '',
+        purpose: `Payment for ${selectedReport.total_deliveries} deliveries on ${new Date(selectedReport.report_date).toLocaleDateString()}. Bill: ${selectedReport.bill_number}`,
+      });
+    } else {
+      setFormData({
+        ...formData,
+        billNumber: '',
+        billReportId: '',
+        amount: '',
+        purpose: '',
+      });
     }
   };
 
@@ -182,6 +261,7 @@ export default function CashDrawer() {
         bill_type: formData.billType || null,
         payment_adjustment_type: paymentAdjustmentType,
         admin_verified: activeModal === 'adjustment' ? true : null,
+        bill_report_id: formData.billReportId || null,
         created_at: new Date().toISOString(),
       };
 
@@ -190,6 +270,26 @@ export default function CashDrawer() {
         .insert(transactionData);
 
       if (error) throw error;
+
+      // If this is a Driver's Fee payment, mark the delivery report as paid
+      if (formData.billType === 'drivers_fee' && formData.billReportId) {
+        const { error: updateError } = await supabase
+          .from('delivery_reports')
+          .update({
+            status: 'paid',
+            paid_at: new Date().toISOString(),
+            paid_by: user.id,
+          })
+          .eq('id', formData.billReportId);
+
+        if (updateError) {
+          console.error('[CashDrawer] Failed to update delivery report:', updateError.message);
+          alert('Payment recorded but failed to update report status. Please contact admin.');
+        }
+
+        // Refresh delivery reports list to remove the paid one
+        await fetchDeliveryReports();
+      }
 
       // Reset form and close modal
       setFormData({
@@ -202,9 +302,12 @@ export default function CashDrawer() {
         reason: '',
         adminPassword: '',
         billType: '',
+        billNumber: '',
+        billReportId: '',
       });
       setActiveModal(null);
       setCashOutType(null);
+      setFilteredReports(deliveryReports);
       
       // Refresh transactions
       await fetchTransactions();
@@ -408,6 +511,7 @@ export default function CashDrawer() {
                       placeholder="0.00"
                       value={formData.amount}
                       onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                      readOnly={formData.billType === 'drivers_fee' && formData.billNumber ? true : false}
                       required
                     />
                   </div>
@@ -447,10 +551,11 @@ export default function CashDrawer() {
                         <select
                           style={styles.input}
                           value={formData.billType}
-                          onChange={(e) => setFormData({ ...formData, billType: e.target.value })}
+                          onChange={(e) => setFormData({ ...formData, billType: e.target.value, payeeName: '', billNumber: '', amount: '', purpose: '' })}
                           required
                         >
                           <option value="">Select bill type</option>
+                          <option value="drivers_fee">Driver's Fee</option>
                           <option value="payroll">Payroll</option>
                           <option value="utilities">Utilities</option>
                           <option value="receiving_report">Receiving Report</option>
@@ -458,27 +563,85 @@ export default function CashDrawer() {
                         </select>
                       </div>
 
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>Payee Name *</label>
-                        <input
-                          style={styles.input}
-                          type="text"
-                          placeholder="Who is receiving the payment?"
-                          value={formData.payeeName}
-                          onChange={(e) => setFormData({ ...formData, payeeName: e.target.value })}
-                          required
-                        />
-                      </div>
+                      {formData.billType === 'drivers_fee' ? (
+                        <>
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Rider (Payee Name) *</label>
+                            <select
+                              style={styles.input}
+                              value={formData.payeeName}
+                              onChange={(e) => handlePayeeChange(e.target.value)}
+                              required
+                            >
+                              <option value="">Select rider</option>
+                              {riders.map((rider) => (
+                                <option key={rider.id} value={rider.id}>
+                                  {rider.full_name || rider.email}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>Purpose/Description</label>
-                        <textarea
-                          style={{...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif"}}
-                          placeholder="Payment details"
-                          value={formData.purpose}
-                          onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-                        />
-                      </div>
+                          {formData.payeeName && (
+                            <div style={styles.formGroup}>
+                              <label style={styles.label}>Bill Number *</label>
+                              <select
+                                style={styles.input}
+                                value={formData.billNumber}
+                                onChange={(e) => handleBillNumberChange(e.target.value)}
+                                required
+                              >
+                                <option value="">Select bill number</option>
+                                {filteredReports.map((report) => (
+                                  <option key={report.id} value={report.id}>
+                                    {report.bill_number} - ₱{report.rider_earnings?.toFixed(2)} ({new Date(report.submitted_at).toLocaleDateString()})
+                                  </option>
+                                ))}
+                              </select>
+                              {filteredReports.length === 0 && (
+                                <p style={{fontSize: '11px', color: '#ffc107', marginTop: '4px'}}>
+                                  No outstanding bills for this rider
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Purpose/Description</label>
+                            <textarea
+                              style={{...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif"}}
+                              placeholder="Payment details"
+                              value={formData.purpose}
+                              onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                              readOnly={formData.billNumber ? true : false}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Payee Name *</label>
+                            <input
+                              style={styles.input}
+                              type="text"
+                              placeholder="Who is receiving the payment?"
+                              value={formData.payeeName}
+                              onChange={(e) => setFormData({ ...formData, payeeName: e.target.value })}
+                              required
+                            />
+                          </div>
+
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Purpose/Description</label>
+                            <textarea
+                              style={{...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif"}}
+                              placeholder="Payment details"
+                              value={formData.purpose}
+                              onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                            />
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
 
