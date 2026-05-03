@@ -10,40 +10,47 @@ export default function Home() {
       justifyContent: 'center',
       background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)',
       fontFamily: "'Poppins', sans-serif",
-      padding: '20px'
+      padding: '16px'
     }}>
       <div style={{
         textAlign: 'center',
-        color: '#ffc107'
+        color: '#ffc107',
+        maxWidth: '600px',
+        width: '100%'
       }}>
         <h1 style={{
-          fontSize: '48px',
+          fontSize: 'clamp(32px, 8vw, 48px)',
           fontWeight: 'bold',
           marginBottom: '20px',
-          fontFamily: "'Playfair Display', serif"
+          fontFamily: "'Playfair Display', serif",
+          lineHeight: '1.2'
         }}>
           ☕ Bite Bonansa Cafe
         </h1>
         
         <p style={{
-          fontSize: '18px',
-          marginBottom: '40px',
-          color: '#999'
+          fontSize: 'clamp(14px, 4vw, 18px)',
+          marginBottom: '32px',
+          color: '#999',
+          padding: '0 16px'
         }}>
           Welcome to our coffee shop ordering system
         </p>
 
         <Link href="/login" style={{
           display: 'inline-block',
-          padding: '14px 40px',
+          padding: '14px clamp(24px, 6vw, 40px)',
           backgroundColor: '#ffc107',
           color: '#0a0a0a',
           borderRadius: '6px',
-          fontSize: '16px',
+          fontSize: 'clamp(14px, 3.5vw, 16px)',
           fontWeight: '700',
           textDecoration: 'none',
           transition: 'all 0.3s',
-          boxShadow: '0 5px 15px rgba(255, 193, 7, 0.2)'
+          boxShadow: '0 5px 15px rgba(255, 193, 7, 0.2)',
+          width: '100%',
+          maxWidth: '280px',
+          textAlign: 'center'
         }}
         onMouseOver={(e) => {
           e.target.style.backgroundColor = '#ffb300';

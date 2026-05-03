@@ -50,19 +50,19 @@ const ForgotPassword = () => {
       justifyContent: 'center',
       background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)',
       fontFamily: "'Poppins', sans-serif",
-      padding: '20px'
+      padding: '16px'
     }}>
       <div style={{
         maxWidth: '450px',
         width: '100%',
         backgroundColor: '#1a1a1a',
-        padding: '40px',
+        padding: 'clamp(24px, 5vw, 40px)',
         borderRadius: '12px',
         boxShadow: '0 15px 50px rgba(255, 193, 7, 0.15)',
         border: '1px solid #ffc107'
       }}>
         <h2 style={{
-          fontSize: '32px',
+          fontSize: 'clamp(24px, 6vw, 32px)',
           fontWeight: 'bold',
           marginBottom: '10px',
           textAlign: 'center',
