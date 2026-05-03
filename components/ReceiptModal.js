@@ -90,11 +90,9 @@ export default function ReceiptModal({ delivery, onClose }) {
               <p><strong>Date:</strong> {new Date(delivery.created_at || Date.now()).toLocaleString()}</p>
               <p><strong>Order Type:</strong> {order.order_mode || 'delivery'}</p>
               <p><strong>Customer:</strong> {order.customer_name || delivery.customer_name || 'N/A'}</p>
+              <p><strong>Phone Number:</strong> {order.customer_phone || delivery.customer_phone || 'N/A'}</p>
               {customerLoyaltyId && (
                 <p><strong>Customer ID:</strong> {customerLoyaltyId}</p>
-              )}
-              {(order.customer_phone || delivery.customer_phone) && (
-                <p><strong>Contact Number:</strong> {order.customer_phone || delivery.customer_phone}</p>
               )}
             </div>
 
@@ -137,7 +135,8 @@ export default function ReceiptModal({ delivery, onClose }) {
                 <span><strong>Subtotal:</strong></span>
                 <span>₱{subtotal.toFixed(2)}</span>
               </div>
-              {deliveryFee > 0 && (
+              {/* Always show delivery fee for delivery orders */}
+              {(order.order_mode === 'delivery' || deliveryFee > 0) && (
                 <div style={styles.totalRow}>
                   <span><strong>Delivery Fee:</strong></span>
                   <span>₱{deliveryFee.toFixed(2)}</span>
@@ -153,12 +152,10 @@ export default function ReceiptModal({ delivery, onClose }) {
                   <span>-₱{pointsUsed.toFixed(2)}</span>
                 </div>
               )}
-              {pointsUsed > 0 && (
-                <div style={{ ...styles.totalRow, borderTop: '1px solid #000', paddingTop: '8px', marginTop: '4px' }}>
-                  <span><strong>Net Amount:</strong></span>
-                  <span><strong>₱{netAmount.toFixed(2)}</strong></span>
-                </div>
-              )}
+              <div style={{ ...styles.totalRow, borderTop: '1px solid #000', paddingTop: '8px', marginTop: '4px' }}>
+                <span><strong>Net Amount:</strong></span>
+                <span><strong>₱{netAmount.toFixed(2)}</strong></span>
+              </div>
               {cashTendered > 0 && (
                 <>
                   <div style={styles.totalRow}>
@@ -177,12 +174,22 @@ export default function ReceiptModal({ delivery, onClose }) {
               </div>
             </div>
 
-            {delivery.special_instructions && (
-              <div style={styles.section}>
-                <p style={styles.sectionTitle}>SPECIAL INSTRUCTIONS</p>
-                <p style={styles.instructions}>{delivery.special_instructions}</p>
-              </div>
-            )}
+            {(() => {
+              // Extract only customer order notes from special_instructions
+              // Remove GCash reference number and proof URL
+              let orderNotes = delivery.special_instructions || '';
+              if (orderNotes) {
+                // Split by | delimiter and take only the first part (customer notes)
+                orderNotes = orderNotes.split('|')[0].trim();
+              }
+              
+              return orderNotes ? (
+                <div style={styles.section}>
+                  <p style={styles.sectionTitle}>SPECIAL INSTRUCTIONS</p>
+                  <p style={styles.instructions}>{orderNotes}</p>
+                </div>
+              ) : null;
+            })()}
 
             <div style={styles.footer}>
               <p>Thank you for your order, Biter!</p>
