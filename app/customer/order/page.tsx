@@ -1514,10 +1514,10 @@ function CartContent({
 
   if (cart.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-        <ShoppingCart className="mb-2 h-12 w-12 opacity-50" />
-        <p>Your cart is empty</p>
-        <p className="text-sm">Add items from the menu to get started</p>
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <ShoppingCart className="mb-2 h-12 w-12 text-primary opacity-50" />
+        <p className="text-primary">Your cart is empty</p>
+        <p className="text-sm text-primary/80">Add items from the menu to get started</p>
       </div>
     )
   }

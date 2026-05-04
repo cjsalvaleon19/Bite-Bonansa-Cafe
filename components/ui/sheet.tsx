@@ -87,14 +87,14 @@ const SheetContent = React.forwardRef<
       <div
         ref={ref}
         className={cn(
-          'fixed inset-y-0 right-0 z-50 w-full sm:w-3/4 sm:max-w-lg border-l border-border bg-card shadow-lg p-6 overflow-y-auto safe-area-inset-bottom',
+          'fixed inset-y-0 right-0 z-50 w-full sm:w-3/4 sm:max-w-lg border-l border-border bg-[#1a1a1a] text-foreground shadow-lg p-6 overflow-y-auto safe-area-inset-bottom',
           className
         )}
         {...props}
       >
         <button
           onClick={() => onOpenChange(false)}
-          className="absolute right-4 top-4 rounded-md opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="absolute right-4 top-4 rounded-md text-primary opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -137,7 +137,7 @@ const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h2
     ref={ref}
-    className={cn('text-lg font-semibold text-card-foreground', className)}
+    className={cn('text-lg font-semibold text-primary', className)}
     {...props}
   />
 ))
