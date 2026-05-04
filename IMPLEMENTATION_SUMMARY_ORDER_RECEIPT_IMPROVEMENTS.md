@@ -96,7 +96,7 @@ END IF;
 function calcEarnedPoints(subtotal: number): number {
   if (subtotal <= 0) return 0
   const rate = subtotal <= 500 ? 0.002 : 0.0035
-  const calculated = Math.floor(subtotal * rate * 100) / 100
+  const calculated = Math.round(subtotal * rate * 100) / 100
   return Math.max(1, calculated) // Minimum 1 point
 }
 ```
