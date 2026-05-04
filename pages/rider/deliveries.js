@@ -243,13 +243,18 @@ export default function RiderDeliveries() {
         // Get the order_id from the delivery
         const delivery = deliveries.find(d => d.id === deliveryId);
         if (delivery && delivery.order_id) {
-          await supabase
+          const { error: orderError } = await supabase
             .from('orders')
             .update({ 
               status: 'order_delivered',
               delivered_at: new Date().toISOString()
             })
             .eq('id', delivery.order_id);
+          
+          if (orderError) {
+            console.error('[RiderDeliveries] Failed to update order status:', orderError);
+            throw new Error('Failed to update order status: ' + orderError.message);
+          }
         }
       }
 
@@ -257,13 +262,18 @@ export default function RiderDeliveries() {
       if (newStatus === 'accepted' || newStatus === 'in_progress') {
         const delivery = deliveries.find(d => d.id === deliveryId);
         if (delivery && delivery.order_id) {
-          await supabase
+          const { error: orderError } = await supabase
             .from('orders')
             .update({ 
               status: 'out_for_delivery',
               out_for_delivery_at: new Date().toISOString()
             })
             .eq('id', delivery.order_id);
+          
+          if (orderError) {
+            console.error('[RiderDeliveries] Failed to update order to out_for_delivery:', orderError);
+            // Don't throw here as delivery acceptance is more important
+          }
         }
       }
 
