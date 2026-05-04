@@ -471,7 +471,7 @@ export default function OrdersQueue() {
           console.warn('[OrdersQueue] Could not fetch order status after conflict:', fetchErr);
         }
         // Order was NOT completed - ask user to retry
-        alert('Failed to complete order due to a database conflict. Please run migration 088 on your Supabase database and try again.');
+        alert('Failed to complete order. Please try again. If the problem persists, contact support.');
         return;
       }
 

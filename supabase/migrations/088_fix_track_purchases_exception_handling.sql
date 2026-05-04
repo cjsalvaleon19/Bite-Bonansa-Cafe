@@ -104,8 +104,8 @@ BEGIN
   RAISE NOTICE '  ✓ Wrapped upsert loop in inner BEGIN/EXCEPTION block';
   RAISE NOTICE '  ✓ Any error in purchase tracking is now caught as WARNING';
   RAISE NOTICE '  ✓ Order status updates will ALWAYS succeed regardless of tracking errors';
-  RAISE NOTICE '  ✓ Empty string id filter added (AND item->>''id'' != '''')';
-  RAISE NOTICE '  ✓ NULL items check added before processing';
+  RAISE NOTICE '  ✓ Existing GROUP BY aggregation and NULL/empty-string filters preserved';
+  RAISE NOTICE '  ✓ Any error in purchase tracking is now caught as WARNING';
   RAISE NOTICE '';
   RAISE NOTICE 'Root cause addressed:';
   RAISE NOTICE '  The "ON CONFLICT DO UPDATE cannot affect row a second time" error';
