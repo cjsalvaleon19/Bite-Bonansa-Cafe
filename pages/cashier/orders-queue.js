@@ -143,7 +143,7 @@ export default function OrdersQueue() {
         const { error: updateOrderError } = await supabase
           .from('orders')
           .update({
-            status: 'completed',
+            status: 'order_delivered',  // Use order_delivered for consistency with notification system
             completed_at: new Date().toISOString()
           })
           .eq('id', orderId);
