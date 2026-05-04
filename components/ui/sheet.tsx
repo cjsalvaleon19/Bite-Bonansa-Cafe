@@ -90,6 +90,7 @@ const SheetContent = React.forwardRef<
           'fixed inset-y-0 right-0 z-50 w-full sm:w-3/4 sm:max-w-lg border-l border-border bg-[#1a1a1a] text-foreground shadow-lg p-6 overflow-y-auto safe-area-inset-bottom',
           className
         )}
+        style={{ backgroundColor: '#1a1a1a', color: '#ffc107' }}
         {...props}
       >
         <button
