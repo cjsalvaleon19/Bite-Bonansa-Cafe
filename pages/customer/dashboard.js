@@ -123,7 +123,7 @@ export default function CustomerDashboard() {
         .from('orders')
         .select('id', { count: 'exact', head: true })
         .eq('customer_id', userId)
-        .or('status.eq.order_in_queue,status.eq.order_in_process,status.eq.out_for_delivery');
+        .or('status.eq.order_in_queue,status.eq.order_in_process,status.eq.proceed_to_cashier,status.eq.out_for_delivery');
 
       // Calculate loyalty balance from loyalty_transactions
       const { data: allTransactions, error: transError } = await supabase
@@ -285,6 +285,7 @@ export default function CustomerDashboard() {
     const isPickup = orderMode === 'pick-up';
     const statusMap = {
       'order_in_queue': { label: 'Order in Queue', color: '#ffc107', icon: '🕐' },
+      'proceed_to_cashier': { label: 'Proceed to the Cashier', color: '#ff9800', icon: '💳' },
       'order_in_process': { label: 'Order in Process', color: '#2196f3', icon: '👨‍🍳' },
       'out_for_delivery': { 
         label: isPickup ? 'Ready for Pick-up' : 'Out for Delivery', 

@@ -140,6 +140,8 @@ export default function OrderTracking() {
       case 'pending':
       case 'order_in_queue':
         return '#ffb300';
+      case 'proceed_to_cashier':
+        return '#ff9800';
       case 'confirmed':
       case 'order_in_process':
         return '#2196f3';
@@ -159,20 +161,23 @@ export default function OrderTracking() {
     }
   };
 
-  const formatStatus = (status) => {
+  const formatStatus = (status, orderMode) => {
     if (!status) return 'Unknown';
     const formatted = status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const isDineInOrTakeOut = orderMode === 'dine-in' || orderMode === 'take-out';
+    
     // Map internal status to user-friendly labels
     const statusMap = {
       'Pending': 'Order in Queue',
       'Order In Queue': 'Order in Queue',
+      'Proceed To Cashier': 'Proceed to the Cashier',
       'Confirmed': 'Order in Process',
       'Order In Process': 'Order in Process',
       'Preparing': 'Order in Process',
       'Out For Delivery': 'Out for Delivery',
-      'Delivered': 'Order Delivered',
-      'Order Delivered': 'Order Delivered',
-      'Completed': 'Order Delivered'
+      'Delivered': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered',
+      'Order Delivered': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered',
+      'Completed': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered'
     };
     return statusMap[formatted] || formatted;
   };
@@ -180,7 +185,36 @@ export default function OrderTracking() {
   const getProgressSteps = (status, orderMode) => {
     const normalizedStatus = status?.toLowerCase();
     const isPickup = orderMode === 'pick-up';
+    const isDineIn = orderMode === 'dine-in';
+    const isTakeOut = orderMode === 'take-out';
     
+    // Dine-in and Take-out have a different flow: Order in Queue → Proceed to Cashier → Order Complete
+    if (isDineIn || isTakeOut) {
+      const steps = [
+        { label: 'Order in Queue', status: 'order_in_queue', icon: '🕐' },
+        { label: 'Proceed to the Cashier', status: 'proceed_to_cashier', icon: '💳' },
+        { label: 'Order Complete', status: 'order_delivered', icon: '✓' },
+      ];
+      
+      const statusOrder = ['order_in_queue', 'pending', 'proceed_to_cashier', 'order_delivered', 'delivered', 'completed'];
+      const currentIndex = statusOrder.indexOf(normalizedStatus);
+      
+      return steps.map((step, index) => {
+        const stepStatuses = [
+          ['order_in_queue', 'pending'],
+          ['proceed_to_cashier'],
+          ['order_delivered', 'delivered', 'completed']
+        ];
+        const isCompleted = stepStatuses[index].some(s => {
+          const sIdx = statusOrder.indexOf(s);
+          return sIdx !== -1 && sIdx <= currentIndex && currentIndex > -1;
+        });
+        const isActive = stepStatuses[index].includes(normalizedStatus);
+        return { ...step, isCompleted, isActive };
+      });
+    }
+    
+    // Original flow for delivery and pick-up
     const steps = [
       { label: 'Order in Queue', status: 'order_in_queue', icon: '🕐' },
       { label: 'Order in Process', status: 'order_in_process', icon: '👨‍🍳' },
@@ -339,7 +373,7 @@ export default function OrderTracking() {
                 const customerNotes = extractSpecialRequest(order.special_request);
                 const isPickup = order.order_mode === 'pick-up';
                 const deliveryAddress = extractDeliveryAddress(order);
-                const currentStatus = formatStatus(order.status);
+                const currentStatus = formatStatus(order.status, order.order_mode);
                 
                 return (
                   <div key={order.id} style={styles.orderCard}>

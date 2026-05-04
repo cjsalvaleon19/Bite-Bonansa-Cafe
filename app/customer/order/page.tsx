@@ -18,6 +18,8 @@ import {
   ArrowLeft,
   Upload,
   X,
+  UtensilsCrossed,
+  Package,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -124,7 +126,7 @@ function CustomerOrderPage() {
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
-  const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
+  const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine-in' | 'take-out'>('dine-in')
   const [deliveryEnabled, setDeliveryEnabled] = useState(true)
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
@@ -556,7 +558,7 @@ function CustomerOrderPage() {
   const handlePlaceOrder = async () => {
     // Check if delivery is disabled but user is trying to order with delivery
     if (orderType === 'delivery' && !deliveryEnabled) {
-      toast.error('Delivery is currently unavailable. Please select pick-up for your order.')
+      toast.error('Delivery is currently unavailable. Please select another order mode.')
       return
     }
     
@@ -583,14 +585,17 @@ function CustomerOrderPage() {
         toast.error('Points to use cannot exceed the total amount')
         return
       }
-      
       // If there's remaining balance after using points
       if (remainingBalance > 0) {
         if (secondaryPaymentMethod === 'cash') {
-          const cashAmount = parseFloat(cashTendered)
-          if (isNaN(cashAmount) || cashAmount < remainingBalance) {
-            toast.error(`Please enter cash amount of at least ₱${remainingBalance.toFixed(2)}`)
-            return
+          // Only require cash tendered for delivery and pickup orders
+          const requiresCashTendered = orderType === 'delivery' || orderType === 'pickup'
+          if (requiresCashTendered) {
+            const cashAmount = parseFloat(cashTendered)
+            if (isNaN(cashAmount) || cashAmount < remainingBalance) {
+              toast.error(`Please enter cash amount of at least ₱${remainingBalance.toFixed(2)}`)
+              return
+            }
           }
         } else if (secondaryPaymentMethod === 'gcash') {
           setShowGcashDialog(true)
@@ -598,10 +603,15 @@ function CustomerOrderPage() {
         }
       }
     } else if (paymentMethod === 'cash') {
-      const cashAmount = parseFloat(cashTendered)
-      if (isNaN(cashAmount) || cashAmount < total) {
-        toast.error('Please enter a valid cash amount that covers the total')
-        return
+      // Only require cash tendered for delivery and pickup orders
+      // Dine-in and take-out orders pay at the cashier
+      const requiresCashTendered = orderType === 'delivery' || orderType === 'pickup'
+      if (requiresCashTendered) {
+        const cashAmount = parseFloat(cashTendered)
+        if (isNaN(cashAmount) || cashAmount < total) {
+          toast.error('Please enter a valid cash amount that covers the total')
+          return
+        }
       }
     } else if (paymentMethod === 'gcash') {
       setShowGcashDialog(true)
@@ -676,6 +686,15 @@ function CustomerOrderPage() {
           }
         }
       }
+      // Calculate cash amount and change for cash payments
+      // Only save cash_amount for delivery/pickup orders (paid online)
+      // Dine-in/take-out orders pay at the cashier, so cash_amount = 0
+      const cashTenderedValue = cashTendered && cashTendered.trim() !== '' ? parseFloat(cashTendered) : 0
+      const isDineInOrTakeOut = orderType === 'dine-in' || orderType === 'take-out'
+      const cashAmount = (paymentMethod === 'cash' || (paymentMethod === 'points' && secondaryPaymentMethod === 'cash'))
+        ? (isDineInOrTakeOut ? 0 : (isNaN(cashTenderedValue) ? 0 : cashTenderedValue))
+        : 0
+
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -686,11 +705,12 @@ function CustomerOrderPage() {
           delivery_latitude: isDelivery ? deliveryLat : null,
           delivery_longitude: isDelivery ? deliveryLng : null,
           status: 'pending',
-          order_mode: isDelivery ? 'delivery' : 'pick-up',
+          order_mode: orderType, // Use the selected order type directly
           payment_method: paymentMethod,
           subtotal,
           delivery_fee: isDelivery ? appliedDeliveryFee : 0,
           total_amount: total,
+          cash_amount: cashAmount,
           special_request: notesStr.trim(),
           delivery_fee_pending: isDelivery ? true : false,
         } as any)
@@ -845,7 +865,25 @@ function CustomerOrderPage() {
         </Sheet>
       </div>
 
-      <div className="flex gap-2 rounded-lg border bg-muted/30 p-1 w-full sm:w-fit">
+      <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/30 p-1 w-full" role="group" aria-label="Order type selection">
+        <Button
+          variant={orderType === 'dine-in' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setOrderType('dine-in')}
+          className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
+        >
+          <UtensilsCrossed className="h-4 w-4" />
+          <span>Dine-in</span>
+        </Button>
+        <Button
+          variant={orderType === 'take-out' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setOrderType('take-out')}
+          className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
+        >
+          <Package className="h-4 w-4" />
+          <span>Take-out</span>
+        </Button>
         <Button
           variant={orderType === 'delivery' ? 'default' : 'ghost'}
           size="sm"
@@ -869,7 +907,19 @@ function CustomerOrderPage() {
 
       {!deliveryEnabled && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-amber-600">
-          <strong>Delivery is currently unavailable.</strong> Please select pick-up for your order.
+          <strong>Delivery is currently unavailable.</strong> Please select another order mode.
+        </div>
+      )}
+
+      {orderType === 'dine-in' && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-primary">
+          <strong>Dine-in order</strong> — Enjoy your meal at our cafe. Your order will be prepared and served to you.
+        </div>
+      )}
+
+      {orderType === 'take-out' && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-primary">
+          <strong>Take-out order</strong> — Your order will be prepared for you to take away. No delivery fee will be charged.
         </div>
       )}
 
@@ -1491,7 +1541,7 @@ interface CartContentProps {
   setCashTendered: (amount: string) => void
   handlePlaceOrder: () => void
   isSubmitting: boolean
-  orderType?: 'delivery' | 'pickup'
+  orderType?: 'delivery' | 'pickup' | 'dine-in' | 'take-out'
   loyaltyBalance: number
   pointsToUse: number
   setPointsToUse: (points: number) => void
@@ -1692,7 +1742,7 @@ function CartContent({
                   </div>
                 </RadioGroup>
 
-                {secondaryPaymentMethod === 'cash' && (
+                {secondaryPaymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (
                   <div className="space-y-2 pt-2">
                     <Label htmlFor="cashTenderedSecondary" className="flex items-center gap-2">
                       <Banknote className="h-4 w-4" />
@@ -1724,7 +1774,7 @@ function CartContent({
           </div>
         )}
 
-        {paymentMethod === 'cash' && (
+        {paymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (
           <div className="mt-4 space-y-2">
             <Label htmlFor="cashTendered" className="flex items-center gap-2">
               <Banknote className="h-4 w-4" />

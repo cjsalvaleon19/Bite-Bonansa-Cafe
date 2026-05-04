@@ -39,6 +39,9 @@ export default function CashierDashboard() {
   const [notificationAudio, setNotificationAudio] = useState(null);
   const [showPrintReceiptModal, setShowPrintReceiptModal] = useState(false);
   const [acceptedOrder, setAcceptedOrder] = useState(null);
+  const [viewOrderModal, setViewOrderModal] = useState(false);
+  const [selectedOrderToView, setSelectedOrderToView] = useState(null);
+  const [editableCashTendered, setEditableCashTendered] = useState('');
   const statsRefreshTimerRef = useRef(null);
 
   useEffect(() => {
@@ -78,7 +81,7 @@ export default function CashierDashboard() {
           debouncedStatsRefresh();
           
           // Handle online order notifications
-          if (newOrder.status === 'pending' && (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up')) {
+          if (newOrder.status === 'pending' && (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up' || newOrder.order_mode === 'dine-in' || newOrder.order_mode === 'take-out')) {
             setHasNewOrders(true);
             // Play notification sound
             if (notificationAudio) {
@@ -216,7 +219,7 @@ export default function CashierDashboard() {
     if (!supabase) return;
 
     try {
-      // Fetch pending online orders (delivery or pick-up, status: pending)
+      // Fetch pending online orders (all order modes from customer portal, status: pending)
       const { data: orders, error } = await supabase
         .from('orders')
         .select(`
@@ -236,7 +239,7 @@ export default function CashierDashboard() {
             phone
           )
         `)
-        .in('order_mode', ['delivery', 'pick-up'])
+        .in('order_mode', ['delivery', 'pick-up', 'dine-in', 'take-out'])
         .eq('status', 'pending')
         .order('created_at', { ascending: true });
 
@@ -545,17 +548,130 @@ export default function CashierDashboard() {
     }, 250);
   };
 
+  const handleViewOrder = (order) => {
+    setSelectedOrderToView(order);
+    setEditableCashTendered(order.cash_amount || '');
+    setViewOrderModal(true);
+  };
+
+  const handleUpdateCashTendered = async (newCashAmount) => {
+    if (!supabase || !selectedOrderToView) return;
+    
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ cash_amount: parseFloat(newCashAmount) || 0 })
+        .eq('id', selectedOrderToView.id);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setSelectedOrderToView({
+        ...selectedOrderToView,
+        cash_amount: parseFloat(newCashAmount) || 0
+      });
+      
+      // Refresh the orders list
+      fetchPendingOnlineOrders();
+    } catch (err) {
+      console.error('[CashierDashboard] Failed to update cash tendered:', err?.message ?? err);
+      alert('Failed to update cash tendered. Please try again.');
+    }
+  };
+
+
+  const handleAcceptOrderFromView = async () => {
+    if (!supabase || !selectedOrderToView) return;
+
+    try {
+      // Determine the appropriate status based on order mode
+      // Dine-in and Take-out: 'proceed_to_cashier' (customer pays at cashier)
+      // Delivery and Pick-up: 'order_in_process' (payment already done online)
+      const isDineInOrTakeOut = selectedOrderToView.order_mode === 'dine-in' || selectedOrderToView.order_mode === 'take-out';
+      const newStatus = isDineInOrTakeOut ? 'proceed_to_cashier' : 'order_in_process';
+      
+      // Update order status and set accepted_at timestamp
+      // Note: Database trigger will automatically create notification for customer
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: newStatus,
+          accepted_at: new Date().toISOString(),
+          cashier_id: user?.id
+        })
+        .eq('id', selectedOrderToView.id);
+
+      if (error) throw error;
+
+      // Close view modal
+      setViewOrderModal(false);
+      
+      // Show print receipt confirmation modal
+      setAcceptedOrder(selectedOrderToView);
+      setShowPrintReceiptModal(true);
+      
+      // Generate sales invoice receipt
+      printReceipt(selectedOrderToView, 'sales');
+      
+      // Generate kitchen order slip after a short delay
+      setTimeout(() => {
+        printReceipt(selectedOrderToView, 'kitchen');
+      }, 500);
+
+      fetchPendingOnlineOrders();
+    } catch (err) {
+      console.error('[CashierDashboard] Failed to accept order:', err?.message ?? err);
+      alert('Failed to accept order. Please try again.');
+    }
+  };
+
+  const handleDeclineOrder = async () => {
+    if (!supabase || !selectedOrderToView) return;
+    if (!confirm('Are you sure you want to decline this order? This action cannot be undone.')) return;
+
+    try {
+      // Delete the order and all related data
+      const { error } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', selectedOrderToView.id);
+
+      if (error) throw error;
+
+      // Close view modal
+      setViewOrderModal(false);
+      setSelectedOrderToView(null);
+      
+      // Refresh pending orders
+      fetchPendingOnlineOrders();
+      
+      alert('Order has been declined and removed.');
+    } catch (err) {
+      console.error('[CashierDashboard] Failed to decline order:', err?.message ?? err);
+      alert('Failed to decline order. Please try again.');
+    }
+  };
+
   const handleAcceptOrder = async (orderId) => {
     if (!supabase) return;
     if (!confirm('Accept this order and start processing?')) return;
 
     try {
-      // Update order status to 'order_in_process' and set accepted_at timestamp
+      // Get the order to determine its mode
+      const order = pendingOrders.find(o => o.id === orderId);
+      
+      // Determine the appropriate status based on order mode
+      // Dine-in and Take-out: 'proceed_to_cashier' (customer pays at cashier)
+      // Delivery and Pick-up: 'order_in_process' (payment already done online)
+      const isDineInOrTakeOut = order && (order.order_mode === 'dine-in' || order.order_mode === 'take-out');
+      const newStatus = isDineInOrTakeOut ? 'proceed_to_cashier' : 'order_in_process';
+      
+      // Update order status and set accepted_at timestamp
       // Note: Database trigger will automatically create notification for customer
       const { error } = await supabase
         .from('orders')
         .update({
-          status: 'order_in_process',
+          status: newStatus,
           accepted_at: new Date().toISOString(),
           cashier_id: user?.id
         })
@@ -563,8 +679,7 @@ export default function CashierDashboard() {
 
       if (error) throw error;
 
-      // Get the full order details for printing
-      const order = pendingOrders.find(o => o.id === orderId);
+      // Use the order we already found earlier for printing
       if (order) {
         // Show print receipt confirmation modal
         setAcceptedOrder(order);
@@ -909,7 +1024,10 @@ export default function CashierDashboard() {
                           </p>
                         </div>
                         <div style={styles.orderModeBadge}>
-                          {order.order_mode === 'delivery' ? '🚚 Delivery' : '📦 Pick-up'}
+                          {order.order_mode === 'delivery' && '🚚 Delivery'}
+                          {order.order_mode === 'pick-up' && '📦 Pick-up'}
+                          {order.order_mode === 'dine-in' && '🍽️ Dine-in'}
+                          {order.order_mode === 'take-out' && '🥡 Take-out'}
                         </div>
                       </div>
 
@@ -945,9 +1063,9 @@ export default function CashierDashboard() {
                         </div>
                         <button
                           style={styles.acceptOrderBtn}
-                          onClick={() => handleAcceptOrder(order.id)}
+                          onClick={() => handleViewOrder(order)}
                         >
-                          ✓ Accept Order
+                          👁️ View Order
                         </button>
                       </div>
                     </div>
@@ -957,6 +1075,189 @@ export default function CashierDashboard() {
             </div>
           )}
         </main>
+
+        {/* View Order Modal */}
+        {viewOrderModal && selectedOrderToView && (
+          <div style={styles.modal} onClick={() => setViewOrderModal(false)}>
+            <div style={{ ...styles.modalContent, ...styles.viewOrderModalContent }} onClick={(e) => e.stopPropagation()}>
+              <h3 style={styles.modalTitle}>📋 Order Details</h3>
+              
+              <div style={styles.viewOrderInfo}>
+                <div style={styles.viewOrderRow}>
+                  <strong>Order Number:</strong>
+                  <span>#{selectedOrderToView.order_number || selectedOrderToView.id.slice(0, 8)}</span>
+                </div>
+                <div style={styles.viewOrderRow}>
+                  <strong>Order Mode:</strong>
+                  <span>
+                    {selectedOrderToView.order_mode === 'delivery' && '🚚 Delivery'}
+                    {selectedOrderToView.order_mode === 'pick-up' && '📦 Pick-up'}
+                    {selectedOrderToView.order_mode === 'dine-in' && '🍽️ Dine-in'}
+                    {selectedOrderToView.order_mode === 'take-out' && '🥡 Take-out'}
+                  </span>
+                </div>
+                <div style={styles.viewOrderRow}>
+                  <strong>Order Time:</strong>
+                  <span>{new Date(selectedOrderToView.created_at).toLocaleString()}</span>
+                </div>
+                {selectedOrderToView.customer_name && (
+                  <div style={styles.viewOrderRow}>
+                    <strong>Customer:</strong>
+                    <span>{selectedOrderToView.customer_name}</span>
+                  </div>
+                )}
+                {selectedOrderToView.contact_number && (
+                  <div style={styles.viewOrderRow}>
+                    <strong>Contact:</strong>
+                    <span>{selectedOrderToView.contact_number}</span>
+                  </div>
+                )}
+                {selectedOrderToView.delivery_address && selectedOrderToView.order_mode === 'delivery' && (
+                  <div style={styles.viewOrderRow}>
+                    <strong>Delivery Address:</strong>
+                    <span>{selectedOrderToView.delivery_address}</span>
+                  </div>
+                )}
+                {selectedOrderToView.payment_method && (
+                  <div style={styles.viewOrderRow}>
+                    <strong>Payment Method:</strong>
+                    <span style={{ textTransform: 'capitalize' }}>{selectedOrderToView.payment_method}</span>
+                  </div>
+                )}
+              </div>
+
+              <div style={styles.viewOrderSection}>
+                <h4 style={styles.viewOrderSectionTitle}>Order Items</h4>
+                <div style={styles.viewOrderItemsList}>
+                  {(selectedOrderToView.order_items && selectedOrderToView.order_items.length > 0 
+                    ? selectedOrderToView.order_items 
+                    : selectedOrderToView.items || []
+                  ).map((item, index) => (
+                    <div key={index} style={styles.viewOrderItem}>
+                      <div style={styles.viewOrderItemName}>
+                        {item.name}
+                        {item.variant_details && typeof item.variant_details === 'object' && Object.keys(item.variant_details).length > 0 && (
+                          <div style={styles.viewOrderItemVariants}>
+                            Variants & Add-ons: {Object.entries(item.variant_details).map(([type, value]) => value).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                      <div style={styles.viewOrderItemQty}>x{item.quantity}</div>
+                      <div style={styles.viewOrderItemPrice}>
+                        ₱{((item.price || 0) * (item.quantity || 0)).toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={styles.viewOrderTotals}>
+                <div style={styles.viewOrderTotalRow}>
+                  <span>Subtotal:</span>
+                  <span>₱{parseFloat(selectedOrderToView.subtotal || 0).toFixed(2)}</span>
+                </div>
+                {selectedOrderToView.order_mode === 'delivery' && (
+                  <div style={styles.viewOrderTotalRow}>
+                    <span>Delivery Fee:</span>
+                    <span>₱{parseFloat(selectedOrderToView.delivery_fee || 0).toFixed(2)}</span>
+                  </div>
+                )}
+                {selectedOrderToView.points_used > 0 && (
+                  <div style={styles.viewOrderTotalRow}>
+                    <span>Points Redeemed:</span>
+                    <span>-₱{parseFloat(selectedOrderToView.points_used || 0).toFixed(2)}</span>
+                  </div>
+                )}
+                <div style={{ ...styles.viewOrderTotalRow, ...styles.viewOrderGrandTotal }}>
+                  <strong>Total:</strong>
+                  <strong>₱{parseFloat(selectedOrderToView.total_amount || 0).toFixed(2)}</strong>
+                </div>
+                {(() => {
+                  const cashAmount = parseFloat(selectedOrderToView.cash_amount || 0);
+                  const totalAmount = parseFloat(selectedOrderToView.total_amount || 0);
+                  const pointsUsed = parseFloat(selectedOrderToView.points_used || 0);
+                  const netAmount = totalAmount - pointsUsed;
+                  const isDineInOrTakeOut = selectedOrderToView.order_mode === 'dine-in' || selectedOrderToView.order_mode === 'take-out';
+                  
+                  // Calculate change from editable input for dine-in/take-out, otherwise from stored cash_amount
+                  const currentCashAmount = isDineInOrTakeOut 
+                    ? parseFloat(editableCashTendered || 0)
+                    : cashAmount;
+                  const change = Math.max(0, currentCashAmount - netAmount);
+                  
+                  return (
+                    <>
+                      <div style={styles.viewOrderTotalRow}>
+                        <span>Cash Tendered:</span>
+                        {isDineInOrTakeOut ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input
+                              type="number"
+                              value={editableCashTendered}
+                              onChange={(e) => setEditableCashTendered(e.target.value)}
+                              onBlur={() => handleUpdateCashTendered(editableCashTendered)}
+                              placeholder="0.00"
+                              min="0"
+                              step="0.01"
+                              style={{
+                                width: '120px',
+                                padding: '6px 10px',
+                                border: '2px solid #ffc107',
+                                borderRadius: '6px',
+                                backgroundColor: '#2a2a2a',
+                                color: '#ffc107',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                textAlign: 'right',
+                                fontFamily: "'Poppins', sans-serif",
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <span>₱{cashAmount.toFixed(2)}</span>
+                        )}
+                      </div>
+                      <div style={styles.viewOrderTotalRow}>
+                        <span>Change:</span>
+                        <span>₱{change.toFixed(2)}</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {selectedOrderToView.special_request && selectedOrderToView.special_request.trim() && (
+                <div style={styles.viewOrderNotes}>
+                  <strong>Special Instructions:</strong>
+                  {/* Extract customer notes from special_request field (text before | delimiter). 
+                      Format: "customer notes | metadata" - we only show customer notes */}
+                  <p>{selectedOrderToView.special_request.split('|')[0].trim()}</p>
+                </div>
+              )}
+
+              <div style={styles.viewOrderActions}>
+                <button
+                  style={styles.viewOrderAcceptBtn}
+                  onClick={handleAcceptOrderFromView}
+                >
+                  ✓ Accept Order
+                </button>
+                <button
+                  style={styles.viewOrderDeclineBtn}
+                  onClick={handleDeclineOrder}
+                >
+                  ✕ Decline
+                </button>
+                <button
+                  style={styles.viewOrderBackBtn}
+                  onClick={() => setViewOrderModal(false)}
+                >
+                  ← Back
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Print Receipt Confirmation Modal */}
         {showPrintReceiptModal && acceptedOrder && (
@@ -1531,5 +1832,132 @@ const styles = {
     fontWeight: '600',
     cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
+  },
+  // View Order Modal Styles
+  viewOrderModalContent: {
+    maxWidth: '600px',
+    maxHeight: '90vh',
+    overflowY: 'auto',
+  },
+  viewOrderInfo: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: '8px',
+    padding: '16px',
+    marginBottom: '16px',
+  },
+  viewOrderRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '8px 0',
+    borderBottom: '1px solid #444',
+  },
+  viewOrderSection: {
+    marginBottom: '16px',
+  },
+  viewOrderSectionTitle: {
+    fontSize: '16px',
+    color: '#ffc107',
+    marginBottom: '12px',
+    borderBottom: '1px solid #ffc107',
+    paddingBottom: '8px',
+  },
+  viewOrderItemsList: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: '8px',
+    padding: '12px',
+  },
+  viewOrderItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    padding: '12px 0',
+    borderBottom: '1px solid #444',
+  },
+  viewOrderItemName: {
+    flex: '1',
+    color: '#fff',
+  },
+  viewOrderItemVariants: {
+    fontSize: '12px',
+    color: '#888',
+    marginTop: '4px',
+  },
+  viewOrderItemQty: {
+    minWidth: '60px',
+    textAlign: 'center',
+    color: '#ccc',
+  },
+  viewOrderItemPrice: {
+    minWidth: '80px',
+    textAlign: 'right',
+    color: '#ffc107',
+    fontWeight: '600',
+  },
+  viewOrderTotals: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: '8px',
+    padding: '16px',
+    marginBottom: '16px',
+  },
+  viewOrderTotalRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '8px 0',
+    color: '#ccc',
+  },
+  viewOrderGrandTotal: {
+    borderTop: '2px solid #ffc107',
+    marginTop: '8px',
+    paddingTop: '12px',
+    fontSize: '18px',
+    color: '#ffc107',
+  },
+  viewOrderNotes: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: '8px',
+    padding: '16px',
+    marginBottom: '16px',
+    color: '#ccc',
+  },
+  viewOrderActions: {
+    display: 'flex',
+    gap: '12px',
+    marginTop: '20px',
+  },
+  viewOrderAcceptBtn: {
+    flex: '1',
+    padding: '12px 20px',
+    backgroundColor: '#28a745',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '16px',
+    fontWeight: '600',
+    transition: 'background-color 0.2s',
+  },
+  viewOrderDeclineBtn: {
+    flex: '1',
+    padding: '12px 20px',
+    backgroundColor: '#dc3545',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '16px',
+    fontWeight: '600',
+    transition: 'background-color 0.2s',
+  },
+  viewOrderBackBtn: {
+    flex: '1',
+    padding: '12px 20px',
+    backgroundColor: '#6c757d',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '16px',
+    fontWeight: '600',
+    transition: 'background-color 0.2s',
   },
 };
