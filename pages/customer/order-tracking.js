@@ -133,6 +133,31 @@ export default function OrderTracking() {
     }
 
     fetchOrders();
+
+    // Set up realtime subscription for order updates
+    if (!supabase || !user) return;
+
+    const channel = supabase
+      .channel('customer-orders-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `customer_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('[OrderTracking] Order change detected:', payload);
+          // Refetch orders when any change is detected
+          fetchOrders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
   }, [loading, user]);
 
   const getStatusColor = (status) => {
