@@ -570,7 +570,7 @@ function CustomerOrderPage() {
       return
     }
     if (orderType === 'delivery' && deliveryOutOfRange) {
-      toast.error('Delivery is only available within T'boli, South Cotabato (max 10 km from our store).')
+      toast.error('Delivery is only available within T\'boli, South Cotabato (max 10 km from our store).')
       return
     }
     
@@ -792,7 +792,7 @@ function CustomerOrderPage() {
     setDeliveryLng(lng)
     const { fee, distance, outOfRange } = calculateDeliveryFee(lat, lng)
     if (outOfRange) {
-      toast.error('Delivery is only available within T'boli, South Cotabato (max 10 km from our store).')
+      toast.error('Delivery is only available within T\'boli, South Cotabato (max 10 km from our store).')
     } else {
       toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance ?? 0)})`)
     }
