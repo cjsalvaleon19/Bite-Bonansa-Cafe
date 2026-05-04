@@ -98,8 +98,11 @@ const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz'])
 const CART_LOAD_DELAY_MS = 100
 
 function calcEarnedPoints(subtotal: number): number {
+  if (subtotal <= 0) return 0
   const rate = subtotal <= 500 ? 0.002 : 0.0035
-  return Math.floor(subtotal * rate)
+  const calculated = Math.floor(subtotal * rate * 100) / 100 // Round to 2 decimals
+  // Ensure minimum of 1 point earned for any purchase
+  return Math.max(1, calculated)
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
