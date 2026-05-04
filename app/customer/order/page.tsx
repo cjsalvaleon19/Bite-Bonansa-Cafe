@@ -585,12 +585,11 @@ function CustomerOrderPage() {
         toast.error('Points to use cannot exceed the total amount')
         return
       }
-      
       // If there's remaining balance after using points
       if (remainingBalance > 0) {
         if (secondaryPaymentMethod === 'cash') {
-          // Only require cash tendered for delivery and pick-up orders
-          const requiresCashTendered = orderType === 'delivery' || orderType === 'pick-up'
+          // Only require cash tendered for delivery and pickup orders
+          const requiresCashTendered = orderType === 'delivery' || orderType === 'pickup'
           if (requiresCashTendered) {
             const cashAmount = parseFloat(cashTendered)
             if (isNaN(cashAmount) || cashAmount < remainingBalance) {
@@ -604,9 +603,9 @@ function CustomerOrderPage() {
         }
       }
     } else if (paymentMethod === 'cash') {
-      // Only require cash tendered for delivery and pick-up orders
+      // Only require cash tendered for delivery and pickup orders
       // Dine-in and take-out orders pay at the cashier
-      const requiresCashTendered = orderType === 'delivery' || orderType === 'pick-up'
+      const requiresCashTendered = orderType === 'delivery' || orderType === 'pickup'
       if (requiresCashTendered) {
         const cashAmount = parseFloat(cashTendered)
         if (isNaN(cashAmount) || cashAmount < total) {
@@ -688,7 +687,7 @@ function CustomerOrderPage() {
         }
       }
       // Calculate cash amount and change for cash payments
-      // Only save cash_amount for delivery/pick-up orders (paid online)
+      // Only save cash_amount for delivery/pickup orders (paid online)
       // Dine-in/take-out orders pay at the cashier, so cash_amount = 0
       const cashTenderedValue = cashTendered && cashTendered.trim() !== '' ? parseFloat(cashTendered) : 0
       const isDineInOrTakeOut = orderType === 'dine-in' || orderType === 'take-out'
@@ -1743,7 +1742,7 @@ function CartContent({
                   </div>
                 </RadioGroup>
 
-                {secondaryPaymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pick-up') && (
+                {secondaryPaymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (
                   <div className="space-y-2 pt-2">
                     <Label htmlFor="cashTenderedSecondary" className="flex items-center gap-2">
                       <Banknote className="h-4 w-4" />
@@ -1775,7 +1774,7 @@ function CartContent({
           </div>
         )}
 
-        {paymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pick-up') && (
+        {paymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (
           <div className="mt-4 space-y-2">
             <Label htmlFor="cashTendered" className="flex items-center gap-2">
               <Banknote className="h-4 w-4" />
