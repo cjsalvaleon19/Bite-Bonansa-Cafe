@@ -16,7 +16,35 @@ const RouteMapModal = dynamic(
 const DEFAULT_DELIVERY_FEE = 50;
 
 // Query string for fetching deliveries with related order data
-const DELIVERIES_SELECT_QUERY = '*, orders(id, order_number, total, subtotal, customer_name, customer_phone, customer_address, delivery_fee, items, customer_latitude, customer_longitude, points_used, cash_amount, customer_id, order_mode, payment_method)';
+// Include both 'items' (JSONB column) and 'order_items' (related table) for receipt display
+const DELIVERIES_SELECT_QUERY = `*, orders(
+  id, 
+  order_number, 
+  total, 
+  subtotal, 
+  customer_name, 
+  customer_phone, 
+  customer_address, 
+  delivery_fee, 
+  items, 
+  customer_latitude, 
+  customer_longitude, 
+  points_used, 
+  cash_amount, 
+  customer_id, 
+  order_mode, 
+  payment_method,
+  order_items(
+    id,
+    menu_item_id,
+    name,
+    price,
+    quantity,
+    subtotal,
+    notes,
+    variant_details
+  )
+)`;
 
 // Helper function to format distance
 const formatDistance = (meters) => {
