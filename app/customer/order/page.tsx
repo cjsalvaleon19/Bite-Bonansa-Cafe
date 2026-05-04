@@ -847,7 +847,7 @@ function CustomerOrderPage() {
         </Sheet>
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/30 p-1 w-full">
+      <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/30 p-1 w-full" role="group" aria-label="Order type selection">
         <Button
           variant={orderType === 'dine-in' ? 'default' : 'ghost'}
           size="sm"

@@ -1096,7 +1096,7 @@ export default function CashierDashboard() {
                         {item.name}
                         {item.variant_details && typeof item.variant_details === 'object' && Object.keys(item.variant_details).length > 0 && (
                           <div style={styles.viewOrderItemVariants}>
-                            Add Ons: {Object.entries(item.variant_details).map(([type, value]) => value).join(', ')}
+                            Variants & Add-ons: {Object.entries(item.variant_details).map(([type, value]) => value).join(', ')}
                           </div>
                         )}
                       </div>
@@ -1135,6 +1135,8 @@ export default function CashierDashboard() {
               {selectedOrderToView.special_request && (
                 <div style={styles.viewOrderNotes}>
                   <strong>Special Instructions:</strong>
+                  {/* Extract customer notes from special_request field (text before | delimiter). 
+                      Format: "customer notes | metadata" - we only show customer notes */}
                   <p>{selectedOrderToView.special_request.split('|')[0].trim()}</p>
                 </div>
               )}
