@@ -80,8 +80,8 @@ export default function ReceiptModal({ delivery, onClose }) {
           <div style={styles.receipt}>
             <div style={styles.receiptHeader}>
               <h2 style={styles.businessName}>Bite Bonansa Cafe</h2>
-              <p style={styles.businessInfo}>123 Main Street, City</p>
-              <p style={styles.businessInfo}>Tel: (123) 456-7890</p>
+              <p style={styles.businessInfo}>Laconon-Salacafe Rd, Brgy. Poblacion, T'boli, South Cotabato</p>
+              <p style={styles.businessInfo}>Tel: 0907-200-8247</p>
               <p style={styles.invoiceTitle}>SALES INVOICE</p>
             </div>
 

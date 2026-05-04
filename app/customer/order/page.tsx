@@ -567,7 +567,7 @@ function CustomerOrderPage() {
       return
     }
     if (orderType === 'delivery' && deliveryOutOfRange) {
-      toast.error('Your location is outside our delivery area (max 10 km).')
+      toast.error('Delivery is only available within T\'Boli, South Cotabato (max 10 km from our store).')
       return
     }
     
@@ -789,7 +789,7 @@ function CustomerOrderPage() {
     setDeliveryLng(lng)
     const { fee, distance, outOfRange } = calculateDeliveryFee(lat, lng)
     if (outOfRange) {
-      toast.error('Your location is outside our delivery area (max 10 km).')
+      toast.error('Delivery is only available within T\'Boli, South Cotabato (max 10 km from our store).')
     } else {
       toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance ?? 0)})`)
     }
@@ -1851,11 +1851,13 @@ function CartContent({
           cart.length === 0 ||
           (orderType === 'delivery' && !deliveryAddress.trim()) ||
           (orderType === 'delivery' && deliveryOutOfRange) ||
-          (paymentMethod === 'cash' && (!cashTendered || parseFloat(cashTendered) < total)) ||
+          // Cash tendered validation only for delivery and pickup orders
+          (paymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (!cashTendered || parseFloat(cashTendered) < total)) ||
           (paymentMethod === 'points' && (
             pointsToUse <= 0 ||
             pointsToUse > loyaltyBalance ||
-            (remainingBalance > 0 && secondaryPaymentMethod === 'cash' && (!cashTendered || parseFloat(cashTendered) < remainingBalance))
+            // Cash tendered validation only for delivery and pickup when using points+cash
+            (remainingBalance > 0 && secondaryPaymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (!cashTendered || parseFloat(cashTendered) < remainingBalance))
           ))
         }
       >

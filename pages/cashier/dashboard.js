@@ -429,8 +429,8 @@ export default function CashierDashboard() {
       <body>
         <div class="header">
           <h1>☕ Bite Bonansa Cafe</h1>
-          <p>123 Main Street, City</p>
-          <p>Tel: (123) 456-7890</p>
+          <p>Laconon-Salacafe Rd, Brgy. Poblacion, T'boli, South Cotabato</p>
+          <p>Tel: 0907-200-8247</p>
           <p style="margin-top: 10px; font-size: 16px; font-weight: bold;">${title}</p>
         </div>
 
