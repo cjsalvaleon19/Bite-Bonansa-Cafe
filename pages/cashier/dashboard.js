@@ -1128,7 +1128,7 @@ export default function CashierDashboard() {
                   <span>Subtotal:</span>
                   <span>₱{parseFloat(selectedOrderToView.subtotal || 0).toFixed(2)}</span>
                 </div>
-                {selectedOrderToView.delivery_fee > 0 && (
+                {selectedOrderToView.order_mode === 'delivery' && (
                   <div style={styles.viewOrderTotalRow}>
                     <span>Delivery Fee:</span>
                     <span>₱{parseFloat(selectedOrderToView.delivery_fee || 0).toFixed(2)}</span>
@@ -1144,6 +1144,26 @@ export default function CashierDashboard() {
                   <strong>Total:</strong>
                   <strong>₱{parseFloat(selectedOrderToView.total_amount || 0).toFixed(2)}</strong>
                 </div>
+                {(() => {
+                  const cashAmount = parseFloat(selectedOrderToView.cash_amount || 0);
+                  const totalAmount = parseFloat(selectedOrderToView.total_amount || 0);
+                  const pointsUsed = parseFloat(selectedOrderToView.points_used || 0);
+                  const netAmount = totalAmount - pointsUsed;
+                  const change = Math.max(0, cashAmount - netAmount);
+                  
+                  return cashAmount > 0 ? (
+                    <>
+                      <div style={styles.viewOrderTotalRow}>
+                        <span>Cash Tendered:</span>
+                        <span>₱{cashAmount.toFixed(2)}</span>
+                      </div>
+                      <div style={styles.viewOrderTotalRow}>
+                        <span>Change:</span>
+                        <span>₱{change.toFixed(2)}</span>
+                      </div>
+                    </>
+                  ) : null;
+                })()}
               </div>
 
               {selectedOrderToView.special_request && selectedOrderToView.special_request.trim() && (

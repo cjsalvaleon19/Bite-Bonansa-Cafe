@@ -678,6 +678,11 @@ function CustomerOrderPage() {
           }
         }
       }
+      // Calculate cash amount and change for cash payments
+      const cashAmount = paymentMethod === 'cash' || (paymentMethod === 'points' && secondaryPaymentMethod === 'cash')
+        ? parseFloat(cashTendered) || 0
+        : 0
+
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -693,6 +698,7 @@ function CustomerOrderPage() {
           subtotal,
           delivery_fee: isDelivery ? appliedDeliveryFee : 0,
           total_amount: total,
+          cash_amount: cashAmount,
           special_request: notesStr.trim(),
           delivery_fee_pending: isDelivery ? true : false,
         } as any)
