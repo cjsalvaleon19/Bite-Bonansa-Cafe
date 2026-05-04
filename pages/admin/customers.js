@@ -19,12 +19,50 @@ export default function CustomersPage() {
     if (!supabase) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('id, customer_id, full_name, email, phone, loyalty_points, created_at')
+      // Fetch users with customer role
+      const { data: usersData, error } = await supabase
+        .from('users')
+        .select('id, customer_id, full_name, email, phone, created_at')
+        .eq('role', 'customer')
         .order('full_name');
-      if (!error && data) setCustomers(data);
-    } catch { /* non-fatal */ } finally {
+      
+      if (error) {
+        console.error('[CustomersPage] Error fetching users:', error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!usersData) {
+        setCustomers([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch loyalty points for each customer from loyalty_transactions
+      const customersWithLoyalty = await Promise.all(
+        usersData.map(async (user) => {
+          // Calculate loyalty balance by summing all transaction amounts
+          const { data: transactions, error: transError } = await supabase
+            .from('loyalty_transactions')
+            .select('amount')
+            .eq('customer_id', user.id);
+
+          let loyaltyBalance = 0;
+          if (!transError && transactions) {
+            loyaltyBalance = transactions.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+          }
+
+          return {
+            ...user,
+            loyalty_points: loyaltyBalance
+          };
+        })
+      );
+
+      setCustomers(customersWithLoyalty);
+    } catch (err) {
+      console.error('[CustomersPage] Fetch failed:', err);
+    } finally {
       setLoading(false);
     }
   }, []);
@@ -103,7 +141,7 @@ export default function CustomersPage() {
                   <td style={styles.td}>{c.phone ?? '—'}</td>
                   <td style={styles.td}>
                     <span style={{ color: '#4caf50', fontWeight: '600' }}>
-                      {c.loyalty_points ?? 0} pts
+                      ₱{(c.loyalty_points ?? 0).toFixed(2)}
                     </span>
                   </td>
                   <td style={styles.td}>

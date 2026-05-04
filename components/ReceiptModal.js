@@ -8,7 +8,9 @@ export default function ReceiptModal({ delivery, onClose }) {
   if (!delivery) return null;
 
   const order = delivery.orders || {};
-  const items = order.items || [];
+  // Handle items from both JSONB column (order.items) and related table (order.order_items)
+  // order.items is the JSONB column, order_items would be from a join
+  const items = order.items || order.order_items || [];
   
   // Helper function to strip variant details from item name (for legacy data)
   const stripVariantsFromName = (name) => {
@@ -136,7 +138,7 @@ export default function ReceiptModal({ delivery, onClose }) {
                 <span>₱{subtotal.toFixed(2)}</span>
               </div>
               {/* Always show delivery fee for delivery orders */}
-              {(order.order_mode === 'delivery' || deliveryFee > 0) && (
+              {order.order_mode === 'delivery' && (
                 <div style={styles.totalRow}>
                   <span><strong>Delivery Fee:</strong></span>
                   <span>₱{deliveryFee.toFixed(2)}</span>
@@ -156,18 +158,14 @@ export default function ReceiptModal({ delivery, onClose }) {
                 <span><strong>Net Amount:</strong></span>
                 <span><strong>₱{netAmount.toFixed(2)}</strong></span>
               </div>
-              {cashTendered > 0 && (
-                <>
-                  <div style={styles.totalRow}>
-                    <span><strong>Cash Tendered:</strong></span>
-                    <span>₱{cashTendered.toFixed(2)}</span>
-                  </div>
-                  <div style={styles.totalRow}>
-                    <span><strong>Change:</strong></span>
-                    <span>₱{change.toFixed(2)}</span>
-                  </div>
-                </>
-              )}
+              <div style={styles.totalRow}>
+                <span><strong>Cash Tendered:</strong></span>
+                <span>₱{cashTendered.toFixed(2)}</span>
+              </div>
+              <div style={styles.totalRow}>
+                <span><strong>Change:</strong></span>
+                <span>₱{change.toFixed(2)}</span>
+              </div>
               <div style={{ ...styles.totalRow, borderTop: '1px dashed #000', paddingTop: '8px', marginTop: '8px' }}>
                 <span><strong>Payment Method:</strong></span>
                 <span>{order.payment_method || 'cash'}</span>

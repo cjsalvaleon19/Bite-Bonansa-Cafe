@@ -16,7 +16,35 @@ const RouteMapModal = dynamic(
 const DEFAULT_DELIVERY_FEE = 50;
 
 // Query string for fetching deliveries with related order data
-const DELIVERIES_SELECT_QUERY = '*, orders(id, order_number, total, subtotal, customer_name, customer_phone, customer_address, delivery_fee, items, customer_latitude, customer_longitude, points_used, cash_amount, customer_id, order_mode, payment_method)';
+// Include both 'items' (JSONB column) and 'order_items' (related table) for receipt display
+const DELIVERIES_SELECT_QUERY = `*, orders(
+  id, 
+  order_number, 
+  total, 
+  subtotal, 
+  customer_name, 
+  customer_phone, 
+  customer_address, 
+  delivery_fee, 
+  items, 
+  customer_latitude, 
+  customer_longitude, 
+  points_used, 
+  cash_amount, 
+  customer_id, 
+  order_mode, 
+  payment_method,
+  order_items(
+    id,
+    menu_item_id,
+    name,
+    price,
+    quantity,
+    subtotal,
+    notes,
+    variant_details
+  )
+)`;
 
 // Helper function to format distance
 const formatDistance = (meters) => {
@@ -243,13 +271,18 @@ export default function RiderDeliveries() {
         // Get the order_id from the delivery
         const delivery = deliveries.find(d => d.id === deliveryId);
         if (delivery && delivery.order_id) {
-          await supabase
+          const { error: orderError } = await supabase
             .from('orders')
             .update({ 
               status: 'order_delivered',
               delivered_at: new Date().toISOString()
             })
             .eq('id', delivery.order_id);
+          
+          if (orderError) {
+            console.error('[RiderDeliveries] Failed to update order status:', orderError);
+            throw new Error(`Failed to update order status: ${orderError?.message || 'Unknown error'}`);
+          }
         }
       }
 
@@ -257,13 +290,18 @@ export default function RiderDeliveries() {
       if (newStatus === 'accepted' || newStatus === 'in_progress') {
         const delivery = deliveries.find(d => d.id === deliveryId);
         if (delivery && delivery.order_id) {
-          await supabase
+          const { error: orderError } = await supabase
             .from('orders')
             .update({ 
               status: 'out_for_delivery',
               out_for_delivery_at: new Date().toISOString()
             })
             .eq('id', delivery.order_id);
+          
+          if (orderError) {
+            console.error('[RiderDeliveries] Failed to update order to out_for_delivery:', orderError);
+            alert('Warning: Order status update failed.\nPlease contact support if issues persist.');
+          }
         }
       }
 
