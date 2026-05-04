@@ -140,9 +140,10 @@ supabase db push
 - [ ] Variant details use smaller font (10px vs 12px)
 
 #### 4. Loyalty Points
-- [ ] Small orders (e.g., ₱50) earn minimum 1 point
-- [ ] Orders ≤ ₱500 earn at least 1 point
-- [ ] Orders > ₱500 earn 0.35% or minimum 1 point
+- [ ] Small orders (e.g., ₱50) earn 0.10 points (50 * 0.002 = 0.10)
+- [ ] Medium orders (e.g., ₱84) earn 0.17 points (84 * 0.002 = 0.168 → 0.17)
+- [ ] Orders at ₱500 earn 1.00 points (500 * 0.002 = 1.00)
+- [ ] Orders > ₱500 earn 0.35% (e.g., ₱1000 = 3.50 points)
 - [ ] Orders without customer ID don't earn points
 - [ ] Points display correctly in checkout preview
 
