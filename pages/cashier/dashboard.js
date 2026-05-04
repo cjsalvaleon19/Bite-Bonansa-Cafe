@@ -651,8 +651,7 @@ export default function CashierDashboard() {
 
       if (error) throw error;
 
-      // Get the full order details for printing
-      const order = pendingOrders.find(o => o.id === orderId);
+      // Use the order we already found earlier for printing
       if (order) {
         // Show print receipt confirmation modal
         setAcceptedOrder(order);
