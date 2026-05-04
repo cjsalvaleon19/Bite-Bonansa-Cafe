@@ -140,7 +140,7 @@ export default function OrderTracking() {
     }
 
     const channel = supabase
-      .channel('customer-orders-changes')
+      .channel(`customer-orders-${user.id}`)
       .on(
         'postgres_changes',
         {
