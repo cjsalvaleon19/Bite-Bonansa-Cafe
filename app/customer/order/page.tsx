@@ -679,8 +679,9 @@ function CustomerOrderPage() {
         }
       }
       // Calculate cash amount and change for cash payments
-      const cashAmount = paymentMethod === 'cash' || (paymentMethod === 'points' && secondaryPaymentMethod === 'cash')
-        ? parseFloat(cashTendered) || 0
+      const cashTenderedValue = cashTendered && cashTendered.trim() !== '' ? parseFloat(cashTendered) : 0
+      const cashAmount = (paymentMethod === 'cash' || (paymentMethod === 'points' && secondaryPaymentMethod === 'cash'))
+        ? (isNaN(cashTenderedValue) ? 0 : cashTenderedValue)
         : 0
 
       const { data: order, error: orderError } = await supabase
