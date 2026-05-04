@@ -798,7 +798,7 @@ function CustomerOrderPage() {
         <Sheet>
           <SheetTrigger className="relative inline-flex items-center justify-center rounded-md bg-primary px-3 sm:px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 md:hidden touch-manipulation tap-highlight-transparent shrink-0">
             <ShoppingCart className="mr-1 sm:mr-2 h-5 w-5" />
-            <span className="hidden xs:inline">Cart</span>
+            <span className="sm:inline">Cart</span>
             {cartItemCount > 0 && (
               <span className="absolute -right-1 sm:-right-2 -top-1 sm:-top-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground font-bold">
                 {cartItemCount}

@@ -13,7 +13,6 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
-  viewportFit: 'cover', // For iOS notched devices
 }
 
 export default function RootLayout({
@@ -24,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <meta name="viewport" content="viewport-fit=cover" />
         {/* Google Fonts - preconnect first to reduce latency */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
