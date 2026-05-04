@@ -153,6 +153,18 @@ export default function OrdersQueue() {
 
       fetchOrders();
     } catch (err) {
+      // Check if error is due to duplicate loyalty transaction
+      // This shouldn't happen after migration 082, but handle gracefully just in case
+      const isDuplicateLoyalty = err?.message?.includes('unique_loyalty_per_order') ||
+                                  err?.code === '23505'; // PostgreSQL unique violation code
+      
+      if (isDuplicateLoyalty) {
+        console.warn('[OrdersQueue] Loyalty points conflict (likely already awarded):', err.message);
+        // Refresh orders list - the operation likely succeeded despite the error
+        fetchOrders();
+        return;
+      }
+      
       console.error('[OrdersQueue] Failed to mark item as served:', err?.message ?? err);
       alert('Failed to update item status. Please try again.');
     }
