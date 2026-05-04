@@ -11,7 +11,7 @@ export function generateCustomerId() {
  * Calculate loyalty points earned for a given purchase amount.
  * 0.2% for purchases ₱1–₱500
  * 0.35% for purchases ₱501+
- * Points will be > 0 for any positive purchase amount
+ * Points calculated from percentage (most purchases will earn > 0)
  */
 export function calcPointsEarned(amount) {
   if (amount <= 0) return 0;

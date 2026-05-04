@@ -82,7 +82,8 @@ END IF;
 -- Round to 2 decimal places
 points_earned := ROUND(points_earned, 2);
 
--- Points will naturally be > 0 for any positive subtotal
+-- Points calculated from percentage will be > 0 for most purchases
+-- (very small purchases < ₱0.50 may round to 0.00)
 -- No minimum enforcement needed ✅
 ```
 
@@ -99,7 +100,7 @@ With the corrected implementation:
 | ₱500.00  | 0.2%  | 500 × 0.002 = 1.00   | 1.00          |
 | ₱1000.00 | 0.35% | 1000 × 0.0035 = 3.50 | 3.50          |
 
-**Note**: Very small purchases (< ₱0.50) may round to 0.00 points, which is mathematically correct for the 0.2% rate.
+**Note**: Very small purchases (< ₱50) will earn small point amounts. Purchases under ₱0.50 may round to 0.00 points after rounding to 2 decimal places, which is mathematically correct for the 0.2% rate. Most typical orders will earn points > 0.
 
 ## Migration Path
 

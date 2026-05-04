@@ -46,7 +46,8 @@ BEGIN
         -- Round to 2 decimal places
         points_earned := ROUND(points_earned, 2);
         
-        -- Points will naturally be > 0 for any positive subtotal
+        -- Points calculated from percentage will be > 0 for most purchases
+        -- (very small purchases < ₱0.50 may round to 0.00)
         -- No minimum enforcement needed
 
         -- Get current balance
@@ -93,5 +94,5 @@ CREATE TRIGGER trg_award_loyalty_points_on_order_completion
   FOR EACH ROW
   EXECUTE FUNCTION award_loyalty_points_on_order_completion();
 
-COMMENT ON FUNCTION award_loyalty_points_on_order_completion IS 'Awards loyalty points to customers when orders are completed. Points > 0 for any purchase. 0.2% for ₱1-500 subtotal, 0.35% for ₱501+ subtotal';
+COMMENT ON FUNCTION award_loyalty_points_on_order_completion IS 'Awards loyalty points to customers when orders are completed. Points calculated from percentage (0.2% or 0.35%). Most purchases will earn points > 0.';
 COMMENT ON TRIGGER trg_award_loyalty_points_on_order_completion ON orders IS 'Triggers loyalty points calculation when order status changes to completed/delivered';
