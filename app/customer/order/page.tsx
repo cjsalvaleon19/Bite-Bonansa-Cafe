@@ -589,10 +589,14 @@ function CustomerOrderPage() {
       // If there's remaining balance after using points
       if (remainingBalance > 0) {
         if (secondaryPaymentMethod === 'cash') {
-          const cashAmount = parseFloat(cashTendered)
-          if (isNaN(cashAmount) || cashAmount < remainingBalance) {
-            toast.error(`Please enter cash amount of at least ₱${remainingBalance.toFixed(2)}`)
-            return
+          // Only require cash tendered for delivery and pick-up orders
+          const requiresCashTendered = orderType === 'delivery' || orderType === 'pick-up'
+          if (requiresCashTendered) {
+            const cashAmount = parseFloat(cashTendered)
+            if (isNaN(cashAmount) || cashAmount < remainingBalance) {
+              toast.error(`Please enter cash amount of at least ₱${remainingBalance.toFixed(2)}`)
+              return
+            }
           }
         } else if (secondaryPaymentMethod === 'gcash') {
           setShowGcashDialog(true)
@@ -600,10 +604,15 @@ function CustomerOrderPage() {
         }
       }
     } else if (paymentMethod === 'cash') {
-      const cashAmount = parseFloat(cashTendered)
-      if (isNaN(cashAmount) || cashAmount < total) {
-        toast.error('Please enter a valid cash amount that covers the total')
-        return
+      // Only require cash tendered for delivery and pick-up orders
+      // Dine-in and take-out orders pay at the cashier
+      const requiresCashTendered = orderType === 'delivery' || orderType === 'pick-up'
+      if (requiresCashTendered) {
+        const cashAmount = parseFloat(cashTendered)
+        if (isNaN(cashAmount) || cashAmount < total) {
+          toast.error('Please enter a valid cash amount that covers the total')
+          return
+        }
       }
     } else if (paymentMethod === 'gcash') {
       setShowGcashDialog(true)
@@ -679,9 +688,12 @@ function CustomerOrderPage() {
         }
       }
       // Calculate cash amount and change for cash payments
+      // Only save cash_amount for delivery/pick-up orders (paid online)
+      // Dine-in/take-out orders pay at the cashier, so cash_amount = 0
       const cashTenderedValue = cashTendered && cashTendered.trim() !== '' ? parseFloat(cashTendered) : 0
+      const isDineInOrTakeOut = orderType === 'dine-in' || orderType === 'take-out'
       const cashAmount = (paymentMethod === 'cash' || (paymentMethod === 'points' && secondaryPaymentMethod === 'cash'))
-        ? (isNaN(cashTenderedValue) ? 0 : cashTenderedValue)
+        ? (isDineInOrTakeOut ? 0 : (isNaN(cashTenderedValue) ? 0 : cashTenderedValue))
         : 0
 
       const { data: order, error: orderError } = await supabase
@@ -1731,7 +1743,7 @@ function CartContent({
                   </div>
                 </RadioGroup>
 
-                {secondaryPaymentMethod === 'cash' && (
+                {secondaryPaymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pick-up') && (
                   <div className="space-y-2 pt-2">
                     <Label htmlFor="cashTenderedSecondary" className="flex items-center gap-2">
                       <Banknote className="h-4 w-4" />
@@ -1763,7 +1775,7 @@ function CartContent({
           </div>
         )}
 
-        {paymentMethod === 'cash' && (
+        {paymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pick-up') && (
           <div className="mt-4 space-y-2">
             <Label htmlFor="cashTendered" className="flex items-center gap-2">
               <Banknote className="h-4 w-4" />
