@@ -779,9 +779,12 @@ const styles = {
     gap: '12px',
     marginBottom: '24px',
     borderBottom: '2px solid #2a2a2a',
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
   },
   tab: {
-    flex: 1,
+    flex: '1 1 auto',
+    minWidth: 'fit-content',
     padding: '14px 20px',
     backgroundColor: 'transparent',
     color: '#999',
@@ -793,6 +796,7 @@ const styles = {
     fontFamily: "'Poppins', sans-serif",
     transition: 'all 0.3s',
     outline: 'none',
+    whiteSpace: 'nowrap',
   },
   activeTab: {
     color: '#ffc107',
