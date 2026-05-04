@@ -18,6 +18,8 @@ import {
   ArrowLeft,
   Upload,
   X,
+  UtensilsCrossed,
+  Package,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -124,7 +126,7 @@ function CustomerOrderPage() {
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
-  const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery')
+  const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine-in' | 'take-out'>('dine-in')
   const [deliveryEnabled, setDeliveryEnabled] = useState(true)
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
@@ -556,7 +558,7 @@ function CustomerOrderPage() {
   const handlePlaceOrder = async () => {
     // Check if delivery is disabled but user is trying to order with delivery
     if (orderType === 'delivery' && !deliveryEnabled) {
-      toast.error('Delivery is currently unavailable. Please select pick-up for your order.')
+      toast.error('Delivery is currently unavailable. Please select another order mode.')
       return
     }
     
@@ -686,7 +688,7 @@ function CustomerOrderPage() {
           delivery_latitude: isDelivery ? deliveryLat : null,
           delivery_longitude: isDelivery ? deliveryLng : null,
           status: 'pending',
-          order_mode: isDelivery ? 'delivery' : 'pick-up',
+          order_mode: orderType, // Use the selected order type directly
           payment_method: paymentMethod,
           subtotal,
           delivery_fee: isDelivery ? appliedDeliveryFee : 0,
@@ -845,7 +847,25 @@ function CustomerOrderPage() {
         </Sheet>
       </div>
 
-      <div className="flex gap-2 rounded-lg border bg-muted/30 p-1 w-full sm:w-fit">
+      <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/30 p-1 w-full">
+        <Button
+          variant={orderType === 'dine-in' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setOrderType('dine-in')}
+          className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
+        >
+          <UtensilsCrossed className="h-4 w-4" />
+          <span>Dine-in</span>
+        </Button>
+        <Button
+          variant={orderType === 'take-out' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setOrderType('take-out')}
+          className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
+        >
+          <Package className="h-4 w-4" />
+          <span>Take-out</span>
+        </Button>
         <Button
           variant={orderType === 'delivery' ? 'default' : 'ghost'}
           size="sm"
@@ -869,7 +889,19 @@ function CustomerOrderPage() {
 
       {!deliveryEnabled && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-amber-600">
-          <strong>Delivery is currently unavailable.</strong> Please select pick-up for your order.
+          <strong>Delivery is currently unavailable.</strong> Please select another order mode.
+        </div>
+      )}
+
+      {orderType === 'dine-in' && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-primary">
+          <strong>Dine-in order</strong> — Enjoy your meal at our cafe. Your order will be prepared and served to you.
+        </div>
+      )}
+
+      {orderType === 'take-out' && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-primary">
+          <strong>Take-out order</strong> — Your order will be prepared for you to take away. No delivery fee will be charged.
         </div>
       )}
 
@@ -1491,7 +1523,7 @@ interface CartContentProps {
   setCashTendered: (amount: string) => void
   handlePlaceOrder: () => void
   isSubmitting: boolean
-  orderType?: 'delivery' | 'pickup'
+  orderType?: 'delivery' | 'pickup' | 'dine-in' | 'take-out'
   loyaltyBalance: number
   pointsToUse: number
   setPointsToUse: (points: number) => void
