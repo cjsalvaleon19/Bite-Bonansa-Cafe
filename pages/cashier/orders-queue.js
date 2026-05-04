@@ -429,20 +429,53 @@ export default function OrdersQueue() {
       alert('Order marked as complete!');
       fetchOrders();
     } catch (err) {
+      const errMsg = err?.message ?? '';
+
       // Check if error is due to duplicate loyalty transaction
       // This shouldn't happen after migration 082, but handle gracefully just in case
-      const isDuplicateLoyalty = err?.message?.includes('unique_loyalty_per_order') ||
+      const isDuplicateLoyalty = errMsg.includes('unique_loyalty_per_order') ||
                                   err?.code === '23505'; // PostgreSQL unique violation code
-      
+
       if (isDuplicateLoyalty) {
-        console.warn('[OrdersQueue] Loyalty points conflict (likely already awarded):', err.message);
+        console.warn('[OrdersQueue] Loyalty points conflict (likely already awarded):', errMsg);
         // Refresh orders list - the operation likely succeeded despite the error
         fetchOrders();
         alert('Order marked as complete!');
         return;
       }
-      
-      console.error('[OrdersQueue] Failed to complete pickup order:', err?.message ?? err);
+
+      // Check if error is from purchase tracking trigger (ON CONFLICT DO UPDATE)
+      // After migration 088 the trigger has an exception handler so this should
+      // not occur anymore, but guard defensively: fetch the order to see if the
+      // status update actually went through before showing a failure message.
+      const isPurchaseTrackingConflict = errMsg.includes('ON CONFLICT DO UPDATE') ||
+                                          errMsg.includes('cannot affect row a second time');
+
+      if (isPurchaseTrackingConflict) {
+        console.warn('[OrdersQueue] Purchase tracking conflict for order:', order.id, errMsg);
+        // Fetch the current order status to determine whether the update succeeded
+        try {
+          const { data: currentOrder } = await supabase
+            .from('orders')
+            .select('status')
+            .eq('id', order.id)
+            .single();
+
+          if (currentOrder?.status === 'order_delivered') {
+            // Status was updated despite the trigger error
+            fetchOrders();
+            alert('Order marked as complete!');
+            return;
+          }
+        } catch (fetchErr) {
+          console.warn('[OrdersQueue] Could not fetch order status after conflict:', fetchErr);
+        }
+        // Order was NOT completed - ask user to retry
+        alert('Failed to complete order due to a database conflict. Please run migration 088 on your Supabase database and try again.');
+        return;
+      }
+
+      console.error('[OrdersQueue] Failed to complete pickup order:', errMsg);
       alert('Failed to update order status. Please try again.');
     }
   };
