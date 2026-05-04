@@ -100,7 +100,7 @@ const CART_LOAD_DELAY_MS = 100
 function calcEarnedPoints(subtotal: number): number {
   if (subtotal <= 0) return 0
   const rate = subtotal <= 500 ? 0.002 : 0.0035
-  const calculated = Math.floor(subtotal * rate * 100) / 100 // Round to 2 decimals
+  const calculated = Math.round(subtotal * rate * 100) / 100 // Round to 2 decimals
   // Ensure minimum of 1 point earned for any purchase
   return Math.max(1, calculated)
 }
@@ -570,7 +570,7 @@ function CustomerOrderPage() {
       return
     }
     if (orderType === 'delivery' && deliveryOutOfRange) {
-      toast.error('Delivery is only available within T\'Boli, South Cotabato (max 10 km from our store).')
+      toast.error('Delivery is only available within T'Boli, South Cotabato (max 10 km from our store).')
       return
     }
     
@@ -792,7 +792,7 @@ function CustomerOrderPage() {
     setDeliveryLng(lng)
     const { fee, distance, outOfRange } = calculateDeliveryFee(lat, lng)
     if (outOfRange) {
-      toast.error('Delivery is only available within T\'Boli, South Cotabato (max 10 km from our store).')
+      toast.error('Delivery is only available within T'Boli, South Cotabato (max 10 km from our store).')
     } else {
       toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance ?? 0)})`)
     }
