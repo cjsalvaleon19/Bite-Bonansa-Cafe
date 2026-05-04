@@ -82,13 +82,13 @@ export default function OrdersQueue() {
             variant_details
           )
         `)
-        .in('status', ['order_in_queue', 'order_in_process', 'out_for_delivery'])
+        .in('status', ['order_in_queue', 'order_in_process', 'proceed_to_cashier', 'out_for_delivery'])
         .order('created_at', { ascending: true });
 
       if (error) throw error;
 
       // Filter to show only:
-      // 1. All orders in 'order_in_queue' or 'order_in_process'
+      // 1. All orders in 'order_in_queue', 'order_in_process', or 'proceed_to_cashier'
       // 2. Pick-up orders in 'out_for_delivery' status (waiting to be completed)
       // 3. Exclude orders where all items are already served (dine-in/take-out completed orders)
       const filteredOrders = (data || []).filter(order => {
@@ -101,7 +101,7 @@ export default function OrdersQueue() {
           return false;
         }
         
-        if (order.status === 'order_in_queue' || order.status === 'order_in_process') {
+        if (order.status === 'order_in_queue' || order.status === 'order_in_process' || order.status === 'proceed_to_cashier') {
           return true;
         }
         // Only show pick-up orders in out_for_delivery status

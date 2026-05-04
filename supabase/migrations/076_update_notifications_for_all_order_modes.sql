@@ -20,6 +20,22 @@ BEGIN
     
     -- Determine notification based on status and order_mode
     CASE NEW.status
+      WHEN 'proceed_to_cashier' THEN
+        -- Dine-in and Take-out specific status
+        IF NEW.order_mode = 'dine-in' THEN
+          notification_title := 'Proceed to the Cashier';
+          notification_message := 'Your order #' || order_display_number || ' is ready. Please proceed to the cashier for payment.';
+          notification_type := 'proceed_to_cashier';
+        ELSIF NEW.order_mode = 'take-out' THEN
+          notification_title := 'Proceed to the Cashier';
+          notification_message := 'Your order #' || order_display_number || ' is ready. Please proceed to the cashier for payment and pick-up.';
+          notification_type := 'proceed_to_cashier';
+        ELSE
+          -- Fallback for other order modes (shouldn't normally happen)
+          notification_title := 'Order Accepted';
+          notification_message := 'Your order #' || order_display_number || ' has been accepted.';
+        END IF;
+      
       WHEN 'order_in_process' THEN
         notification_title := 'Order Being Prepared';
         notification_message := 'Your order #' || order_display_number || ' is now being prepared.';
@@ -44,11 +60,11 @@ BEGIN
       
       WHEN 'order_delivered' THEN
         IF NEW.order_mode = 'dine-in' THEN
-          notification_title := 'Order Served';
-          notification_message := 'Your order #' || order_display_number || ' has been served. Enjoy your meal!';
+          notification_title := 'Order Complete';
+          notification_message := 'Your order #' || order_display_number || ' is complete. Enjoy your meal!';
         ELSIF NEW.order_mode = 'take-out' OR NEW.order_mode = 'pick-up' THEN
-          notification_title := 'Order Completed';
-          notification_message := 'Your order #' || order_display_number || ' has been completed. Enjoy your meal!';
+          notification_title := 'Order Complete';
+          notification_message := 'Your order #' || order_display_number || ' is complete. Enjoy your meal!';
         ELSE
           notification_title := 'Order Delivered';
           notification_message := 'Your order #' || order_display_number || ' has been delivered. Enjoy your meal!';
@@ -86,4 +102,4 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Comments
-COMMENT ON FUNCTION notify_customer_on_order_status_change() IS 'Creates notifications when order status changes - Updated to support all order modes (dine-in, take-out, delivery, pick-up)';
+COMMENT ON FUNCTION notify_customer_on_order_status_change() IS 'Creates notifications when order status changes - Updated to support all order modes (dine-in, take-out, delivery, pick-up) and proceed_to_cashier status';

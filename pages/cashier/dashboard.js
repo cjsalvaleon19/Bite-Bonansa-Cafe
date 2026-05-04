@@ -556,12 +556,18 @@ export default function CashierDashboard() {
     if (!supabase || !selectedOrderToView) return;
 
     try {
-      // Update order status to 'order_in_process' and set accepted_at timestamp
+      // Determine the appropriate status based on order mode
+      // Dine-in and Take-out: 'proceed_to_cashier' (customer pays at cashier)
+      // Delivery and Pick-up: 'order_in_process' (payment already done online)
+      const isDineInOrTakeOut = selectedOrderToView.order_mode === 'dine-in' || selectedOrderToView.order_mode === 'take-out';
+      const newStatus = isDineInOrTakeOut ? 'proceed_to_cashier' : 'order_in_process';
+      
+      // Update order status and set accepted_at timestamp
       // Note: Database trigger will automatically create notification for customer
       const { error } = await supabase
         .from('orders')
         .update({
-          status: 'order_in_process',
+          status: newStatus,
           accepted_at: new Date().toISOString(),
           cashier_id: user?.id
         })
@@ -623,12 +629,21 @@ export default function CashierDashboard() {
     if (!confirm('Accept this order and start processing?')) return;
 
     try {
-      // Update order status to 'order_in_process' and set accepted_at timestamp
+      // Get the order to determine its mode
+      const order = pendingOrders.find(o => o.id === orderId);
+      
+      // Determine the appropriate status based on order mode
+      // Dine-in and Take-out: 'proceed_to_cashier' (customer pays at cashier)
+      // Delivery and Pick-up: 'order_in_process' (payment already done online)
+      const isDineInOrTakeOut = order && (order.order_mode === 'dine-in' || order.order_mode === 'take-out');
+      const newStatus = isDineInOrTakeOut ? 'proceed_to_cashier' : 'order_in_process';
+      
+      // Update order status and set accepted_at timestamp
       // Note: Database trigger will automatically create notification for customer
       const { error } = await supabase
         .from('orders')
         .update({
-          status: 'order_in_process',
+          status: newStatus,
           accepted_at: new Date().toISOString(),
           cashier_id: user?.id
         })

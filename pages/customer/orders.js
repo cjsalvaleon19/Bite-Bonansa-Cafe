@@ -132,6 +132,13 @@ export default function CustomerOrders() {
         icon: '🕐',
         progress: 25
       },
+      'proceed_to_cashier': {
+        label: 'Proceed to the Cashier',
+        description: 'Please proceed to the cashier for payment',
+        color: '#ff9800',
+        icon: '💳',
+        progress: 50
+      },
       'order_in_process': {
         label: 'Order in Process',
         description: 'Cashier has accepted and confirmed your order',
