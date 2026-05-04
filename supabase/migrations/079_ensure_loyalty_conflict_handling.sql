@@ -7,27 +7,12 @@
 -- ============================================================================
 
 -- Step 1: Ensure unique constraint exists
--- Drop and recreate to guarantee it's there
-DO $$
-BEGIN
-  -- Drop constraint if it exists
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint 
-    WHERE conname = 'unique_loyalty_per_order' 
-    AND conrelid = 'loyalty_transactions'::regclass
-  ) THEN
-    ALTER TABLE loyalty_transactions DROP CONSTRAINT unique_loyalty_per_order;
-    RAISE NOTICE 'Dropped existing unique_loyalty_per_order constraint';
-  END IF;
-  
-  -- Add the constraint
-  ALTER TABLE loyalty_transactions 
-  ADD CONSTRAINT unique_loyalty_per_order UNIQUE (order_id, transaction_type);
-  RAISE NOTICE 'Added unique_loyalty_per_order constraint';
-EXCEPTION
-  WHEN OTHERS THEN
-    RAISE NOTICE 'Could not modify constraint: %', SQLERRM;
-END $$;
+-- Drop constraint if it exists (using separate DDL statement outside DO block)
+ALTER TABLE loyalty_transactions DROP CONSTRAINT IF EXISTS unique_loyalty_per_order;
+
+-- Add the constraint
+ALTER TABLE loyalty_transactions 
+ADD CONSTRAINT unique_loyalty_per_order UNIQUE (order_id, transaction_type);
 
 -- Step 2: Ensure the trigger function has ON CONFLICT handling
 CREATE OR REPLACE FUNCTION award_loyalty_points_on_order_completion()
