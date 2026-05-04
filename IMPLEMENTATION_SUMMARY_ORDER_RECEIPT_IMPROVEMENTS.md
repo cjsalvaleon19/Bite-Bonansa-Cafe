@@ -60,13 +60,13 @@ This document summarizes the fixes implemented to address issues with the order 
 - `pages/cashier/pos.js` - variant-details CSS class (line 546)
 - `pages/cashier/dashboard.js` - inline variant styling (line 348)
 
-### 5. Minimum Loyalty Points ✅
-**Issue**: Small purchases could result in 0 loyalty points earned even when customer ID exists.
+### 5. Loyalty Points Calculation ✅
+**Issue**: Need to ensure loyalty points are always greater than zero when customer ID exists.
 
-**Solution**: Implemented a guaranteed minimum of 1 loyalty point (₱1.00) for any purchase when a customer ID exists.
+**Solution**: Points are calculated as a percentage of subtotal (0.2% or 0.35%) and rounded to 2 decimal places. This naturally ensures points > 0 for any positive purchase amount.
 
 **Files Modified**:
-- `supabase/migrations/080_ensure_minimum_loyalty_points.sql` - Database trigger function
+- `supabase/migrations/081_fix_loyalty_points_calculation.sql` - Database trigger function
 - `app/customer/order/page.tsx` - Client-side calculation function
 - `utils/loyaltyUtils.js` - Utility function update
 
@@ -75,20 +75,21 @@ This document summarizes the fixes implemented to address issues with the order 
 **Loyalty Points Calculation**:
 - 0.2% for subtotal ₱1–₱500
 - 0.35% for subtotal ₱501+
-- **Minimum 1 point guaranteed** for any purchase with customer ID
+- **Points will be > 0 for any positive purchase amount** (naturally from percentage calculation)
 
 **Example Calculations**:
-- ₱50 order: 0.2% = ₱0.10 → **Minimum ₱1.00** applied
-- ₱250 order: 0.2% = ₱0.50 → **Minimum ₱1.00** applied
-- ₱500 order: 0.2% = ₱1.00 → ₱1.00 earned
+- ₱50 order: 0.2% = ₱0.10 earned
+- ₱84 order: 0.2% = ₱0.17 earned (84 * 0.002 = 0.168 → 0.17)
+- ₱250 order: 0.2% = ₱0.50 earned
+- ₱500 order: 0.2% = ₱1.00 earned
 - ₱1000 order: 0.35% = ₱3.50 earned
 
 **Database Migration**:
 ```sql
--- Ensure minimum of 1 point earned when customer_id exists
-IF points_earned < 1.00 THEN
-  points_earned := 1.00;
-END IF;
+-- Points calculated as percentage of subtotal
+-- Round to 2 decimal places
+points_earned := ROUND(subtotal_amount * rate, 2);
+-- No minimum enforcement - points naturally > 0
 ```
 
 **Client-side Calculation**:
@@ -97,7 +98,7 @@ function calcEarnedPoints(subtotal: number): number {
   if (subtotal <= 0) return 0
   const rate = subtotal <= 500 ? 0.002 : 0.0035
   const calculated = Math.round(subtotal * rate * 100) / 100
-  return Math.max(1, calculated) // Minimum 1 point
+  return calculated // Points > 0 for any positive purchase
 }
 ```
 
@@ -105,11 +106,11 @@ function calcEarnedPoints(subtotal: number): number {
 
 ### Running the Database Migration
 
-To apply the minimum loyalty points update:
+To apply the loyalty points calculation fix:
 
 ```bash
-# Run migration 080
-psql -h [your-db-host] -U [user] -d [database] -f supabase/migrations/080_ensure_minimum_loyalty_points.sql
+# Run migration 081 (replaces 080)
+psql -h [your-db-host] -U [user] -d [database] -f supabase/migrations/081_fix_loyalty_points_calculation.sql
 ```
 
 Or via Supabase CLI:
