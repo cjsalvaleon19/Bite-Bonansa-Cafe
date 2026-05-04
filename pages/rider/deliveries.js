@@ -281,7 +281,7 @@ export default function RiderDeliveries() {
           
           if (orderError) {
             console.error('[RiderDeliveries] Failed to update order status:', orderError);
-            throw new Error('Failed to update order status: ' + orderError.message);
+            throw new Error(`Failed to update order status: ${orderError?.message || 'Unknown error'}`);
           }
         }
       }
@@ -300,7 +300,7 @@ export default function RiderDeliveries() {
           
           if (orderError) {
             console.error('[RiderDeliveries] Failed to update order to out_for_delivery:', orderError);
-            alert('Warning: Delivery accepted, but order status update failed. Please contact support if the order doesn\'t appear in the system.');
+            alert('Warning: Order status update failed.\nPlease contact support if issues persist.');
           }
         }
       }

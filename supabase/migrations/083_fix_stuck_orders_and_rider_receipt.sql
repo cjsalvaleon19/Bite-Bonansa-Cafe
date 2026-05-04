@@ -16,10 +16,10 @@ WHERE order_number IN ('ORD-260430-006', 'ORD-260504-002', 'ORD-260504-004')
 -- Log the changes
 DO $$
 DECLARE
-  updated_count INTEGER;
+  affected_orders_count INTEGER;
 BEGIN
-  GET DIAGNOSTICS updated_count = ROW_COUNT;
-  RAISE NOTICE 'Updated % stuck orders to order_delivered status', updated_count;
+  GET DIAGNOSTICS affected_orders_count = ROW_COUNT;
+  RAISE NOTICE 'Updated % stuck orders to order_delivered status', affected_orders_count;
 END $$;
 
 -- Note: The rider receipt issue (item details not showing) will be fixed in the frontend code
