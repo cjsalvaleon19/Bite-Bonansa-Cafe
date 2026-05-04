@@ -1527,10 +1527,10 @@ function CartContent({
       <ScrollArea className="flex-1 pr-4">
         <div className="space-y-3">
           {cart.map((item) => (
-            <div key={item.id} className="rounded-lg border p-2 space-y-1">
+            <div key={item.id} className="rounded-lg border border-border p-2 space-y-1">
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium line-clamp-1">{item.menuItem.name}</p>
+                  <p className="font-medium line-clamp-1 text-foreground">{item.menuItem.name}</p>
                   {(item.selectedVariety || item.selectedSize || item.selectedAddons.length > 0) && (
                     <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
                       {item.selectedVariety && <p>Variety: {item.selectedVariety}</p>}
@@ -1546,7 +1546,7 @@ function CartContent({
                   <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, -1)}>
                     <Minus className="h-3 w-3" />
                   </Button>
-                  <span className="w-8 text-center font-medium text-sm">{item.quantity}</span>
+                  <span className="w-8 text-center font-medium text-sm text-foreground">{item.quantity}</span>
                   <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, 1)}>
                     <Plus className="h-3 w-3" />
                   </Button>
@@ -1555,7 +1555,7 @@ function CartContent({
                   </Button>
                 </div>
               </div>
-              <p className="text-right text-sm font-semibold">{formatCurrency(item.price)}</p>
+              <p className="text-right text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
             </div>
           ))}
         </div>
@@ -1563,8 +1563,8 @@ function CartContent({
         <Separator className="my-4" />
 
         {orderType === 'delivery' && (
-          <div className="space-y-2 rounded-lg bg-card border p-3">
-            <Label htmlFor="address" className="flex items-center gap-2">
+          <div className="space-y-2 rounded-lg bg-card border border-border p-3">
+            <Label htmlFor="address" className="flex items-center gap-2 text-primary">
               <MapPin className="h-4 w-4" />
               Delivery Address
             </Label>
@@ -1594,8 +1594,8 @@ function CartContent({
           </div>
         )}
 
-        <div className="mt-4 space-y-3 rounded-lg bg-card border p-3">
-          <Label className="font-semibold">Payment Method</Label>
+        <div className="mt-4 space-y-3 rounded-lg bg-card border border-border p-3">
+          <Label className="font-semibold text-primary">Payment Method</Label>
           <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="flex gap-4">
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="gcash" id="gcash" />
@@ -1617,8 +1617,8 @@ function CartContent({
           </RadioGroup>
         </div>
 
-        <div className="mt-4 flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm">
-          <span className="flex items-center gap-1.5 text-primary">
+        <div className="mt-4 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+          <span className="flex items-center gap-1.5 text-primary font-medium">
             <Gift className="h-4 w-4" />
             Points you&apos;ll earn
           </span>
@@ -1626,9 +1626,9 @@ function CartContent({
         </div>
 
         {paymentMethod === 'points' && (
-          <div className="mt-4 space-y-3 rounded-lg bg-card border p-4">
+          <div className="mt-4 space-y-3 rounded-lg bg-card border border-border p-4">
             <div className="space-y-2">
-              <Label htmlFor="pointsToUse" className="flex items-center justify-between">
+              <Label htmlFor="pointsToUse" className="flex items-center justify-between text-primary">
                 <span className="flex items-center gap-2">
                   <Gift className="h-4 w-4" />
                   Points to Use
@@ -1747,8 +1747,8 @@ function CartContent({
           </div>
         )}
 
-        <div className="mt-4 space-y-2 rounded-lg bg-card border p-3">
-          <Label htmlFor="notes">Order Notes (Optional)</Label>
+        <div className="mt-4 space-y-2 rounded-lg bg-card border border-border p-3">
+          <Label htmlFor="notes" className="text-primary">Order Notes (Optional)</Label>
           <Textarea
             id="notes"
             placeholder="Any special instructions?"
@@ -1760,13 +1760,13 @@ function CartContent({
         </div>
       </ScrollArea>
 
-      <div className="mt-4 space-y-2 border-t pt-4">
-        <div className="flex justify-between text-sm">
+      <div className="mt-4 space-y-2 border-t border-border pt-4">
+        <div className="flex justify-between text-sm text-foreground">
           <span>Subtotal</span>
-          <span>{formatCurrency(subtotal)}</span>
+          <span className="font-medium">{formatCurrency(subtotal)}</span>
         </div>
         {orderType === 'delivery' && (
-          <div className="flex justify-between text-sm">
+          <div className="flex justify-between text-sm text-foreground">
             <div className="flex flex-col">
               <span className="flex items-center gap-1">
                 <Truck className="h-3 w-3" />
@@ -1778,7 +1778,7 @@ function CartContent({
                 </span>
               )}
             </div>
-            <span>{formatCurrency(deliveryFee)}</span>
+            <span className="font-medium">{formatCurrency(deliveryFee)}</span>
           </div>
         )}
         <div className="flex justify-between text-sm text-muted-foreground">
@@ -1786,7 +1786,7 @@ function CartContent({
           <span>₱0.00</span>
         </div>
         <Separator />
-        <div className="flex justify-between text-xl font-bold">
+        <div className="flex justify-between text-xl font-bold text-primary">
           <span>Total</span>
           <span>{formatCurrency(total)}</span>
         </div>
