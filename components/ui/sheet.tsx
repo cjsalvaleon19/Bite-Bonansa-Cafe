@@ -87,14 +87,19 @@ const SheetContent = React.forwardRef<
       <div
         ref={ref}
         className={cn(
-          'fixed inset-y-0 right-0 z-50 w-3/4 max-w-sm border-l border-gray-200 bg-white shadow-lg p-6 overflow-y-auto',
+          'fixed inset-y-0 right-0 z-50 w-full sm:w-3/4 sm:max-w-lg border-l border-border shadow-lg p-6 overflow-y-auto safe-area-inset-bottom',
           className
         )}
+        style={{ 
+          backgroundColor: '#1a1a1a',
+          color: '#ffc107',
+          ...props.style 
+        }}
         {...props}
       >
         <button
           onClick={() => onOpenChange(false)}
-          className="absolute right-4 top-4 rounded-md opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-gray-950 focus:ring-offset-2"
+          className="absolute right-4 top-4 rounded-md text-primary opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -137,7 +142,7 @@ const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h2
     ref={ref}
-    className={cn('text-lg font-semibold text-gray-950', className)}
+    className={cn('text-lg font-semibold text-primary', className)}
     {...props}
   />
 ))
@@ -150,7 +155,7 @@ const SheetDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn('text-sm text-gray-500', className)}
+    className={cn('text-sm text-muted-foreground', className)}
     {...props}
   />
 ))

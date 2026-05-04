@@ -778,29 +778,29 @@ function CustomerOrderPage() {
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
 
   return (
-    <div className="min-h-screen bg-black p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-black p-4 sm:p-6 space-y-4 sm:space-y-6 safe-area-inset-bottom">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => router.push('/customer/dashboard')}
-            className="text-muted-foreground hover:text-foreground h-10 w-10 p-0"
+            className="text-muted-foreground hover:text-foreground h-10 w-10 sm:h-10 sm:w-10 p-0 touch-manipulation shrink-0"
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-primary">Order Now</h1>
-            <p className="text-sm text-muted-foreground">Browse our menu and place your order</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-primary truncate">Order Now</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Browse our menu and place your order</p>
           </div>
         </div>
 
         <Sheet>
-          <SheetTrigger className="relative inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 md:hidden">
-            <ShoppingCart className="mr-2 h-5 w-5" />
-            Cart
+          <SheetTrigger className="relative inline-flex items-center justify-center rounded-md bg-primary px-3 sm:px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 md:hidden touch-manipulation tap-highlight-transparent shrink-0">
+            <ShoppingCart className="mr-1 sm:mr-2 h-5 w-5" />
+            <span className="sm:inline">Cart</span>
             {cartItemCount > 0 && (
-              <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
+              <span className="absolute -right-1 sm:-right-2 -top-1 sm:-top-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground font-bold">
                 {cartItemCount}
               </span>
             )}
@@ -845,36 +845,36 @@ function CustomerOrderPage() {
         </Sheet>
       </div>
 
-      <div className="flex gap-2 rounded-lg border bg-muted/30 p-1 w-fit">
+      <div className="flex gap-2 rounded-lg border bg-muted/30 p-1 w-full sm:w-fit">
         <Button
           variant={orderType === 'delivery' ? 'default' : 'ghost'}
           size="sm"
           onClick={() => setOrderType('delivery')}
-          className="gap-2"
+          className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
           disabled={!deliveryEnabled}
         >
           <Truck className="h-4 w-4" />
-          Delivery
+          <span>Delivery</span>
         </Button>
         <Button
           variant={orderType === 'pickup' ? 'default' : 'ghost'}
           size="sm"
           onClick={() => setOrderType('pickup')}
-          className="gap-2"
+          className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
         >
           <ShoppingBag className="h-4 w-4" />
-          Pick-up
+          <span>Pick-up</span>
         </Button>
       </div>
 
       {!deliveryEnabled && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-amber-600">
           <strong>Delivery is currently unavailable.</strong> Please select pick-up for your order.
         </div>
       )}
 
       {orderType === 'pickup' && (
-        <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-primary">
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-primary">
           <strong>Pick-up order</strong> — Come to the cafe to collect your order. No delivery fee will be charged.
         </div>
       )}
@@ -887,22 +887,23 @@ function CustomerOrderPage() {
               placeholder="Search menu items..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 h-11 touch-manipulation text-base"
+              type="search"
             />
           </div>
 
           <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
-            <TabsList className="flex-wrap">
-              <TabsTrigger value="all">All</TabsTrigger>
+            <TabsList className="flex-wrap h-auto gap-1 p-1">
+              <TabsTrigger value="all" className="touch-manipulation min-h-[44px] text-sm">All</TabsTrigger>
               {dbCategories.map((category) => (
-                <TabsTrigger key={category.id} value={category.name}>
+                <TabsTrigger key={category.id} value={category.name} className="touch-manipulation min-h-[44px] text-sm">
                   {category.name}
                 </TabsTrigger>
               ))}
             </TabsList>
           </Tabs>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-6">
             {filteredItems.map((item) => {
               const varieties = (item.varieties as unknown as string[]) ?? []
               const sizes = (item.sizes as any[]) ?? []
@@ -927,17 +928,17 @@ function CustomerOrderPage() {
               return (
                 <Card
                   key={item.id}
-                  className="overflow-hidden cursor-pointer transition-all hover:border-primary/50 hover:shadow-md"
+                  className="overflow-hidden cursor-pointer transition-all hover:border-primary/50 hover:shadow-md touch-manipulation active:scale-[0.98]"
                   onClick={() => openItemDialog(item)}
                 >
-                  <CardContent className="p-4">
+                  <CardContent className="p-3 sm:p-4">
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-semibold leading-snug">{item.name}</h3>
-                      <span className="text-base font-bold text-primary whitespace-nowrap">{priceLabel}</span>
+                      <h3 className="font-semibold leading-snug text-sm sm:text-base">{item.name}</h3>
+                      <span className="text-sm sm:text-base font-bold text-primary whitespace-nowrap">{priceLabel}</span>
                     </div>
 
                     {item.description && (
-                      <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                      <p className="mt-1 text-xs sm:text-sm text-muted-foreground line-clamp-2">
                         {item.description}
                       </p>
                     )}
@@ -1186,25 +1187,25 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md max-h-[85vh] sm:max-h-[90vh] overflow-y-auto mx-4">
         <DialogHeader>
-          <DialogTitle>{item.name}</DialogTitle>
+          <DialogTitle className="text-lg sm:text-xl">{item.name}</DialogTitle>
           {item.description && (
-            <DialogDescription>{item.description}</DialogDescription>
+            <DialogDescription className="text-sm">{item.description}</DialogDescription>
           )}
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        <div className="space-y-4 sm:space-y-5 py-2">
           {varieties.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-semibold">
                 Variety <span className="text-destructive">*</span>
               </Label>
-              <RadioGroup value={selectedVariety} onValueChange={setSelectedVariety} className="space-y-1">
+              <RadioGroup value={selectedVariety} onValueChange={setSelectedVariety} className="space-y-2">
                 {varieties.map((v: string) => (
-                  <div key={v} className="flex items-center gap-2">
-                    <RadioGroupItem value={v} id={`variety-${v}`} />
-                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal">{v}</Label>
+                  <div key={v} className="flex items-center gap-2 touch-manipulation">
+                    <RadioGroupItem value={v} id={`variety-${v}`} className="touch-manipulation" />
+                    <Label htmlFor={`variety-${v}`} className="cursor-pointer font-normal flex-1">{v}</Label>
                   </div>
                 ))}
               </RadioGroup>
@@ -1301,10 +1302,10 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
           <div className="flex w-full items-center justify-between gap-3">
             <div>
               <p className="text-xs text-muted-foreground">Total</p>
-              <p className="text-xl font-bold text-primary">{formatCurrency(lineTotal)}</p>
+              <p className="text-lg sm:text-xl font-bold text-primary">{formatCurrency(lineTotal)}</p>
             </div>
             <Button
-              className="flex-1"
+              className="flex-1 touch-manipulation min-h-[44px]"
               disabled={
                 (varieties.length > 0 && !selectedVariety) ||
                 (sizes.length > 0 && !selectedSize)
@@ -1513,10 +1514,10 @@ function CartContent({
 
   if (cart.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-        <ShoppingCart className="mb-2 h-12 w-12 opacity-50" />
-        <p>Your cart is empty</p>
-        <p className="text-sm">Add items from the menu to get started</p>
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <ShoppingCart className="mb-2 h-12 w-12 text-primary opacity-50" />
+        <p className="text-primary">Your cart is empty</p>
+        <p className="text-sm text-primary/80">Add items from the menu to get started</p>
       </div>
     )
   }
@@ -1526,10 +1527,10 @@ function CartContent({
       <ScrollArea className="flex-1 pr-4">
         <div className="space-y-3">
           {cart.map((item) => (
-            <div key={item.id} className="rounded-lg border p-2 space-y-1">
+            <div key={item.id} className="rounded-lg border border-border p-2 space-y-1">
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium line-clamp-1">{item.menuItem.name}</p>
+                  <p className="font-medium line-clamp-1 text-foreground">{item.menuItem.name}</p>
                   {(item.selectedVariety || item.selectedSize || item.selectedAddons.length > 0) && (
                     <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
                       {item.selectedVariety && <p>Variety: {item.selectedVariety}</p>}
@@ -1542,19 +1543,19 @@ function CartContent({
                   <p className="text-sm text-muted-foreground">{formatCurrency(item.basePrice + item.addonPrice)} each</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button variant="outline" size="sm" className="h-7 w-7" onClick={() => updateQuantity(item.id, -1)}>
+                  <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, -1)}>
                     <Minus className="h-3 w-3" />
                   </Button>
-                  <span className="w-8 text-center font-medium">{item.quantity}</span>
-                  <Button variant="outline" size="sm" className="h-7 w-7" onClick={() => updateQuantity(item.id, 1)}>
+                  <span className="w-8 text-center font-medium text-sm text-foreground">{item.quantity}</span>
+                  <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, 1)}>
                     <Plus className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 text-destructive touch-manipulation" onClick={() => removeFromCart(item.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
-              <p className="text-right text-sm font-semibold">{formatCurrency(item.price)}</p>
+              <p className="text-right text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
             </div>
           ))}
         </div>
@@ -1562,8 +1563,8 @@ function CartContent({
         <Separator className="my-4" />
 
         {orderType === 'delivery' && (
-          <div className="space-y-2 rounded-lg bg-card border p-3">
-            <Label htmlFor="address" className="flex items-center gap-2">
+          <div className="space-y-2 rounded-lg bg-card border border-border p-3">
+            <Label htmlFor="address" className="flex items-center gap-2 text-primary">
               <MapPin className="h-4 w-4" />
               Delivery Address
             </Label>
@@ -1575,7 +1576,7 @@ function CartContent({
               className="resize-none"
               rows={2}
             />
-            <Button type="button" variant="outline" size="sm" className="w-full" onClick={openLocationPicker}>
+            <Button type="button" variant="outline" size="sm" className="w-full touch-manipulation min-h-[44px]" onClick={openLocationPicker}>
               <MapPin className="mr-2 h-4 w-4" />
               Search &amp; Pin Location on Map
             </Button>
@@ -1593,8 +1594,8 @@ function CartContent({
           </div>
         )}
 
-        <div className="mt-4 space-y-3 rounded-lg bg-card border p-3">
-          <Label className="font-semibold">Payment Method</Label>
+        <div className="mt-4 space-y-3 rounded-lg bg-card border border-border p-3">
+          <Label className="font-semibold text-primary">Payment Method</Label>
           <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="flex gap-4">
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="gcash" id="gcash" />
@@ -1616,8 +1617,8 @@ function CartContent({
           </RadioGroup>
         </div>
 
-        <div className="mt-4 flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm">
-          <span className="flex items-center gap-1.5 text-primary">
+        <div className="mt-4 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+          <span className="flex items-center gap-1.5 text-primary font-medium">
             <Gift className="h-4 w-4" />
             Points you&apos;ll earn
           </span>
@@ -1625,9 +1626,9 @@ function CartContent({
         </div>
 
         {paymentMethod === 'points' && (
-          <div className="mt-4 space-y-3 rounded-lg bg-card border p-4">
+          <div className="mt-4 space-y-3 rounded-lg bg-card border border-border p-4">
             <div className="space-y-2">
-              <Label htmlFor="pointsToUse" className="flex items-center justify-between">
+              <Label htmlFor="pointsToUse" className="flex items-center justify-between text-primary">
                 <span className="flex items-center gap-2">
                   <Gift className="h-4 w-4" />
                   Points to Use
@@ -1746,8 +1747,8 @@ function CartContent({
           </div>
         )}
 
-        <div className="mt-4 space-y-2 rounded-lg bg-card border p-3">
-          <Label htmlFor="notes">Order Notes (Optional)</Label>
+        <div className="mt-4 space-y-2 rounded-lg bg-card border border-border p-3">
+          <Label htmlFor="notes" className="text-primary">Order Notes (Optional)</Label>
           <Textarea
             id="notes"
             placeholder="Any special instructions?"
@@ -1759,13 +1760,13 @@ function CartContent({
         </div>
       </ScrollArea>
 
-      <div className="mt-4 space-y-2 border-t pt-4">
-        <div className="flex justify-between text-sm">
+      <div className="mt-4 space-y-2 border-t border-border pt-4">
+        <div className="flex justify-between text-sm text-foreground">
           <span>Subtotal</span>
-          <span>{formatCurrency(subtotal)}</span>
+          <span className="font-medium">{formatCurrency(subtotal)}</span>
         </div>
         {orderType === 'delivery' && (
-          <div className="flex justify-between text-sm">
+          <div className="flex justify-between text-sm text-foreground">
             <div className="flex flex-col">
               <span className="flex items-center gap-1">
                 <Truck className="h-3 w-3" />
@@ -1777,7 +1778,7 @@ function CartContent({
                 </span>
               )}
             </div>
-            <span>{formatCurrency(deliveryFee)}</span>
+            <span className="font-medium">{formatCurrency(deliveryFee)}</span>
           </div>
         )}
         <div className="flex justify-between text-sm text-muted-foreground">
@@ -1785,14 +1786,14 @@ function CartContent({
           <span>₱0.00</span>
         </div>
         <Separator />
-        <div className="flex justify-between text-xl font-bold">
+        <div className="flex justify-between text-xl font-bold text-primary">
           <span>Total</span>
           <span>{formatCurrency(total)}</span>
         </div>
       </div>
 
       <Button
-        className="mt-4 w-full"
+        className="mt-4 w-full touch-manipulation tap-highlight-transparent"
         size="lg"
         onClick={handlePlaceOrder}
         disabled={

@@ -160,9 +160,11 @@ export default function NotificationBell({ user }) {
       </button>
 
       {isOpen && (
-        <div style={styles.dropdown}>
-          <div style={styles.dropdownHeader}>
-            <h3 style={styles.dropdownTitle}>Notifications</h3>
+        <>
+          <div style={styles.backdrop} onClick={() => setIsOpen(false)} />
+          <div style={styles.dropdown}>
+            <div style={styles.dropdownHeader}>
+              <h3 style={styles.dropdownTitle}>Notifications</h3>
             {unreadCount > 0 && (
               <button
                 style={styles.markAllBtn}
@@ -218,6 +220,7 @@ export default function NotificationBell({ user }) {
             )}
           </div>
         </div>
+        </>
       )}
     </div>
   );
@@ -226,6 +229,12 @@ export default function NotificationBell({ user }) {
 const styles = {
   container: {
     position: 'relative',
+  },
+  backdrop: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 999,
   },
   bellButton: {
     position: 'relative',
@@ -253,11 +262,12 @@ const styles = {
     textAlign: 'center',
   },
   dropdown: {
-    position: 'absolute',
-    top: 'calc(100% + 8px)',
-    right: 0,
-    width: '360px',
-    maxHeight: '480px',
+    position: 'fixed',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    width: 'min(90vw, 360px)',
+    maxHeight: 'min(80vh, 480px)',
     backgroundColor: '#0f0f0f',
     border: '1px solid #ffc107',
     borderRadius: '8px',
