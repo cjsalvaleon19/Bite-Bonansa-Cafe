@@ -1151,7 +1151,8 @@ export default function CashierDashboard() {
                   const netAmount = totalAmount - pointsUsed;
                   const change = Math.max(0, cashAmount - netAmount);
                   
-                  return cashAmount > 0 ? (
+                  // Always show Cash Tendered and Change for all order modes
+                  return (
                     <>
                       <div style={styles.viewOrderTotalRow}>
                         <span>Cash Tendered:</span>
@@ -1162,7 +1163,7 @@ export default function CashierDashboard() {
                         <span>₱{change.toFixed(2)}</span>
                       </div>
                     </>
-                  ) : null;
+                  );
                 })()}
               </div>
 
