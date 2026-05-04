@@ -8,8 +8,7 @@
 UPDATE orders
 SET 
   status = 'order_delivered',
-  delivered_at = COALESCE(delivered_at, NOW()),
-  updated_at = NOW()
+  delivered_at = COALESCE(delivered_at, NOW())
 WHERE order_number IN ('ORD-260430-006', 'ORD-260504-002', 'ORD-260504-004')
   AND status != 'order_delivered';
 
