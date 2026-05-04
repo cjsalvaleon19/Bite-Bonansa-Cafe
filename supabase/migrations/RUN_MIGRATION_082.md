@@ -94,11 +94,11 @@ After migration:
 
 The `pages/cashier/orders-queue.js` file now includes graceful error handling for the duplicate loyalty scenario in BOTH functions:
 
-1. **`handleMarkItemServed` function (lines 156-166)**: Used when marking individual items as served in dine-in/take-out orders
+1. **`handleMarkItemServed` function**: Used when marking individual items as served in dine-in/take-out orders
    - If a duplicate loyalty error occurs, it logs a warning instead of showing an error to the user
    - The orders list is refreshed normally
    
-2. **`handleCompletePickup` function (lines 418-438)**: Used when completing pickup orders
+2. **`handleCompletePickup` function**: Used when completing pickup orders
    - If a duplicate loyalty error occurs, it logs a warning instead of showing an error to the user
    - The orders list is refreshed normally
    - Shows success message to cashier
