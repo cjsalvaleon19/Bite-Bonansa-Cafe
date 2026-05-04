@@ -161,9 +161,11 @@ export default function OrderTracking() {
     }
   };
 
-  const formatStatus = (status) => {
+  const formatStatus = (status, orderMode) => {
     if (!status) return 'Unknown';
     const formatted = status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const isDineInOrTakeOut = orderMode === 'dine-in' || orderMode === 'take-out';
+    
     // Map internal status to user-friendly labels
     const statusMap = {
       'Pending': 'Order in Queue',
@@ -173,9 +175,9 @@ export default function OrderTracking() {
       'Order In Process': 'Order in Process',
       'Preparing': 'Order in Process',
       'Out For Delivery': 'Out for Delivery',
-      'Delivered': 'Order Complete',
-      'Order Delivered': 'Order Complete',
-      'Completed': 'Order Complete'
+      'Delivered': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered',
+      'Order Delivered': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered',
+      'Completed': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered'
     };
     return statusMap[formatted] || formatted;
   };
@@ -371,7 +373,7 @@ export default function OrderTracking() {
                 const customerNotes = extractSpecialRequest(order.special_request);
                 const isPickup = order.order_mode === 'pick-up';
                 const deliveryAddress = extractDeliveryAddress(order);
-                const currentStatus = formatStatus(order.status);
+                const currentStatus = formatStatus(order.status, order.order_mode);
                 
                 return (
                   <div key={order.id} style={styles.orderCard}>

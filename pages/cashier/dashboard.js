@@ -1147,7 +1147,7 @@ export default function CashierDashboard() {
                 </div>
               </div>
 
-              {selectedOrderToView.special_request && (
+              {selectedOrderToView.special_request && selectedOrderToView.special_request.trim() && (
                 <div style={styles.viewOrderNotes}>
                   <strong>Special Instructions:</strong>
                   {/* Extract customer notes from special_request field (text before | delimiter). 
