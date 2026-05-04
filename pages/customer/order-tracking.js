@@ -135,7 +135,9 @@ export default function OrderTracking() {
     fetchOrders();
 
     // Set up realtime subscription for order updates
-    if (!supabase || !user) return;
+    if (!supabase || !user) {
+      return () => {}; // Return empty cleanup function
+    }
 
     const channel = supabase
       .channel('customer-orders-changes')
