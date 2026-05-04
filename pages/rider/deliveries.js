@@ -272,7 +272,7 @@ export default function RiderDeliveries() {
           
           if (orderError) {
             console.error('[RiderDeliveries] Failed to update order to out_for_delivery:', orderError);
-            // Don't throw here as delivery acceptance is more important
+            alert('Warning: Delivery accepted, but order status update failed. Please contact support if the order doesn\'t appear in the system.');
           }
         }
       }
