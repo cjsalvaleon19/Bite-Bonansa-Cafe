@@ -2,7 +2,7 @@
 
 ## ✅ What Has Been Fixed
 
-All the Receipt Review issues in the Rider's Interface have been **fixed in code**:
+All the Receipt Preview issues in the Rider's Interface have been **fixed in code**:
 
 1. ✅ **Item details** - Now checks both data sources (items column and order_items table)
 2. ✅ **Delivery Fee** - Always displays for delivery orders

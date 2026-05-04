@@ -6,7 +6,7 @@ Three orders were stuck in the Order Queue even though the system indicated they
 - Order #ORD-260504-002
 - Order #ORD-260504-004
 
-Additionally, the Receipt Review under Rider's Interface had several display issues.
+Additionally, the Receipt Preview under Rider's Interface had several display issues.
 
 ---
 
