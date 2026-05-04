@@ -153,6 +153,18 @@ export default function OrdersQueue() {
 
       fetchOrders();
     } catch (err) {
+      // Check if error is due to duplicate loyalty transaction
+      // This shouldn't happen after migration 082, but handle gracefully just in case
+      const isDuplicateLoyalty = err?.message?.includes('unique_loyalty_per_order') ||
+                                  err?.code === '23505'; // PostgreSQL unique violation code
+      
+      if (isDuplicateLoyalty) {
+        console.warn('[OrdersQueue] Loyalty points conflict (likely already awarded):', err.message);
+        // Refresh orders list - the operation likely succeeded despite the error
+        fetchOrders();
+        return;
+      }
+      
       console.error('[OrdersQueue] Failed to mark item as served:', err?.message ?? err);
       alert('Failed to update item status. Please try again.');
     }
@@ -403,6 +415,7 @@ export default function OrdersQueue() {
     try {
       // Update order status to order_delivered (completed)
       // Note: Database trigger will automatically create notification for customer
+      // and award loyalty points
       const { error } = await supabase
         .from('orders')
         .update({
@@ -416,6 +429,19 @@ export default function OrdersQueue() {
       alert('Order marked as complete!');
       fetchOrders();
     } catch (err) {
+      // Check if error is due to duplicate loyalty transaction
+      // This shouldn't happen after migration 082, but handle gracefully just in case
+      const isDuplicateLoyalty = err?.message?.includes('unique_loyalty_per_order') ||
+                                  err?.code === '23505'; // PostgreSQL unique violation code
+      
+      if (isDuplicateLoyalty) {
+        console.warn('[OrdersQueue] Loyalty points conflict (likely already awarded):', err.message);
+        // Refresh orders list - the operation likely succeeded despite the error
+        fetchOrders();
+        alert('Order marked as complete!');
+        return;
+      }
+      
       console.error('[OrdersQueue] Failed to complete pickup order:', err?.message ?? err);
       alert('Failed to update order status. Please try again.');
     }

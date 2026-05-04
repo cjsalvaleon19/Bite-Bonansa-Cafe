@@ -142,8 +142,8 @@ export default function EndOfDayReport() {
           <div class="receipt">
             <div class="header">
               <h2>Bite Bonansa Cafe</h2>
-              <p>123 Main Street, City</p>
-              <p>Tel: (123) 456-7890</p>
+              <p>Laconon-Salacafe Rd, Brgy. Poblacion, T'boli, South Cotabato</p>
+              <p>Tel: 0907-200-8247</p>
               <p style="margin-top: 10px; font-weight: bold;">SALES INVOICE</p>
             </div>
             
@@ -313,8 +313,8 @@ export default function EndOfDayReport() {
         <body>
           <div class="header">
             <h2>Bite Bonansa Cafe</h2>
-            <p>123 Main Street, City</p>
-            <p>Tel: (123) 456-7890</p>
+            <p>Laconon-Salacafe Rd, Brgy. Poblacion, T'boli, South Cotabato</p>
+            <p>Tel: 0907-200-8247</p>
             <p style="margin-top: 10px; font-weight: bold;">SALES INVOICE</p>
           </div>
           

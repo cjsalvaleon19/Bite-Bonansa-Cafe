@@ -98,8 +98,11 @@ const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz'])
 const CART_LOAD_DELAY_MS = 100
 
 function calcEarnedPoints(subtotal: number): number {
+  if (subtotal <= 0) return 0
   const rate = subtotal <= 500 ? 0.002 : 0.0035
-  return Math.floor(subtotal * rate)
+  const calculated = Math.round(subtotal * rate * 100) / 100 // Round to 2 decimals
+  // Points calculated from percentage (most purchases will earn > 0)
+  return calculated
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -567,7 +570,7 @@ function CustomerOrderPage() {
       return
     }
     if (orderType === 'delivery' && deliveryOutOfRange) {
-      toast.error('Your location is outside our delivery area (max 10 km).')
+      toast.error('Delivery is only available within T\'boli, South Cotabato (max 10 km from our store).')
       return
     }
     
@@ -789,7 +792,7 @@ function CustomerOrderPage() {
     setDeliveryLng(lng)
     const { fee, distance, outOfRange } = calculateDeliveryFee(lat, lng)
     if (outOfRange) {
-      toast.error('Your location is outside our delivery area (max 10 km).')
+      toast.error('Delivery is only available within T\'boli, South Cotabato (max 10 km from our store).')
     } else {
       toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance ?? 0)})`)
     }
@@ -1851,11 +1854,13 @@ function CartContent({
           cart.length === 0 ||
           (orderType === 'delivery' && !deliveryAddress.trim()) ||
           (orderType === 'delivery' && deliveryOutOfRange) ||
-          (paymentMethod === 'cash' && (!cashTendered || parseFloat(cashTendered) < total)) ||
+          // Cash tendered validation only for delivery and pickup orders
+          (paymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (!cashTendered || parseFloat(cashTendered) < total)) ||
           (paymentMethod === 'points' && (
             pointsToUse <= 0 ||
             pointsToUse > loyaltyBalance ||
-            (remainingBalance > 0 && secondaryPaymentMethod === 'cash' && (!cashTendered || parseFloat(cashTendered) < remainingBalance))
+            // Cash tendered validation only for delivery and pickup when using points+cash
+            (remainingBalance > 0 && secondaryPaymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (!cashTendered || parseFloat(cashTendered) < remainingBalance))
           ))
         }
       >
