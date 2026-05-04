@@ -78,7 +78,7 @@ export default function CashierDashboard() {
           debouncedStatsRefresh();
           
           // Handle online order notifications
-          if (newOrder.status === 'pending' && (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up')) {
+          if (newOrder.status === 'pending' && (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up' || newOrder.order_mode === 'dine-in' || newOrder.order_mode === 'take-out')) {
             setHasNewOrders(true);
             // Play notification sound
             if (notificationAudio) {
@@ -216,7 +216,7 @@ export default function CashierDashboard() {
     if (!supabase) return;
 
     try {
-      // Fetch pending online orders (delivery or pick-up, status: pending)
+      // Fetch pending online orders (all order modes from customer portal, status: pending)
       const { data: orders, error } = await supabase
         .from('orders')
         .select(`
@@ -236,7 +236,7 @@ export default function CashierDashboard() {
             phone
           )
         `)
-        .in('order_mode', ['delivery', 'pick-up'])
+        .in('order_mode', ['delivery', 'pick-up', 'dine-in', 'take-out'])
         .eq('status', 'pending')
         .order('created_at', { ascending: true });
 
@@ -909,7 +909,10 @@ export default function CashierDashboard() {
                           </p>
                         </div>
                         <div style={styles.orderModeBadge}>
-                          {order.order_mode === 'delivery' ? '🚚 Delivery' : '📦 Pick-up'}
+                          {order.order_mode === 'delivery' && '🚚 Delivery'}
+                          {order.order_mode === 'pick-up' && '📦 Pick-up'}
+                          {order.order_mode === 'dine-in' && '🍽️ Dine-in'}
+                          {order.order_mode === 'take-out' && '🥡 Take-out'}
                         </div>
                       </div>
 
