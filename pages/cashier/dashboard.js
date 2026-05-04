@@ -41,6 +41,7 @@ export default function CashierDashboard() {
   const [acceptedOrder, setAcceptedOrder] = useState(null);
   const [viewOrderModal, setViewOrderModal] = useState(false);
   const [selectedOrderToView, setSelectedOrderToView] = useState(null);
+  const [editableCashTendered, setEditableCashTendered] = useState('');
   const statsRefreshTimerRef = useRef(null);
 
   useEffect(() => {
@@ -549,8 +550,35 @@ export default function CashierDashboard() {
 
   const handleViewOrder = (order) => {
     setSelectedOrderToView(order);
+    setEditableCashTendered(order.cash_amount || '');
     setViewOrderModal(true);
   };
+
+  const handleUpdateCashTendered = async (newCashAmount) => {
+    if (!supabase || !selectedOrderToView) return;
+    
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ cash_amount: parseFloat(newCashAmount) || 0 })
+        .eq('id', selectedOrderToView.id);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setSelectedOrderToView({
+        ...selectedOrderToView,
+        cash_amount: parseFloat(newCashAmount) || 0
+      });
+      
+      // Refresh the orders list
+      fetchPendingOnlineOrders();
+    } catch (err) {
+      console.error('[CashierDashboard] Failed to update cash tendered:', err?.message ?? err);
+      alert('Failed to update cash tendered. Please try again.');
+    }
+  };
+
 
   const handleAcceptOrderFromView = async () => {
     if (!supabase || !selectedOrderToView) return;
@@ -1149,14 +1177,45 @@ export default function CashierDashboard() {
                   const totalAmount = parseFloat(selectedOrderToView.total_amount || 0);
                   const pointsUsed = parseFloat(selectedOrderToView.points_used || 0);
                   const netAmount = totalAmount - pointsUsed;
-                  const change = Math.max(0, cashAmount - netAmount);
+                  const isDineInOrTakeOut = selectedOrderToView.order_mode === 'dine-in' || selectedOrderToView.order_mode === 'take-out';
                   
-                  // Always show Cash Tendered and Change for all order modes
+                  // Calculate change from editable input for dine-in/take-out, otherwise from stored cash_amount
+                  const currentCashAmount = isDineInOrTakeOut 
+                    ? parseFloat(editableCashTendered || 0)
+                    : cashAmount;
+                  const change = Math.max(0, currentCashAmount - netAmount);
+                  
                   return (
                     <>
                       <div style={styles.viewOrderTotalRow}>
                         <span>Cash Tendered:</span>
-                        <span>₱{cashAmount.toFixed(2)}</span>
+                        {isDineInOrTakeOut ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input
+                              type="number"
+                              value={editableCashTendered}
+                              onChange={(e) => setEditableCashTendered(e.target.value)}
+                              onBlur={() => handleUpdateCashTendered(editableCashTendered)}
+                              placeholder="0.00"
+                              min="0"
+                              step="0.01"
+                              style={{
+                                width: '120px',
+                                padding: '6px 10px',
+                                border: '2px solid #ffc107',
+                                borderRadius: '6px',
+                                backgroundColor: '#2a2a2a',
+                                color: '#ffc107',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                textAlign: 'right',
+                                fontFamily: "'Poppins', sans-serif",
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <span>₱{cashAmount.toFixed(2)}</span>
+                        )}
                       </div>
                       <div style={styles.viewOrderTotalRow}>
                         <span>Change:</span>
