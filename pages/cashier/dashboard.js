@@ -44,6 +44,7 @@ export default function CashierDashboard() {
   const [editableCashTendered, setEditableCashTendered] = useState('');
   const [gcashProofUrl, setGcashProofUrl] = useState(null);
   const [showGCashProof, setShowGCashProof] = useState(false);
+  const [gcashProofImageError, setGcashProofImageError] = useState(false);
   const statsRefreshTimerRef = useRef(null);
 
   // Extract GCash proof URL stored in special_request as "| GCash proof: {url}"
@@ -56,6 +57,7 @@ export default function CashierDashboard() {
   const openGCashProof = (specialRequest) => {
     const url = extractGCashProofUrl(specialRequest);
     if (url) {
+      setGcashProofImageError(false);
       setGcashProofUrl(url);
       setShowGCashProof(true);
     } else {
@@ -911,7 +913,7 @@ export default function CashierDashboard() {
                             <th style={styles.reportTh}>Amount</th>
                             <th style={styles.reportTh}>Points</th>
                             <th style={styles.reportTh}>GCash Paid</th>
-                             <th style={styles.reportTh}>Proof</th>
+                             <th style={styles.reportTh}>GCash Proof</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1333,15 +1335,18 @@ export default function CashierDashboard() {
             <div style={styles.gcashProofModalContent} onClick={(e) => e.stopPropagation()}>
               <h3 style={styles.modalTitle}>📱 GCash Payment Proof</h3>
               <div style={styles.gcashProofImageWrapper}>
-                <img
-                  src={gcashProofUrl}
-                  alt="GCash Payment Proof"
-                  style={styles.gcashProofImage}
-                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
-                />
-                <p style={{ display: 'none', color: '#f44', textAlign: 'center', padding: '16px' }}>
-                  ⚠️ Unable to load image. The proof may have expired or been removed.
-                </p>
+                {!gcashProofImageError ? (
+                  <img
+                    src={gcashProofUrl}
+                    alt="GCash Payment Proof"
+                    style={styles.gcashProofImage}
+                    onError={() => setGcashProofImageError(true)}
+                  />
+                ) : (
+                  <p style={{ color: '#f44', textAlign: 'center', padding: '16px' }}>
+                    ⚠️ Unable to load image. The proof may have expired or been removed.
+                  </p>
+                )}
               </div>
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                 <a
