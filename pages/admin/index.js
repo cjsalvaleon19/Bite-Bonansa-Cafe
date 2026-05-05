@@ -90,6 +90,19 @@ export default function AdminPage() {
   const [newVendorForm, setNewVendorForm] = useState({ name: '', address: '', contact: '', tin: '' });
   const [rrDeleteConfirm, setRrDeleteConfirm] = useState(null);
 
+  // ── Inventory Report state (date coverage + computed columns) ─────────────
+  const [invDateFrom, setInvDateFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split('T')[0];
+  });
+  const [invDateTo, setInvDateTo] = useState(() => new Date().toISOString().split('T')[0]);
+  const [invReport, setInvReport] = useState([]);
+
+  // ── RR Inventory Item Picker state ────────────────────────────────────────
+  const [invPickerOpen, setInvPickerOpen] = useState(null); // row index or null
+  const [invPickerQuery, setInvPickerQuery] = useState('');
+
   // ── Financial Reports state ───────────────────────────────────────────────
   const [finSubTab, setFinSubTab] = useState('cashflow');
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -212,23 +225,98 @@ export default function AdminPage() {
     }
   }, []);
 
-  // ── Fetch: Inventory ──────────────────────────────────────────────────────
+  // ── Fetch: Inventory (with Beginning / Purchases / Sold / Ending) ────────
   const fetchInventory = useCallback(async () => {
     if (!supabase) return;
     setLoading(true);
     try {
-      const { data, error: err } = await supabase
+      // 1. All inventory items
+      const { data: items, error: err } = await supabase
         .from('admin_inventory_items')
         .select('*')
         .order('code');
       if (err) throw err;
-      setInventoryItems(data || []);
+      setInventoryItems(items || []);
+
+      // 2. Approved RR IDs within date range
+      const { data: approvedRRs } = await supabase
+        .from('receiving_reports')
+        .select('id')
+        .eq('status', 'approved')
+        .gte('date', invDateFrom)
+        .lte('date', invDateTo);
+      const rrIds = (approvedRRs || []).map((r) => r.id);
+
+      // 3. Line items for those RRs
+      let rrItems = [];
+      if (rrIds.length > 0) {
+        const { data: ri } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, qty, cost')
+          .in('receiving_report_id', rrIds);
+        rrItems = ri || [];
+      }
+
+      // 4. Price costing map (menu_item_name → inventory usage)
+      const { data: costings } = await supabase
+        .from('price_costing_items')
+        .select('inventory_item_id, menu_item_name, qty');
+
+      // 5. Delivered orders with items in date range
+      const fromISO = new Date(invDateFrom + 'T00:00:00').toISOString();
+      const toISO = new Date(invDateTo + 'T23:59:59.999').toISOString();
+      const { data: orders } = await supabase
+        .from('orders')
+        .select('id, order_items(name, quantity)')
+        .eq('status', 'order_delivered')
+        .gte('created_at', fromISO)
+        .lte('created_at', toISO);
+
+      // Build costing map: menu_item_name -> [{ inventory_item_id, qty }]
+      const costingMap = {};
+      (costings || []).forEach((c) => {
+        if (!c.inventory_item_id) return;
+        if (!costingMap[c.menu_item_name]) costingMap[c.menu_item_name] = [];
+        costingMap[c.menu_item_name].push({ inventory_item_id: c.inventory_item_id, qty: Number(c.qty) || 0 });
+      });
+
+      // Build sold map: inventory_item_id -> total qty consumed
+      const soldMap = {};
+      (orders || []).forEach((order) => {
+        (order.order_items || []).forEach((oi) => {
+          (costingMap[oi.name] || []).forEach(({ inventory_item_id, qty }) => {
+            soldMap[inventory_item_id] = (soldMap[inventory_item_id] || 0) + (Number(oi.quantity) || 0) * qty;
+          });
+        });
+      });
+
+      // Build purchases map: inventory_item_id -> { qty, totalCost }
+      const purchasesMap = {};
+      rrItems.forEach((ri) => {
+        if (!ri.inventory_item_id) return;
+        if (!purchasesMap[ri.inventory_item_id]) purchasesMap[ri.inventory_item_id] = { qty: 0, totalCost: 0 };
+        const q = Number(ri.qty) || 0;
+        const c = Number(ri.cost) || 0;
+        purchasesMap[ri.inventory_item_id].qty += q;
+        purchasesMap[ri.inventory_item_id].totalCost += q * c;
+      });
+
+      // Compute report rows (Beginning = Ending - Purchases + Sold)
+      const report = (items || []).map((item) => {
+        const purchases = purchasesMap[item.id]?.qty || 0;
+        const sold = soldMap[item.id] || 0;
+        const ending = Number(item.current_stock) || 0;
+        const beginning = ending - purchases + sold;
+        return { ...item, beginning, purchases, sold, ending };
+      });
+
+      setInvReport(report);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [invDateFrom, invDateTo]);
 
   // ── Fetch: Price Costing ──────────────────────────────────────────────────
   const fetchCosting = useCallback(async () => {
@@ -596,6 +684,8 @@ export default function AdminPage() {
 
   const openRRDialog = async (item = null) => {
     setRrEditItem(item);
+    // Reset line items immediately so stale data never shows
+    setRrLineItems([]);
     if (item) {
       // Fetch vendor details since receiving_reports doesn't store them directly
       let vendorAddress = '';
@@ -747,7 +837,8 @@ export default function AdminPage() {
           cost: Number(li.cost),
           freight_allocated: li.freight_allocated,
         }));
-        await supabase.from('receiving_report_items').insert(linePayloads);
+        const { error: liErr } = await supabase.from('receiving_report_items').insert(linePayloads);
+        if (liErr) throw liErr;
       }
       setRrDialogOpen(false);
       fetchRR();
@@ -769,12 +860,24 @@ export default function AdminPage() {
           if (!item.inventory_item_id) return;
           const { data: inv } = await supabase
             .from('admin_inventory_items')
-            .select('current_stock')
+            .select('current_stock, cost_per_unit')
             .eq('id', item.inventory_item_id)
             .single();
+          const currentStock = Number(inv?.current_stock) || 0;
+          const currentCost = Number(inv?.cost_per_unit) || 0;
+          const newQty = Number(item.qty) || 0;
+          const newCost = Number(item.cost) || 0;
+          const totalNewStock = currentStock + newQty;
+          // Weighted average cost method
+          const avgCost = totalNewStock > 0
+            ? (currentStock * currentCost + newQty * newCost) / totalNewStock
+            : newCost;
           await supabase
             .from('admin_inventory_items')
-            .update({ current_stock: (inv?.current_stock || 0) + (Number(item.qty) || 0) })
+            .update({
+              current_stock: totalNewStock,
+              cost_per_unit: Math.round(avgCost * 100) / 100,
+            })
             .eq('id', item.inventory_item_id);
         }),
       );
@@ -1027,25 +1130,40 @@ export default function AdminPage() {
                 <h1 style={styles.pageTitle}>Inventory</h1>
                 <button onClick={() => openInvDialog()} style={styles.primaryBtn}>+ New Item</button>
               </div>
+
+              {/* Date Coverage */}
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', background: '#1a1a1a', border: '1px solid #333', borderRadius: 8, padding: '12px 16px' }}>
+                <span style={{ color: '#ffc107', fontWeight: 600, fontSize: 13 }}>📅 Date Coverage:</span>
+                <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
+                <input type="date" style={{ ...styles.input, width: 160 }} value={invDateFrom} onChange={(e) => setInvDateFrom(e.target.value)} />
+                <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
+                <input type="date" style={{ ...styles.input, width: 160 }} value={invDateTo} onChange={(e) => setInvDateTo(e.target.value)} />
+                <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
+                <span style={{ color: '#666', fontSize: 11 }}>Purchases & Sold computed for the selected period. Ending = current stock.</span>
+              </div>
+
               {loading && <p style={styles.loadingText}>Loading…</p>}
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      {['Code', 'Name', 'Department', 'UoM', 'Cost/Unit (₱)', 'Stock', 'Status', 'Actions'].map((h) => (
+                      {['Code', 'Name', 'Dept', 'UoM', 'Beginning', 'Purchases', 'Sold', 'Ending', 'Avg Cost/Unit (₱)', 'Status', 'Actions'].map((h) => (
                         <th key={h} style={styles.th}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {inventoryItems.map((item, idx) => (
+                    {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).map((item, idx) => (
                       <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{item.code}</td>
                         <td style={styles.td}>{item.name}</td>
                         <td style={styles.td}>{item.department}</td>
                         <td style={styles.td}>{item.uom}</td>
+                        <td style={{ ...styles.td, color: '#ccc' }}>{Number(item.beginning).toFixed(3)}</td>
+                        <td style={{ ...styles.td, color: '#4caf50' }}>{Number(item.purchases).toFixed(3)}</td>
+                        <td style={{ ...styles.td, color: '#f44336' }}>{Number(item.sold).toFixed(3)}</td>
+                        <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{Number(item.ending).toFixed(3)}</td>
                         <td style={styles.td}>{fmt(item.cost_per_unit)}</td>
-                        <td style={styles.td}>{item.current_stock}</td>
                         <td style={styles.td}>
                           <span style={{
                             ...styles.badge,
@@ -1063,7 +1181,7 @@ export default function AdminPage() {
                       </tr>
                     ))}
                     {inventoryItems.length === 0 && !loading && (
-                      <tr><td colSpan={8} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No inventory items. Add one!</td></tr>
+                      <tr><td colSpan={11} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No inventory items. Add one!</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1363,7 +1481,7 @@ export default function AdminPage() {
               <Dialog.Root open={rrDialogOpen} onOpenChange={setRrDialogOpen}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 800, width: '95vw' }}>
+                  <Dialog.Content style={{ ...styles.dialogContent, width: '75vw', maxWidth: '75vw' }}>
                     <Dialog.Title style={styles.dialogTitle}>
                       {rrEditItem ? 'Edit Receiving Report' : 'New Receiving Report'}
                     </Dialog.Title>
@@ -1375,7 +1493,12 @@ export default function AdminPage() {
                       </div>
                       <div>
                         <label style={styles.label}>Date</label>
-                        <input style={{ ...styles.input, background: '#111', color: '#888' }} readOnly value={rrForm.date} />
+                        <input
+                          style={styles.input}
+                          type="date"
+                          value={rrForm.date}
+                          onChange={(e) => setRrForm((p) => ({ ...p, date: e.target.value }))}
+                        />
                       </div>
                       <div>
                         <label style={styles.label}>Vendor</label>
@@ -1437,18 +1560,19 @@ export default function AdminPage() {
                             {rrLineItems.map((li, idx) => (
                               <tr key={li.id}>
                                 <td style={styles.td}>
-                                  <select
-                                    style={{ ...styles.input, padding: '4px 8px', fontSize: 12, minWidth: 140 }}
-                                    value={li.inventory_item_id}
-                                    onChange={(e) => {
-                                      const inv = invItems.find((i) => i.id === e.target.value);
-                                      if (inv) selectRRInventoryItem(idx, inv);
-                                      else updateRRLineItem(idx, 'inventory_item_id', e.target.value);
-                                    }}
-                                  >
-                                    <option value="">— Select —</option>
-                                    {invItems.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-                                  </select>
+                                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                    <input
+                                      style={{ ...styles.input, padding: '4px 8px', fontSize: 12, minWidth: 140 }}
+                                      readOnly
+                                      value={li.inventory_name || '— Select —'}
+                                      placeholder="— Select —"
+                                    />
+                                    <button
+                                      onClick={() => { setInvPickerOpen(idx); setInvPickerQuery(''); }}
+                                      style={{ ...styles.actionBtn, padding: '4px 8px', fontSize: 14 }}
+                                      title="Search inventory item"
+                                    >🔍</button>
+                                  </div>
                                 </td>
                                 <td style={styles.td}><span style={{ fontSize: 11 }}>{li.inventory_code}</span></td>
                                 <td style={styles.td}><span style={{ fontSize: 11 }}>{li.uom}</span></td>
@@ -1550,6 +1674,58 @@ export default function AdminPage() {
                       </div>
                     )}
 
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* Inventory Item Picker Dialog */}
+              <Dialog.Root open={invPickerOpen !== null} onOpenChange={(open) => { if (!open) setInvPickerOpen(null); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 480 }}>
+                    <Dialog.Title style={styles.dialogTitle}>Select Inventory Item</Dialog.Title>
+                    <div style={{ marginBottom: 12 }}>
+                      <input
+                        style={styles.input}
+                        placeholder="Search by name or code…"
+                        value={invPickerQuery}
+                        onChange={(e) => setInvPickerQuery(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
+                      {[...invItems]
+                        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                        .filter((i) => {
+                          const q = invPickerQuery.toLowerCase();
+                          return !q || (i.name || '').toLowerCase().includes(q) || (i.code || '').toLowerCase().includes(q);
+                        })
+                        .map((i) => (
+                          <div
+                            key={i.id}
+                            onClick={() => {
+                              if (invPickerOpen !== null) {
+                                selectRRInventoryItem(invPickerOpen, i);
+                                setInvPickerOpen(null);
+                                setInvPickerQuery('');
+                              }
+                            }}
+                            style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
+                          >
+                            <strong>{i.name}</strong>
+                            <span style={{ color: '#888', fontSize: 12 }}> · {i.code} · {i.uom}</span>
+                          </div>
+                        ))}
+                      {[...invItems].filter((i) => {
+                        const q = invPickerQuery.toLowerCase();
+                        return !q || (i.name || '').toLowerCase().includes(q) || (i.code || '').toLowerCase().includes(q);
+                      }).length === 0 && (
+                        <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No items found.</p>
+                      )}
+                    </div>
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
                     </div>
