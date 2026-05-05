@@ -16,7 +16,22 @@
 --      set `inventory_update_applied = true` on the RR row.
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- ── 1a. Ensure inventory_item_id column exists (may be absent on older tables) ─
+-- ── 1a. Ensure receiving_report_id column exists (may be absent on older tables) ─
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'receiving_report_items'
+       AND column_name = 'receiving_report_id'
+  ) THEN
+    -- Add as nullable first (can't add NOT NULL without a default when rows may exist)
+    ALTER TABLE receiving_report_items
+      ADD COLUMN receiving_report_id UUID
+        REFERENCES receiving_reports(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- ── 1b. Ensure inventory_item_id column exists (may be absent on older tables) ─
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -30,7 +45,7 @@ BEGIN
   END IF;
 END $$;
 
--- ── 1b. Ensure inventory_name column exists (may be absent on older tables) ──
+-- ── 1d. Ensure inventory_name column exists (may be absent on older tables) ──
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -43,7 +58,7 @@ BEGIN
   END IF;
 END $$;
 
--- ── 1c. Backfill inventory_item_id by name ───────────────────────────────────
+-- ── 1e. Backfill inventory_item_id by name ───────────────────────────────────
 UPDATE receiving_report_items ri
 SET    inventory_item_id = inv.id
 FROM   admin_inventory_items inv
@@ -67,6 +82,17 @@ DECLARE
   v_total_stock  DECIMAL(12,3);
   v_avg_cost     DECIMAL(12,2);
 BEGIN
+  -- Skip entirely if the receiving_report_items table is missing the FK column
+  -- (can happen when the table was created by an older schema before migration 097/099)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'receiving_report_items'
+       AND column_name = 'receiving_report_id'
+  ) THEN
+    RAISE NOTICE 'Skipping stock backfill: receiving_report_items.receiving_report_id does not exist yet.';
+    RETURN;
+  END IF;
+
   FOR v_rr IN
     SELECT id FROM receiving_reports
      WHERE status IN ('approved','paid')
