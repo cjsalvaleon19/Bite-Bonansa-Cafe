@@ -10,6 +10,7 @@ const FIXED_ROLES = {
   'arclitacj@gmail.com': 'cashier',
   'bantecj@bitebonansacafe.com': 'cashier',
   'cjsalvaleon19@gmail.com': 'admin',
+  'cjsalvaleon19@bitebonansacafe.com': 'admin',
   'johndave0991@bitebonansacafe.com': 'rider',
   'rider@youremail.com': 'rider',
 };
