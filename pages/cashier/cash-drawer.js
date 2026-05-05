@@ -29,6 +29,10 @@ export default function CashDrawer() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [cashOnHand, setCashOnHand] = useState(0);
+  const [cashInTotal, setCashInTotal] = useState(0);
+  const [cashOutTotal, setCashOutTotal] = useState(0);
+  const [adjustmentTotal, setAdjustmentTotal] = useState(0);
+  const [cashSalesTotal, setCashSalesTotal] = useState(0);
   const [chartOfAccounts, setChartOfAccounts] = useState([]);
   const [riders, setRiders] = useState([]);
   const [deliveryReports, setDeliveryReports] = useState([]);
@@ -155,7 +159,7 @@ export default function CashDrawer() {
 
       setTransactions(data || []);
 
-      // Calculate cash on hand
+      // Calculate cash on hand components from drawer transactions
       const cashIn = (data || [])
         .filter(t => t.transaction_type === 'cash-in')
         .reduce((sum, t) => sum + parseFloat(t.amount), 0);
@@ -166,7 +170,20 @@ export default function CashDrawer() {
         .filter(t => t.transaction_type === 'adjustment')
         .reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
-      setCashOnHand(cashIn - cashOut + adjustments);
+      // Also include cash sales from orders (same as Audit tab formula)
+      const { data: ordersData } = await supabase
+        .from('orders')
+        .select('total_amount, payment_method, points_used')
+        .gte('created_at', today.toISOString())
+        .lt('created_at', tomorrow.toISOString());
+
+      const { cashSales } = calculateSalesBreakdown(ordersData || []);
+
+      setCashInTotal(cashIn);
+      setCashOutTotal(cashOut);
+      setAdjustmentTotal(adjustments);
+      setCashSalesTotal(cashSales);
+      setCashOnHand(cashIn + cashSales - cashOut + adjustments);
     } catch (err) {
       console.error('[CashDrawer] Failed to fetch transactions:', err?.message ?? err);
     }
@@ -566,10 +583,34 @@ export default function CashDrawer() {
           {/* ── Transactions Tab ── */}
           {activeTab === 'transactions' && (
             <>
-          {/* Cash on Hand Display */}
+          {/* Cash on Hand Breakdown */}
           <div style={styles.cashOnHandCard}>
-            <div style={styles.cashLabel}>Cash on Hand</div>
-            <div style={styles.cashValue}>₱{cashOnHand.toFixed(2)}</div>
+            <div style={{ ...styles.cashLabel, fontSize: '20px', color: '#ffc107', marginBottom: '20px', fontWeight: '700' }}>
+              📊 Cash on Hand Breakdown
+            </div>
+            <div style={styles.auditBreakdownRow}>
+              <span>Cash In</span>
+              <span style={{ color: '#4caf50' }}>+ ₱{cashInTotal.toFixed(2)}</span>
+            </div>
+            <div style={styles.auditBreakdownRow}>
+              <span>Cash Sales</span>
+              <span style={{ color: '#4caf50' }}>+ ₱{cashSalesTotal.toFixed(2)}</span>
+            </div>
+            <div style={styles.auditBreakdownRow}>
+              <span>Cash Out</span>
+              <span style={{ color: '#f44336' }}>− ₱{cashOutTotal.toFixed(2)}</span>
+            </div>
+            <div style={styles.auditBreakdownRow}>
+              <span>Adjustment</span>
+              <span style={{ color: adjustmentTotal >= 0 ? '#4caf50' : '#f44336' }}>
+                {adjustmentTotal >= 0 ? '+' : '−'} ₱{Math.abs(adjustmentTotal).toFixed(2)}
+              </span>
+            </div>
+            <div style={styles.auditBreakdownDivider} />
+            <div style={{ ...styles.auditBreakdownRow, fontWeight: '700', fontSize: '18px' }}>
+              <span>= Cash on Hand</span>
+              <span style={styles.cashValue}>₱{cashOnHand.toFixed(2)}</span>
+            </div>
           </div>
 
           {/* Action Buttons */}
