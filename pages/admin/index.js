@@ -415,6 +415,19 @@ export default function AdminPage() {
     if (activeTab === 'financial') fetchFinancial();
   }, [activeTab, finSubTab, finDateFrom, finDateTo, fetchFinancial]);
 
+  // ── Nav items (memoised) — must be declared before any early return ──────
+  const navItems = useMemo(
+    () => [
+      { key: 'dashboard', label: '📊 Dashboard' },
+      { key: 'inventory', label: '📦 Inventory' },
+      { key: 'costing', label: '💰 Price Costing' },
+      { key: 'rr', label: '📋 Receiving Report' },
+      { key: 'financial', label: '📈 Financial Reports' },
+      { key: 'profile', label: '👤 My Profile' },
+    ],
+    [],
+  );
+
   // ── Auth guard ────────────────────────────────────────────────────────────
   if (authLoading) {
     return (
@@ -852,19 +865,6 @@ export default function AdminPage() {
     await supabase.auth.signOut();
     router.replace('/login');
   };
-
-  // ── Nav items (memoised) ──────────────────────────────────────────────────
-  const navItems = useMemo(
-    () => [
-      { key: 'dashboard', label: '📊 Dashboard' },
-      { key: 'inventory', label: '📦 Inventory' },
-      { key: 'costing', label: '💰 Price Costing' },
-      { key: 'rr', label: '📋 Receiving Report' },
-      { key: 'financial', label: '📈 Financial Reports' },
-      { key: 'profile', label: '👤 My Profile' },
-    ],
-    [],
-  );
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
