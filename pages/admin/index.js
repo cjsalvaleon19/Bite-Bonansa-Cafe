@@ -483,8 +483,14 @@ export default function AdminPage() {
         supabase.from('price_costing_items').select('id').eq('inventory_item_id', item.id).limit(1),
         supabase.from('receiving_report_items').select('id').eq('inventory_item_id', item.id).limit(1),
       ]);
-      if ((c1 && c1.length > 0) || (c2 && c2.length > 0)) {
-        setError('Cannot delete: item is used in Price Costing or Receiving Reports.');
+      const usedInCosting   = c1 && c1.length > 0;
+      const usedInReceiving = c2 && c2.length > 0;
+      if (usedInCosting || usedInReceiving) {
+        const places = [
+          usedInCosting   ? 'Price Costing' : null,
+          usedInReceiving ? 'Receiving Reports' : null,
+        ].filter(Boolean).join(' and ');
+        setError(`Cannot delete: item is referenced in ${places}. Remove it from there first.`);
         setInvDeleteConfirm(null);
         return;
       }
@@ -721,7 +727,7 @@ export default function AdminPage() {
         const linePayloads = rrLineItems.map((li) => ({
           receiving_report_id: rrId,
           inventory_item_id: li.inventory_item_id || null,
-          inventory_name: li.inventory_name || li.inventory_code || 'No item selected',
+          inventory_name: li.inventory_name || li.inventory_code || '(unnamed item)',
           inventory_code: li.inventory_code || null,
           uom: li.uom || 'pcs',
           qty: Number(li.qty),
