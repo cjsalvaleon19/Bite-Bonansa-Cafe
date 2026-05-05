@@ -1334,7 +1334,7 @@ export default function AdminPage() {
               <Dialog.Root open={invDialogOpen} onOpenChange={setInvDialogOpen}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={styles.dialogContent}>
+                  <Dialog.Content style={styles.dialogContent} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>
                       {invEditItem ? 'Edit Inventory Item' : 'New Inventory Item'}
                     </Dialog.Title>
@@ -1403,7 +1403,7 @@ export default function AdminPage() {
               <Dialog.Root open={!!invDeleteConfirm} onOpenChange={() => setInvDeleteConfirm(null)}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 400 }}>
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 400 }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>Archive Item</Dialog.Title>
                     <p style={{ color: '#ccc', marginBottom: 24 }}>
                       Archive &quot;{invDeleteConfirm?.name}&quot;? It will be hidden from Inventory but its data will be preserved.
@@ -1471,7 +1471,7 @@ export default function AdminPage() {
               <Dialog.Root open={costingDialogOpen} onOpenChange={setCostingDialogOpen}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 560 }}>
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 560 }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>
                       {costingEditItem ? 'Edit Costing Item' : 'New Costing Item'}
                     </Dialog.Title>
@@ -1616,7 +1616,7 @@ export default function AdminPage() {
               <Dialog.Root open={!!rrDeleteConfirm} onOpenChange={() => setRrDeleteConfirm(null)}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 400 }}>
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 400 }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>Delete Receiving Report</Dialog.Title>
                     <p style={{ color: '#ccc', marginBottom: 24 }}>Delete RR# {rrDeleteConfirm?.rr_number}?</p>
                     <div style={styles.dialogFooter}>
@@ -1631,7 +1631,7 @@ export default function AdminPage() {
               <Dialog.Root open={!!rrViewItem} onOpenChange={(open) => { if (!open) { setRrViewItem(null); setRrViewLineItems([]); } }}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, width: '75vw', maxWidth: '75vw' }}>
+                  <Dialog.Content style={{ ...styles.dialogContent, width: '75vw', maxWidth: '75vw' }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>
                       📄 Receiving Report — {rrViewItem?.rr_number}
                     </Dialog.Title>
@@ -1710,7 +1710,7 @@ export default function AdminPage() {
               <Dialog.Root open={rrDialogOpen} onOpenChange={setRrDialogOpen}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, width: '75vw', maxWidth: '75vw' }}>
+                  <Dialog.Content style={{ ...styles.dialogContent, width: '75vw', maxWidth: '75vw' }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>
                       {rrEditItem ? 'Edit Receiving Report' : 'New Receiving Report'}
                     </Dialog.Title>
@@ -1860,7 +1860,7 @@ export default function AdminPage() {
               <Dialog.Root open={vendorSearchOpen} onOpenChange={setVendorSearchOpen}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 500 }}>
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 500 }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>Search Vendor</Dialog.Title>
                     <div style={{ marginBottom: 12 }}>
                       <input
@@ -1919,7 +1919,7 @@ export default function AdminPage() {
               <Dialog.Root open={rrPayDialogOpen} onOpenChange={setRrPayDialogOpen}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 520 }}>
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 520 }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>
                       💳 Pay Receiving Report — {rrPayItem?.rr_number}
                     </Dialog.Title>
@@ -1999,7 +1999,7 @@ export default function AdminPage() {
               <Dialog.Root open={invPickerOpen !== null} onOpenChange={(open) => { if (!open) setInvPickerOpen(null); }}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 480 }}>
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 480 }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>Select Inventory Item</Dialog.Title>
                     <div style={{ marginBottom: 12 }}>
                       <input
@@ -2334,7 +2334,7 @@ export default function AdminPage() {
               <Dialog.Root open={pwDialogOpen} onOpenChange={setPwDialogOpen}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 400 }}>
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 400 }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>Change Password</Dialog.Title>
                     <div style={styles.formGrid}>
                       <label style={styles.label}>New Password</label>
