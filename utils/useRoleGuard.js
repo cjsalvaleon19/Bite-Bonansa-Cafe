@@ -59,7 +59,7 @@ export function useRoleGuard(requiredRole) {
         if (role !== requiredRole) {
           // Redirect to appropriate portal based on actual role
           if (role === 'admin') {
-            router.replace('/dashboard').catch(console.error);
+            router.replace('/admin').catch(console.error);
           } else if (role === 'cashier') {
             router.replace('/cashier').catch(console.error);
           } else if (role === 'rider') {
