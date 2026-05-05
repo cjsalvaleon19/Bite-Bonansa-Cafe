@@ -728,7 +728,7 @@ export default function AdminPage() {
           .select('*, inventory_item:admin_inventory_items(id,name,code,uom)')
           .eq('receiving_report_id', item.id);
         // Surface any fetch error so the user knows items failed to load
-        if (liLoadErr) setError('Failed to load line items: ' + liLoadErr.message);
+        if (liLoadErr) setError(`Failed to load line items: ${liLoadErr.message}`);
         setRrLineItems(
           (li || []).map((l) => ({
             id: l.id,
@@ -901,7 +901,11 @@ export default function AdminPage() {
       await supabase.from('receiving_reports').update({ status: 'approved' }).eq('id', rr.id);
 
       // Journal Entry: Debit Inventory / Credit Accounts Payable
-      const totalLC = (lineItems || []).reduce((s, li) => s + (Number(li.total_landed_cost) || (Number(li.qty) * Number(li.cost) + Number(li.freight_allocated))), 0);
+      // Compute total landed cost: prefer the generated column, fall back to qty×cost+freight
+      const totalLC = (lineItems || []).reduce((s, li) => {
+        const tlc = Number(li.total_landed_cost) || (Number(li.qty) * Number(li.cost) + Number(li.freight_allocated));
+        return s + tlc;
+      }, 0);
       if (totalLC > 0) {
         await supabase.from('journal_entries').insert({
           date: rr.date || new Date().toISOString().split('T')[0],
