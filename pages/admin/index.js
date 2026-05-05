@@ -343,16 +343,21 @@ export default function AdminPage() {
         allPeriodPurchasesMap[resolvedId].totalLandedCost += Number(ri.total_landed_cost) || 0;
       });
 
-      // Compute report rows (Beginning = Ending - Purchases + Sold)
-      // avg_cost = Total Landed Cost (Jan 1 2026 → invDateTo) / Total Purchase Qty (same range)
-      // total_cost = Ending Balance Qty × avg_cost
+      // Compute report rows
+      // Beginning = Total Qty Purchased (Jan 1, 2026 → start date − 1 day)
+      //           = allPeriodQty (Jan 1 → end date) − purchases (start date → end date)
+      // Purchases = Total Qty Purchased in the selected period
+      // Sold      = Total Qty Sold in the selected period
+      // Ending    = Beginning + Purchases − Sold (derived)
+      // avg_cost  = Total Landed Cost (Jan 1, 2026 → end date) / Total Purchase Qty (same range)
+      // total_cost = Ending Qty × avg_cost
       const report = (items || []).map((item) => {
         const purchases = purchasesMap[item.id]?.qty || 0;
         const sold = soldMap[item.id] || 0;
-        const ending = Number(item.current_stock) || 0;
-        const beginning = ending - purchases + sold;
         const allPeriodQty = allPeriodPurchasesMap[item.id]?.qty || 0;
         const allPeriodAmt = allPeriodPurchasesMap[item.id]?.totalLandedCost || 0;
+        const beginning = allPeriodQty - purchases;
+        const ending = beginning + purchases - sold;
         const avg_cost = allPeriodQty > 0
           ? allPeriodAmt / allPeriodQty
           : (Number(item.cost_per_unit) || 0);
@@ -1299,7 +1304,7 @@ export default function AdminPage() {
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={invDateTo} onChange={(e) => setInvDateTo(e.target.value)} />
                 <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
-                <span style={{ color: '#666', fontSize: 11 }}>Purchases & Sold shown for selected period. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty (Jan 1, 2026 – End Date). Total Cost = Ending Qty × Avg Cost/Unit.</span>
+                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day). Purchases & Sold shown for selected period. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty (Jan 1, 2026 – End Date). Total Cost = Ending Qty × Avg Cost/Unit.</span>
               </div>
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
