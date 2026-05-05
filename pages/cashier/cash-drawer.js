@@ -324,6 +324,7 @@ export default function CashDrawer() {
           .from('cash_audits')
           .update(auditData)
           .eq('id', cashAudit.id)
+          .eq('cashier_id', user.id)
           .eq('is_submitted', false));
       } else {
         ({ error } = await supabase
