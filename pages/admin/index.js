@@ -578,22 +578,34 @@ export default function AdminPage() {
   const openRRDialog = async (item = null) => {
     setRrEditItem(item);
     if (item) {
+      // Fetch vendor details since receiving_reports doesn't store them directly
+      let vendorAddress = '';
+      let vendorContact = '';
+      let vendorTin = '';
+      if (supabase && item.vendor_id) {
+        const { data: vd } = await supabase.from('vendors').select('address, contact_number, tin').eq('id', item.vendor_id).single();
+        if (vd) {
+          vendorAddress = vd.address || '';
+          vendorContact = vd.contact_number || '';
+          vendorTin = vd.tin || '';
+        }
+      }
       setRrForm({
         rr_number: item.rr_number || '',
         vendor_id: item.vendor_id || '',
         vendor_name: item.vendor?.name || '',
-        vendor_address: item.vendor_address || '',
-        vendor_contact: item.vendor_contact || '',
-        vendor_tin: item.vendor_tin || '',
+        vendor_address: vendorAddress,
+        vendor_contact: vendorContact,
+        vendor_tin: vendorTin,
         date: item.date || new Date().toISOString().split('T')[0],
-        terms: item.terms || '',
+        terms: String(item.terms || ''),
         freight_in: String(item.freight_in || 0),
       });
       if (supabase) {
         const { data: li } = await supabase
           .from('receiving_report_items')
           .select('*, inventory_item:admin_inventory_items(id,name,code,uom)')
-          .eq('rr_id', item.id);
+          .eq('receiving_report_id', item.id);
         setRrLineItems(
           (li || []).map((l) => ({
             id: l.id,
@@ -687,11 +699,8 @@ export default function AdminPage() {
       const rrPayload = {
         rr_number: rrForm.rr_number,
         vendor_id: rrForm.vendor_id || null,
-        vendor_address: rrForm.vendor_address,
-        vendor_contact: rrForm.vendor_contact,
-        vendor_tin: rrForm.vendor_tin,
         date: rrForm.date,
-        terms: rrForm.terms,
+        terms: rrForm.terms !== '' ? Number(rrForm.terms) : null,
         freight_in: Number(rrForm.freight_in),
         total_landed_cost: totalLC,
         status: 'draft',
@@ -700,7 +709,7 @@ export default function AdminPage() {
       if (rrEditItem) {
         await supabase.from('receiving_reports').update(rrPayload).eq('id', rrEditItem.id);
         rrId = rrEditItem.id;
-        await supabase.from('receiving_report_items').delete().eq('rr_id', rrId);
+        await supabase.from('receiving_report_items').delete().eq('receiving_report_id', rrId);
       } else {
         const { data: inserted, error: insErr } = await supabase.from('receiving_reports').insert(rrPayload).select().single();
         if (insErr) throw insErr;
@@ -708,13 +717,14 @@ export default function AdminPage() {
       }
       if (rrLineItems.length > 0) {
         const linePayloads = rrLineItems.map((li) => ({
-          rr_id: rrId,
+          receiving_report_id: rrId,
           inventory_item_id: li.inventory_item_id || null,
-          uom: li.uom,
+          inventory_name: li.inventory_name || li.inventory_code || 'Unknown',
+          inventory_code: li.inventory_code || null,
+          uom: li.uom || 'pcs',
           qty: Number(li.qty),
           cost: Number(li.cost),
           freight_allocated: li.freight_allocated,
-          total_landed_cost: li.total_landed_cost,
         }));
         await supabase.from('receiving_report_items').insert(linePayloads);
       }
@@ -731,7 +741,7 @@ export default function AdminPage() {
       const { data: lineItems } = await supabase
         .from('receiving_report_items')
         .select('*')
-        .eq('rr_id', rr.id);
+        .eq('receiving_report_id', rr.id);
 
       await Promise.all(
         (lineItems || []).map(async (item) => {
@@ -777,7 +787,7 @@ export default function AdminPage() {
     try {
       const { data, error: err } = await supabase
         .from('vendors')
-        .insert({ name: newVendorForm.name, address: newVendorForm.address, contact: newVendorForm.contact, tin: newVendorForm.tin })
+        .insert({ name: newVendorForm.name, address: newVendorForm.address, contact_number: newVendorForm.contact, tin: newVendorForm.tin })
         .select()
         .single();
       if (err) throw err;
@@ -786,7 +796,7 @@ export default function AdminPage() {
         vendor_id: data.id,
         vendor_name: data.name,
         vendor_address: data.address || '',
-        vendor_contact: data.contact || '',
+        vendor_contact: data.contact_number || '',
         vendor_tin: data.tin || '',
       }));
       setVendorSearchOpen(false);
@@ -1499,7 +1509,7 @@ export default function AdminPage() {
                         <div
                           key={v.id}
                           onClick={() => {
-                            setRrForm((p) => ({ ...p, vendor_id: v.id, vendor_name: v.name, vendor_address: v.address || '', vendor_contact: v.contact || '', vendor_tin: v.tin || '' }));
+                            setRrForm((p) => ({ ...p, vendor_id: v.id, vendor_name: v.name, vendor_address: v.address || '', vendor_contact: v.contact_number || '', vendor_tin: v.tin || '' }));
                             setVendorSearchOpen(false);
                           }}
                           style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
