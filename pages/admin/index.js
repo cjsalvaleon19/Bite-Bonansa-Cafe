@@ -249,21 +249,21 @@ export default function AdminPage() {
       if (err) throw err;
       setInventoryItems(items || []);
 
-      // 2. Approved RR IDs within date range
+      // 2. Approved / Paid RR IDs within date range (both statuses are "received")
       const { data: approvedRRs } = await supabase
         .from('receiving_reports')
         .select('id')
-        .eq('status', 'approved')
+        .in('status', ['approved', 'paid'])
         .gte('date', invDateFrom)
         .lte('date', invDateTo);
       const rrIds = (approvedRRs || []).map((r) => r.id);
 
-      // 3. Line items for those RRs
+      // 3. Line items for those RRs (include inventory_name for name-based fallback)
       let rrItems = [];
       if (rrIds.length > 0) {
         const { data: ri } = await supabase
           .from('receiving_report_items')
-          .select('inventory_item_id, qty, cost')
+          .select('inventory_item_id, inventory_name, qty, cost')
           .in('receiving_report_id', rrIds);
         rrItems = ri || [];
       }
@@ -301,15 +301,24 @@ export default function AdminPage() {
         });
       });
 
+      // Build name→id lookup for fallback when inventory_item_id is null
+      const nameToIdMap = {};
+      (items || []).forEach((inv) => {
+        nameToIdMap[inv.name?.toLowerCase().trim()] = inv.id;
+      });
+
       // Build purchases map: inventory_item_id -> { qty, totalCost }
       const purchasesMap = {};
       rrItems.forEach((ri) => {
-        if (!ri.inventory_item_id) return;
-        if (!purchasesMap[ri.inventory_item_id]) purchasesMap[ri.inventory_item_id] = { qty: 0, totalCost: 0 };
+        // Resolve the inventory item id — prefer the stored FK, fall back to name match
+        const resolvedId = ri.inventory_item_id
+          || nameToIdMap[(ri.inventory_name || '').toLowerCase().trim()];
+        if (!resolvedId) return;
+        if (!purchasesMap[resolvedId]) purchasesMap[resolvedId] = { qty: 0, totalCost: 0 };
         const q = Number(ri.qty) || 0;
         const c = Number(ri.cost) || 0;
-        purchasesMap[ri.inventory_item_id].qty += q;
-        purchasesMap[ri.inventory_item_id].totalCost += q * c;
+        purchasesMap[resolvedId].qty += q;
+        purchasesMap[resolvedId].totalCost += q * c;
       });
 
       // Compute report rows (Beginning = Ending - Purchases + Sold)
@@ -873,11 +882,30 @@ export default function AdminPage() {
 
       await Promise.all(
         (lineItems || []).map(async (item) => {
-          if (!item.inventory_item_id) return;
+          // Resolve the inventory item — prefer the stored FK, fall back to name match
+          let invId = item.inventory_item_id;
+          if (!invId && item.inventory_name) {
+            const { data: found } = await supabase
+              .from('admin_inventory_items')
+              .select('id')
+              .ilike('name', item.inventory_name.trim())
+              .limit(1)
+              .maybeSingle();
+            if (found?.id) {
+              // Persist the backfilled FK so future operations work correctly
+              await supabase
+                .from('receiving_report_items')
+                .update({ inventory_item_id: found.id })
+                .eq('id', item.id);
+              invId = found.id;
+            }
+          }
+          if (!invId) return;
+
           const { data: inv } = await supabase
             .from('admin_inventory_items')
             .select('current_stock, cost_per_unit')
-            .eq('id', item.inventory_item_id)
+            .eq('id', invId)
             .single();
           const currentStock = Number(inv?.current_stock) || 0;
           const currentCost = Number(inv?.cost_per_unit) || 0;
@@ -894,11 +922,14 @@ export default function AdminPage() {
               current_stock: totalNewStock,
               cost_per_unit: Math.round(avgCost * 100) / 100,
             })
-            .eq('id', item.inventory_item_id);
+            .eq('id', invId);
         }),
       );
 
-      await supabase.from('receiving_reports').update({ status: 'approved' }).eq('id', rr.id);
+      await supabase
+        .from('receiving_reports')
+        .update({ status: 'approved', inventory_update_applied: true })
+        .eq('id', rr.id);
 
       // Journal Entry: Debit Inventory / Credit Accounts Payable
       // Compute total landed cost: prefer the generated column, fall back to qty×cost+freight
