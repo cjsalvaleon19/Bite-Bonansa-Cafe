@@ -151,6 +151,15 @@ export default function OrderTracking() {
         },
         (payload) => {
           console.log('[OrderTracking] Order change detected:', payload);
+          // If order just became complete, switch to completed tab so customer sees it
+          if (
+            payload.new &&
+            (payload.new.status === 'order_delivered' ||
+              payload.new.status === 'delivered' ||
+              payload.new.status === 'completed')
+          ) {
+            setActiveTab('completed');
+          }
           // Refetch orders when any change is detected
           fetchOrders();
         }
@@ -191,7 +200,6 @@ export default function OrderTracking() {
   const formatStatus = (status, orderMode) => {
     if (!status) return 'Unknown';
     const formatted = status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const isDineInOrTakeOut = orderMode === 'dine-in' || orderMode === 'take-out';
     
     // Map internal status to user-friendly labels
     const statusMap = {
@@ -202,9 +210,9 @@ export default function OrderTracking() {
       'Order In Process': 'Order in Process',
       'Preparing': 'Order in Process',
       'Out For Delivery': 'Out for Delivery',
-      'Delivered': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered',
-      'Order Delivered': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered',
-      'Completed': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered'
+      'Delivered': 'Order Complete',
+      'Order Delivered': 'Order Complete',
+      'Completed': 'Order Complete'
     };
     return statusMap[formatted] || formatted;
   };
@@ -223,13 +231,13 @@ export default function OrderTracking() {
         { label: 'Order Complete', status: 'order_delivered', icon: '✓' },
       ];
       
-      const statusOrder = ['order_in_queue', 'pending', 'proceed_to_cashier', 'order_delivered', 'delivered', 'completed'];
+      const statusOrder = ['order_in_queue', 'pending', 'order_in_process', 'proceed_to_cashier', 'order_delivered', 'delivered', 'completed'];
       const currentIndex = statusOrder.indexOf(normalizedStatus);
       
       return steps.map((step, index) => {
         const stepStatuses = [
           ['order_in_queue', 'pending'],
-          ['proceed_to_cashier'],
+          ['order_in_process', 'proceed_to_cashier'],
           ['order_delivered', 'delivered', 'completed']
         ];
         const isCompleted = stepStatuses[index].some(s => {
@@ -251,7 +259,7 @@ export default function OrderTracking() {
         icon: isPickup ? '✅' : '🛵' 
       },
       { 
-        label: isPickup ? 'Order Complete' : 'Order Delivered', 
+        label: 'Order Complete', 
         status: 'order_delivered', 
         icon: '✓' 
       },

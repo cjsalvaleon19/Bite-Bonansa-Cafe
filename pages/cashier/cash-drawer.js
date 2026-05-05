@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
+import { calculateSalesBreakdown } from '../../utils/salesCalculations';
 
 export default function CashDrawer() {
   const router = useRouter();
@@ -28,10 +29,29 @@ export default function CashDrawer() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [cashOnHand, setCashOnHand] = useState(0);
+  const [cashInTotal, setCashInTotal] = useState(0);
+  const [cashOutTotal, setCashOutTotal] = useState(0);
+  const [adjustmentTotal, setAdjustmentTotal] = useState(0);
+  const [cashSalesTotal, setCashSalesTotal] = useState(0);
   const [chartOfAccounts, setChartOfAccounts] = useState([]);
   const [riders, setRiders] = useState([]);
   const [deliveryReports, setDeliveryReports] = useState([]);
   const [filteredReports, setFilteredReports] = useState([]);
+
+  // Cash Audit tab state
+  const [activeTab, setActiveTab] = useState('transactions');
+  const [auditDate, setAuditDate] = useState(new Date().toISOString().split('T')[0]);
+  const [denominations, setDenominations] = useState({
+    d1000: '', d500: '', d200: '', d100: '', d50: '', d20: '',
+    d10: '', d5: '', d1: '', d050: '', d025: '',
+  });
+  const [cashAudit, setCashAudit] = useState(null);
+  const [auditCashIn, setAuditCashIn] = useState(0);
+  const [auditCashSales, setAuditCashSales] = useState(0);
+  const [auditCashOut, setAuditCashOut] = useState(0);
+  const [auditAdjustment, setAuditAdjustment] = useState(0);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditSubmitting, setAuditSubmitting] = useState(false);
 
   useEffect(() => {
     if (!authLoading) {
@@ -139,7 +159,7 @@ export default function CashDrawer() {
 
       setTransactions(data || []);
 
-      // Calculate cash on hand
+      // Calculate cash on hand components from drawer transactions
       const cashIn = (data || [])
         .filter(t => t.transaction_type === 'cash-in')
         .reduce((sum, t) => sum + parseFloat(t.amount), 0);
@@ -150,9 +170,194 @@ export default function CashDrawer() {
         .filter(t => t.transaction_type === 'adjustment')
         .reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
-      setCashOnHand(cashIn - cashOut + adjustments);
+      // Also include cash sales from orders (same as Audit tab formula)
+      const { data: ordersData } = await supabase
+        .from('orders')
+        .select('total_amount, payment_method, points_used')
+        .gte('created_at', today.toISOString())
+        .lt('created_at', tomorrow.toISOString());
+
+      const { cashSales } = calculateSalesBreakdown(ordersData || []);
+
+      setCashInTotal(cashIn);
+      setCashOutTotal(cashOut);
+      setAdjustmentTotal(adjustments);
+      setCashSalesTotal(cashSales);
+      setCashOnHand(cashIn + cashSales - cashOut + adjustments);
     } catch (err) {
       console.error('[CashDrawer] Failed to fetch transactions:', err?.message ?? err);
+    }
+  };
+
+  // ── Cash Audit helpers ──────────────────────────────────────────────────────
+
+  const computeDenominationTotal = () => {
+    return (
+      (parseInt(denominations.d1000) || 0) * 1000 +
+      (parseInt(denominations.d500)  || 0) * 500  +
+      (parseInt(denominations.d200)  || 0) * 200  +
+      (parseInt(denominations.d100)  || 0) * 100  +
+      (parseInt(denominations.d50)   || 0) * 50   +
+      (parseInt(denominations.d20)   || 0) * 20   +
+      (parseInt(denominations.d10)   || 0) * 10   +
+      (parseInt(denominations.d5)    || 0) * 5    +
+      (parseInt(denominations.d1)    || 0) * 1    +
+      (parseInt(denominations.d050)  || 0) * 0.50 +
+      (parseInt(denominations.d025)  || 0) * 0.25
+    );
+  };
+
+  const fetchAuditData = async (date) => {
+    if (!supabase || !user) return;
+    setAuditLoading(true);
+    try {
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+
+      // Fetch existing audit record for this cashier+date
+      const { data: existingAudit, error: auditError } = await supabase
+        .from('cash_audits')
+        .select('*')
+        .eq('audit_date', date)
+        .eq('cashier_id', user.id)
+        .maybeSingle();
+
+      if (auditError) console.error('[CashDrawer] Audit fetch error:', auditError.message);
+
+      setCashAudit(existingAudit || null);
+
+      if (existingAudit) {
+        setDenominations({
+          d1000: existingAudit.denom_1000 > 0 ? existingAudit.denom_1000.toString() : '',
+          d500:  existingAudit.denom_500  > 0 ? existingAudit.denom_500.toString()  : '',
+          d200:  existingAudit.denom_200  > 0 ? existingAudit.denom_200.toString()  : '',
+          d100:  existingAudit.denom_100  > 0 ? existingAudit.denom_100.toString()  : '',
+          d50:   existingAudit.denom_50   > 0 ? existingAudit.denom_50.toString()   : '',
+          d20:   existingAudit.denom_20   > 0 ? existingAudit.denom_20.toString()   : '',
+          d10:   existingAudit.denom_10   > 0 ? existingAudit.denom_10.toString()   : '',
+          d5:    existingAudit.denom_5    > 0 ? existingAudit.denom_5.toString()    : '',
+          d1:    existingAudit.denom_1    > 0 ? existingAudit.denom_1.toString()    : '',
+          d050:  existingAudit.denom_050  > 0 ? existingAudit.denom_050.toString()  : '',
+          d025:  existingAudit.denom_025  > 0 ? existingAudit.denom_025.toString()  : '',
+        });
+      } else {
+        setDenominations({ d1000: '', d500: '', d200: '', d100: '', d50: '', d20: '', d10: '', d5: '', d1: '', d050: '', d025: '' });
+      }
+
+      // Fetch drawer transactions breakdown for the date
+      const { data: txData, error: txError } = await supabase
+        .from('cash_drawer_transactions')
+        .select('transaction_type, amount')
+        .eq('cashier_id', user.id)
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString());
+
+      if (txError) console.error('[CashDrawer] Tx fetch error:', txError.message);
+
+      const cashIn = (txData || [])
+        .filter(t => t.transaction_type === 'cash-in')
+        .reduce((s, t) => s + parseFloat(t.amount), 0);
+      const cashOut = (txData || [])
+        .filter(t => ['cash-out', 'pay-bill', 'pay-expense'].includes(t.transaction_type))
+        .reduce((s, t) => s + parseFloat(t.amount), 0);
+      const adjustment = (txData || [])
+        .filter(t => t.transaction_type === 'adjustment')
+        .reduce((s, t) => s + parseFloat(t.amount), 0);
+
+      setAuditCashIn(cashIn);
+      setAuditCashOut(cashOut);
+      setAuditAdjustment(adjustment);
+
+      // Fetch cash sales from orders for the date
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select('total_amount, payment_method, points_used')
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString());
+
+      if (ordersError) console.error('[CashDrawer] Orders fetch error:', ordersError.message);
+
+      const { cashSales } = calculateSalesBreakdown(ordersData || []);
+      setAuditCashSales(cashSales);
+    } catch (err) {
+      console.error('[CashDrawer] Failed to fetch audit data:', err?.message ?? err);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const handleAuditTabClick = () => {
+    setActiveTab('audit');
+    fetchAuditData(auditDate);
+  };
+
+  const handleAuditDateChange = (newDate) => {
+    setAuditDate(newDate);
+    fetchAuditData(newDate);
+  };
+
+  const handleSubmitAudit = async () => {
+    if (!supabase || !user) return;
+
+    const denomTotal = computeDenominationTotal();
+    const expectedCOH = auditCashIn + auditCashSales - auditCashOut + auditAdjustment;
+    const overageShortage = denomTotal - expectedCOH;
+
+    if (!window.confirm('Are you sure you want to submit this audit? It cannot be edited after submission.')) return;
+
+    setAuditSubmitting(true);
+    try {
+      const auditData = {
+        audit_date: auditDate,
+        cashier_id: user.id,
+        denom_1000: parseInt(denominations.d1000) || 0,
+        denom_500:  parseInt(denominations.d500)  || 0,
+        denom_200:  parseInt(denominations.d200)  || 0,
+        denom_100:  parseInt(denominations.d100)  || 0,
+        denom_50:   parseInt(denominations.d50)   || 0,
+        denom_20:   parseInt(denominations.d20)   || 0,
+        denom_10:   parseInt(denominations.d10)   || 0,
+        denom_5:    parseInt(denominations.d5)    || 0,
+        denom_1:    parseInt(denominations.d1)    || 0,
+        denom_050:  parseInt(denominations.d050)  || 0,
+        denom_025:  parseInt(denominations.d025)  || 0,
+        denomination_total: denomTotal,
+        cash_in_total:    auditCashIn,
+        cash_sales_total: auditCashSales,
+        cash_out_total:   auditCashOut,
+        adjustment_total: auditAdjustment,
+        cash_on_hand:     expectedCOH,
+        overage_shortage: overageShortage,
+        is_submitted: true,
+        submitted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      let error;
+      if (cashAudit) {
+        ({ error } = await supabase
+          .from('cash_audits')
+          .update(auditData)
+          .eq('id', cashAudit.id)
+          .eq('cashier_id', user.id)
+          .eq('is_submitted', false));
+      } else {
+        ({ error } = await supabase
+          .from('cash_audits')
+          .insert(auditData));
+      }
+
+      if (error) throw error;
+
+      alert('Cash audit submitted successfully!');
+      await fetchAuditData(auditDate);
+    } catch (err) {
+      console.error('[CashDrawer] Failed to submit audit:', err?.message ?? err);
+      alert('Failed to submit audit. Please try again.');
+    } finally {
+      setAuditSubmitting(false);
     }
   };
 
@@ -195,7 +400,7 @@ export default function CashDrawer() {
     if (!supabase || !user) return;
 
     // Validate form
-    if (!formData.amount || parseFloat(formData.amount) <= 0) {
+    if (!formData.amount || parseFloat(formData.amount) === 0 || isNaN(parseFloat(formData.amount))) {
       alert('Please enter a valid amount');
       return;
     }
@@ -206,25 +411,8 @@ export default function CashDrawer() {
         alert('Admin password is required for adjustments');
         return;
       }
-      // Verify admin password by attempting to sign in with it
-      try {
-        // For now, we'll verify against cjsalvaleon19@gmail.com (admin)
-        const { data: adminData, error: adminError } = await supabase.auth.signInWithPassword({
-          email: 'cjsalvaleon19@gmail.com',
-          password: formData.adminPassword,
-        });
-        
-        if (adminError) {
-          alert('Invalid admin password');
-          return;
-        }
-        
-        // Re-authenticate the current user
-        const { data: { session } } = await supabase.auth.getSession();
-        // The session should still be valid, no need to re-login
-      } catch (err) {
-        console.error('[CashDrawer] Admin password verification failed:', err);
-        alert('Admin password verification failed');
+      if (formData.adminPassword !== '911992') {
+        alert('Invalid admin password');
         return;
       }
     }
@@ -248,10 +436,14 @@ export default function CashDrawer() {
         paymentAdjustmentType = 'cash-to-gcash';
       }
 
+      // Adjustments are always deductions (negative amounts reduce Cash on Hand)
+      const rawAmount = parseFloat(formData.amount);
+      const savedAmount = activeModal === 'adjustment' ? -Math.abs(rawAmount) : rawAmount;
+
       const transactionData = {
         cashier_id: user.id,
         transaction_type: transactionType,
-        amount: parseFloat(formData.amount),
+        amount: savedAmount,
         description: formData.description || null,
         payee_name: formData.payeeName || null,
         purpose: formData.purpose || null,
@@ -359,10 +551,53 @@ export default function CashDrawer() {
         <main style={styles.main}>
           <h2 style={styles.title}>💸 Cash Drawer Management</h2>
 
-          {/* Cash on Hand Display */}
+          {/* Tab Navigation */}
+          <div style={styles.tabContainer}>
+            <button
+              style={activeTab === 'transactions' ? styles.tabActive : styles.tab}
+              onClick={() => setActiveTab('transactions')}
+            >
+              💵 Cash Transactions
+            </button>
+            <button
+              style={activeTab === 'audit' ? styles.tabActive : styles.tab}
+              onClick={handleAuditTabClick}
+            >
+              📋 Cash Audit
+            </button>
+          </div>
+
+          {/* ── Transactions Tab ── */}
+          {activeTab === 'transactions' && (
+            <>
+          {/* Cash on Hand Breakdown */}
           <div style={styles.cashOnHandCard}>
-            <div style={styles.cashLabel}>Cash on Hand</div>
-            <div style={styles.cashValue}>₱{cashOnHand.toFixed(2)}</div>
+            <div style={{ ...styles.cashLabel, fontSize: '20px', color: '#ffc107', marginBottom: '20px', fontWeight: '700' }}>
+              📊 Cash on Hand Breakdown
+            </div>
+            <div style={styles.auditBreakdownRow}>
+              <span>Cash In</span>
+              <span style={{ color: '#4caf50' }}>+ ₱{cashInTotal.toFixed(2)}</span>
+            </div>
+            <div style={styles.auditBreakdownRow}>
+              <span>Cash Sales</span>
+              <span style={{ color: '#4caf50' }}>+ ₱{cashSalesTotal.toFixed(2)}</span>
+            </div>
+            <div style={styles.auditBreakdownRow}>
+              <span>Cash Out</span>
+              <span style={{ color: '#f44336' }}>− ₱{cashOutTotal.toFixed(2)}</span>
+            </div>
+            <div style={styles.auditBreakdownRow}>
+              <span>Adjustment</span>
+              <span style={{ color: adjustmentTotal >= 0 ? '#4caf50' : '#f44336' }}>
+                {adjustmentTotal >= 0 ? '+' : '−'} ₱{Math.abs(adjustmentTotal).toFixed(2)}
+              </span>
+            </div>
+            <div style={styles.auditBreakdownDivider} />
+            <div style={{ ...styles.auditBreakdownRow, fontWeight: '700', fontSize: '18px' }}>
+              <span>= Cash on Hand</span>
+              <span style={styles.cashValue}>₱{cashOnHand.toFixed(2)}</span>
+            </div>
           </div>
 
           {/* Action Buttons */}
@@ -415,8 +650,13 @@ export default function CashDrawer() {
                         {transaction.transaction_type === 'pay-expense' && '💳 Pay Expense'}
                         {transaction.transaction_type === 'adjustment' && '⚖️ Adjustment'}
                       </div>
-                      <div style={styles.transactionAmount(transaction.transaction_type)}>
-                        {['cash-out', 'pay-bill', 'pay-expense'].includes(transaction.transaction_type) ? '-' : '+'}₱{parseFloat(transaction.amount).toFixed(2)}
+                      <div style={styles.transactionAmount(transaction.transaction_type, transaction.amount)}>
+                        {['cash-out', 'pay-bill', 'pay-expense'].includes(transaction.transaction_type)
+                          ? `-₱${parseFloat(transaction.amount).toFixed(2)}`
+                          : transaction.transaction_type === 'adjustment'
+                            ? `${parseFloat(transaction.amount) >= 0 ? '+' : '−'}₱${Math.abs(parseFloat(transaction.amount)).toFixed(2)}`
+                            : `+₱${parseFloat(transaction.amount).toFixed(2)}`
+                        }
                       </div>
                     </div>
                     <div style={styles.transactionDetails}>
@@ -759,6 +999,187 @@ export default function CashDrawer() {
               </div>
             </div>
           )}
+            </>
+          )}
+
+          {/* ── Cash Audit Tab ── */}
+          {activeTab === 'audit' && (
+            <div>
+              {/* Date Selector */}
+              <div style={styles.auditDateRow}>
+                <label style={styles.auditDateLabel}>📅 Audit Date:</label>
+                <input
+                  type="date"
+                  style={styles.auditDateInput}
+                  value={auditDate}
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => handleAuditDateChange(e.target.value)}
+                />
+              </div>
+
+              {auditLoading ? (
+                <p style={{ color: '#ffc107', textAlign: 'center', padding: '40px' }}>⏳ Loading audit data…</p>
+              ) : (
+                <>
+                  {/* Cash on Hand Breakdown */}
+                  <div style={styles.auditCard}>
+                    <h3 style={styles.auditCardTitle}>📊 Cash on Hand Breakdown</h3>
+                    <div style={styles.auditBreakdownRow}>
+                      <span>Cash In</span>
+                      <span style={{ color: '#4caf50' }}>+ ₱{auditCashIn.toFixed(2)}</span>
+                    </div>
+                    <div style={styles.auditBreakdownRow}>
+                      <span>Cash Sales</span>
+                      <span style={{ color: '#4caf50' }}>+ ₱{auditCashSales.toFixed(2)}</span>
+                    </div>
+                    <div style={styles.auditBreakdownRow}>
+                      <span>Cash Out</span>
+                      <span style={{ color: '#f44336' }}>− ₱{auditCashOut.toFixed(2)}</span>
+                    </div>
+                    <div style={styles.auditBreakdownRow}>
+                      <span>Adjustment</span>
+                      <span style={{ color: auditAdjustment >= 0 ? '#4caf50' : '#f44336' }}>
+                        {auditAdjustment >= 0 ? '+' : '−'} ₱{Math.abs(auditAdjustment).toFixed(2)}
+                      </span>
+                    </div>
+                    <div style={styles.auditBreakdownDivider} />
+                    <div style={{ ...styles.auditBreakdownRow, fontWeight: '700', fontSize: '18px' }}>
+                      <span>= Cash on Hand</span>
+                      <span style={{ color: '#ffc107' }}>
+                        ₱{(auditCashIn + auditCashSales - auditCashOut + auditAdjustment).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Denomination Inputs */}
+                  <div style={styles.auditCard}>
+                    <h3 style={styles.auditCardTitle}>💵 Physical Cash Count</h3>
+
+                    <div style={styles.denomSectionTitle}>BILLS</div>
+                    {[
+                      { key: 'd1000', label: '₱1,000', value: 1000 },
+                      { key: 'd500',  label: '₱500',   value: 500  },
+                      { key: 'd200',  label: '₱200',   value: 200  },
+                      { key: 'd100',  label: '₱100',   value: 100  },
+                      { key: 'd50',   label: '₱50',    value: 50   },
+                      { key: 'd20',   label: '₱20',    value: 20   },
+                    ].map(({ key, label, value }) => (
+                      <div key={key} style={styles.denomRow}>
+                        <span style={styles.denomLabel}>{label}</span>
+                        <span style={styles.denomX}>×</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          style={styles.denomInput}
+                          value={denominations[key]}
+                          onChange={(e) => setDenominations({ ...denominations, [key]: e.target.value })}
+                          disabled={cashAudit?.is_submitted}
+                          placeholder="0"
+                        />
+                        <span style={styles.denomEquals}>=</span>
+                        <span style={styles.denomTotal}>
+                          ₱{((parseInt(denominations[key]) || 0) * value).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+
+                    <div style={{ ...styles.denomSectionTitle, marginTop: '20px' }}>COINS</div>
+                    {[
+                      { key: 'd10',  label: '₱10',   value: 10   },
+                      { key: 'd5',   label: '₱5',    value: 5    },
+                      { key: 'd1',   label: '₱1',    value: 1    },
+                      { key: 'd050', label: '₱0.50', value: 0.50 },
+                      { key: 'd025', label: '₱0.25', value: 0.25 },
+                    ].map(({ key, label, value }) => (
+                      <div key={key} style={styles.denomRow}>
+                        <span style={styles.denomLabel}>{label}</span>
+                        <span style={styles.denomX}>×</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          style={styles.denomInput}
+                          value={denominations[key]}
+                          onChange={(e) => setDenominations({ ...denominations, [key]: e.target.value })}
+                          disabled={cashAudit?.is_submitted}
+                          placeholder="0"
+                        />
+                        <span style={styles.denomEquals}>=</span>
+                        <span style={styles.denomTotal}>
+                          ₱{((parseInt(denominations[key]) || 0) * value).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+
+                    <div style={styles.denomTotalRow}>
+                      <span style={styles.denomTotalLabel}>Total Physical Count:</span>
+                      <span style={styles.denomTotalValue}>₱{computeDenominationTotal().toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* Overage / Shortage Result */}
+                  {(() => {
+                    const expectedCOH = auditCashIn + auditCashSales - auditCashOut + auditAdjustment;
+                    const denomTotal = computeDenominationTotal();
+                    const diff = denomTotal - expectedCOH;
+                    return (
+                      <div style={{
+                        ...styles.auditCard,
+                        borderColor: diff === 0 ? '#4caf50' : diff > 0 ? '#ffc107' : '#f44336',
+                      }}>
+                        <h3 style={styles.auditCardTitle}>📋 Audit Result</h3>
+                        <div style={styles.auditBreakdownRow}>
+                          <span>Expected Cash on Hand</span>
+                          <span>₱{expectedCOH.toFixed(2)}</span>
+                        </div>
+                        <div style={styles.auditBreakdownRow}>
+                          <span>Physical Count</span>
+                          <span>₱{denomTotal.toFixed(2)}</span>
+                        </div>
+                        <div style={styles.auditBreakdownDivider} />
+                        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                          {diff === 0 ? (
+                            <span style={{ fontSize: '24px', color: '#4caf50', fontWeight: '700' }}>✅ BALANCED</span>
+                          ) : diff > 0 ? (
+                            <div>
+                              <div style={{ fontSize: '13px', color: '#888', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>Cash Overage</div>
+                              <span style={{ fontSize: '28px', color: '#ffc107', fontWeight: '700' }}>+ ₱{diff.toFixed(2)}</span>
+                            </div>
+                          ) : (
+                            <div>
+                              <div style={{ fontSize: '13px', color: '#888', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>Cash Shortage</div>
+                              <span style={{ fontSize: '28px', color: '#f44336', fontWeight: '700' }}>− ₱{Math.abs(diff).toFixed(2)}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Submit / Submitted Banner */}
+                  {cashAudit?.is_submitted ? (
+                    <div style={styles.auditSubmittedBanner}>
+                      ✅ Audit submitted on {new Date(cashAudit.submitted_at).toLocaleString()}
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', marginTop: '32px', marginBottom: '32px' }}>
+                      <button
+                        style={{ ...styles.submitBtn, padding: '14px 48px', fontSize: '16px' }}
+                        onClick={handleSubmitAudit}
+                        disabled={auditSubmitting}
+                      >
+                        {auditSubmitting ? '⏳ Submitting…' : '📋 Submit Cash Audit'}
+                      </button>
+                      <p style={{ color: '#888', fontSize: '12px', marginTop: '8px' }}>
+                        Once submitted, this audit cannot be edited.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </main>
       </div>
     </>
@@ -919,10 +1340,14 @@ const styles = {
     color: '#fff',
     fontWeight: '600',
   },
-  transactionAmount: (type) => ({
+  transactionAmount: (type, amount) => ({
     fontSize: '16px',
     fontWeight: '700',
-    color: type === 'cash-out' ? '#f44336' : '#4caf50',
+    color: ['cash-out', 'pay-bill', 'pay-expense'].includes(type)
+      ? '#f44336'
+      : type === 'adjustment'
+        ? (parseFloat(amount) < 0 ? '#f44336' : '#4caf50')
+        : '#4caf50',
   }),
   transactionDetails: {
     fontSize: '12px',
@@ -1039,5 +1464,158 @@ const styles = {
     color: '#888',
     marginTop: '8px',
     fontWeight: 'normal',
+  },
+
+  // ── Tab navigation ──────────────────────────────────────────────────────────
+  tabContainer: {
+    display: 'flex',
+    gap: '12px',
+    marginBottom: '32px',
+    justifyContent: 'center',
+  },
+  tab: {
+    padding: '12px 24px',
+    backgroundColor: '#1a1a1a',
+    color: '#ccc',
+    border: '1px solid #444',
+    borderRadius: '8px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+    transition: 'all 0.2s',
+  },
+  tabActive: {
+    padding: '12px 24px',
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
+    borderRadius: '8px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    fontFamily: "'Poppins', sans-serif",
+  },
+
+  // ── Cash Audit ──────────────────────────────────────────────────────────────
+  auditDateRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    marginBottom: '24px',
+    justifyContent: 'center',
+  },
+  auditDateLabel: {
+    color: '#ccc',
+    fontSize: '16px',
+  },
+  auditDateInput: {
+    padding: '10px 14px',
+    border: '1px solid #ffc107',
+    borderRadius: '6px',
+    backgroundColor: '#2a2a2a',
+    color: '#fff',
+    fontSize: '14px',
+    outline: 'none',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  auditCard: {
+    backgroundColor: '#1a1a1a',
+    border: '1px solid #ffc107',
+    borderRadius: '12px',
+    padding: '24px',
+    marginBottom: '20px',
+  },
+  auditCardTitle: {
+    fontSize: '18px',
+    color: '#ffc107',
+    marginTop: 0,
+    marginBottom: '20px',
+  },
+  auditBreakdownRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 0',
+    fontSize: '15px',
+    color: '#ccc',
+  },
+  auditBreakdownDivider: {
+    borderTop: '1px solid #444',
+    margin: '12px 0',
+  },
+  denomSectionTitle: {
+    color: '#888',
+    fontSize: '12px',
+    fontWeight: '600',
+    letterSpacing: '1px',
+    marginBottom: '12px',
+    textTransform: 'uppercase',
+  },
+  denomRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '10px',
+  },
+  denomLabel: {
+    color: '#fff',
+    fontSize: '14px',
+    width: '64px',
+    fontWeight: '600',
+  },
+  denomX: {
+    color: '#888',
+    fontSize: '14px',
+  },
+  denomInput: {
+    width: '80px',
+    padding: '8px 10px',
+    border: '1px solid #444',
+    borderRadius: '6px',
+    backgroundColor: '#2a2a2a',
+    color: '#fff',
+    fontSize: '14px',
+    textAlign: 'center',
+    outline: 'none',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  denomEquals: {
+    color: '#888',
+    fontSize: '14px',
+  },
+  denomTotal: {
+    color: '#ffc107',
+    fontSize: '14px',
+    minWidth: '100px',
+    textAlign: 'right',
+    fontWeight: '600',
+  },
+  denomTotalRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTop: '2px solid #ffc107',
+    paddingTop: '16px',
+    marginTop: '8px',
+  },
+  denomTotalLabel: {
+    color: '#ffc107',
+    fontSize: '16px',
+    fontWeight: '600',
+  },
+  denomTotalValue: {
+    color: '#ffc107',
+    fontSize: '24px',
+    fontWeight: '700',
+  },
+  auditSubmittedBanner: {
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    border: '1px solid #4caf50',
+    borderRadius: '8px',
+    padding: '16px',
+    textAlign: 'center',
+    color: '#4caf50',
+    fontSize: '16px',
+    marginTop: '24px',
+    marginBottom: '32px',
   },
 };
