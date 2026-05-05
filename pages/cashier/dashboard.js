@@ -987,13 +987,13 @@ export default function CashierDashboard() {
                               <td style={styles.reportTd}>{adj.users?.full_name || adj.users?.email || 'Cashier'}</td>
                               <td style={styles.reportTd}>{adj.description || adj.adjustment_reason || 'Cash to GCash'}</td>
                               <td style={styles.reportTd}>{adj.reference_number || 'N/A'}</td>
-                              <td style={styles.reportTdHighlight}>₱{parseFloat(adj.amount || 0).toFixed(2)}</td>
+                              <td style={styles.reportTdHighlight}>₱{Math.abs(parseFloat(adj.amount || 0)).toFixed(2)}</td>
                             </tr>
                           ))}
                           <tr style={styles.reportTotalRow}>
                             <td colSpan="4" style={styles.reportTotalLabel}>Total Adjustments:</td>
                             <td style={styles.reportTotalValue}>
-                              ₱{gcashAdjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0).toFixed(2)}
+                              ₱{gcashAdjustments.reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount || 0)), 0).toFixed(2)}
                             </td>
                           </tr>
                         </tbody>
@@ -1012,7 +1012,7 @@ export default function CashierDashboard() {
                   <div style={styles.summaryItem}>
                     <span style={styles.summaryLabel}>Total Adjustments:</span>
                     <span style={styles.summaryValue}>
-                      ₱{gcashAdjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0).toFixed(2)}
+                      ₱{gcashAdjustments.reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount || 0)), 0).toFixed(2)}
                     </span>
                   </div>
                   <div style={styles.summaryItemTotal}>
@@ -1020,7 +1020,7 @@ export default function CashierDashboard() {
                     <span style={styles.summaryValueTotal}>
                       ₱{(
                         gcashTransactions.reduce((sum, order) => sum + getGCashAmount(order), 0) +
-                        gcashAdjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0)
+                        gcashAdjustments.reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount || 0)), 0)
                       ).toFixed(2)}
                     </span>
                   </div>
