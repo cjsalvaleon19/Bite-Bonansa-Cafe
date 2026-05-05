@@ -1848,7 +1848,7 @@ export default function AdminPage() {
                     )}
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
-                      <button onClick={saveRR} style={styles.primaryBtn} disabled={savingRR}>
+                      <button onClick={saveRR} style={styles.primaryBtn} disabled={savingRR} aria-disabled={savingRR} aria-busy={savingRR}>
                         {savingRR ? 'Saving…' : 'Save Draft'}
                       </button>
                     </div>
