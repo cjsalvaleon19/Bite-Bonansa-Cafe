@@ -254,45 +254,26 @@ export default function AdminPage() {
       if (err) throw err;
       setInventoryItems(items || []);
 
-      // 2a. Approved / Paid RR IDs within the selected date range (for Purchases / Beginning / Sold columns)
-      const { data: approvedRRs } = await supabase
-        .from('receiving_reports')
-        .select('id')
-        .in('status', ['approved', 'paid'])
-        .gte('date', invDateFrom)
-        .lte('date', invDateTo);
-      const rrIds = (approvedRRs || []).map((r) => r.id);
+      // 2 + 3. Line items for the selected date range — single join query (avoids large .in() URL)
+      const { data: rrItemsRaw, error: riErr } = await supabase
+        .from('receiving_report_items')
+        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!inner(status, date)')
+        .in('receiving_reports.status', ['approved', 'paid'])
+        .gte('receiving_reports.date', invDateFrom)
+        .lte('receiving_reports.date', invDateTo);
+      if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
+      const rrItems = rrItemsRaw || [];
 
-      // 2b. Approved / Paid RR IDs from Jan 1, 2026 to invDateTo (for Average Cost computation)
+      // 2b + 3b. Line items from Jan 1, 2026 → invDateTo — single join query for Average Cost
       const AVG_COST_START = '2026-01-01';
-      const { data: allPeriodRRs } = await supabase
-        .from('receiving_reports')
-        .select('id')
-        .in('status', ['approved', 'paid'])
-        .gte('date', AVG_COST_START)
-        .lte('date', invDateTo);
-      const allPeriodRRIds = (allPeriodRRs || []).map((r) => r.id);
-
-      // 3. Line items for those RRs (include inventory_name for name-based fallback)
-      let rrItems = [];
-      if (rrIds.length > 0) {
-        const { data: ri, error: riErr } = await supabase
-          .from('receiving_report_items')
-          .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost')
-          .in('receiving_report_id', rrIds);
-        if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
-        rrItems = ri || [];
-      }
-
-      // 3b. Line items for the full Jan-1-2026-to-invDateTo range (for Average Cost)
-      let allPeriodItems = [];
-      if (allPeriodRRIds.length > 0) {
-        const { data: ri2 } = await supabase
-          .from('receiving_report_items')
-          .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost')
-          .in('receiving_report_id', allPeriodRRIds);
-        allPeriodItems = ri2 || [];
-      }
+      const { data: allPeriodItemsRaw, error: ri2Err } = await supabase
+        .from('receiving_report_items')
+        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!inner(status, date)')
+        .in('receiving_reports.status', ['approved', 'paid'])
+        .gte('receiving_reports.date', AVG_COST_START)
+        .lte('receiving_reports.date', invDateTo);
+      if (ri2Err) throw new Error('Failed to fetch all-period receiving report items: ' + ri2Err.message);
+      const allPeriodItems = allPeriodItemsRaw || [];
 
       // 4. Price costing map (menu_item_name → inventory usage)
       const { data: costings } = await supabase
