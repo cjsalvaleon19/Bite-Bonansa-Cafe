@@ -61,7 +61,11 @@ export function calculateSalesBreakdown(orders) {
  */
 export function calculateAdjustmentDeductions(adjustments) {
   return (adjustments || [])
-    .filter(adj => adj.adjustment_reason === 'canceled_order' || adj.adjustment_reason === 'double_posting')
+    .filter(adj =>
+      adj.adjustment_reason === 'canceled_order' ||
+      adj.adjustment_reason === 'double_posting' ||
+      adj.payment_adjustment_type === 'cash-to-gcash'
+    )
     .reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount || 0)), 0);
 }
 
