@@ -981,17 +981,23 @@ function CustomerOrderPage() {
               return (
                 <Card
                   key={item.id}
-                  className="overflow-hidden cursor-pointer transition-all hover:border-primary/50 hover:shadow-md touch-manipulation active:scale-[0.98]"
+                  className="overflow-hidden cursor-pointer transition-all touch-manipulation active:scale-[0.98]"
+                  style={{ backgroundColor: '#1a1a1a', border: '1px solid #ffc107', borderRadius: '10px' }}
                   onClick={() => openItemDialog(item)}
                 >
                   <CardContent className="p-3 sm:p-4">
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-semibold leading-snug text-sm sm:text-base">{item.name}</h3>
-                      <span className="text-sm sm:text-base font-bold text-primary whitespace-nowrap">{priceLabel}</span>
+                      <div className="flex flex-col min-w-0">
+                        <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff', marginBottom: '2px' }}>{item.name}</h3>
+                        {item.category && (
+                          <span style={{ fontSize: '11px', color: '#888888' }}>{item.category}</span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '15px', fontWeight: '700', color: '#ffc107', whiteSpace: 'nowrap' }}>{priceLabel}</span>
                     </div>
 
                     {item.description && (
-                      <p className="mt-1 text-xs sm:text-sm text-muted-foreground line-clamp-2">
+                      <p className="mt-1 text-xs sm:text-sm line-clamp-2" style={{ color: '#888888' }}>
                         {item.description}
                       </p>
                     )}
@@ -999,8 +1005,8 @@ function CustomerOrderPage() {
                     {/* Variant badge indicator */}
                     {hasVariants && (
                       <div className="mt-2">
-                        <span className="inline-block rounded border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] text-primary font-medium">
-                          ⚙️ {variantCount} variant{variantCount > 1 ? 's' : ''}
+                        <span style={{ fontSize: '10px', color: '#ffc107', backgroundColor: 'rgba(255,193,7,0.1)', border: '1px solid rgba(255,193,7,0.3)', borderRadius: '4px', padding: '2px 6px', display: 'inline-block' }}>
+                          ⚙ {variantCount} variant{variantCount > 1 ? 's' : ''}
                         </span>
                       </div>
                     )}
@@ -1015,11 +1021,11 @@ function CustomerOrderPage() {
                           const hasMoreOptions = totalOptions > MAX_DISPLAYED_OPTIONS
                           
                           return (
-                            <div key={vt.id || idx} className="text-[11px]">
-                              <span className="font-semibold text-primary">
+                            <div key={vt.id || idx} style={{ fontSize: '10px' }}>
+                              <span style={{ fontWeight: '600', color: '#ffc107' }}>
                                 {vt.variant_type_name}{vt.is_required ? '*' : ''}:
                               </span>{' '}
-                              <span className="text-muted-foreground">
+                              <span style={{ color: '#888888' }}>
                                 {optionNames.join(', ')}
                                 {hasMoreOptions && ` +${totalOptions - MAX_DISPLAYED_OPTIONS} more`}
                               </span>
@@ -1036,20 +1042,20 @@ function CustomerOrderPage() {
                           {hasVarieties && varieties.slice(0, 3).map((v: string) => (
                             <span
                               key={v}
-                              className="inline-block rounded-full border border-primary/30 px-2 py-0.5 text-[11px] text-primary/80"
+                              style={{ fontSize: '10px', color: '#ffc107', backgroundColor: 'rgba(255,193,7,0.1)', border: '1px solid rgba(255,193,7,0.3)', borderRadius: '4px', padding: '2px 6px', display: 'inline-block' }}
                             >
                               {v}
                             </span>
                           ))}
                           {hasVarieties && varieties.length > 3 && (
-                            <span className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                            <span style={{ fontSize: '10px', color: '#888888', border: '1px solid rgba(136,136,136,0.3)', borderRadius: '4px', padding: '2px 6px', display: 'inline-block' }}>
                               +{varieties.length - 3} more
                             </span>
                           )}
                           {hasSizes && sizes.map((s: any) => (
                             <span
                               key={s.name}
-                              className="inline-block rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                              style={{ fontSize: '10px', color: '#888888', border: '1px solid rgba(136,136,136,0.3)', borderRadius: '4px', padding: '2px 6px', display: 'inline-block' }}
                             >
                               {s.name}
                             </span>
@@ -1057,7 +1063,7 @@ function CustomerOrderPage() {
                         </div>
 
                         {hasAddons && (
-                          <p className="mt-1 text-[11px] text-muted-foreground">+ Add-ons available</p>
+                          <p className="mt-1" style={{ fontSize: '10px', color: '#888888' }}>+ Add-ons available</p>
                         )}
                       </>
                     )}
