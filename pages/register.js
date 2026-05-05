@@ -15,6 +15,7 @@ const inputStyle = {
   outline: 'none',
 };
 
+
 const labelStyle = {
   display: 'block',
   marginBottom: '6px',
@@ -224,7 +225,7 @@ const Register = () => {
                 autoComplete="name"
                 value={form.fullName}
                 onChange={handleChange}
-                placeholder="e.g. Catherine Jean Salvaleon"
+                placeholder="e.g. Juan Dela Cruz"
                 style={inputStyle}
                 onFocus={focusStyle}
                 onBlur={blurStyle}
@@ -258,7 +259,7 @@ const Register = () => {
                 autoComplete="tel"
                 value={form.phone}
                 onChange={handleChange}
-                placeholder="e.g. 09514915138"
+                placeholder="e.g. 09XXXXXXXXX"
                 style={inputStyle}
                 onFocus={focusStyle}
                 onBlur={blurStyle}
