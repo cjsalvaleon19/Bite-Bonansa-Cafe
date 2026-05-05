@@ -151,6 +151,15 @@ export default function OrderTracking() {
         },
         (payload) => {
           console.log('[OrderTracking] Order change detected:', payload);
+          // If order just became complete, switch to completed tab so customer sees it
+          if (
+            payload.new &&
+            (payload.new.status === 'order_delivered' ||
+              payload.new.status === 'delivered' ||
+              payload.new.status === 'completed')
+          ) {
+            setActiveTab('completed');
+          }
           // Refetch orders when any change is detected
           fetchOrders();
         }
@@ -223,13 +232,13 @@ export default function OrderTracking() {
         { label: 'Order Complete', status: 'order_delivered', icon: '✓' },
       ];
       
-      const statusOrder = ['order_in_queue', 'pending', 'proceed_to_cashier', 'order_delivered', 'delivered', 'completed'];
+      const statusOrder = ['order_in_queue', 'pending', 'order_in_process', 'proceed_to_cashier', 'order_delivered', 'delivered', 'completed'];
       const currentIndex = statusOrder.indexOf(normalizedStatus);
       
       return steps.map((step, index) => {
         const stepStatuses = [
           ['order_in_queue', 'pending'],
-          ['proceed_to_cashier'],
+          ['order_in_process', 'proceed_to_cashier'],
           ['order_delivered', 'delivered', 'completed']
         ];
         const isCompleted = stepStatuses[index].some(s => {

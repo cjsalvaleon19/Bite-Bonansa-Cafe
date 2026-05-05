@@ -129,7 +129,7 @@ function CustomerOrderPage() {
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
-  const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine-in' | 'take-out'>('dine-in')
+  const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine-in' | 'take-out'>('delivery')
   const [deliveryEnabled, setDeliveryEnabled] = useState(true)
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
