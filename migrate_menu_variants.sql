@@ -42,7 +42,7 @@ ON CONFLICT DO NOTHING;
 -- 2. SIOMAI MIGRATION
 -- ============================================================================
 INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
-VALUES ('Siomai', 'Appetizers', 69.00, true, 'Delicious pork dumplings - choose your style', true)
+VALUES ('Siomai', 'Appetizers', 69.00, true, 'Delicious dumplings - choose your style', true)
 ON CONFLICT DO NOTHING;
 
 WITH siomai_item AS (

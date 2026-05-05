@@ -76,7 +76,7 @@ SELECT id, 'Barbeque', 0, true, 4 FROM flavor_type;
 -- 3. SIOMAI (₱74 base) - Variety and Spice Level variants
 -- ----------------------------------------------------------------------------
 INSERT INTO menu_items_base (name, category, base_price, has_variants, description, available)
-VALUES ('Siomai', 'Snacks & Bites', 74.00, true, 'Delicious pork dumplings', true);
+VALUES ('Siomai', 'Snacks & Bites', 74.00, true, 'Delicious dumplings', true);
 
 WITH siomai_item AS (
   SELECT id FROM menu_items_base WHERE name = 'Siomai' AND category = 'Snacks & Bites' LIMIT 1
