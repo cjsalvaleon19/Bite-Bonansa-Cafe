@@ -15,11 +15,6 @@ const inputStyle = {
   outline: 'none',
 };
 
-const inputStyleBlack = {
-  ...inputStyle,
-  backgroundColor: '#fff',
-  color: '#000',
-};
 
 const labelStyle = {
   display: 'block',
@@ -231,7 +226,7 @@ const Register = () => {
                 value={form.fullName}
                 onChange={handleChange}
                 placeholder="e.g. Juan Dela Cruz"
-                style={inputStyleBlack}
+                style={inputStyle}
                 onFocus={focusStyle}
                 onBlur={blurStyle}
                 required
@@ -265,7 +260,7 @@ const Register = () => {
                 value={form.phone}
                 onChange={handleChange}
                 placeholder="e.g. 09XXXXXXXXX"
-                style={inputStyleBlack}
+                style={inputStyle}
                 onFocus={focusStyle}
                 onBlur={blurStyle}
                 required
