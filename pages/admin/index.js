@@ -90,6 +90,17 @@ export default function AdminPage() {
   const [newVendorForm, setNewVendorForm] = useState({ name: '', address: '', contact: '', tin: '' });
   const [rrDeleteConfirm, setRrDeleteConfirm] = useState(null);
 
+  // ── RR Payment dialog state ───────────────────────────────────────────────
+  const [rrPayDialogOpen, setRrPayDialogOpen] = useState(false);
+  const [rrPayItem, setRrPayItem] = useState(null);
+  const [rrPayForm, setRrPayForm] = useState({
+    payment_date: new Date().toISOString().split('T')[0],
+    amount: '0',
+    payment_mode: 'cash_on_hand',
+    reference_number: '',
+    notes: '',
+  });
+
   // ── Inventory Report state (date coverage + computed columns) ─────────────
   const [invDateFrom, setInvDateFrom] = useState(() => {
     const d = new Date();
@@ -712,16 +723,19 @@ export default function AdminPage() {
         freight_in: String(item.freight_in || 0),
       });
       if (supabase) {
-        const { data: li } = await supabase
+        const { data: li, error: liLoadErr } = await supabase
           .from('receiving_report_items')
           .select('*, inventory_item:admin_inventory_items(id,name,code,uom)')
           .eq('receiving_report_id', item.id);
+        // Surface any fetch error so the user knows items failed to load
+        if (liLoadErr) setError('Failed to load line items: ' + liLoadErr.message);
         setRrLineItems(
           (li || []).map((l) => ({
             id: l.id,
             inventory_item_id: l.inventory_item_id || '',
-            inventory_name: l.inventory_item?.name || '',
-            inventory_code: l.inventory_item?.code || '',
+            // Fall back to the stored inventory_name when the join returns nothing
+            inventory_name: l.inventory_item?.name || l.inventory_name || '',
+            inventory_code: l.inventory_item?.code || l.inventory_code || '',
             uom: l.uom || '',
             qty: String(l.qty || 0),
             cost: String(l.cost || 0),
@@ -885,6 +899,21 @@ export default function AdminPage() {
       );
 
       await supabase.from('receiving_reports').update({ status: 'approved' }).eq('id', rr.id);
+
+      // Journal Entry: Debit Inventory / Credit Accounts Payable
+      const totalLC = (lineItems || []).reduce((s, li) => s + (Number(li.total_landed_cost) || (Number(li.qty) * Number(li.cost) + Number(li.freight_allocated))), 0);
+      if (totalLC > 0) {
+        await supabase.from('journal_entries').insert({
+          date: rr.date || new Date().toISOString().split('T')[0],
+          description: `RR Approval: ${rr.rr_number}`,
+          debit_account: 'Inventory',
+          credit_account: 'Accounts Payable',
+          amount: Math.round(totalLC * 100) / 100,
+          reference_id: rr.id,
+          reference_type: 'receiving_report',
+        });
+      }
+
       fetchRR();
     } catch (err) {
       setError(err.message);
@@ -896,6 +925,64 @@ export default function AdminPage() {
     try {
       await supabase.from('receiving_reports').delete().eq('id', rr.id);
       setRrDeleteConfirm(null);
+      fetchRR();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const openPayRRDialog = (rr) => {
+    setRrPayItem(rr);
+    setRrPayForm({
+      payment_date: new Date().toISOString().split('T')[0],
+      amount: String(rr.total_landed_cost || 0),
+      payment_mode: 'cash_on_hand',
+      reference_number: '',
+      notes: '',
+    });
+    setRrPayDialogOpen(true);
+  };
+
+  const payRR = async () => {
+    if (!supabase || !rrPayItem) return;
+    try {
+      const amt = Math.round((Number(rrPayForm.amount) || 0) * 100) / 100;
+      if (amt <= 0) { setError('Payment amount must be greater than zero.'); return; }
+
+      // Record payment
+      const { error: pmtErr } = await supabase.from('rr_payments').insert({
+        receiving_report_id: rrPayItem.id,
+        payment_date: rrPayForm.payment_date,
+        amount: amt,
+        payment_mode: rrPayForm.payment_mode,
+        reference_number: rrPayForm.reference_number || null,
+        notes: rrPayForm.notes || null,
+      });
+      if (pmtErr) throw pmtErr;
+
+      // Journal Entry based on payment mode
+      // Cash on Hand: Debit Accounts Payable, Credit Cash on Hand
+      // Cash in Bank: Debit Accounts Payable, Credit Cash in Bank
+      // Credit Card:  Debit Accounts Payable, Credit Owner's Draw
+      const creditAccount =
+        rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
+        rrPayForm.payment_mode === 'credit_card'  ? "Owner's Draw" :
+        'Cash on Hand';
+      await supabase.from('journal_entries').insert({
+        date: rrPayForm.payment_date,
+        description: `RR Payment: ${rrPayItem.rr_number} (${rrPayForm.payment_mode.replace(/_/g, ' ')})`,
+        debit_account: 'Accounts Payable',
+        credit_account: creditAccount,
+        amount: amt,
+        reference_id: rrPayItem.id,
+        reference_type: 'rr_payment',
+      });
+
+      // Mark RR as paid
+      await supabase.from('receiving_reports').update({ status: 'paid' }).eq('id', rrPayItem.id);
+
+      setRrPayDialogOpen(false);
+      setRrPayItem(null);
       fetchRR();
     } catch (err) {
       setError(err.message);
@@ -1454,6 +1541,9 @@ export default function AdminPage() {
                           {rr.status === 'draft' && (
                             <button onClick={() => approveRR(rr)} style={{ ...styles.actionBtn, color: '#4caf50', borderColor: '#4caf50' }}>Approve</button>
                           )}
+                          {rr.status === 'approved' && (
+                            <button onClick={() => openPayRRDialog(rr)} style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}>Pay</button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1678,6 +1768,86 @@ export default function AdminPage() {
 
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* RR Pay Dialog */}
+              <Dialog.Root open={rrPayDialogOpen} onOpenChange={setRrPayDialogOpen}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 520 }}>
+                    <Dialog.Title style={styles.dialogTitle}>
+                      💳 Pay Receiving Report — {rrPayItem?.rr_number}
+                    </Dialog.Title>
+                    <div style={{ color: '#888', fontSize: 12, marginBottom: 16 }}>
+                      Vendor: <strong style={{ color: '#ccc' }}>{rrPayItem?.vendor?.name || '—'}</strong>
+                      &nbsp;·&nbsp; Total Landed Cost: <strong style={{ color: '#ffc107' }}>{rrPayItem ? `₱${Number(rrPayItem.total_landed_cost).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '—'}</strong>
+                    </div>
+                    <div style={styles.formGrid}>
+                      <label style={styles.label}>Payment Date</label>
+                      <input
+                        style={styles.input}
+                        type="date"
+                        value={rrPayForm.payment_date}
+                        onChange={(e) => setRrPayForm((p) => ({ ...p, payment_date: e.target.value }))}
+                      />
+
+                      <label style={styles.label}>Amount (₱)</label>
+                      <input
+                        style={styles.input}
+                        type="number"
+                        value={rrPayForm.amount}
+                        onChange={(e) => setRrPayForm((p) => ({ ...p, amount: e.target.value }))}
+                      />
+
+                      <label style={styles.label}>Mode of Payment</label>
+                      <select
+                        style={styles.input}
+                        value={rrPayForm.payment_mode}
+                        onChange={(e) => setRrPayForm((p) => ({ ...p, payment_mode: e.target.value }))}
+                      >
+                        <option value="cash_on_hand">Cash on Hand</option>
+                        <option value="cash_in_bank">Cash in Bank</option>
+                        <option value="credit_card">Credit Card</option>
+                      </select>
+
+                      <label style={styles.label}>Reference #</label>
+                      <input
+                        style={styles.input}
+                        placeholder="Check #, transaction #, etc."
+                        value={rrPayForm.reference_number}
+                        onChange={(e) => setRrPayForm((p) => ({ ...p, reference_number: e.target.value }))}
+                      />
+
+                      <label style={styles.label}>Notes</label>
+                      <input
+                        style={styles.input}
+                        placeholder="Optional notes"
+                        value={rrPayForm.notes}
+                        onChange={(e) => setRrPayForm((p) => ({ ...p, notes: e.target.value }))}
+                      />
+                    </div>
+
+                    {/* Journal entry preview */}
+                    <div style={{ marginTop: 16, padding: '10px 14px', background: '#111', borderRadius: 8, border: '1px solid #333' }}>
+                      <span style={{ color: '#ffc107', fontSize: 12, fontWeight: 600 }}>📒 Journal Entry Preview</span>
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#ccc' }}>
+                        <div>Dr &nbsp;<strong>Accounts Payable</strong> &nbsp;₱{Number(rrPayForm.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+                        <div style={{ paddingLeft: 24 }}>
+                          Cr &nbsp;<strong>
+                            {rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
+                             rrPayForm.payment_mode === 'credit_card'  ? "Owner's Draw" :
+                             'Cash on Hand'}
+                          </strong> &nbsp;₱{Number(rrPayForm.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
+                      <button onClick={payRR} style={styles.primaryBtn}>Confirm Payment</button>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
