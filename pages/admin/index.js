@@ -254,7 +254,7 @@ export default function AdminPage() {
       if (err) throw err;
       setInventoryItems(items || []);
 
-      // 2. Approved / Paid RR IDs within date range (both statuses are "received")
+      // 2a. Approved / Paid RR IDs within the selected date range (for Purchases / Beginning / Sold columns)
       const { data: approvedRRs } = await supabase
         .from('receiving_reports')
         .select('id')
@@ -262,6 +262,16 @@ export default function AdminPage() {
         .gte('date', invDateFrom)
         .lte('date', invDateTo);
       const rrIds = (approvedRRs || []).map((r) => r.id);
+
+      // 2b. Approved / Paid RR IDs from Jan 1, 2026 to invDateTo (for Average Cost computation)
+      const AVG_COST_START = '2026-01-01';
+      const { data: allPeriodRRs } = await supabase
+        .from('receiving_reports')
+        .select('id')
+        .in('status', ['approved', 'paid'])
+        .gte('date', AVG_COST_START)
+        .lte('date', invDateTo);
+      const allPeriodRRIds = (allPeriodRRs || []).map((r) => r.id);
 
       // 3. Line items for those RRs (include inventory_name for name-based fallback)
       let rrItems = [];
@@ -272,6 +282,16 @@ export default function AdminPage() {
           .in('receiving_report_id', rrIds);
         if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
         rrItems = ri || [];
+      }
+
+      // 3b. Line items for the full Jan-1-2026-to-invDateTo range (for Average Cost)
+      let allPeriodItems = [];
+      if (allPeriodRRIds.length > 0) {
+        const { data: ri2 } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost')
+          .in('receiving_report_id', allPeriodRRIds);
+        allPeriodItems = ri2 || [];
       }
 
       // 4. Price costing map (menu_item_name → inventory usage)
@@ -313,7 +333,7 @@ export default function AdminPage() {
         nameToIdMap[inv.name?.toLowerCase().trim()] = inv.id;
       });
 
-      // Build purchases map: inventory_item_id -> { qty, totalCost, totalLandedCost }
+      // Build purchases map (period): inventory_item_id -> { qty, totalCost, totalLandedCost }
       const purchasesMap = {};
       rrItems.forEach((ri) => {
         // Resolve the inventory item id — prefer the stored FK, fall back to name match
@@ -328,18 +348,30 @@ export default function AdminPage() {
         purchasesMap[resolvedId].totalLandedCost += Number(ri.total_landed_cost) || 0;
       });
 
+      // Build all-period purchases map (Jan 1, 2026 → invDateTo): for Average Cost/Unit
+      // Average Cost/Unit = Total Purchase Amount / Total Purchase Qty (full period)
+      const allPeriodPurchasesMap = {};
+      allPeriodItems.forEach((ri) => {
+        const resolvedId = ri.inventory_item_id
+          || nameToIdMap[(ri.inventory_name || '').toLowerCase().trim()];
+        if (!resolvedId) return;
+        if (!allPeriodPurchasesMap[resolvedId]) allPeriodPurchasesMap[resolvedId] = { qty: 0, totalLandedCost: 0 };
+        allPeriodPurchasesMap[resolvedId].qty += Number(ri.qty) || 0;
+        allPeriodPurchasesMap[resolvedId].totalLandedCost += Number(ri.total_landed_cost) || (Number(ri.qty) * Number(ri.cost)) || 0;
+      });
+
       // Compute report rows (Beginning = Ending - Purchases + Sold)
-      // avg_cost = (Ending Balance Amount + Period Total Landed Cost) / (Ending Qty + Purchased Qty)
+      // avg_cost = Total Purchase Amount (Jan 1 2026 → invDateTo) / Total Purchase Qty (same range)
+      // total_cost = Ending Balance Qty × avg_cost
       const report = (items || []).map((item) => {
         const purchases = purchasesMap[item.id]?.qty || 0;
         const sold = soldMap[item.id] || 0;
         const ending = Number(item.current_stock) || 0;
         const beginning = ending - purchases + sold;
-        const periodTlc = purchasesMap[item.id]?.totalLandedCost || 0;
-        const endingAmount = ending * (Number(item.cost_per_unit) || 0);
-        const denom = ending + purchases;
-        const avg_cost = denom > 0
-          ? (endingAmount + periodTlc) / denom
+        const allPeriodQty = allPeriodPurchasesMap[item.id]?.qty || 0;
+        const allPeriodAmt = allPeriodPurchasesMap[item.id]?.totalLandedCost || 0;
+        const avg_cost = allPeriodQty > 0
+          ? allPeriodAmt / allPeriodQty
           : (Number(item.cost_per_unit) || 0);
         return { ...item, beginning, purchases, sold, ending, avg_cost };
       });
@@ -1284,7 +1316,7 @@ export default function AdminPage() {
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={invDateTo} onChange={(e) => setInvDateTo(e.target.value)} />
                 <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
-                <span style={{ color: '#666', fontSize: 11 }}>Purchases & Sold computed for the selected period. Ending = current stock.</span>
+                <span style={{ color: '#666', fontSize: 11 }}>Purchases & Sold shown for selected period. Avg Cost/Unit = Total Purchase Amount ÷ Total Purchase Qty (Jan 1, 2026 – End Date). Total Cost = Ending Qty × Avg Cost/Unit.</span>
               </div>
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
