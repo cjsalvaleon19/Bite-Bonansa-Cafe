@@ -255,9 +255,10 @@ export default function AdminPage() {
       setInventoryItems(items || []);
 
       // 2 + 3. Line items for the selected date range — single join query (avoids large .in() URL)
+      // Use !receiving_report_id hint to disambiguate when multiple FK relationships exist
       const { data: rrItemsRaw, error: riErr } = await supabase
         .from('receiving_report_items')
-        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!inner(status, date)')
+        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!receiving_report_id(status, date)')
         .in('receiving_reports.status', ['approved', 'paid'])
         .gte('receiving_reports.date', invDateFrom)
         .lte('receiving_reports.date', invDateTo);
@@ -268,7 +269,7 @@ export default function AdminPage() {
       const AVG_COST_START = '2026-01-01';
       const { data: allPeriodItemsRaw, error: ri2Err } = await supabase
         .from('receiving_report_items')
-        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!inner(status, date)')
+        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!receiving_report_id(status, date)')
         .in('receiving_reports.status', ['approved', 'paid'])
         .gte('receiving_reports.date', AVG_COST_START)
         .lte('receiving_reports.date', invDateTo);
