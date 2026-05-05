@@ -1199,18 +1199,21 @@ export default function CashierDashboard() {
                   const pointsUsed = parseFloat(selectedOrderToView.points_used || 0);
                   const netAmount = totalAmount - pointsUsed;
                   const isDineInOrTakeOut = selectedOrderToView.order_mode === 'dine-in' || selectedOrderToView.order_mode === 'take-out';
+                  const isGCash = selectedOrderToView.payment_method === 'gcash' || selectedOrderToView.payment_method === 'points+gcash';
                   
-                  // Calculate change from editable input for dine-in/take-out, otherwise from stored cash_amount
-                  const currentCashAmount = isDineInOrTakeOut 
-                    ? parseFloat(editableCashTendered || 0)
-                    : cashAmount;
+                  // GCash: tendered = net amount (exact); dine-in/take-out: editable; others: stored cash_amount
+                  const currentCashAmount = isGCash
+                    ? netAmount
+                    : isDineInOrTakeOut
+                      ? parseFloat(editableCashTendered || 0)
+                      : cashAmount;
                   const change = Math.max(0, currentCashAmount - netAmount);
                   
                   return (
                     <>
                       <div style={styles.viewOrderTotalRow}>
                         <span>Cash Tendered:</span>
-                        {isDineInOrTakeOut ? (
+                        {!isGCash && isDineInOrTakeOut ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <input
                               type="number"
@@ -1235,7 +1238,7 @@ export default function CashierDashboard() {
                             />
                           </div>
                         ) : (
-                          <span>₱{cashAmount.toFixed(2)}</span>
+                          <span>₱{currentCashAmount.toFixed(2)}</span>
                         )}
                       </div>
                       <div style={styles.viewOrderTotalRow}>
