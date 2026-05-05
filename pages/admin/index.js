@@ -1696,7 +1696,10 @@ export default function AdminPage() {
                         </table>
                       </div>
                       <div style={{ marginTop: 8, textAlign: 'right', color: '#ffc107', fontWeight: 600 }}>
-                        Total Landed Cost: {fmt(rrViewItem?.total_landed_cost || 0)}
+                        Total Landed Cost: {fmt(rrViewLineItems.reduce((s, li) => {
+                          const tc = (Number(li.qty) || 0) * (Number(li.cost) || 0);
+                          return s + (Number(li.total_landed_cost) || (tc + (Number(li.freight_allocated) || 0)));
+                        }, 0))}
                       </div>
                     </div>
                     <div style={styles.dialogFooter}>
