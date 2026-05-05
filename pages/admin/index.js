@@ -261,10 +261,11 @@ export default function AdminPage() {
       // 3. Line items for those RRs (include inventory_name for name-based fallback)
       let rrItems = [];
       if (rrIds.length > 0) {
-        const { data: ri } = await supabase
+        const { data: ri, error: riErr } = await supabase
           .from('receiving_report_items')
           .select('inventory_item_id, inventory_name, qty, cost')
           .in('receiving_report_id', rrIds);
+        if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
         rrItems = ri || [];
       }
 
@@ -926,10 +927,11 @@ export default function AdminPage() {
         }),
       );
 
-      await supabase
+      const { error: approveErr } = await supabase
         .from('receiving_reports')
         .update({ status: 'approved', inventory_update_applied: true })
         .eq('id', rr.id);
+      if (approveErr) throw new Error('Failed to approve receiving report: ' + approveErr.message);
 
       // Journal Entry: Debit Inventory / Credit Accounts Payable
       // Compute total landed cost: prefer the generated column, fall back to qty×cost+freight
