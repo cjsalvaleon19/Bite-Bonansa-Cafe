@@ -409,11 +409,11 @@ export default function AdminPage() {
     else if (activeTab === 'rr') fetchRR();
     else if (activeTab === 'financial') fetchFinancial();
     else if (activeTab === 'profile') fetchProfile();
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile]);
 
   useEffect(() => {
     if (activeTab === 'financial') fetchFinancial();
-  }, [finSubTab, finDateFrom, finDateTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, finSubTab, finDateFrom, finDateTo, fetchFinancial]);
 
   // ── Auth guard ────────────────────────────────────────────────────────────
   if (authLoading) {
@@ -696,7 +696,7 @@ export default function AdminPage() {
     if (!supabase) return;
     try {
       const emptyName = rrLineItems.find((li) => !li.inventory_name);
-      if (emptyName) { alert('Please select an inventory item for every line before saving.'); return; }
+      if (emptyName) { setError('Please select an inventory item for every line before saving.'); return; }
       const totalLC = rrLineItems.reduce((s, i) => s + (i.total_landed_cost || 0), 0);
       const rrPayload = {
         rr_number: rrForm.rr_number,
@@ -721,7 +721,7 @@ export default function AdminPage() {
         const linePayloads = rrLineItems.map((li) => ({
           receiving_report_id: rrId,
           inventory_item_id: li.inventory_item_id || null,
-          inventory_name: li.inventory_name || li.inventory_code || 'Unknown',
+          inventory_name: li.inventory_name || li.inventory_code || 'No item selected',
           inventory_code: li.inventory_code || null,
           uom: li.uom || 'pcs',
           qty: Number(li.qty),
