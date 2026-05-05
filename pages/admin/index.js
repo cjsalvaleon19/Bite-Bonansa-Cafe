@@ -1273,7 +1273,7 @@ export default function AdminPage() {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      {['Code', 'Name', 'Dept', 'UoM', 'Beginning', 'Purchases', 'Sold', 'Ending', 'Avg Cost/Unit (₱)', 'Status', 'Actions'].map((h) => (
+                      {['Code', 'Name', 'Dept', 'UoM', 'Beginning', 'Purchases', 'Sold', 'Ending', 'Avg Cost/Unit (₱)', 'Total Cost (₱)', 'Status', 'Actions'].map((h) => (
                         <th key={h} style={styles.th}>{h}</th>
                       ))}
                     </tr>
@@ -1290,6 +1290,7 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, color: '#f44336' }}>{Number(item.sold).toFixed(3)}</td>
                         <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{Number(item.ending).toFixed(3)}</td>
                         <td style={styles.td}>{fmt(item.cost_per_unit)}</td>
+                        <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{fmt((Number(item.ending) || 0) * (Number(item.cost_per_unit) || 0))}</td>
                         <td style={styles.td}>
                           <span style={{
                             ...styles.badge,
@@ -1307,7 +1308,7 @@ export default function AdminPage() {
                       </tr>
                     ))}
                     {inventoryItems.length === 0 && !loading && (
-                      <tr><td colSpan={11} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No inventory items. Add one!</td></tr>
+                      <tr><td colSpan={12} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No inventory items. Add one!</td></tr>
                     )}
                   </tbody>
                 </table>
