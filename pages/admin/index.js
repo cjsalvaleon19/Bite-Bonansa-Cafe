@@ -738,19 +738,22 @@ export default function AdminPage() {
         // Surface any fetch error so the user knows items failed to load
         if (liLoadErr) setError(`Failed to load line items: ${liLoadErr.message}`);
         setRrLineItems(
-          (li || []).map((l) => ({
-            id: l.id,
-            inventory_item_id: l.inventory_item_id || '',
-            // Fall back to the stored inventory_name when the join returns nothing
-            inventory_name: l.inventory_item?.name || l.inventory_name || '',
-            inventory_code: l.inventory_item?.code || l.inventory_code || '',
-            uom: l.uom || '',
-            qty: String(l.qty || 0),
-            cost: String(l.cost || 0),
-            total_cost: (Number(l.qty) || 0) * (Number(l.cost) || 0),
-            freight_allocated: Number(l.freight_allocated) || 0,
-            total_landed_cost: Number(l.total_landed_cost) || 0,
-          })),
+          calcFreight(
+            (li || []).map((l) => ({
+              id: l.id,
+              inventory_item_id: l.inventory_item_id || '',
+              // Fall back to the stored inventory_name when the join returns nothing
+              inventory_name: l.inventory_item?.name || l.inventory_name || '',
+              inventory_code: l.inventory_item?.code || l.inventory_code || '',
+              uom: l.uom || '',
+              qty: String(l.qty || 0),
+              cost: String(l.cost || 0),
+              total_cost: (Number(l.qty) || 0) * (Number(l.cost) || 0),
+              freight_allocated: Number(l.freight_allocated) || 0,
+              total_landed_cost: Number(l.total_landed_cost) || 0,
+            })),
+            item.freight_in,
+          ),
         );
       }
     } else {
