@@ -191,6 +191,11 @@ export default function ReceiptModal({ delivery, onClose }) {
 
             <div style={styles.footer}>
               <p>Thank you for your order, Biter!</p>
+              <div style={styles.qrSection}>
+                <img src="/qr-code.png" alt="Scan to order online" style={styles.qrCode} />
+                <p style={styles.qrLabel}>Scan to Order Online</p>
+                <p style={styles.qrUrl}>bitebonansacafe.com</p>
+              </div>
             </div>
           </div>
         </div>
@@ -355,6 +360,28 @@ const styles = {
     paddingTop: '15px',
     borderTop: '2px dashed #000',
     fontSize: '12px',
+  },
+  qrSection: {
+    marginTop: '15px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+  },
+  qrCode: {
+    width: '100px',
+    height: '100px',
+    marginBottom: '6px',
+  },
+  qrLabel: {
+    margin: '2px 0',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    letterSpacing: '0.5px',
+  },
+  qrUrl: {
+    margin: '2px 0',
+    fontSize: '11px',
+    color: '#333',
   },
   actions: {
     display: 'flex',

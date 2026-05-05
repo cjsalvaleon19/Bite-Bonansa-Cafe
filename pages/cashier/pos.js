@@ -652,6 +652,11 @@ export default function CashierPOS() {
           
           <div style="text-align: center; margin-top: 20px;">
             <p>Thank you for your order, Biter!</p>
+            <div style="margin-top: 12px;">
+              <img src="/qr-code.png" alt="Scan to order online" style="width: 90px; height: 90px;" />
+              <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
+              <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
+            </div>
           </div>
         </body>
       </html>

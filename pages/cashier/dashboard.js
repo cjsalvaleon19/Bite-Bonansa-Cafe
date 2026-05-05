@@ -42,7 +42,35 @@ export default function CashierDashboard() {
   const [viewOrderModal, setViewOrderModal] = useState(false);
   const [selectedOrderToView, setSelectedOrderToView] = useState(null);
   const [editableCashTendered, setEditableCashTendered] = useState('');
+  const [gcashProofUrl, setGcashProofUrl] = useState(null);
+  const [showGCashProof, setShowGCashProof] = useState(false);
+  const [gcashProofImageError, setGcashProofImageError] = useState(false);
   const statsRefreshTimerRef = useRef(null);
+
+  // Extract GCash proof URL stored in special_request as "| GCash proof: {url}"
+  const extractGCashProofUrl = (specialRequest) => {
+    if (!specialRequest) return null;
+    const match = specialRequest.match(/\|\s*GCash proof:\s*(https?:\/\/[^\s|]+)/i);
+    return match ? match[1].trim() : null;
+  };
+
+  const openGCashProof = (specialRequest) => {
+    const storedUrl = extractGCashProofUrl(specialRequest);
+    if (!storedUrl) {
+      alert('No GCash proof attachment found for this order.');
+      return;
+    }
+    setGcashProofImageError(false);
+    // Extract the file path from the stored URL and route through the server-side
+    // proxy so the image loads regardless of bucket visibility settings.
+    // Stored format: https://[project].supabase.co/storage/v1/object/public/payment-proofs/{filePath}
+    const pathMatch = storedUrl.match(/\/payment-proofs\/(.+)$/);
+    const proxyUrl = pathMatch
+      ? `/api/payment-proof?path=${encodeURIComponent(pathMatch[1])}`
+      : storedUrl;
+    setGcashProofUrl(proxyUrl);
+    setShowGCashProof(true);
+  };
 
   useEffect(() => {
     if (!authLoading) {
@@ -180,36 +208,52 @@ export default function CashierDashboard() {
 
       if (error) throw error;
 
-      if (orders && orders.length > 0) {
-        let dineInCount = 0;
-        let takeOutCount = 0;
-        let pickUpCount = 0;
-        let deliveryCount = 0;
+      let dineInCount = 0;
+      let takeOutCount = 0;
+      let pickUpCount = 0;
+      let deliveryCount = 0;
 
-        // Use utility function for sales calculations
-        const { totalSales, cashSales, gcashSales, pointsSales } = calculateSalesBreakdown(orders);
+      // Use utility function for sales calculations
+      const { totalSales, cashSales, gcashSales, pointsSales } = calculateSalesBreakdown(orders || []);
 
-        orders.forEach(order => {
-          // Order mode breakdown
-          const orderMode = order.order_mode || '';
-          if (orderMode === 'dine-in') dineInCount++;
-          else if (orderMode === 'take-out') takeOutCount++;
-          else if (orderMode === 'pick-up') pickUpCount++;
-          else if (orderMode === 'delivery') deliveryCount++;
-        });
+      (orders || []).forEach(order => {
+        // Order mode breakdown
+        const orderMode = order.order_mode || '';
+        if (orderMode === 'dine-in') dineInCount++;
+        else if (orderMode === 'take-out') takeOutCount++;
+        else if (orderMode === 'pick-up') pickUpCount++;
+        else if (orderMode === 'delivery') deliveryCount++;
+      });
 
-        setStats({
-          totalSales,
-          cashSales,
-          gcashSales,
-          pointsSales,
-          receiptCount: orders.length,
-          dineInCount,
-          takeOutCount,
-          pickUpCount,
-          deliveryCount,
-        });
+      // Fetch cash-to-gcash adjustments and add them to GCash Sales
+      let adjustmentTotal = 0;
+      try {
+        const { data: adjustments } = await supabase
+          .from('cash_drawer_transactions')
+          .select('amount')
+          .gte('created_at', today.toISOString())
+          .lt('created_at', tomorrow.toISOString())
+          .eq('transaction_type', 'adjustment')
+          .eq('payment_adjustment_type', 'cash-to-gcash');
+
+        if (adjustments && adjustments.length > 0) {
+          adjustmentTotal = adjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0);
+        }
+      } catch (adjErr) {
+        console.warn('[CashierDashboard] Could not fetch cash-to-gcash adjustments:', adjErr?.message ?? adjErr);
       }
+
+      setStats({
+        totalSales,
+        cashSales,
+        gcashSales: gcashSales + adjustmentTotal,
+        pointsSales,
+        receiptCount: (orders || []).length,
+        dineInCount,
+        takeOutCount,
+        pickUpCount,
+        deliveryCount,
+      });
     } catch (err) {
       console.error('[CashierDashboard] Failed to fetch stats:', err?.message ?? err);
     }
@@ -523,6 +567,11 @@ export default function CashierDashboard() {
         <div class="footer">
           <p>Thank you for your order, Biter!</p>
           ${isKitchenCopy ? '<p style="margin-top: 10px; font-weight: bold;">⚠️ KITCHEN COPY - DO NOT GIVE TO CUSTOMER ⚠️</p>' : ''}
+          ${!isKitchenCopy ? `<div style="margin-top: 12px; text-align: center;">
+            <img src="/qr-code.png" alt="Scan to order online" style="width: 90px; height: 90px;" />
+            <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
+            <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
+          </div>` : ''}
           <p style="margin-top: 10px;">Accepted by: ${user?.full_name || 'Cashier'}</p>
           <p>${new Date().toLocaleString()}</p>
         </div>
@@ -871,6 +920,7 @@ export default function CashierDashboard() {
                             <th style={styles.reportTh}>Amount</th>
                             <th style={styles.reportTh}>Points</th>
                             <th style={styles.reportTh}>GCash Paid</th>
+                             <th style={styles.reportTh}>GCash Proof</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -885,10 +935,23 @@ export default function CashierDashboard() {
                               <td style={styles.reportTd}>₱{parseFloat(order.total_amount || 0).toFixed(2)}</td>
                               <td style={styles.reportTd}>₱{parseFloat(order.points_used || 0).toFixed(2)}</td>
                               <td style={styles.reportTdHighlight}>₱{getGCashAmount(order).toFixed(2)}</td>
+                              <td style={styles.reportTd}>
+                                {extractGCashProofUrl(order.special_request) ? (
+                                  <button
+                                    style={styles.proofPreviewBtn}
+                                    onClick={() => openGCashProof(order.special_request)}
+                                    title="View GCash Proof"
+                                  >
+                                    📎
+                                  </button>
+                                ) : (
+                                  <span style={{ color: '#666', fontSize: '12px' }}>None</span>
+                                )}
+                              </td>
                             </tr>
                           ))}
                           <tr style={styles.reportTotalRow}>
-                            <td colSpan="6" style={styles.reportTotalLabel}>Total GCash Sales:</td>
+                            <td colSpan="7" style={styles.reportTotalLabel}>Total GCash Sales:</td>
                             <td style={styles.reportTotalValue}>
                               ₱{gcashTransactions.reduce((sum, order) => sum + getGCashAmount(order), 0).toFixed(2)}
                             </td>
@@ -924,13 +987,13 @@ export default function CashierDashboard() {
                               <td style={styles.reportTd}>{adj.users?.full_name || adj.users?.email || 'Cashier'}</td>
                               <td style={styles.reportTd}>{adj.description || adj.adjustment_reason || 'Cash to GCash'}</td>
                               <td style={styles.reportTd}>{adj.reference_number || 'N/A'}</td>
-                              <td style={styles.reportTdHighlight}>₱{parseFloat(adj.amount || 0).toFixed(2)}</td>
+                              <td style={styles.reportTdHighlight}>₱{Math.abs(parseFloat(adj.amount || 0)).toFixed(2)}</td>
                             </tr>
                           ))}
                           <tr style={styles.reportTotalRow}>
                             <td colSpan="4" style={styles.reportTotalLabel}>Total Adjustments:</td>
                             <td style={styles.reportTotalValue}>
-                              ₱{gcashAdjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0).toFixed(2)}
+                              ₱{gcashAdjustments.reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount || 0)), 0).toFixed(2)}
                             </td>
                           </tr>
                         </tbody>
@@ -949,7 +1012,7 @@ export default function CashierDashboard() {
                   <div style={styles.summaryItem}>
                     <span style={styles.summaryLabel}>Total Adjustments:</span>
                     <span style={styles.summaryValue}>
-                      ₱{gcashAdjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0).toFixed(2)}
+                      ₱{gcashAdjustments.reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount || 0)), 0).toFixed(2)}
                     </span>
                   </div>
                   <div style={styles.summaryItemTotal}>
@@ -957,7 +1020,7 @@ export default function CashierDashboard() {
                     <span style={styles.summaryValueTotal}>
                       ₱{(
                         gcashTransactions.reduce((sum, order) => sum + getGCashAmount(order), 0) +
-                        gcashAdjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0)
+                        gcashAdjustments.reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount || 0)), 0)
                       ).toFixed(2)}
                     </span>
                   </div>
@@ -1124,6 +1187,19 @@ export default function CashierDashboard() {
                     <span style={{ textTransform: 'capitalize' }}>{selectedOrderToView.payment_method}</span>
                   </div>
                 )}
+                {(selectedOrderToView.payment_method === 'gcash' || selectedOrderToView.payment_method === 'points+gcash') &&
+                  extractGCashProofUrl(selectedOrderToView.special_request) && (
+                  <div style={styles.viewOrderRow}>
+                    <strong>GCash Proof:</strong>
+                    <button
+                      style={styles.proofPreviewBtn}
+                      onClick={() => openGCashProof(selectedOrderToView.special_request)}
+                      title="View GCash Proof"
+                    >
+                      📎
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div style={styles.viewOrderSection}>
@@ -1178,18 +1254,21 @@ export default function CashierDashboard() {
                   const pointsUsed = parseFloat(selectedOrderToView.points_used || 0);
                   const netAmount = totalAmount - pointsUsed;
                   const isDineInOrTakeOut = selectedOrderToView.order_mode === 'dine-in' || selectedOrderToView.order_mode === 'take-out';
+                  const isGCash = selectedOrderToView.payment_method === 'gcash' || selectedOrderToView.payment_method === 'points+gcash';
                   
-                  // Calculate change from editable input for dine-in/take-out, otherwise from stored cash_amount
-                  const currentCashAmount = isDineInOrTakeOut 
-                    ? parseFloat(editableCashTendered || 0)
-                    : cashAmount;
+                  // GCash: tendered = net amount (exact); dine-in/take-out: editable; others: stored cash_amount
+                  const currentCashAmount = isGCash
+                    ? netAmount
+                    : isDineInOrTakeOut
+                      ? parseFloat(editableCashTendered || 0)
+                      : cashAmount;
                   const change = Math.max(0, currentCashAmount - netAmount);
                   
                   return (
                     <>
                       <div style={styles.viewOrderTotalRow}>
                         <span>Cash Tendered:</span>
-                        {isDineInOrTakeOut ? (
+                        {!isGCash && isDineInOrTakeOut ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <input
                               type="number"
@@ -1214,7 +1293,7 @@ export default function CashierDashboard() {
                             />
                           </div>
                         ) : (
-                          <span>₱{cashAmount.toFixed(2)}</span>
+                          <span>₱{currentCashAmount.toFixed(2)}</span>
                         )}
                       </div>
                       <div style={styles.viewOrderTotalRow}>
@@ -1253,6 +1332,34 @@ export default function CashierDashboard() {
                   onClick={() => setViewOrderModal(false)}
                 >
                   ← Back
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* GCash Proof Image Lightbox */}
+        {showGCashProof && (
+          <div style={styles.modal} onClick={() => setShowGCashProof(false)}>
+            <div style={styles.gcashProofModalContent} onClick={(e) => e.stopPropagation()}>
+              <h3 style={styles.modalTitle}>📱 GCash Payment Proof</h3>
+              <div style={styles.gcashProofImageWrapper}>
+                {gcashProofUrl && !gcashProofImageError ? (
+                  <img
+                    src={gcashProofUrl}
+                    alt="GCash Payment Proof"
+                    style={styles.gcashProofImage}
+                    onError={() => setGcashProofImageError(true)}
+                  />
+                ) : (
+                  <p style={{ color: '#f44', textAlign: 'center', padding: '16px' }}>
+                    ⚠️ Unable to load image. The proof may have expired or been removed.
+                  </p>
+                )}
+              </div>
+              <div style={{ marginTop: '16px' }}>
+                <button style={styles.modalCloseBtn} onClick={() => setShowGCashProof(false)}>
+                  Close
                 </button>
               </div>
             </div>
@@ -1959,5 +2066,39 @@ const styles = {
     fontSize: '16px',
     fontWeight: '600',
     transition: 'background-color 0.2s',
+  },
+  proofPreviewBtn: {
+    padding: '6px 12px',
+    backgroundColor: '#1565c0',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '600',
+    whiteSpace: 'nowrap',
+  },
+  gcashProofModalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: '12px',
+    padding: '28px',
+    width: '100%',
+    maxWidth: '560px',
+    border: '1px solid #ffc107',
+  },
+  gcashProofImageWrapper: {
+    textAlign: 'center',
+    marginTop: '16px',
+    backgroundColor: '#0a0a0a',
+    borderRadius: '8px',
+    padding: '8px',
+    maxHeight: '60vh',
+    overflowY: 'auto',
+  },
+  gcashProofImage: {
+    maxWidth: '100%',
+    maxHeight: '55vh',
+    objectFit: 'contain',
+    borderRadius: '6px',
   },
 };

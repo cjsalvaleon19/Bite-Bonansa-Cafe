@@ -21,8 +21,8 @@ INSERT INTO menu_items (name, category, price, available, description) VALUES
 
 -- Siomai
 INSERT INTO menu_items (name, category, price, available, description) VALUES
-('Siomai - Steamed', 'Appetizers', 69.00, true, 'Steamed pork dumplings'),
-('Siomai - Fried', 'Appetizers', 69.00, true, 'Fried pork dumplings');
+('Siomai - Steamed', 'Appetizers', 69.00, true, 'Steamed dumplings'),
+('Siomai - Fried', 'Appetizers', 69.00, true, 'Fried dumplings');
 
 -- Calamares
 INSERT INTO menu_items (name, category, price, available, description) VALUES
