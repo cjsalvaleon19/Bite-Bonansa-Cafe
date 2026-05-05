@@ -16,11 +16,39 @@
 --      set `inventory_update_applied = true` on the RR row.
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- ── 1. Backfill inventory_item_id by name ────────────────────────────────────
+-- ── 1a. Ensure inventory_item_id column exists (may be absent on older tables) ─
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'receiving_report_items'
+       AND column_name = 'inventory_item_id'
+  ) THEN
+    ALTER TABLE receiving_report_items
+      ADD COLUMN inventory_item_id UUID
+        REFERENCES admin_inventory_items(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- ── 1b. Ensure inventory_name column exists (may be absent on older tables) ──
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'receiving_report_items'
+       AND column_name = 'inventory_name'
+  ) THEN
+    ALTER TABLE receiving_report_items
+      ADD COLUMN inventory_name TEXT NOT NULL DEFAULT '';
+  END IF;
+END $$;
+
+-- ── 1c. Backfill inventory_item_id by name ───────────────────────────────────
 UPDATE receiving_report_items ri
 SET    inventory_item_id = inv.id
 FROM   admin_inventory_items inv
 WHERE  ri.inventory_item_id IS NULL
+  AND  LOWER(TRIM(ri.inventory_name)) != ''
   AND  LOWER(TRIM(ri.inventory_name)) = LOWER(TRIM(inv.name));
 
 -- ── 2. Add guard column to receiving_reports ─────────────────────────────────
