@@ -64,7 +64,11 @@ export default function Dashboard() {
           router.replace('/rider/dashboard').catch(console.error);
           return;
         }
-        // Admin stays on dashboard
+        // Admin goes to admin interface
+        if (role === 'admin') {
+          router.replace('/admin').catch(console.error);
+          return;
+        }
         setLoading(false);
       } catch (err) {
         console.error('[Dashboard] Session check failed:', err?.message ?? err);
