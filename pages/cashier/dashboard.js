@@ -61,7 +61,6 @@ export default function CashierDashboard() {
       return;
     }
     setGcashProofImageError(false);
-    setGcashProofLoading(false);
     // Extract the file path from the stored URL and route through the server-side
     // proxy so the image loads regardless of bucket visibility settings.
     // Stored format: https://[project].supabase.co/storage/v1/object/public/payment-proofs/{filePath}
