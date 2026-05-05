@@ -91,6 +91,8 @@ export default function AdminPage() {
   const [rrDeleteConfirm, setRrDeleteConfirm] = useState(null);
   const [rrViewItem, setRrViewItem] = useState(null);
   const [rrViewLineItems, setRrViewLineItems] = useState([]);
+  const [rrSaveError, setRrSaveError] = useState('');
+  const [savingRR, setSavingRR] = useState(false);
 
   // ── RR Payment dialog state ───────────────────────────────────────────────
   const [rrPayDialogOpen, setRrPayDialogOpen] = useState(false);
@@ -266,7 +268,7 @@ export default function AdminPage() {
       if (rrIds.length > 0) {
         const { data: ri, error: riErr } = await supabase
           .from('receiving_report_items')
-          .select('inventory_item_id, inventory_name, qty, cost')
+          .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost')
           .in('receiving_report_id', rrIds);
         if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
         rrItems = ri || [];
@@ -311,27 +313,35 @@ export default function AdminPage() {
         nameToIdMap[inv.name?.toLowerCase().trim()] = inv.id;
       });
 
-      // Build purchases map: inventory_item_id -> { qty, totalCost }
+      // Build purchases map: inventory_item_id -> { qty, totalCost, totalLandedCost }
       const purchasesMap = {};
       rrItems.forEach((ri) => {
         // Resolve the inventory item id — prefer the stored FK, fall back to name match
         const resolvedId = ri.inventory_item_id
           || nameToIdMap[(ri.inventory_name || '').toLowerCase().trim()];
         if (!resolvedId) return;
-        if (!purchasesMap[resolvedId]) purchasesMap[resolvedId] = { qty: 0, totalCost: 0 };
+        if (!purchasesMap[resolvedId]) purchasesMap[resolvedId] = { qty: 0, totalCost: 0, totalLandedCost: 0 };
         const q = Number(ri.qty) || 0;
         const c = Number(ri.cost) || 0;
         purchasesMap[resolvedId].qty += q;
         purchasesMap[resolvedId].totalCost += q * c;
+        purchasesMap[resolvedId].totalLandedCost += Number(ri.total_landed_cost) || 0;
       });
 
       // Compute report rows (Beginning = Ending - Purchases + Sold)
+      // avg_cost = (Ending Balance Amount + Period Total Landed Cost) / (Ending Qty + Purchased Qty)
       const report = (items || []).map((item) => {
         const purchases = purchasesMap[item.id]?.qty || 0;
         const sold = soldMap[item.id] || 0;
         const ending = Number(item.current_stock) || 0;
         const beginning = ending - purchases + sold;
-        return { ...item, beginning, purchases, sold, ending };
+        const periodTlc = purchasesMap[item.id]?.totalLandedCost || 0;
+        const endingAmount = ending * (Number(item.cost_per_unit) || 0);
+        const denom = ending + purchases;
+        const avg_cost = denom > 0
+          ? (endingAmount + periodTlc) / denom
+          : (Number(item.cost_per_unit) || 0);
+        return { ...item, beginning, purchases, sold, ending, avg_cost };
       });
 
       setInvReport(report);
@@ -768,6 +778,7 @@ export default function AdminPage() {
       });
       setRrLineItems([]);
     }
+    setRrSaveError('');
     setRrDialogOpen(true);
   };
 
@@ -816,9 +827,11 @@ export default function AdminPage() {
 
   const saveRR = async () => {
     if (!supabase) return;
+    setRrSaveError('');
+    setSavingRR(true);
     try {
       const emptyName = rrLineItems.find((li) => !li.inventory_name);
-      if (emptyName) { setError('Please select an inventory item for every line before saving.'); return; }
+      if (emptyName) { setRrSaveError('Please select an inventory item for every line before saving.'); return; }
       const totalLC = rrLineItems.reduce((s, i) => s + (i.total_landed_cost || 0), 0);
       const rrPayload = {
         rr_number: rrForm.rr_number,
@@ -831,7 +844,8 @@ export default function AdminPage() {
       };
       let rrId;
       if (rrEditItem) {
-        await supabase.from('receiving_reports').update(rrPayload).eq('id', rrEditItem.id);
+        const { error: updErr } = await supabase.from('receiving_reports').update(rrPayload).eq('id', rrEditItem.id);
+        if (updErr) throw updErr;
         rrId = rrEditItem.id;
         await supabase.from('receiving_report_items').delete().eq('receiving_report_id', rrId);
       } else {
@@ -857,7 +871,9 @@ export default function AdminPage() {
       setRrDialogOpen(false);
       fetchRR();
     } catch (err) {
-      setError(err.message);
+      setRrSaveError(err?.message || 'Save failed. Please try again.');
+    } finally {
+      setSavingRR(false);
     }
   };
 
@@ -1289,8 +1305,8 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, color: '#4caf50' }}>{Number(item.purchases).toFixed(3)}</td>
                         <td style={{ ...styles.td, color: '#f44336' }}>{Number(item.sold).toFixed(3)}</td>
                         <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{Number(item.ending).toFixed(3)}</td>
-                        <td style={styles.td}>{fmt(item.cost_per_unit)}</td>
-                        <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{fmt((Number(item.ending) || 0) * (Number(item.cost_per_unit) || 0))}</td>
+                        <td style={styles.td}>{fmt(item.avg_cost ?? item.cost_per_unit)}</td>
+                        <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{fmt((Number(item.ending) || 0) * (Number(item.avg_cost ?? item.cost_per_unit) || 0))}</td>
                         <td style={styles.td}>
                           <span style={{
                             ...styles.badge,
@@ -1827,9 +1843,14 @@ export default function AdminPage() {
                       </div>
                     </div>
 
+                    {rrSaveError && (
+                      <p style={{ color: '#f44336', fontSize: 13, margin: '8px 0 0' }}>⚠ {rrSaveError}</p>
+                    )}
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
-                      <button onClick={saveRR} style={styles.primaryBtn}>Save Draft</button>
+                      <button onClick={saveRR} style={styles.primaryBtn} disabled={savingRR}>
+                        {savingRR ? 'Saving…' : 'Save Draft'}
+                      </button>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
