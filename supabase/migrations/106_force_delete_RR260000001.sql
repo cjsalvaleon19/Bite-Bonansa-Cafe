@@ -28,8 +28,9 @@ BEGIN
   RAISE NOTICE 'Migration 106: found RR-260000001 with id = %', v_rr_id;
 
   -- 2. Delete journal entries linked to this RR
+  --    NOTE: the actual column is named "reference" (not "reference_id")
   DELETE FROM journal_entries
-   WHERE reference_id = v_rr_id;
+   WHERE reference::text = v_rr_id::text;
 
   GET DIAGNOSTICS v_je_count = ROW_COUNT;
   RAISE NOTICE 'Migration 106: deleted % journal_entr(y/ies) for RR-260000001', v_je_count;
