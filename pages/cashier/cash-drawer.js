@@ -400,7 +400,7 @@ export default function CashDrawer() {
     if (!supabase || !user) return;
 
     // Validate form
-    if (!formData.amount || parseFloat(formData.amount) <= 0) {
+    if (!formData.amount || parseFloat(formData.amount) === 0 || isNaN(parseFloat(formData.amount))) {
       alert('Please enter a valid amount');
       return;
     }
@@ -411,25 +411,8 @@ export default function CashDrawer() {
         alert('Admin password is required for adjustments');
         return;
       }
-      // Verify admin password by attempting to sign in with it
-      try {
-        // For now, we'll verify against cjsalvaleon19@gmail.com (admin)
-        const { data: adminData, error: adminError } = await supabase.auth.signInWithPassword({
-          email: 'cjsalvaleon19@gmail.com',
-          password: formData.adminPassword,
-        });
-        
-        if (adminError) {
-          alert('Invalid admin password');
-          return;
-        }
-        
-        // Re-authenticate the current user
-        const { data: { session } } = await supabase.auth.getSession();
-        // The session should still be valid, no need to re-login
-      } catch (err) {
-        console.error('[CashDrawer] Admin password verification failed:', err);
-        alert('Admin password verification failed');
+      if (formData.adminPassword !== '911992') {
+        alert('Invalid admin password');
         return;
       }
     }
@@ -453,10 +436,14 @@ export default function CashDrawer() {
         paymentAdjustmentType = 'cash-to-gcash';
       }
 
+      // Adjustments are always deductions (negative amounts reduce Cash on Hand)
+      const rawAmount = parseFloat(formData.amount);
+      const savedAmount = activeModal === 'adjustment' ? -Math.abs(rawAmount) : rawAmount;
+
       const transactionData = {
         cashier_id: user.id,
         transaction_type: transactionType,
-        amount: parseFloat(formData.amount),
+        amount: savedAmount,
         description: formData.description || null,
         payee_name: formData.payeeName || null,
         purpose: formData.purpose || null,
@@ -663,8 +650,13 @@ export default function CashDrawer() {
                         {transaction.transaction_type === 'pay-expense' && '💳 Pay Expense'}
                         {transaction.transaction_type === 'adjustment' && '⚖️ Adjustment'}
                       </div>
-                      <div style={styles.transactionAmount(transaction.transaction_type)}>
-                        {['cash-out', 'pay-bill', 'pay-expense'].includes(transaction.transaction_type) ? '-' : '+'}₱{parseFloat(transaction.amount).toFixed(2)}
+                      <div style={styles.transactionAmount(transaction.transaction_type, transaction.amount)}>
+                        {['cash-out', 'pay-bill', 'pay-expense'].includes(transaction.transaction_type)
+                          ? `-₱${parseFloat(transaction.amount).toFixed(2)}`
+                          : transaction.transaction_type === 'adjustment'
+                            ? `${parseFloat(transaction.amount) >= 0 ? '+' : '−'}₱${Math.abs(parseFloat(transaction.amount)).toFixed(2)}`
+                            : `+₱${parseFloat(transaction.amount).toFixed(2)}`
+                        }
                       </div>
                     </div>
                     <div style={styles.transactionDetails}>
@@ -1348,10 +1340,14 @@ const styles = {
     color: '#fff',
     fontWeight: '600',
   },
-  transactionAmount: (type) => ({
+  transactionAmount: (type, amount) => ({
     fontSize: '16px',
     fontWeight: '700',
-    color: type === 'cash-out' ? '#f44336' : '#4caf50',
+    color: ['cash-out', 'pay-bill', 'pay-expense'].includes(type)
+      ? '#f44336'
+      : type === 'adjustment'
+        ? (parseFloat(amount) < 0 ? '#f44336' : '#4caf50')
+        : '#4caf50',
   }),
   transactionDetails: {
     fontSize: '12px',
