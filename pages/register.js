@@ -15,6 +15,12 @@ const inputStyle = {
   outline: 'none',
 };
 
+const inputStyleBlack = {
+  ...inputStyle,
+  backgroundColor: '#fff',
+  color: '#000',
+};
+
 const labelStyle = {
   display: 'block',
   marginBottom: '6px',
@@ -224,8 +230,8 @@ const Register = () => {
                 autoComplete="name"
                 value={form.fullName}
                 onChange={handleChange}
-                placeholder="e.g. Catherine Jean Salvaleon"
-                style={inputStyle}
+                placeholder="e.g. Juan Dela Cruz"
+                style={inputStyleBlack}
                 onFocus={focusStyle}
                 onBlur={blurStyle}
                 required
@@ -258,8 +264,8 @@ const Register = () => {
                 autoComplete="tel"
                 value={form.phone}
                 onChange={handleChange}
-                placeholder="e.g. 09514915138"
-                style={inputStyle}
+                placeholder="e.g. 09XXXXXXXXX"
+                style={inputStyleBlack}
                 onFocus={focusStyle}
                 onBlur={blurStyle}
                 required
