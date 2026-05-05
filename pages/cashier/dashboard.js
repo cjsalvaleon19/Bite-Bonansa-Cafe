@@ -180,36 +180,52 @@ export default function CashierDashboard() {
 
       if (error) throw error;
 
-      if (orders && orders.length > 0) {
-        let dineInCount = 0;
-        let takeOutCount = 0;
-        let pickUpCount = 0;
-        let deliveryCount = 0;
+      let dineInCount = 0;
+      let takeOutCount = 0;
+      let pickUpCount = 0;
+      let deliveryCount = 0;
 
-        // Use utility function for sales calculations
-        const { totalSales, cashSales, gcashSales, pointsSales } = calculateSalesBreakdown(orders);
+      // Use utility function for sales calculations
+      const { totalSales, cashSales, gcashSales, pointsSales } = calculateSalesBreakdown(orders || []);
 
-        orders.forEach(order => {
-          // Order mode breakdown
-          const orderMode = order.order_mode || '';
-          if (orderMode === 'dine-in') dineInCount++;
-          else if (orderMode === 'take-out') takeOutCount++;
-          else if (orderMode === 'pick-up') pickUpCount++;
-          else if (orderMode === 'delivery') deliveryCount++;
-        });
+      (orders || []).forEach(order => {
+        // Order mode breakdown
+        const orderMode = order.order_mode || '';
+        if (orderMode === 'dine-in') dineInCount++;
+        else if (orderMode === 'take-out') takeOutCount++;
+        else if (orderMode === 'pick-up') pickUpCount++;
+        else if (orderMode === 'delivery') deliveryCount++;
+      });
 
-        setStats({
-          totalSales,
-          cashSales,
-          gcashSales,
-          pointsSales,
-          receiptCount: orders.length,
-          dineInCount,
-          takeOutCount,
-          pickUpCount,
-          deliveryCount,
-        });
+      // Fetch cash-to-gcash adjustments and add them to GCash Sales
+      let adjustmentTotal = 0;
+      try {
+        const { data: adjustments } = await supabase
+          .from('cash_drawer_transactions')
+          .select('amount')
+          .gte('created_at', today.toISOString())
+          .lt('created_at', tomorrow.toISOString())
+          .eq('transaction_type', 'adjustment')
+          .eq('payment_adjustment_type', 'cash-to-gcash');
+
+        if (adjustments && adjustments.length > 0) {
+          adjustmentTotal = adjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0);
+        }
+      } catch (adjErr) {
+        console.warn('[CashierDashboard] Could not fetch cash-to-gcash adjustments:', adjErr?.message ?? adjErr);
       }
+
+      setStats({
+        totalSales,
+        cashSales,
+        gcashSales: gcashSales + adjustmentTotal,
+        pointsSales,
+        receiptCount: (orders || []).length,
+        dineInCount,
+        takeOutCount,
+        pickUpCount,
+        deliveryCount,
+      });
     } catch (err) {
       console.error('[CashierDashboard] Failed to fetch stats:', err?.message ?? err);
     }
