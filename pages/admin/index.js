@@ -89,6 +89,8 @@ export default function AdminPage() {
   const [enrollingVendor, setEnrollingVendor] = useState(false);
   const [newVendorForm, setNewVendorForm] = useState({ name: '', address: '', contact: '', tin: '' });
   const [rrDeleteConfirm, setRrDeleteConfirm] = useState(null);
+  const [rrViewItem, setRrViewItem] = useState(null);
+  const [rrViewLineItems, setRrViewLineItems] = useState([]);
 
   // ── RR Payment dialog state ───────────────────────────────────────────────
   const [rrPayDialogOpen, setRrPayDialogOpen] = useState(false);
@@ -245,6 +247,7 @@ export default function AdminPage() {
       const { data: items, error: err } = await supabase
         .from('admin_inventory_items')
         .select('*')
+        .eq('is_archived', false)
         .order('code');
       if (err) throw err;
       setInventoryItems(items || []);
@@ -598,25 +601,10 @@ export default function AdminPage() {
     }
   };
 
-  const deleteInvItem = async (item) => {
+  const archiveInvItem = async (item) => {
     if (!supabase) return;
     try {
-      const [{ data: c1 }, { data: c2 }] = await Promise.all([
-        supabase.from('price_costing_items').select('id').eq('inventory_item_id', item.id).limit(1),
-        supabase.from('receiving_report_items').select('id').eq('inventory_item_id', item.id).limit(1),
-      ]);
-      const usedInCosting   = c1 && c1.length > 0;
-      const usedInReceiving = c2 && c2.length > 0;
-      if (usedInCosting || usedInReceiving) {
-        const places = [
-          usedInCosting   ? 'Price Costing' : null,
-          usedInReceiving ? 'Receiving Reports' : null,
-        ].filter(Boolean).join(' and ');
-        setError(`Cannot delete: item is referenced in ${places}. Remove it from there first.`);
-        setInvDeleteConfirm(null);
-        return;
-      }
-      await supabase.from('admin_inventory_items').delete().eq('id', item.id);
+      await supabase.from('admin_inventory_items').update({ is_archived: true }).eq('id', item.id);
       setInvDeleteConfirm(null);
       fetchInventory();
     } catch (err) {
@@ -968,6 +956,18 @@ export default function AdminPage() {
     }
   };
 
+  const openRRView = async (rr) => {
+    setRrViewItem(rr);
+    setRrViewLineItems([]);
+    if (supabase) {
+      const { data: li } = await supabase
+        .from('receiving_report_items')
+        .select('*, inventory_item:admin_inventory_items(id,name,code,uom)')
+        .eq('receiving_report_id', rr.id);
+      setRrViewLineItems(li || []);
+    }
+  };
+
   const openPayRRDialog = (rr) => {
     setRrPayItem(rr);
     setRrPayForm({
@@ -1302,7 +1302,7 @@ export default function AdminPage() {
                         </td>
                         <td style={styles.td}>
                           <button onClick={() => openInvDialog(item)} style={styles.actionBtn}>Edit</button>
-                          <button onClick={() => setInvDeleteConfirm(item)} style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}>Delete</button>
+                          <button onClick={() => setInvDeleteConfirm(item)} style={{ ...styles.actionBtn, color: '#ff9800', borderColor: '#ff9800' }}>Archive</button>
                         </td>
                       </tr>
                     ))}
@@ -1382,18 +1382,18 @@ export default function AdminPage() {
                 </Dialog.Portal>
               </Dialog.Root>
 
-              {/* Delete Confirm Dialog */}
+              {/* Archive Confirm Dialog */}
               <Dialog.Root open={!!invDeleteConfirm} onOpenChange={() => setInvDeleteConfirm(null)}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
                   <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 400 }}>
-                    <Dialog.Title style={styles.dialogTitle}>Delete Item</Dialog.Title>
+                    <Dialog.Title style={styles.dialogTitle}>Archive Item</Dialog.Title>
                     <p style={{ color: '#ccc', marginBottom: 24 }}>
-                      Are you sure you want to delete &quot;{invDeleteConfirm?.name}&quot;?
+                      Archive &quot;{invDeleteConfirm?.name}&quot;? It will be hidden from Inventory but its data will be preserved.
                     </p>
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
-                      <button onClick={() => deleteInvItem(invDeleteConfirm)} style={{ ...styles.primaryBtn, background: '#f44336' }}>Delete</button>
+                      <button onClick={() => archiveInvItem(invDeleteConfirm)} style={{ ...styles.primaryBtn, background: '#ff9800' }}>Archive</button>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
@@ -1571,9 +1571,13 @@ export default function AdminPage() {
                         <td style={styles.td}>
                           {rr.status !== 'paid' && (
                             <>
+                              <button onClick={() => openRRView(rr)} style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}>View</button>
                               <button onClick={() => openRRDialog(rr)} style={styles.actionBtn}>Edit</button>
                               <button onClick={() => setRrDeleteConfirm(rr)} style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}>Delete</button>
                             </>
+                          )}
+                          {rr.status === 'paid' && (
+                            <button onClick={() => openRRView(rr)} style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}>View</button>
                           )}
                           {rr.status === 'draft' && (
                             <button onClick={() => approveRR(rr)} style={{ ...styles.actionBtn, color: '#4caf50', borderColor: '#4caf50' }}>Approve</button>
@@ -1601,6 +1605,85 @@ export default function AdminPage() {
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
                       <button onClick={() => deleteRR(rrDeleteConfirm)} style={{ ...styles.primaryBtn, background: '#f44336' }}>Delete</button>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* RR View Dialog (read-only) */}
+              <Dialog.Root open={!!rrViewItem} onOpenChange={(open) => { if (!open) { setRrViewItem(null); setRrViewLineItems([]); } }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, width: '75vw', maxWidth: '75vw' }}>
+                    <Dialog.Title style={styles.dialogTitle}>
+                      📄 Receiving Report — {rrViewItem?.rr_number}
+                    </Dialog.Title>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                      <div>
+                        <label style={styles.label}>RR Number</label>
+                        <input style={{ ...styles.input, background: '#111', color: '#ffc107' }} readOnly value={rrViewItem?.rr_number || ''} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Date</label>
+                        <input style={{ ...styles.input, background: '#111', color: '#ccc' }} readOnly value={rrViewItem?.date || ''} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Vendor</label>
+                        <input style={{ ...styles.input, background: '#111', color: '#ccc' }} readOnly value={rrViewItem?.vendor?.name || '—'} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Terms</label>
+                        <input style={{ ...styles.input, background: '#111', color: '#ccc' }} readOnly value={rrViewItem?.terms || '—'} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Freight In (₱)</label>
+                        <input style={{ ...styles.input, background: '#111', color: '#ccc' }} readOnly value={Number(rrViewItem?.freight_in || 0).toFixed(2)} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Status</label>
+                        <input style={{ ...styles.input, background: '#111', color: rrViewItem?.status === 'approved' ? '#4caf50' : rrViewItem?.status === 'paid' ? '#2196f3' : '#ffc107' }} readOnly value={rrViewItem?.status || ''} />
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <span style={{ color: '#ffc107', fontWeight: 600 }}>Line Items</span>
+                      <div style={{ overflowX: 'auto', marginTop: 8 }}>
+                        <table style={styles.table}>
+                          <thead>
+                            <tr>
+                              {['Inventory Item', 'Code', 'UoM', 'Qty', 'Cost (₱)', 'Total Cost (₱)', 'Freight (₱)', 'Total Landed Cost (₱)'].map((h) => (
+                                <th key={h} style={{ ...styles.th, fontSize: 11 }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rrViewLineItems.map((li, idx) => {
+                              const tc = (Number(li.qty) || 0) * (Number(li.cost) || 0);
+                              const tlc = Number(li.total_landed_cost) || (tc + (Number(li.freight_allocated) || 0));
+                              return (
+                                <tr key={li.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{li.inventory_item?.name || li.inventory_name || '—'}</td>
+                                  <td style={styles.td}><span style={{ fontSize: 11 }}>{li.inventory_item?.code || li.inventory_code || '—'}</span></td>
+                                  <td style={styles.td}><span style={{ fontSize: 11 }}>{li.uom || '—'}</span></td>
+                                  <td style={{ ...styles.td, color: '#ccc' }}>{Number(li.qty).toFixed(3)}</td>
+                                  <td style={{ ...styles.td, color: '#ccc' }}>{fmt(li.cost)}</td>
+                                  <td style={styles.td}>{fmt(tc)}</td>
+                                  <td style={styles.td}>{fmt(Number(li.freight_allocated) || 0)}</td>
+                                  <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{fmt(tlc)}</td>
+                                </tr>
+                              );
+                            })}
+                            {rrViewLineItems.length === 0 && (
+                              <tr><td colSpan={8} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 16 }}>No items</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div style={{ marginTop: 8, textAlign: 'right', color: '#ffc107', fontWeight: 600 }}>
+                        Total Landed Cost: {fmt(rrViewItem?.total_landed_cost || 0)}
+                      </div>
+                    </div>
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
