@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
-import { calculateSalesBreakdown, getGCashAmount } from '../../utils/salesCalculations';
+import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount } from '../../utils/salesCalculations';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
@@ -225,26 +225,31 @@ export default function CashierDashboard() {
         else if (orderMode === 'delivery') deliveryCount++;
       });
 
-      // Fetch cash-to-gcash adjustments and add them to GCash Sales
+      // Fetch all adjustments for today (cash-to-gcash, canceled_order, double_posting)
       let adjustmentTotal = 0;
+      let allAdjustments = [];
       try {
         const { data: adjustments } = await supabase
           .from('cash_drawer_transactions')
-          .select('amount')
+          .select('amount, adjustment_reason, payment_adjustment_type')
           .gte('created_at', today.toISOString())
           .lt('created_at', tomorrow.toISOString())
-          .eq('transaction_type', 'adjustment')
-          .eq('payment_adjustment_type', 'cash-to-gcash');
+          .eq('transaction_type', 'adjustment');
 
-        if (adjustments && adjustments.length > 0) {
-          adjustmentTotal = adjustments.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0);
+        allAdjustments = adjustments || [];
+
+        const cashToGcash = allAdjustments.filter(adj => adj.payment_adjustment_type === 'cash-to-gcash');
+        if (cashToGcash.length > 0) {
+          adjustmentTotal = cashToGcash.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0);
         }
       } catch (adjErr) {
-        console.warn('[CashierDashboard] Could not fetch cash-to-gcash adjustments:', adjErr?.message ?? adjErr);
+        console.warn('[CashierDashboard] Could not fetch adjustments:', adjErr?.message ?? adjErr);
       }
 
+      const deductions = calculateAdjustmentDeductions(allAdjustments);
+
       setStats({
-        totalSales,
+        totalSales: totalSales - deductions,
         cashSales,
         gcashSales: gcashSales + adjustmentTotal,
         pointsSales,

@@ -12,14 +12,11 @@
  * @returns {Object} Sales breakdown object
  */
 export function calculateSalesBreakdown(orders) {
-  let totalSales = 0;
   let cashSales = 0;
   let gcashSales = 0;
   let pointsSales = 0;
 
   orders.forEach(order => {
-    totalSales += parseFloat(order.total_amount || 0);
-    
     // Cash Sales = actual sales amount paid in cash, not cash tendered
     if (order.payment_method === 'cash') {
       // Pure cash payment - use total_amount (the actual sale amount)
@@ -44,12 +41,28 @@ export function calculateSalesBreakdown(orders) {
     }
   });
 
+  // Total Sales = Cash Sales + GCash Sales (adjustments applied separately)
+  const totalSales = cashSales + gcashSales;
+
   return {
     totalSales,
     cashSales,
     gcashSales,
     pointsSales,
   };
+}
+
+/**
+ * Calculate the total deduction from Canceled Order and Double Posting adjustments.
+ * These adjustments reduce Total Sales.
+ *
+ * @param {Array} adjustments - Array of cash_drawer_transactions rows with adjustment_reason and amount
+ * @returns {number} Total deduction (positive number to subtract from Total Sales)
+ */
+export function calculateAdjustmentDeductions(adjustments) {
+  return (adjustments || [])
+    .filter(adj => adj.adjustment_reason === 'canceled_order' || adj.adjustment_reason === 'double_posting')
+    .reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount || 0)), 0);
 }
 
 /**
