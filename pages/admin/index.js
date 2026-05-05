@@ -695,12 +695,14 @@ export default function AdminPage() {
   const saveRR = async () => {
     if (!supabase) return;
     try {
+      const emptyName = rrLineItems.find((li) => !li.inventory_name);
+      if (emptyName) { alert('Please select an inventory item for every line before saving.'); return; }
       const totalLC = rrLineItems.reduce((s, i) => s + (i.total_landed_cost || 0), 0);
       const rrPayload = {
         rr_number: rrForm.rr_number,
         vendor_id: rrForm.vendor_id || null,
         date: rrForm.date,
-        terms: rrForm.terms !== '' ? Number(rrForm.terms) : null,
+        terms: rrForm.terms !== '' ? parseInt(rrForm.terms, 10) : null,
         freight_in: Number(rrForm.freight_in),
         total_landed_cost: totalLC,
         status: 'draft',
