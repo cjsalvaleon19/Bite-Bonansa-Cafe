@@ -45,6 +45,7 @@ export default function CashierDashboard() {
   const [gcashProofUrl, setGcashProofUrl] = useState(null);
   const [showGCashProof, setShowGCashProof] = useState(false);
   const [gcashProofImageError, setGcashProofImageError] = useState(false);
+  const [gcashProofLoading, setGcashProofLoading] = useState(false);
   const statsRefreshTimerRef = useRef(null);
 
   // Extract GCash proof URL stored in special_request as "| GCash proof: {url}"
@@ -54,15 +55,37 @@ export default function CashierDashboard() {
     return match ? match[1].trim() : null;
   };
 
-  const openGCashProof = (specialRequest) => {
-    const url = extractGCashProofUrl(specialRequest);
-    if (url) {
-      setGcashProofImageError(false);
-      setGcashProofUrl(url);
-      setShowGCashProof(true);
-    } else {
+  const openGCashProof = async (specialRequest) => {
+    const storedUrl = extractGCashProofUrl(specialRequest);
+    if (!storedUrl) {
       alert('No GCash proof attachment found for this order.');
+      return;
     }
+    setGcashProofImageError(false);
+    setGcashProofUrl(null);
+    setGcashProofLoading(true);
+    setShowGCashProof(true);
+    try {
+      // Extract the file path from the stored public URL so we can generate a signed URL.
+      // Stored format: https://[project].supabase.co/storage/v1/object/public/payment-proofs/{filePath}
+      const pathMatch = storedUrl.match(/\/payment-proofs\/(.+)$/);
+      if (pathMatch) {
+        const filePath = pathMatch[1];
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from('payment-proofs')
+          .createSignedUrl(filePath, 3600);
+        if (!signedError && signedData?.signedUrl) {
+          setGcashProofUrl(signedData.signedUrl);
+          setGcashProofLoading(false);
+          return;
+        }
+      }
+    } catch (_) {
+      // Fall through to use the stored public URL directly
+    }
+    // Fallback: use the stored public URL as-is
+    setGcashProofUrl(storedUrl);
+    setGcashProofLoading(false);
   };
 
   useEffect(() => {
@@ -1332,12 +1355,14 @@ export default function CashierDashboard() {
         )}
 
         {/* GCash Proof Image Lightbox */}
-        {showGCashProof && gcashProofUrl && (
+        {showGCashProof && (
           <div style={styles.modal} onClick={() => setShowGCashProof(false)}>
             <div style={styles.gcashProofModalContent} onClick={(e) => e.stopPropagation()}>
               <h3 style={styles.modalTitle}>📱 GCash Payment Proof</h3>
               <div style={styles.gcashProofImageWrapper}>
-                {!gcashProofImageError ? (
+                {gcashProofLoading ? (
+                  <p style={{ color: '#aaa', textAlign: 'center', padding: '16px' }}>Loading proof...</p>
+                ) : gcashProofUrl && !gcashProofImageError ? (
                   <img
                     src={gcashProofUrl}
                     alt="GCash Payment Proof"
