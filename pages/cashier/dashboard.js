@@ -933,8 +933,9 @@ export default function CashierDashboard() {
                                   <button
                                     style={styles.proofPreviewBtn}
                                     onClick={() => openGCashProof(order.special_request)}
+                                    title="View GCash Proof"
                                   >
-                                    📎 Attachment Preview
+                                    📎
                                   </button>
                                 ) : (
                                   <span style={{ color: '#666', fontSize: '12px' }}>None</span>
@@ -1186,8 +1187,9 @@ export default function CashierDashboard() {
                     <button
                       style={styles.proofPreviewBtn}
                       onClick={() => openGCashProof(selectedOrderToView.special_request)}
+                      title="View GCash Proof"
                     >
-                      📎 View GCash Proof
+                      📎
                     </button>
                   </div>
                 )}
@@ -1348,15 +1350,7 @@ export default function CashierDashboard() {
                   </p>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                <a
-                  href={gcashProofUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={styles.gcashProofOpenBtn}
-                >
-                  🔗 Open Full Image
-                </a>
+              <div style={{ marginTop: '16px' }}>
                 <button style={styles.modalCloseBtn} onClick={() => setShowGCashProof(false)}>
                   Close
                 </button>
@@ -2099,19 +2093,5 @@ const styles = {
     maxHeight: '55vh',
     objectFit: 'contain',
     borderRadius: '6px',
-  },
-  gcashProofOpenBtn: {
-    flex: 1,
-    display: 'block',
-    padding: '12px',
-    backgroundColor: 'transparent',
-    color: '#ffc107',
-    border: '1px solid #ffc107',
-    borderRadius: '6px',
-    fontSize: '14px',
-    fontWeight: '700',
-    cursor: 'pointer',
-    textAlign: 'center',
-    textDecoration: 'none',
   },
 };
