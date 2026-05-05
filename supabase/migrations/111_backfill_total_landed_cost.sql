@@ -1,45 +1,70 @@
 -- ─── Migration 111: Backfill total_landed_cost on receiving_report_items and receiving_reports ─
 -- PROBLEM:
---   On production instances where the receiving_report_items table was created
---   before migration 101, total_landed_cost is a plain DECIMAL column (DEFAULT 0)
---   rather than a GENERATED ALWAYS column.  The application's saveRR() function
---   never included total_landed_cost in the INSERT payload, so all existing rows
---   have total_landed_cost = 0.  As a result:
---     1. The Edit dialog shows TLC = ₱0.00 for every line item.
---     2. The RR list shows Total Landed Cost = ₱0.00 for every report.
+--   On some production instances the receiving_report_items table was created
+--   without the total_landed_cost column entirely (migration 101 only adds it
+--   when the table is created fresh; it cannot add a GENERATED ALWAYS column to
+--   an already-existing table).  Other instances have it as a plain DECIMAL
+--   DEFAULT 0 (never backfilled) or as a GENERATED ALWAYS column.
+--   In all non-generated cases the Edit dialog shows TLC = ₱0.00 and the RR
+--   list shows Total Landed Cost = ₱0.00.
 --
--- FIX:
---   1. If total_landed_cost on receiving_report_items is a plain column (not
---      GENERATED ALWAYS), backfill it as (qty * cost) + freight_allocated.
---      If it is already a generated column, PostgreSQL auto-computes it and no
---      UPDATE is needed (attempting to UPDATE a generated column would error).
---   2. Recompute receiving_reports.total_landed_cost as the sum of per-item
---      (qty * cost) + freight_allocated for every report.  This is always a
---      plain column so we can always UPDATE it.
+-- FIX (three cases for receiving_report_items):
+--   Case A — column missing entirely:
+--     ADD COLUMN total_landed_cost DECIMAL(10,2) NOT NULL DEFAULT 0,
+--     then backfill as (qty * cost) + freight_allocated.
+--   Case B — column exists as a plain DECIMAL (value = 0, never backfilled):
+--     UPDATE to backfill as (qty * cost) + freight_allocated.
+--   Case C — column is GENERATED ALWAYS:
+--     Do nothing (PostgreSQL auto-computes it).
+--
+--   Always recompute receiving_reports.total_landed_cost from line items
+--   (it is always a plain column).
 -- ─────────────────────────────────────────────────────────────────────────────
 
 DO $$
 DECLARE
+  v_col_exists   BOOLEAN;
   v_is_generated BOOLEAN;
 BEGIN
-  -- Check whether total_landed_cost is a GENERATED ALWAYS column
+  -- Does the column exist at all?
   SELECT EXISTS (
     SELECT 1
       FROM information_schema.columns
      WHERE table_schema = 'public'
        AND table_name   = 'receiving_report_items'
        AND column_name  = 'total_landed_cost'
-       AND is_generated = 'ALWAYS'
-  ) INTO v_is_generated;
+  ) INTO v_col_exists;
 
-  IF v_is_generated THEN
-    RAISE NOTICE 'Migration 111: receiving_report_items.total_landed_cost is a generated column — DB computes it automatically, no UPDATE needed.';
-  ELSE
-    -- Plain column: backfill from qty * cost + freight_allocated
+  IF NOT v_col_exists THEN
+    -- Case A: column is absent — add it as a plain column then backfill
+    ALTER TABLE receiving_report_items
+      ADD COLUMN total_landed_cost DECIMAL(10,2) NOT NULL DEFAULT 0;
+
     UPDATE receiving_report_items
        SET total_landed_cost = (qty * cost) + freight_allocated;
 
-    RAISE NOTICE 'Migration 111: backfilled total_landed_cost on receiving_report_items (plain column).';
+    RAISE NOTICE 'Migration 111: added and backfilled total_landed_cost on receiving_report_items (column was missing).';
+  ELSE
+    -- Column exists — check whether it is GENERATED ALWAYS
+    SELECT EXISTS (
+      SELECT 1
+        FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name   = 'receiving_report_items'
+         AND column_name  = 'total_landed_cost'
+         AND is_generated = 'ALWAYS'
+    ) INTO v_is_generated;
+
+    IF v_is_generated THEN
+      -- Case C: generated column — nothing to do
+      RAISE NOTICE 'Migration 111: receiving_report_items.total_landed_cost is a generated column — DB computes it automatically, no UPDATE needed.';
+    ELSE
+      -- Case B: plain column — backfill
+      UPDATE receiving_report_items
+         SET total_landed_cost = (qty * cost) + freight_allocated;
+
+      RAISE NOTICE 'Migration 111: backfilled total_landed_cost on receiving_report_items (plain column).';
+    END IF;
   END IF;
 
   -- Always recompute the header-level total_landed_cost on receiving_reports
