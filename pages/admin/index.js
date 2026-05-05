@@ -684,7 +684,8 @@ export default function AdminPage() {
 
   const openRRDialog = async (item = null) => {
     setRrEditItem(item);
-    // Reset line items immediately so stale data never shows
+    // Reset line items immediately so stale data from a previous edit never
+    // shows while the async fetch is in-flight.
     setRrLineItems([]);
     if (item) {
       // Fetch vendor details since receiving_reports doesn't store them directly
@@ -837,6 +838,7 @@ export default function AdminPage() {
           cost: Number(li.cost),
           freight_allocated: li.freight_allocated,
         }));
+        // Throw so the error surfaces in the UI instead of silently losing items.
         const { error: liErr } = await supabase.from('receiving_report_items').insert(linePayloads);
         if (liErr) throw liErr;
       }
