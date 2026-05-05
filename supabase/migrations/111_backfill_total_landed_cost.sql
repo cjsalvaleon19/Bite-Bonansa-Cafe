@@ -41,18 +41,18 @@ BEGIN
 
     RAISE NOTICE 'Migration 111: backfilled total_landed_cost on receiving_report_items (plain column).';
   END IF;
+
+  -- Always recompute the header-level total_landed_cost on receiving_reports
+  -- (this is always a plain column regardless of how items were created).
+  UPDATE receiving_reports rr
+     SET total_landed_cost = (
+       SELECT COALESCE(SUM((ri.qty * ri.cost) + ri.freight_allocated), 0)
+         FROM receiving_report_items ri
+        WHERE ri.receiving_report_id = rr.id
+     );
+
+  RAISE NOTICE 'Migration 111: recomputed total_landed_cost on receiving_reports from line items.';
 END $$;
-
--- Always recompute the header-level total_landed_cost on receiving_reports
--- (this is always a plain column regardless of how items were created).
-UPDATE receiving_reports rr
-   SET total_landed_cost = (
-     SELECT COALESCE(SUM((ri.qty * ri.cost) + ri.freight_allocated), 0)
-       FROM receiving_report_items ri
-      WHERE ri.receiving_report_id = rr.id
-   );
-
-RAISE NOTICE 'Migration 111: recomputed total_landed_cost on receiving_reports from line items.';
 
 -- Reload PostgREST schema cache
 NOTIFY pgrst, 'reload schema';
