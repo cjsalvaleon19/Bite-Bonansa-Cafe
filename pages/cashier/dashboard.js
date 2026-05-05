@@ -523,6 +523,11 @@ export default function CashierDashboard() {
         <div class="footer">
           <p>Thank you for your order, Biter!</p>
           ${isKitchenCopy ? '<p style="margin-top: 10px; font-weight: bold;">⚠️ KITCHEN COPY - DO NOT GIVE TO CUSTOMER ⚠️</p>' : ''}
+          ${!isKitchenCopy ? `<div style="margin-top: 12px; text-align: center;">
+            <img src="/qr-code.png" alt="Scan to order online" style="width: 90px; height: 90px;" />
+            <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
+            <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
+          </div>` : ''}
           <p style="margin-top: 10px;">Accepted by: ${user?.full_name || 'Cashier'}</p>
           <p>${new Date().toLocaleString()}</p>
         </div>
