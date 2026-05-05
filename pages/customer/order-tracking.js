@@ -200,7 +200,6 @@ export default function OrderTracking() {
   const formatStatus = (status, orderMode) => {
     if (!status) return 'Unknown';
     const formatted = status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const isDineInOrTakeOut = orderMode === 'dine-in' || orderMode === 'take-out';
     
     // Map internal status to user-friendly labels
     const statusMap = {
@@ -211,9 +210,9 @@ export default function OrderTracking() {
       'Order In Process': 'Order in Process',
       'Preparing': 'Order in Process',
       'Out For Delivery': 'Out for Delivery',
-      'Delivered': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered',
-      'Order Delivered': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered',
-      'Completed': isDineInOrTakeOut ? 'Order Complete' : 'Order Delivered'
+      'Delivered': 'Order Complete',
+      'Order Delivered': 'Order Complete',
+      'Completed': 'Order Complete'
     };
     return statusMap[formatted] || formatted;
   };
@@ -260,7 +259,7 @@ export default function OrderTracking() {
         icon: isPickup ? '✅' : '🛵' 
       },
       { 
-        label: isPickup ? 'Order Complete' : 'Order Delivered', 
+        label: 'Order Complete', 
         status: 'order_delivered', 
         icon: '✓' 
       },
