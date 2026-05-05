@@ -42,7 +42,26 @@ export default function CashierDashboard() {
   const [viewOrderModal, setViewOrderModal] = useState(false);
   const [selectedOrderToView, setSelectedOrderToView] = useState(null);
   const [editableCashTendered, setEditableCashTendered] = useState('');
+  const [gcashProofUrl, setGcashProofUrl] = useState(null);
+  const [showGCashProof, setShowGCashProof] = useState(false);
   const statsRefreshTimerRef = useRef(null);
+
+  // Extract GCash proof URL stored in special_request as "| GCash proof: {url}"
+  const extractGCashProofUrl = (specialRequest) => {
+    if (!specialRequest) return null;
+    const match = specialRequest.match(/\|\s*GCash proof:\s*(https?:\/\/[^\s|]+)/i);
+    return match ? match[1].trim() : null;
+  };
+
+  const openGCashProof = (specialRequest) => {
+    const url = extractGCashProofUrl(specialRequest);
+    if (url) {
+      setGcashProofUrl(url);
+      setShowGCashProof(true);
+    } else {
+      alert('No GCash proof attachment found for this order.');
+    }
+  };
 
   useEffect(() => {
     if (!authLoading) {
@@ -892,6 +911,7 @@ export default function CashierDashboard() {
                             <th style={styles.reportTh}>Amount</th>
                             <th style={styles.reportTh}>Points</th>
                             <th style={styles.reportTh}>GCash Paid</th>
+                             <th style={styles.reportTh}>Proof</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -906,10 +926,22 @@ export default function CashierDashboard() {
                               <td style={styles.reportTd}>₱{parseFloat(order.total_amount || 0).toFixed(2)}</td>
                               <td style={styles.reportTd}>₱{parseFloat(order.points_used || 0).toFixed(2)}</td>
                               <td style={styles.reportTdHighlight}>₱{getGCashAmount(order).toFixed(2)}</td>
+                              <td style={styles.reportTd}>
+                                {extractGCashProofUrl(order.special_request) ? (
+                                  <button
+                                    style={styles.proofPreviewBtn}
+                                    onClick={() => openGCashProof(order.special_request)}
+                                  >
+                                    📎 Attachment Preview
+                                  </button>
+                                ) : (
+                                  <span style={{ color: '#666', fontSize: '12px' }}>None</span>
+                                )}
+                              </td>
                             </tr>
                           ))}
                           <tr style={styles.reportTotalRow}>
-                            <td colSpan="6" style={styles.reportTotalLabel}>Total GCash Sales:</td>
+                            <td colSpan="7" style={styles.reportTotalLabel}>Total GCash Sales:</td>
                             <td style={styles.reportTotalValue}>
                               ₱{gcashTransactions.reduce((sum, order) => sum + getGCashAmount(order), 0).toFixed(2)}
                             </td>
@@ -1145,6 +1177,18 @@ export default function CashierDashboard() {
                     <span style={{ textTransform: 'capitalize' }}>{selectedOrderToView.payment_method}</span>
                   </div>
                 )}
+                {(selectedOrderToView.payment_method === 'gcash' || selectedOrderToView.payment_method === 'points+gcash') &&
+                  extractGCashProofUrl(selectedOrderToView.special_request) && (
+                  <div style={styles.viewOrderRow}>
+                    <strong>GCash Proof:</strong>
+                    <button
+                      style={styles.proofPreviewBtn}
+                      onClick={() => openGCashProof(selectedOrderToView.special_request)}
+                    >
+                      📎 View GCash Proof
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div style={styles.viewOrderSection}>
@@ -1277,6 +1321,39 @@ export default function CashierDashboard() {
                   onClick={() => setViewOrderModal(false)}
                 >
                   ← Back
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* GCash Proof Image Lightbox */}
+        {showGCashProof && gcashProofUrl && (
+          <div style={styles.modal} onClick={() => setShowGCashProof(false)}>
+            <div style={styles.gcashProofModalContent} onClick={(e) => e.stopPropagation()}>
+              <h3 style={styles.modalTitle}>📱 GCash Payment Proof</h3>
+              <div style={styles.gcashProofImageWrapper}>
+                <img
+                  src={gcashProofUrl}
+                  alt="GCash Payment Proof"
+                  style={styles.gcashProofImage}
+                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
+                />
+                <p style={{ display: 'none', color: '#f44', textAlign: 'center', padding: '16px' }}>
+                  ⚠️ Unable to load image. The proof may have expired or been removed.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                <a
+                  href={gcashProofUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.gcashProofOpenBtn}
+                >
+                  🔗 Open Full Image
+                </a>
+                <button style={styles.modalCloseBtn} onClick={() => setShowGCashProof(false)}>
+                  Close
                 </button>
               </div>
             </div>
@@ -1983,5 +2060,53 @@ const styles = {
     fontSize: '16px',
     fontWeight: '600',
     transition: 'background-color 0.2s',
+  },
+  proofPreviewBtn: {
+    padding: '6px 12px',
+    backgroundColor: '#1565c0',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '600',
+    whiteSpace: 'nowrap',
+  },
+  gcashProofModalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: '12px',
+    padding: '28px',
+    width: '100%',
+    maxWidth: '560px',
+    border: '1px solid #ffc107',
+  },
+  gcashProofImageWrapper: {
+    textAlign: 'center',
+    marginTop: '16px',
+    backgroundColor: '#0a0a0a',
+    borderRadius: '8px',
+    padding: '8px',
+    maxHeight: '60vh',
+    overflowY: 'auto',
+  },
+  gcashProofImage: {
+    maxWidth: '100%',
+    maxHeight: '55vh',
+    objectFit: 'contain',
+    borderRadius: '6px',
+  },
+  gcashProofOpenBtn: {
+    flex: 1,
+    display: 'block',
+    padding: '12px',
+    backgroundColor: 'transparent',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    textAlign: 'center',
+    textDecoration: 'none',
   },
 };
