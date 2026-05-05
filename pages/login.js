@@ -173,7 +173,7 @@ const Login = () => {
           marginBottom: '30px',
           fontSize: '14px'
         }}>
-          Welcome back, coffee lover!
+          Welcome back, Biter!
         </p>
 
         {error && (

@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
-import { calculateSalesBreakdown } from '../../utils/salesCalculations';
+import { calculateSalesBreakdown, calculateAdjustmentDeductions } from '../../utils/salesCalculations';
 
 export default function EndOfDayReport() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
   const [user, setUser] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [salesAdjustments, setSalesAdjustments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -19,6 +20,7 @@ export default function EndOfDayReport() {
     if (!authLoading) {
       fetchUser();
       fetchOrders();
+      fetchAdjustments();
     }
   }, [authLoading, selectedDate]);
 
@@ -29,6 +31,29 @@ export default function EndOfDayReport() {
       setUser(authUser);
     } catch (err) {
       console.error('[EODReport] Failed to fetch user:', err?.message ?? err);
+    }
+  };
+
+  const fetchAdjustments = async () => {
+    if (!supabase) return;
+    try {
+      const startDate = new Date(selectedDate);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(selectedDate);
+      endDate.setHours(23, 59, 59, 999);
+
+      const { data, error } = await supabase
+        .from('cash_drawer_transactions')
+        .select('amount, adjustment_reason, payment_adjustment_type')
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+        .eq('transaction_type', 'adjustment');
+
+      if (error) throw error;
+
+      setSalesAdjustments(data || []);
+    } catch (err) {
+      console.error('[EODReport] Failed to fetch adjustments:', err?.message ?? err);
     }
   };
 
@@ -436,7 +461,8 @@ export default function EndOfDayReport() {
   };
 
   // Use utility function for sales calculations
-  const { totalSales, cashSales: totalCash, gcashSales: totalGcash, pointsSales: totalPoints } = calculateSalesBreakdown(orders);
+  const { totalSales: baseTotalSales, cashSales: totalCash, gcashSales: totalGcash, pointsSales: totalPoints } = calculateSalesBreakdown(orders);
+  const totalSales = baseTotalSales - calculateAdjustmentDeductions(salesAdjustments);
 
   if (authLoading || loading) {
     return (

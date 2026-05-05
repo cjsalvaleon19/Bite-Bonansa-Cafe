@@ -34,7 +34,7 @@ export default function Home() {
           color: '#999',
           padding: '0 16px'
         }}>
-          Welcome to our coffee shop ordering system
+          &ldquo;Bite. Sip. Smile. Repeat.&rdquo; Welcome to our cafe&apos;s online ordering — fast, easy, and always worth it. Sign in or register to place your order now!
         </p>
 
         <Link href="/login" style={{
