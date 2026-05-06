@@ -1,5 +1,5 @@
 // ─── Admin: Comprehensive Admin Interface ──────────────────────────────────
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -32,23 +32,30 @@ export default function AdminPage() {
   const [error, setError] = useState(null);
 
   // ── Dashboard state ───────────────────────────────────────────────────────
+  const [dashSubTab, setDashSubTab] = useState('overview');
   const [salesTrend, setSalesTrend] = useState([]);
   const [cashFlowData, setCashFlowData] = useState([]);
   const [cashFlowSummary, setCashFlowSummary] = useState({ inflow: 0, outflow: 0 });
   const [saleableItems, setSaleableItems] = useState([]);
+  const [saleableItemsThisMonth, setSaleableItemsThisMonth] = useState([]);
+  const [saleableItemsLastMonth, setSaleableItemsLastMonth] = useState([]);
   const [expensesBreakdown, setExpensesBreakdown] = useState([]);
+  const [lowStockItems, setLowStockItems] = useState([]);
+  const [stockAlertLoading, setStockAlertLoading] = useState(false);
 
   // ── Inventory state ───────────────────────────────────────────────────────
   const [inventoryItems, setInventoryItems] = useState([]);
   const [invDialogOpen, setInvDialogOpen] = useState(false);
   const [invEditItem, setInvEditItem] = useState(null);
   const [invForm, setInvForm] = useState({
-    name: '', department: 'DKS', code: '', uom: 'pcs', cost_per_unit: '0', current_stock: '0',
+    name: '', department: 'DKS', code: '', uom: 'pcs', cost_per_unit: '0', current_stock: '0', min_stock: '0',
   });
   const [invDeleteConfirm, setInvDeleteConfirm] = useState(null);
+  const [invStatusFilter, setInvStatusFilter] = useState('');
 
   // ── Price Costing state ───────────────────────────────────────────────────
   const [costingHeaders, setCostingHeaders] = useState([]);
+  const [costingSearch, setCostingSearch] = useState('');
   const [invItems, setInvItems] = useState([]);
   const [menuItemsList, setMenuItemsList] = useState([]);
   const [costingDialogOpen, setCostingDialogOpen] = useState(false);
@@ -93,6 +100,7 @@ export default function AdminPage() {
   const [enrollingVendor, setEnrollingVendor] = useState(false);
   const [newVendorForm, setNewVendorForm] = useState({ name: '', address: '', contact: '', tin: '' });
   const [rrDeleteConfirm, setRrDeleteConfirm] = useState(null);
+  const [rrSearch, setRrSearch] = useState('');
   const [rrViewItem, setRrViewItem] = useState(null);
   const [rrViewLineItems, setRrViewLineItems] = useState([]);
   const [rrSaveError, setRrSaveError] = useState('');
@@ -121,6 +129,7 @@ export default function AdminPage() {
   // ── RR Inventory Item Picker state ────────────────────────────────────────
   const [invPickerOpen, setInvPickerOpen] = useState(null); // row index or null
   const [invPickerQuery, setInvPickerQuery] = useState('');
+  const [rrNewItemReturnIdx, setRrNewItemReturnIdx] = useState(null); // row index to re-open picker after new item saved
 
   // ── Costing Inventory Item Picker state ───────────────────────────────────
   const [costingInvPickerIdx, setCostingInvPickerIdx] = useState(null); // line index or null
@@ -128,28 +137,71 @@ export default function AdminPage() {
 
   // ── Journal Entries state ─────────────────────────────────────────────────
   const [journalSubTab, setJournalSubTab] = useState('all');
-  const [journalDateFrom, setJournalDateFrom] = useState('');
-  const [journalDateTo, setJournalDateTo] = useState('');
+  const [journalSubFilter, setJournalSubFilter] = useState('all');
+  const journalMonthFrom = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  }, []);
+  const journalMonthTo = useMemo(() => {
+    const d = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
+    return d.toISOString().split('T')[0];
+  }, []);
+  const [journalDateFrom, setJournalDateFrom] = useState(journalMonthFrom);
+  const [journalDateTo, setJournalDateTo] = useState(journalMonthTo);
+  const [journalAccountFilter, setJournalAccountFilter] = useState('');
+  const [journalAccountDropdownOpen, setJournalAccountDropdownOpen] = useState(false);
+  const [journalAccountSearch, setJournalAccountSearch] = useState('');
+  const [journalSearch, setJournalSearch] = useState('');
   const [journalData, setJournalData] = useState([]);
   const [journalLoading, setJournalLoading] = useState(false);
+  // Derive unique account names from fetched data; includes known default accounts too
+  const journalKnownAccounts = useMemo(() => {
+    const defaults = [
+      'Cash on Hand', 'Cash in Bank',
+      'Accounts Payable', 'Accounts Payable - Rewards',
+      'Revenue', 'Inventory', "Owner's Draw", "Owner's Capital", 'Retained Earnings',
+      'Rewards', 'Cost of Goods Sold',
+      // Income
+      'Delivery Income',
+      // Operating Expenses
+      'Salaries & Wages', 'Utilities', 'Supplies',
+      'Repairs & Maintenance', 'Advertising & Marketing',
+      'Software Subscriptions', 'Professional Fees', 'Transportation',
+      'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+      "Rider's Fee", 'Kitchen Tools', 'Miscellaneous Expense',
+      'Depreciation Expense',
+      // Balance Sheet
+      'Kitchen Equipment', 'Accumulated Depreciation',
+    ];
+    const fromData = (journalData || []).flatMap((r) => [r.debit_account, r.credit_account].filter(Boolean));
+    const all = Array.from(new Set([...defaults, ...fromData])).sort();
+    return all;
+  }, [journalData]);
 
   // ── Manual Entry state ────────────────────────────────────────────────────
   const [manualEntryNumber, setManualEntryNumber] = useState('');
   const [manualEntryForm, setManualEntryForm] = useState({
-    date: '',
+    date: new Date().toISOString().split('T')[0],
     name: '',
     reference_number: '',
+    description: '',
   });
   const [manualEntryLines, setManualEntryLines] = useState([
-    { description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' },
+    { description: '', account: '', type: 'debit', amount: '' },
   ]);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState('');
   const [manualSuccess, setManualSuccess] = useState('');
+  const [manualSpecialNote, setManualSpecialNote] = useState('');
   // Contact picker for manual entry
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [contactPickerQuery, setContactPickerQuery] = useState('');
   const [contactList, setContactList] = useState([]);
+  // New Contact enrollment form (inside contact picker)
+  const [newContactMode, setNewContactMode] = useState(false);
+  const [newContactForm, setNewContactForm] = useState({ name: '', address: '', contact: '', tin: '' });
+  const [newContactSaving, setNewContactSaving] = useState(false);
+  const [newContactError, setNewContactError] = useState('');
 
   // ── Financial Reports state ───────────────────────────────────────────────
   const [finSubTab, setFinSubTab] = useState('cashflow');
@@ -162,6 +214,55 @@ export default function AdminPage() {
   const [finDateFrom, setFinDateFrom] = useState(thirtyAgoStr);
   const [finDateTo, setFinDateTo] = useState(todayStr);
   const [finData, setFinData] = useState(null);
+  // Chart of Accounts state (separate date coverage from finDateFrom/To)
+  const [coaDateFrom, setCoaDateFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
+  const [coaDateTo, setCoaDateTo] = useState(todayStr);
+  const [coaData, setCoaData] = useState(null);
+  const [coaLoading, setCoaLoading] = useState(false);
+  // Editable budget values (persisted in localStorage)
+  const [budgetValues, setBudgetValues] = useState(() => {
+    try {
+      const stored = typeof window !== 'undefined' && localStorage.getItem('bbc_budget_values');
+      return stored ? JSON.parse(stored) : {};
+    } catch { return {}; }
+  });
+
+  // ── Bills state ───────────────────────────────────────────────────────────
+  const [billsList, setBillsList] = useState([]);
+  const [billDialogOpen, setBillDialogOpen] = useState(false);
+  const [billEditItem, setBillEditItem] = useState(null);
+  const [billNumber, setBillNumber] = useState('');
+  const [billForm, setBillForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    contact: '',
+    description: '',
+  });
+  const [billLines, setBillLines] = useState([
+    { description: '', account_title: '', debit_amount: '' },
+  ]);
+  const [billSaving, setBillSaving] = useState(false);
+  const [billError, setBillError] = useState('');
+  const [billSuccess, setBillSuccess] = useState('');
+  const [billSearch, setBillSearch] = useState('');
+  const [billDeleteConfirm, setBillDeleteConfirm] = useState(null);
+  const [billContactPickerOpen, setBillContactPickerOpen] = useState(false);
+  const [billContactQuery, setBillContactQuery] = useState('');
+  const [billContactList, setBillContactList] = useState([]);
+  const [billAcctPickerIdx, setBillAcctPickerIdx] = useState(null);
+  const [billAcctQuery, setBillAcctQuery] = useState('');
+  const [billViewItem, setBillViewItem] = useState(null);
+  const [billViewLines, setBillViewLines] = useState([]);
+  // Pay dialog
+  const [billPayDialogOpen, setBillPayDialogOpen] = useState(false);
+  const [billPayItem, setBillPayItem] = useState(null);
+  const [billPayMethod, setBillPayMethod] = useState('cash_on_hand');
+  const [billPaying, setBillPaying] = useState(false);
+  const [billPayError, setBillPayError] = useState('');
+  // New contact enrollment inside contact picker
+  const [billNewContactMode, setBillNewContactMode] = useState(false);
+  const [billNewContactForm, setBillNewContactForm] = useState({ name: '', address: '', contact: '', tin: '' });
+  const [billNewContactSaving, setBillNewContactSaving] = useState(false);
+  const [billNewContactError, setBillNewContactError] = useState('');
 
   // ── My Profile state ──────────────────────────────────────────────────────
   const [profileData, setProfileData] = useState(null);
@@ -177,65 +278,105 @@ export default function AdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const since = new Date();
-      since.setDate(since.getDate() - 28);
-      const sinceMs = since.getTime();
+      // ── Compute 4 Mon–Sun weeks ending with current week ──────────────────
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0=Sun … 6=Sat
+      const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const thisMonday = new Date(now);
+      thisMonday.setDate(now.getDate() + diffToMon);
+      thisMonday.setHours(0, 0, 0, 0);
 
+      // weekStarts[0] = oldest (3 weeks back), weekStarts[3] = current week
+      const weekStarts = Array.from({ length: 4 }, (_, i) => {
+        const d = new Date(thisMonday);
+        d.setDate(thisMonday.getDate() - (3 - i) * 7);
+        return d;
+      });
+      const sinceISO = weekStarts[0].toISOString();
+      const sinceDateStr = weekStarts[0].toISOString().split('T')[0];
+
+      const fmtWeekLabel = (start) => {
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+        return `${fmt(start)}–${fmt(end)}`;
+      };
+
+      const getWeekIdx = (dateVal) => {
+        // For date-only strings (YYYY-MM-DD) append T00:00:00 so JS parses them in local time,
+        // consistent with weekStarts which are also computed in local time.
+        const d = typeof dateVal === 'string' ? new Date(dateVal.includes('T') ? dateVal : dateVal + 'T00:00:00') : new Date(dateVal);
+        for (let i = 3; i >= 0; i--) {
+          if (d >= weekStarts[i]) return i;
+        }
+        return -1;
+      };
+
+      // ── Sales Trend (from orders) ─────────────────────────────────────────
       const { data: orders } = await supabase
         .from('orders')
         .select('total, created_at')
-        .gte('created_at', since.toISOString());
+        .gte('created_at', sinceISO);
 
       if (orders) {
         const weeks = [0, 0, 0, 0];
         orders.forEach((o) => {
-          const diffDays = Math.floor((new Date(o.created_at).getTime() - sinceMs) / 86400000);
-          const weekIdx = Math.min(Math.floor(diffDays / 7), 3);
-          weeks[weekIdx] += Number(o.total) || 0;
+          const idx = getWeekIdx(o.created_at);
+          if (idx >= 0) weeks[idx] += Number(o.total) || 0;
         });
-        setSalesTrend([
-          { week: 'Week 1', sales: weeks[0] },
-          { week: 'Week 2', sales: weeks[1] },
-          { week: 'Week 3', sales: weeks[2] },
-          { week: 'Week 4', sales: weeks[3] },
-        ]);
+        setSalesTrend(weekStarts.map((start, i) => ({ week: fmtWeekLabel(start), sales: weeks[i] })));
       }
 
-      const { data: cashTx } = await supabase
-        .from('cash_drawer_transactions')
-        .select('amount, transaction_type, created_at')
-        .gte('created_at', since.toISOString());
+      // ── Cash Flow (from Journal Entries – Cash on Hand + Cash in Bank) ─────
+      const CASH_ACCOUNTS = ['Cash on Hand', 'Cash in Bank'];
+      const { data: cashJE } = await supabase
+        .from('journal_entries')
+        .select('amount, debit_account, credit_account, date')
+        .gte('date', sinceDateStr);
 
-      if (cashTx) {
-        const weeks = [
-          { week: 'Week 1', inflow: 0, outflow: 0 },
-          { week: 'Week 2', inflow: 0, outflow: 0 },
-          { week: 'Week 3', inflow: 0, outflow: 0 },
-          { week: 'Week 4', inflow: 0, outflow: 0 },
-        ];
-        let totalIn = 0;
-        let totalOut = 0;
-        cashTx.forEach((tx) => {
-          const diffDays = Math.floor((new Date(tx.created_at).getTime() - sinceMs) / 86400000);
-          const weekIdx = Math.min(Math.floor(diffDays / 7), 3);
-          const amt = Number(tx.amount) || 0;
-          if (tx.transaction_type === 'cash-in') {
-            weeks[weekIdx].inflow += amt;
-            totalIn += amt;
-          } else if (['cash-out', 'pay-bill', 'pay-expense'].includes(tx.transaction_type)) {
-            weeks[weekIdx].outflow += amt;
-            totalOut += amt;
-          }
+      if (cashJE) {
+        const weeks = weekStarts.map((start, i) => ({ week: fmtWeekLabel(start), inflow: 0, outflow: 0 }));
+        cashJE.forEach((je) => {
+          const idx = getWeekIdx(je.date);
+          if (idx < 0) return;
+          const amt = Number(je.amount) || 0;
+          if (CASH_ACCOUNTS.includes(je.debit_account)) weeks[idx].inflow += amt;
+          if (CASH_ACCOUNTS.includes(je.credit_account)) weeks[idx].outflow += amt;
         });
         setCashFlowData(weeks);
+        const totalIn = weeks.reduce((s, w) => s + w.inflow, 0);
+        const totalOut = weeks.reduce((s, w) => s + w.outflow, 0);
         setCashFlowSummary({ inflow: totalIn, outflow: totalOut });
       }
 
-      const { data: menuItems } = await supabase
-        .from('menu_items')
-        .select('name, category, price')
-        .eq('available', true);
-      if (menuItems) setSaleableItems(menuItems);
+      // ── Saleable items: ranked by quantity sold this month vs last month ──
+      const now2 = new Date();
+      const thisMonthStart = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString();
+      const lastMonthStart = new Date(now2.getFullYear(), now2.getMonth() - 1, 1).toISOString();
+      const lastMonthEnd = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString();
+
+      const [{ data: tmItems }, { data: lmItems }] = await Promise.all([
+        supabase
+          .from('order_items')
+          .select('name, quantity')
+          .gte('created_at', thisMonthStart),
+        supabase
+          .from('order_items')
+          .select('name, quantity')
+          .gte('created_at', lastMonthStart)
+          .lt('created_at', lastMonthEnd),
+      ]);
+
+      const aggregate = (rows) => {
+        const map = {};
+        (rows || []).forEach((r) => { map[r.name] = (map[r.name] || 0) + (Number(r.quantity) || 1); });
+        return Object.entries(map)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([name, qty]) => ({ name, qty }));
+      };
+      setSaleableItemsThisMonth(aggregate(tmItems));
+      setSaleableItemsLastMonth(aggregate(lmItems));
 
       const since30 = new Date();
       since30.setDate(since30.getDate() - 30);
@@ -287,38 +428,60 @@ export default function AdminPage() {
       if (err) throw err;
       setInventoryItems(items || []);
 
-      // 2 + 3. Line items for the selected date range — single join query (avoids large .in() URL)
-      // Use !receiving_report_id hint to disambiguate when multiple FK relationships exist
-      // 1.2: Purchases = "paid" status only
-      const { data: rrItemsRaw, error: riErr } = await supabase
-        .from('receiving_report_items')
-        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!receiving_report_id(status, date)')
-        .eq('receiving_reports.status', 'paid')
-        .gte('receiving_reports.date', invDateFrom)
-        .lte('receiving_reports.date', invDateTo);
-      if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
-      const rrItems = rrItemsRaw || [];
+      // 2 + 3. Line items for the selected date range — Purchases = "paid" status only
+      // NOTE: .eq() on a joined table in Supabase only nullifies the join, it does NOT
+      // filter parent rows.  We must first fetch paid RR IDs then filter by them.
+      const { data: paidRRsInRange } = await supabase
+        .from('receiving_reports')
+        .select('id')
+        .eq('status', 'paid')
+        .gte('date', invDateFrom)
+        .lte('date', invDateTo);
+      const paidRRIdsInRange = (paidRRsInRange || []).map((r) => r.id);
+      let rrItems = [];
+      if (paidRRIdsInRange.length > 0) {
+        const { data: rrItemsRaw, error: riErr } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost')
+          .in('receiving_report_id', paidRRIdsInRange);
+        if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
+        rrItems = rrItemsRaw || [];
+      }
 
-      // 1.3: In Transit = "draft" status receiving reports in date range
-      const { data: inTransitRaw } = await supabase
-        .from('receiving_report_items')
-        .select('inventory_item_id, inventory_name, qty, receiving_reports!receiving_report_id(status, date)')
-        .eq('receiving_reports.status', 'draft')
-        .gte('receiving_reports.date', invDateFrom)
-        .lte('receiving_reports.date', invDateTo);
-      const inTransitItems = inTransitRaw || [];
+      // 1.3: In Transit = ALL "draft" status receiving reports (no date filter)
+      const { data: draftRRs } = await supabase
+        .from('receiving_reports')
+        .select('id')
+        .eq('status', 'draft');
+      const draftRRIds = (draftRRs || []).map((r) => r.id);
+      let inTransitItems = [];
+      if (draftRRIds.length > 0) {
+        const { data: inTransitRaw } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, inventory_name, qty')
+          .in('receiving_report_id', draftRRIds);
+        inTransitItems = inTransitRaw || [];
+      }
 
-      // 2b + 3b. Line items from Jan 1, 2026 → invDateTo — single join query for Average Cost
+      // 2b + 3b. Line items from Jan 1, 2026 → invDateTo for Average Cost
       // 1.4: Beginning Balance = "paid" status only (Jan 1, 2026 → start date − 1 day)
       const AVG_COST_START = '2026-01-01';
-      const { data: allPeriodItemsRaw, error: ri2Err } = await supabase
-        .from('receiving_report_items')
-        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!receiving_report_id(status, date)')
-        .eq('receiving_reports.status', 'paid')
-        .gte('receiving_reports.date', AVG_COST_START)
-        .lte('receiving_reports.date', invDateTo);
-      if (ri2Err) throw new Error('Failed to fetch all-period receiving report items: ' + ri2Err.message);
-      const allPeriodItems = allPeriodItemsRaw || [];
+      const { data: allPaidRRs } = await supabase
+        .from('receiving_reports')
+        .select('id')
+        .eq('status', 'paid')
+        .gte('date', AVG_COST_START)
+        .lte('date', invDateTo);
+      const allPaidRRIds = (allPaidRRs || []).map((r) => r.id);
+      let allPeriodItems = [];
+      if (allPaidRRIds.length > 0) {
+        const { data: allPeriodItemsRaw, error: ri2Err } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost')
+          .in('receiving_report_id', allPaidRRIds);
+        if (ri2Err) throw new Error('Failed to fetch all-period receiving report items: ' + ri2Err.message);
+        allPeriodItems = allPeriodItemsRaw || [];
+      }
 
       // 4. Price costing map (menu_item_name → inventory usage)
       const { data: costings } = await supabase
@@ -357,7 +520,7 @@ export default function AdminPage() {
       // Build name→id lookup for fallback when inventory_item_id is null
       const nameToIdMap = {};
       (items || []).forEach((inv) => {
-        nameToIdMap[inv.name?.toLowerCase().trim()] = inv.id;
+        nameToIdMap[(inv.name || '').toLowerCase().trim()] = inv.id;
       });
 
       // Build purchases map (period): inventory_item_id -> { qty, totalCost, totalLandedCost }
@@ -428,6 +591,331 @@ export default function AdminPage() {
     }
   }, [invDateFrom, invDateTo]);
 
+  // ── Fetch: Low & Out of Stock Items ──────────────────────────────────────
+  const fetchLowStockItems = useCallback(async () => {
+    if (!supabase) return;
+    setStockAlertLoading(true);
+    try {
+      const { data: items, error: err } = await supabase
+        .from('admin_inventory_items')
+        .select('*')
+        .eq('is_archived', false)
+        .order('code');
+      if (err) throw err;
+      const alerts = (items || []).filter((item) => {
+        const stock = Number(item.current_stock) || 0;
+        const minStock = Number(item.min_stock) || 0;
+        return stock <= minStock;
+      });
+      // For each alert item, try to find the last vendor that supplied it
+      if (alerts.length > 0) {
+        const itemIds = alerts.map((i) => i.id);
+        // Two-step: get RR IDs that have these items, then join with vendor
+        const { data: rrItemsData } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, receiving_report_id')
+          .in('inventory_item_id', itemIds);
+        const rrIds = [...new Set((rrItemsData || []).map((r) => r.receiving_report_id))];
+        let vendorMap = {};
+        if (rrIds.length > 0) {
+          const { data: rrs } = await supabase
+            .from('receiving_reports')
+            .select('id, vendor_id, vendor:vendors(id, name)')
+            .in('id', rrIds)
+            .order('date', { ascending: false });
+          // Build inventory_item_id -> last vendor
+          (rrItemsData || []).forEach((ri) => {
+            if (vendorMap[ri.inventory_item_id]) return; // already set (most recent first)
+            const rr = (rrs || []).find((r) => r.id === ri.receiving_report_id);
+            if (rr?.vendor) {
+              vendorMap[ri.inventory_item_id] = { id: rr.vendor_id, name: rr.vendor.name };
+            }
+          });
+        }
+        setLowStockItems(alerts.map((item) => ({
+          ...item,
+          lastVendor: vendorMap[item.id] || null,
+          status: Number(item.current_stock) <= 0 ? 'Out of Stock' : 'Low Stock',
+        })));
+      } else {
+        setLowStockItems([]);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setStockAlertLoading(false);
+    }
+  }, []);
+
+  // ── Fetch: Bills ──────────────────────────────────────────────────────────
+  const fetchBills = useCallback(async () => {
+    if (!supabase) return;
+    setLoading(true);
+    try {
+      const { data, error: err } = await supabase
+        .from('bills')
+        .select('*')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (err) throw err;
+      setBillsList(data || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // ── Bills: Generate Bill Number ───────────────────────────────────────────
+  const generateBillNumber = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.rpc('generate_bill_number');
+      if (!error && data) {
+        setBillNumber(data);
+        return;
+      }
+      // Fallback: manual generation
+      const yy = new Date().getFullYear().toString().slice(-2);
+      const prefix = `Bill#-${yy}`;
+      const { data: last } = await supabase
+        .from('bills')
+        .select('bill_number')
+        .like('bill_number', `${prefix}%`)
+        .order('bill_number', { ascending: false })
+        .limit(1);
+      let seq = 1;
+      if (last && last.length > 0 && last[0].bill_number) {
+        const n = parseInt(last[0].bill_number.slice(prefix.length), 10);
+        if (!isNaN(n)) seq = n + 1;
+      }
+      setBillNumber(`${prefix}${String(seq).padStart(6, '0')}`);
+    } catch {
+      setBillNumber('');
+    }
+  }, []);
+
+  // ── Bills: Save Bill ──────────────────────────────────────────────────────
+  const saveBill = useCallback(async () => {
+    if (!supabase) return;
+    setBillSaving(true);
+    setBillError('');
+    setBillSuccess('');
+    try {
+      if (!billForm.date) throw new Error('Please enter a date.');
+      const validLines = billLines.filter((l) => l.account_title || l.debit_amount);
+      if (validLines.length === 0) throw new Error('Please add at least one line item.');
+      const totalDebit = validLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
+      // total_credit equals total_debit — credited to Accounts Payable automatically
+      const totalCredit = totalDebit;
+
+      const payload = {
+        bill_number: billNumber,
+        contact: billForm.contact || null,
+        date: billForm.date,
+        description: billForm.description || null,
+        total_debit: totalDebit,
+        total_credit: totalCredit,
+        status: billEditItem?.status === 'approved' || billEditItem?.status === 'paid' ? billEditItem.status : 'draft',
+        updated_at: new Date().toISOString(),
+      };
+
+      let billId = billEditItem?.id;
+      if (billId) {
+        await supabase.from('bills').update(payload).eq('id', billId);
+        await supabase.from('bill_items').delete().eq('bill_id', billId);
+      } else {
+        const { data: inserted, error: insErr } = await supabase
+          .from('bills')
+          .insert({ ...payload, created_at: new Date().toISOString() })
+          .select()
+          .single();
+        if (insErr) throw insErr;
+        billId = inserted.id;
+      }
+
+      if (validLines.length > 0) {
+        const lineRows = validLines.map((l) => ({
+          bill_id: billId,
+          description: l.description || null,
+          account_title: l.account_title || null,
+          debit_amount: Number(l.debit_amount) || 0,
+          credit_amount: 0,
+        }));
+        const { error: lineErr } = await supabase.from('bill_items').insert(lineRows);
+        if (lineErr) throw lineErr;
+      }
+
+      setBillSuccess(`Bill ${billNumber} saved successfully.`);
+      setBillDialogOpen(false);
+      await fetchBills();
+      await generateBillNumber();
+    } catch (err) {
+      setBillError(err.message);
+    } finally {
+      setBillSaving(false);
+    }
+  }, [supabase, billForm, billLines, billNumber, billEditItem, fetchBills, generateBillNumber]);
+
+  // ── Bills: Open dialog ────────────────────────────────────────────────────
+  const openBillDialog = async (item = null) => {
+    setBillEditItem(item);
+    setBillError('');
+    setBillSuccess('');
+    if (item) {
+      setBillForm({
+        date: item.date || new Date().toISOString().split('T')[0],
+        contact: item.contact || '',
+        description: item.description || '',
+      });
+      setBillNumber(item.bill_number || '');
+      if (supabase) {
+        try {
+          const { data: lines } = await supabase
+            .from('bill_items')
+            .select('*')
+            .eq('bill_id', item.id);
+          setBillLines((lines && lines.length > 0) ? lines.map((l) => ({
+            description: l.description || '',
+            account_title: l.account_title || '',
+            debit_amount: String(l.debit_amount || ''),
+          })) : [{ description: '', account_title: '', debit_amount: '' }]);
+        } catch {
+          setBillLines([{ description: '', account_title: '', debit_amount: '' }]);
+        }
+      }
+    } else {
+      setBillForm({ date: new Date().toISOString().split('T')[0], contact: '', description: '' });
+      setBillLines([{ description: '', account_title: '', debit_amount: '' }]);
+      await generateBillNumber();
+    }
+    setBillDialogOpen(true);
+  };
+
+  // ── Bills: Approve bill ───────────────────────────────────────────────────
+  const approveBill = async (bill) => {
+    if (!supabase) return;
+    if (!window.confirm(`Approve Bill ${bill.bill_number}? This will record Journal Entries.`)) return;
+    try {
+      // Fetch line items
+      const { data: lines, error: lErr } = await supabase.from('bill_items').select('*').eq('bill_id', bill.id);
+      if (lErr) throw lErr;
+      const validLines = (lines || []).filter((l) => l.account_title && (Number(l.debit_amount) || 0) > 0);
+      if (validLines.length === 0) throw new Error('No valid line items to approve.');
+      const today = new Date().toISOString().split('T')[0];
+      // Create a JE per line: Dr [account_title] / Cr Accounts Payable
+      const jeRows = validLines.map((l) => ({
+        date: today,
+        debit_account: l.account_title,
+        credit_account: 'Accounts Payable',
+        amount: Number(l.debit_amount),
+        description: `Bill ${bill.bill_number}${l.description ? ' – ' + l.description : ''}`,
+        reference_type: 'bill',
+        reference: bill.id,
+      }));
+      const { error: jeErr } = await supabase.from('journal_entries').insert(jeRows);
+      if (jeErr) throw jeErr;
+      // Update bill status
+      const { error: updErr } = await supabase.from('bills').update({ status: 'approved', updated_at: new Date().toISOString() }).eq('id', bill.id);
+      if (updErr) throw updErr;
+      await fetchBills();
+      setBillSuccess(`Bill ${bill.bill_number} approved. Journal entries recorded.`);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // ── Bills: Pay bill ───────────────────────────────────────────────────────
+  const payBill = async () => {
+    if (!supabase || !billPayItem) return;
+    setBillPaying(true);
+    setBillPayError('');
+    try {
+      const creditAccount = billPayMethod === 'cash_on_hand' ? 'Cash on Hand'
+        : billPayMethod === 'cash_in_bank' ? 'Cash in Bank'
+        : "Owner's Draw"; // credit card
+      const today = new Date().toISOString().split('T')[0];
+      const jeRow = {
+        date: today,
+        debit_account: 'Accounts Payable',
+        credit_account: creditAccount,
+        amount: Number(billPayItem.total_debit) || 0,
+        description: `Payment for Bill ${billPayItem.bill_number}`,
+        reference_type: 'bill',
+        reference: billPayItem.id,
+      };
+      const { error: jeErr } = await supabase.from('journal_entries').insert([jeRow]);
+      if (jeErr) throw jeErr;
+      const { error: updErr } = await supabase.from('bills').update({
+        status: 'paid',
+        payment_method: billPayMethod,
+        updated_at: new Date().toISOString(),
+      }).eq('id', billPayItem.id);
+      if (updErr) throw updErr;
+      setBillPayDialogOpen(false);
+      setBillPayItem(null);
+      await fetchBills();
+      setBillSuccess(`Bill ${billPayItem.bill_number} marked as paid.`);
+    } catch (err) {
+      setBillPayError(err.message);
+    } finally {
+      setBillPaying(false);
+    }
+  };
+
+  // ── Bills: Save new contact (vendor enrollment) ───────────────────────────
+  const saveNewBillContact = async () => {
+    if (!supabase) return;
+    if (!billNewContactForm.name.trim()) { setBillNewContactError('Name is required.'); return; }
+    setBillNewContactSaving(true);
+    setBillNewContactError('');
+    try {
+      const { data: inserted, error: err } = await supabase.from('vendors').insert({
+        name: billNewContactForm.name.trim(),
+        address: billNewContactForm.address || null,
+        contact_number: billNewContactForm.contact || null,
+        tin: billNewContactForm.tin || null,
+      }).select().single();
+      if (err) throw err;
+      // Auto-select the new contact
+      setBillForm((p) => ({ ...p, contact: inserted.name }));
+      setBillContactPickerOpen(false);
+      setBillNewContactMode(false);
+      setBillNewContactForm({ name: '', address: '', contact: '', tin: '' });
+    } catch (err) {
+      setBillNewContactError(err.message);
+    } finally {
+      setBillNewContactSaving(false);
+    }
+  };
+
+  // ── Bills: View bill ──────────────────────────────────────────────────────
+  const viewBill = async (item) => {
+    setBillViewItem(item);
+    if (supabase) {
+      const { data: lines } = await supabase.from('bill_items').select('*').eq('bill_id', item.id);
+      setBillViewLines(lines || []);
+    }
+  };
+
+  // ── Bills: Fetch contacts for bills ──────────────────────────────────────
+  const fetchBillContacts = useCallback(async (q) => {
+    if (!supabase) return;
+    try {
+      const [{ data: vends }, { data: usrs }] = await Promise.all([
+        supabase.from('vendors').select('id, name').ilike('name', `%${q}%`).limit(10),
+        supabase.from('users').select('id, full_name, role').ilike('full_name', `%${q}%`).limit(10),
+      ]);
+      const combined = [
+        ...(vends || []).map((v) => ({ id: v.id, name: v.name, type: 'Vendor' })),
+        ...(usrs || []).map((u) => ({ id: u.id, name: u.full_name, type: u.role })),
+      ];
+      setBillContactList(combined);
+    } catch {
+      setBillContactList([]);
+    }
+  }, []);
+
   // ── Fetch: Price Costing ──────────────────────────────────────────────────
   const fetchCosting = useCallback(async () => {
     if (!supabase) return;
@@ -469,7 +957,7 @@ export default function AdminPage() {
         supabase
           .from('receiving_reports')
           .select('*, vendor:vendors(name)')
-          .order('date', { ascending: false }),
+          .order('rr_number', { ascending: false }),
         supabase.from('admin_inventory_items').select('*').order('name'),
       ]);
       if (rrErr) throw rrErr;
@@ -509,55 +997,116 @@ export default function AdminPage() {
         });
         setFinData({ type: 'cashflow', rows });
       } else if (finSubTab === 'pl') {
-        const [{ data: ordersData }, { data: expData }, { data: cogData }] = await Promise.all([
-          supabase.from('orders').select('total').eq('status', 'order_delivered').gte('created_at', fromISO).lte('created_at', toISO),
-          supabase.from('cash_drawer_transactions').select('amount').in('transaction_type', ['pay-expense', 'pay-bill']).gte('created_at', fromISO).lte('created_at', toISO),
-          supabase.from('price_costing_items').select('total_cogs'),
+        const dateFrom = fromISO.split('T')[0];
+        const dateTo = toISO.split('T')[0];
+        const OPEX_ACCOUNTS = [
+          'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+          'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+          'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+          'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+        ];
+        const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
+          supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', OPEX_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
         ]);
-        const revenue = (ordersData || []).reduce((s, o) => s + (Number(o.total) || 0), 0);
-        const opExp = (expData || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-        const cogs = (cogData || []).reduce((s, c) => s + (Number(c.total_cogs) || 0), 0);
-        setFinData({ type: 'pl', revenue, cogs, opExp, grossProfit: revenue - cogs, netProfit: revenue - cogs - opExp });
-      } else if (finSubTab === 'balance') {
-        const [{ data: allCash }, { data: invList }, { data: rrApproved }] = await Promise.all([
-          supabase.from('cash_drawer_transactions').select('amount, transaction_type'),
-          supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
-          supabase.from('receiving_reports').select('total_landed_cost').eq('status', 'approved'),
-        ]);
-        let cashOnHand = 0;
-        (allCash || []).forEach((tx) => {
-          const amt = Number(tx.amount) || 0;
-          if (tx.transaction_type === 'cash-in') cashOnHand += amt;
-          else cashOnHand -= amt;
+        const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
+        const expByAccount = {};
+        OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        (expAllData || []).forEach((e) => {
+          if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
         });
+        const opExp = Object.values(expByAccount).reduce((s, v) => s + v, 0);
+        const totalRevenue = revenue + deliveryIncome;
+        setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit: totalRevenue - cogs, expByAccount, opExp, netProfit: totalRevenue - cogs - opExp });
+      } else if (finSubTab === 'balance') {
+        // Balance Sheet: Balance as of Jan 1, 2026 (opening) + total JE transactions up to finDateTo.
+        // All amounts are derived purely from Journal Entries (Dr - Cr per account).
+        const bsDateTo = toISO.split('T')[0];
+        const [
+          { data: invList },
+          { data: cashOnHandDebit }, { data: cashOnHandCredit },
+          { data: cashInBankDebit }, { data: cashInBankCredit },
+          { data: kitEquipDebit }, { data: kitEquipCredit }, { data: accumDeprData },
+          { data: ownCapCredit }, { data: ownCapDebit }, { data: retEarnCredit }, { data: retEarnDebit },
+          { data: ownDrawDebit }, { data: ownDrawCredit },
+          { data: apCredit }, { data: apDebit },
+        ] = await Promise.all([
+          supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Cash on Hand').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Cash on Hand').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Cash in Bank').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Cash in Bank').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Kitchen Equipment').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Kitchen Equipment').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Accumulated Depreciation').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Capital").lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Capital").lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Retained Earnings').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Retained Earnings').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Draw").lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Draw").lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Accounts Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Accounts Payable').lte('date', bsDateTo),
+        ]);
+        const sumAmt = (arr) => (arr || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const cashOnHand = sumAmt(cashOnHandDebit) - sumAmt(cashOnHandCredit);
+        const cashInBank = sumAmt(cashInBankDebit) - sumAmt(cashInBankCredit);
         const invValue = (invList || []).reduce((s, i) => s + (Number(i.current_stock) || 0) * (Number(i.cost_per_unit) || 0), 0);
-        const ap = (rrApproved || []).reduce((s, r) => s + (Number(r.total_landed_cost) || 0), 0);
+        // Accounts Payable: credit (increases liability) - debit (decreases liability)
+        const ap = sumAmt(apCredit) - sumAmt(apDebit);
+        const kitchenEquipment = sumAmt(kitEquipDebit) - sumAmt(kitEquipCredit);
+        const accumDepreciation = sumAmt(accumDeprData);
+        const ownersCapital = sumAmt(ownCapCredit) - sumAmt(ownCapDebit);
+        const retainedEarnings = sumAmt(retEarnCredit) - sumAmt(retEarnDebit);
+        const ownersDraw = sumAmt(ownDrawDebit) - sumAmt(ownDrawCredit);
+        const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
+        const totalEquity = ownersCapital - ownersDraw + retainedEarnings;
         setFinData({
           type: 'balance',
           cashOnHand,
+          cashInBank,
           invValue,
-          totalAssets: cashOnHand + invValue,
+          kitchenEquipment,
+          accumDepreciation,
+          totalAssets,
           ap,
           totalLiabilities: ap,
-          equity: cashOnHand + invValue - ap,
+          ownersCapital,
+          ownersDraw,
+          retainedEarnings,
+          totalEquity,
+          equity: totalAssets - ap,
         });
       } else if (finSubTab === 'budget') {
-        const { data: expData } = await supabase
-          .from('cash_drawer_transactions')
-          .select('amount, bill_type, category, description')
-          .in('transaction_type', ['pay-expense', 'pay-bill'])
-          .gte('created_at', fromISO)
-          .lte('created_at', toISO);
-        const cats = { Payroll: 0, Utilities: 0, Rent: 0, Cost: 0, Others: 0 };
-        (expData || []).forEach((e) => {
-          const amt = Number(e.amount) || 0;
-          if (e.bill_type === 'payroll' || e.category === '5100') cats.Payroll += amt;
-          else if (e.bill_type === 'utilities' || e.category === '5200') cats.Utilities += amt;
-          else if (e.category === 'rent' || (e.description || '').toLowerCase().includes('rent')) cats.Rent += amt;
-          else if (e.category === '5900') cats.Cost += amt;
-          else cats.Others += amt;
+        const dateFrom = fromISO.split('T')[0];
+        const dateTo = toISO.split('T')[0];
+        const OPEX_ACCOUNTS = [
+          'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+          'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+          'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+          'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+        ];
+        const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
+          supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', OPEX_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+        ]);
+        const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
+        const expByAccount = {};
+        OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        (expAllData || []).forEach((e) => {
+          if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
         });
-        setFinData({ type: 'budget', cats });
+        const opExp = Object.values(expByAccount).reduce((s, v) => s + v, 0);
+        const totalRevenue = revenue + deliveryIncome;
+        setFinData({ type: 'budget', revenue, deliveryIncome, totalRevenue, cogs, grossProfit: totalRevenue - cogs, expByAccount, opExp, netProfit: totalRevenue - cogs - opExp });
       } else if (finSubTab === 'tax') {
         const { data: ordersData } = await supabase
           .from('orders')
@@ -585,6 +1134,65 @@ export default function AdminPage() {
       setLoading(false);
     }
   }, [finSubTab, finDateFrom, finDateTo]);
+
+  // ── Fetch: Chart of Accounts ──────────────────────────────────────────────
+  const fetchCOA = useCallback(async () => {
+    if (!supabase) return;
+    setCoaLoading(true);
+    try {
+      // Compute day before coaDateFrom for opening balance
+      const prevDay = new Date(coaDateFrom);
+      prevDay.setDate(prevDay.getDate() - 1);
+      const prevDayStr = prevDay.toISOString().split('T')[0];
+
+      const [{ data: periodEntries }, { data: openingEntries }] = await Promise.all([
+        supabase.from('journal_entries').select('debit_account, credit_account, amount').gte('date', coaDateFrom).lte('date', coaDateTo),
+        supabase.from('journal_entries').select('debit_account, credit_account, amount').lte('date', prevDayStr),
+      ]);
+
+      // net[account] = totalDebits - totalCredits
+      const computeNets = (entries) => {
+        const nets = {};
+        (entries || []).forEach((e) => {
+          if (e.debit_account) nets[e.debit_account] = (nets[e.debit_account] || 0) + (Number(e.amount) || 0);
+          if (e.credit_account) nets[e.credit_account] = (nets[e.credit_account] || 0) - (Number(e.amount) || 0);
+        });
+        return nets;
+      };
+      const periodNets = computeNets(periodEntries);
+      const openingNets = computeNets(openingEntries);
+
+      // Balance Sheet accounts use opening balance + period activity
+      const BS_ACCOUNTS = [
+        'Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory',
+        'Kitchen Equipment', 'Accumulated Depreciation',
+        'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities',
+        "Owner's Capital", "Owner's Draw", 'Retained Earnings',
+      ];
+      // Income Statement accounts use period activity only
+      const IS_ACCOUNTS = [
+        'Revenue', 'Delivery Income', 'Other Income',
+        'Cost of Goods Sold', "Rider's Fee",
+        'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+        'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+        'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+        'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense',
+      ];
+
+      const amounts = {};
+      BS_ACCOUNTS.forEach((acct) => {
+        amounts[acct] = (openingNets[acct] || 0) + (periodNets[acct] || 0);
+      });
+      IS_ACCOUNTS.forEach((acct) => {
+        amounts[acct] = periodNets[acct] || 0;
+      });
+      setCoaData(amounts);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCoaLoading(false);
+    }
+  }, [supabase, coaDateFrom, coaDateTo]);
 
   // ── Fetch: Profile ────────────────────────────────────────────────────────
   const fetchProfile = useCallback(async () => {
@@ -620,6 +1228,8 @@ export default function AdminPage() {
         .order('created_at', { ascending: false });
       if (journalDateFrom) q = q.gte('date', journalDateFrom);
       if (journalDateTo) q = q.lte('date', journalDateTo);
+
+      // Apply main tab filter
       if (journalSubTab === 'sales') {
         q = q.eq('reference_type', 'order');
       } else if (journalSubTab === 'purchases') {
@@ -627,6 +1237,24 @@ export default function AdminPage() {
       } else if (journalSubTab === 'others') {
         q = q.in('reference_type', ['cash_adjustment', 'manual_entry']);
       }
+
+      // Apply sub-filter
+      if (journalSubTab === 'sales' && journalSubFilter !== 'all') {
+        if (journalSubFilter === 'cash_sales') q = q.eq('debit_account', 'Cash on Hand');
+        else if (journalSubFilter === 'gcash_sales') q = q.eq('debit_account', 'Cash in Bank');
+        else if (journalSubFilter === 'points_claimed') q = q.eq('debit_account', 'Accounts Payable');
+      } else if (journalSubTab === 'purchases' && journalSubFilter !== 'all') {
+        if (journalSubFilter === 'approved_rr') q = q.eq('reference_type', 'receiving_report');
+        else if (journalSubFilter === 'rr_cash_on_hand') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash on Hand');
+        else if (journalSubFilter === 'rr_cash_in_bank') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash in Bank');
+        else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', "Owner's Draw");
+      } else if (journalSubTab === 'others' && journalSubFilter !== 'all') {
+        if (journalSubFilter === 'adjustments') q = q.eq('reference_type', 'cash_adjustment');
+        else if (journalSubFilter === 'manual_entry') q = q.eq('reference_type', 'manual_entry');
+      }
+
+      // Account name filter is applied client-side per-line in the display layer
+
       const { data, error: err } = await q;
       if (err) throw err;
       setJournalData(data || []);
@@ -635,7 +1263,7 @@ export default function AdminPage() {
     } finally {
       setJournalLoading(false);
     }
-  }, [journalSubTab, journalDateFrom, journalDateTo]);
+  }, [journalSubTab, journalSubFilter, journalDateFrom, journalDateTo]);
 
   // ── Manual Entry: Generate Entry Number ──────────────────────────────────
   const generateManualEntryNumber = useCallback(async () => {
@@ -678,6 +1306,35 @@ export default function AdminPage() {
     }
   }, []);
 
+  // ── Save New Contact (vendor) from picker ──────────────────────────────────
+  const saveNewContact = useCallback(async () => {
+    if (!supabase) return;
+    setNewContactSaving(true);
+    setNewContactError('');
+    try {
+      if (!newContactForm.name.trim()) throw new Error('Contact name is required.');
+      const { data: inserted, error: err } = await supabase
+        .from('vendors')
+        .insert({
+          name: newContactForm.name.trim(),
+          address: newContactForm.address || null,
+          contact_number: newContactForm.contact || null,
+          tin: newContactForm.tin || null,
+        })
+        .select()
+        .single();
+      if (err) throw err;
+      setManualEntryForm((p) => ({ ...p, name: inserted.name }));
+      setNewContactMode(false);
+      setNewContactForm({ name: '', address: '', contact: '', tin: '' });
+      setContactPickerOpen(false);
+    } catch (err) {
+      setNewContactError(err.message);
+    } finally {
+      setNewContactSaving(false);
+    }
+  }, [supabase, newContactForm]);
+
   // ── Save Manual Entry ─────────────────────────────────────────────────────
   const saveManualEntry = useCallback(async () => {
     if (!supabase) return;
@@ -686,16 +1343,17 @@ export default function AdminPage() {
     setManualSuccess('');
     try {
       if (!manualEntryForm.date) throw new Error('Please enter a date.');
-      const validLines = manualEntryLines.filter(
-        (l) => l.description || l.debit_account || l.credit_account || l.debit_amount || l.credit_amount,
-      );
+      const validLines = manualEntryLines.filter((l) => l.account && l.amount);
       if (validLines.length === 0) throw new Error('Please add at least one line item.');
+      const totalDebit = validLines.filter((l) => l.type === 'debit').reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const totalCredit = validLines.filter((l) => l.type === 'credit').reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      if (Math.abs(totalDebit - totalCredit) > 0.01) throw new Error(`Entry is unbalanced: Debit ₱${totalDebit.toFixed(2)} ≠ Credit ₱${totalCredit.toFixed(2)}.`);
       const rows = validLines.map((l) => ({
         date: manualEntryForm.date,
-        description: l.description || '',
-        debit_account: l.debit_account || '',
-        credit_account: l.credit_account || '',
-        amount: Math.max(Number(l.debit_amount) || 0, Number(l.credit_amount) || 0),
+        description: l.description || manualEntryForm.description || '',
+        debit_account: l.type === 'debit' ? l.account : '',
+        credit_account: l.type === 'credit' ? l.account : '',
+        amount: Number(l.amount) || 0,
         reference_type: 'manual_entry',
         entry_number: manualEntryNumber || null,
         name: manualEntryForm.name || null,
@@ -704,15 +1362,16 @@ export default function AdminPage() {
       const { error: insertErr } = await supabase.from('journal_entries').insert(rows);
       if (insertErr) throw insertErr;
       setManualSuccess(`Manual entry ${manualEntryNumber} saved successfully.`);
-      setManualEntryLines([{ description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' }]);
-      setManualEntryForm({ date: '', name: '', reference_number: '' });
+      setManualEntryLines([{ description: '', account: '', type: 'debit', amount: '' }]);
+      setManualEntryForm({ date: new Date().toISOString().split('T')[0], name: '', reference_number: '', description: '' });
+      setManualSpecialNote('');
       await generateManualEntryNumber();
     } catch (err) {
       setManualError(err.message);
     } finally {
       setManualSaving(false);
     }
-  }, [supabase, manualEntryForm, manualEntryLines, manualEntryNumber, generateManualEntryNumber]);
+  }, [supabase, manualEntryForm, manualEntryLines, manualEntryNumber, manualSpecialNote, generateManualEntryNumber]);
 
   // ── Trigger fetches on tab change ─────────────────────────────────────────
   useEffect(() => {
@@ -723,16 +1382,42 @@ export default function AdminPage() {
     else if (activeTab === 'financial') fetchFinancial();
     else if (activeTab === 'profile') fetchProfile();
     else if (activeTab === 'journal') fetchJournal();
-    else if (activeTab === 'manual') generateManualEntryNumber();
-  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber]);
+    else if (activeTab === 'manual') { setManualSpecialNote(''); generateManualEntryNumber(); }
+    else if (activeTab === 'bills') { fetchBills(); generateBillNumber(); }
+  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber, fetchBills, generateBillNumber]);
+
+  useEffect(() => {
+    if (activeTab === 'dashboard' && dashSubTab === 'stock-alerts') fetchLowStockItems();
+  }, [activeTab, dashSubTab, fetchLowStockItems]);
 
   useEffect(() => {
     if (activeTab === 'financial') fetchFinancial();
   }, [activeTab, finSubTab, finDateFrom, finDateTo, fetchFinancial]);
 
   useEffect(() => {
+    if (activeTab === 'financial' && finSubTab === 'coa') fetchCOA();
+  }, [activeTab, finSubTab, coaDateFrom, coaDateTo, fetchCOA]);
+
+  useEffect(() => {
     if (activeTab === 'journal') fetchJournal();
-  }, [activeTab, journalSubTab, journalDateFrom, journalDateTo, fetchJournal]);
+  }, [activeTab, journalSubTab, journalSubFilter, journalDateFrom, journalDateTo, fetchJournal]);
+
+  // ── Real-time subscription for Journal Entries ────────────────────────────
+  // Keep a ref so the subscription can always call the latest fetchJournal
+  // (which carries the current filter state) without needing to be recreated.
+  const fetchJournalRef = useRef(fetchJournal);
+  useEffect(() => { fetchJournalRef.current = fetchJournal; }, [fetchJournal]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel('admin_journal_entries_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_entries' }, () => {
+        fetchJournalRef.current?.();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Nav items (memoised) — must be declared before any early return ──────
   const navItems = useMemo(
@@ -744,6 +1429,7 @@ export default function AdminPage() {
       { key: 'financial', label: '📈 Financial Reports' },
       { key: 'journal', label: '📒 Journal Entries' },
       { key: 'manual', label: '✏️ Manual Entry' },
+      { key: 'bills', label: '🧾 Bills' },
       { key: 'profile', label: '👤 My Profile' },
     ],
     [],
@@ -779,10 +1465,11 @@ export default function AdminPage() {
         uom: item.uom || 'pcs',
         cost_per_unit: String(item.cost_per_unit || 0),
         current_stock: String(item.current_stock || 0),
+        min_stock: String(item.min_stock || 0),
       });
     } else {
       const dept = 'DKS';
-      setInvForm({ name: '', department: dept, code: suggestCode(dept, inventoryItems), uom: 'pcs', cost_per_unit: '0', current_stock: '0' });
+      setInvForm({ name: '', department: dept, code: suggestCode(dept, inventoryItems), uom: 'pcs', cost_per_unit: '0', current_stock: '0', min_stock: '0' });
     }
     setInvDialogOpen(true);
   };
@@ -797,6 +1484,7 @@ export default function AdminPage() {
         uom: invForm.uom,
         cost_per_unit: Number(invForm.cost_per_unit),
         current_stock: Number(invForm.current_stock),
+        min_stock: Number(invForm.min_stock),
       };
       if (invEditItem) {
         await supabase.from('admin_inventory_items').update(payload).eq('id', invEditItem.id);
@@ -804,7 +1492,16 @@ export default function AdminPage() {
         await supabase.from('admin_inventory_items').insert(payload);
       }
       setInvDialogOpen(false);
-      fetchInventory();
+      // If triggered from RR item picker, refresh invItems and re-open the picker
+      if (rrNewItemReturnIdx !== null) {
+        const returnIdx = rrNewItemReturnIdx;
+        setRrNewItemReturnIdx(null);
+        await fetchRR();
+        setInvPickerQuery('');
+        setInvPickerOpen(returnIdx);
+      } else {
+        fetchInventory();
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -1216,7 +1913,7 @@ export default function AdminPage() {
         return s + tlc;
       }, 0);
       if (totalLC > 0) {
-        await supabase.from('journal_entries').insert({
+        const { error: jeErr } = await supabase.from('journal_entries').insert({
           date: rr.date || new Date().toISOString().split('T')[0],
           description: `RR Approval: ${rr.rr_number}`,
           debit_account: 'Inventory',
@@ -1224,7 +1921,9 @@ export default function AdminPage() {
           amount: Math.round(totalLC * 100) / 100,
           reference_id: rr.id,
           reference_type: 'receiving_report',
+          name: rr.vendor?.name || '',
         });
+        if (jeErr) console.error('[Admin] RR Approval journal entry failed:', jeErr.message);
       }
 
       fetchRR();
@@ -1293,7 +1992,7 @@ export default function AdminPage() {
         rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
         rrPayForm.payment_mode === 'credit_card'  ? "Owner's Draw" :
         'Cash on Hand';
-      await supabase.from('journal_entries').insert({
+      const { error: jeErr } = await supabase.from('journal_entries').insert({
         date: rrPayForm.payment_date,
         description: `RR Payment: ${rrPayItem.rr_number} (${rrPayForm.payment_mode.replace(/_/g, ' ')})`,
         debit_account: 'Accounts Payable',
@@ -1301,7 +2000,9 @@ export default function AdminPage() {
         amount: amt,
         reference_id: rrPayItem.id,
         reference_type: 'rr_payment',
+        name: rrPayItem.vendor?.name || '',
       });
+      if (jeErr) console.error('[Admin] RR Payment journal entry failed:', jeErr.message);
 
       // Mark RR as paid
       await supabase.from('receiving_reports').update({ status: 'paid' }).eq('id', rrPayItem.id);
@@ -1431,109 +2132,267 @@ export default function AdminPage() {
           {/* ──────────────── DASHBOARD ──────────────── */}
           {activeTab === 'dashboard' && (
             <div>
-              <h1 style={styles.pageTitle}>Dashboard</h1>
-              {loading && <p style={styles.loadingText}>Loading…</p>}
-              <div style={styles.dashGrid}>
-                {/* Widget 1.1 – Sales Trend */}
-                <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Monthly Sales Trend (4 Weeks)</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={salesTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                      <XAxis dataKey="week" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 12 }} />
-                      <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 12 }} />
-                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} />
-                      <Bar dataKey="sales" fill="#ffc107" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Widget 1.2 – Cash Flow */}
-                <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Cash Flow Report (Weekly)</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={cashFlowData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                      <XAxis dataKey="week" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 12 }} />
-                      <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 12 }} />
-                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} />
-                      <Legend wrapperStyle={{ color: '#ccc' }} />
-                      <Bar dataKey="inflow" fill="#4caf50" name="Inflow" />
-                      <Bar dataKey="outflow" fill="#f44336" name="Outflow" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                  {(() => {
-                    const total = cashFlowSummary.inflow + cashFlowSummary.outflow;
-                    const inPct = total > 0 ? ((cashFlowSummary.inflow / total) * 100).toFixed(1) : 0;
-                    const outPct = total > 0 ? ((cashFlowSummary.outflow / total) * 100).toFixed(1) : 0;
-                    return (
-                      <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 13 }}>
-                        <span style={{ color: '#4caf50' }}>Inflow: {inPct}%</span>
-                        <span style={{ color: '#f44336' }}>Outflow: {outPct}%</span>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Widget 1.3 – Saleable Items */}
-                <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Saleable Items</h3>
-                  <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-                    <table style={styles.table}>
-                      <thead>
-                        <tr>
-                          <th style={styles.th}>Name</th>
-                          <th style={styles.th}>Category</th>
-                          <th style={styles.th}>Price</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {saleableItems.map((item, idx) => (
-                          <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                            <td style={styles.td}>{item.name}</td>
-                            <td style={styles.td}>{item.category}</td>
-                            <td style={styles.td}>{fmt(item.price)}</td>
-                          </tr>
-                        ))}
-                        {saleableItems.length === 0 && (
-                          <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No items</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Widget 1.4 – Expenses Breakdown */}
-                <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Monthly Expenses Breakdown</h3>
-                  {expensesBreakdown.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie
-                          data={expensesBreakdown}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          label={({ name, pct }) => `${name} ${pct}%`}
-                          labelLine={{ stroke: '#555' }}
-                        >
-                          {expensesBreakdown.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={PIE_COLORS[entry.name] || '#999'} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }}
-                          formatter={(val) => fmt(val)}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <p style={{ color: '#666', textAlign: 'center', marginTop: 40 }}>No expense data</p>
-                  )}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <h1 style={styles.pageTitle}>Dashboard</h1>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[{ key: 'overview', label: '📊 Overview' }, { key: 'stock-alerts', label: '⚠️ Stock Alerts' }].map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => setDashSubTab(t.key)}
+                      style={{
+                        padding: '7px 16px', borderRadius: 20, cursor: 'pointer', fontSize: 12,
+                        fontFamily: 'Poppins, sans-serif',
+                        border: `1px solid ${dashSubTab === t.key ? '#ffc107' : '#444'}`,
+                        background: dashSubTab === t.key ? '#ffc107' : 'transparent',
+                        color: dashSubTab === t.key ? '#000' : '#ccc',
+                        fontWeight: dashSubTab === t.key ? 700 : 400,
+                      }}
+                    >{t.label}</button>
+                  ))}
                 </div>
               </div>
+
+              {/* ── Overview sub-tab ── */}
+              {dashSubTab === 'overview' && (
+                <>
+                  {loading && <p style={styles.loadingText}>Loading…</p>}
+                  <div style={styles.dashGrid}>
+                    {/* Widget 1.1 – Sales Trend (Mon–Sun weekly dates) */}
+                    <div style={styles.card}>
+                      <h3 style={styles.cardTitle}>Monthly Sales Trend (Mon–Sun Weekly)</h3>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={salesTrend}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                          <XAxis dataKey="week" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                          <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                          <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} formatter={(v) => fmt(v)} />
+                          <Bar dataKey="sales" fill="#ffc107" name="Sales" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      <p style={{ fontSize: 11, color: '#666', marginTop: 4 }}>Week labels = Mon–Sun date range</p>
+                    </div>
+
+                    {/* Widget 1.2 – Cash Flow (from Journal Entries, Mon–Sun weekly) */}
+                    <div style={styles.card}>
+                      <h3 style={styles.cardTitle}>Cash Flow Report (Mon–Sun Weekly)</h3>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={cashFlowData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                          <XAxis dataKey="week" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                          <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                          <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} formatter={(v) => fmt(v)} />
+                          <Legend wrapperStyle={{ color: '#ccc' }} />
+                          <Bar dataKey="inflow" fill="#4caf50" name="Inflow (Cash on Hand + Bank)" />
+                          <Bar dataKey="outflow" fill="#f44336" name="Outflow (Cash on Hand + Bank)" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      {(() => {
+                        const total = cashFlowSummary.inflow + cashFlowSummary.outflow;
+                        const inPct = total > 0 ? ((cashFlowSummary.inflow / total) * 100).toFixed(1) : 0;
+                        const outPct = total > 0 ? ((cashFlowSummary.outflow / total) * 100).toFixed(1) : 0;
+                        return (
+                          <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 13 }}>
+                            <span style={{ color: '#4caf50' }}>Inflow: {inPct}%</span>
+                            <span style={{ color: '#f44336' }}>Outflow: {outPct}%</span>
+                          </div>
+                        );
+                      })()}
+                      <p style={{ fontSize: 11, color: '#666', marginTop: 4 }}>Source: Journal Entries (Cash on Hand &amp; Cash in Bank)</p>
+                    </div>
+
+                    {/* Widget 1.3 – Top Selling Items */}
+                    <div style={styles.card}>
+                      <h3 style={styles.cardTitle}>Top Selling Items</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          <p style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>This Month</p>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr>
+                                <th style={styles.th}>#</th>
+                                <th style={styles.th}>Item</th>
+                                <th style={styles.th}>Qty</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {saleableItemsThisMonth.map((item, idx) => (
+                                <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{idx + 1}</td>
+                                  <td style={styles.td}>{item.name}</td>
+                                  <td style={styles.td}>{item.qty}</td>
+                                </tr>
+                              ))}
+                              {saleableItemsThisMonth.length === 0 && (
+                                <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No data</td></tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div>
+                          <p style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>Last Month</p>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr>
+                                <th style={styles.th}>#</th>
+                                <th style={styles.th}>Item</th>
+                                <th style={styles.th}>Qty</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {saleableItemsLastMonth.map((item, idx) => (
+                                <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{idx + 1}</td>
+                                  <td style={styles.td}>{item.name}</td>
+                                  <td style={styles.td}>{item.qty}</td>
+                                </tr>
+                              ))}
+                              {saleableItemsLastMonth.length === 0 && (
+                                <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No data</td></tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Widget 1.4 – Expenses Breakdown */}
+                    <div style={styles.card}>
+                      <h3 style={styles.cardTitle}>Monthly Expenses Breakdown</h3>
+                      {expensesBreakdown.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={250}>
+                          <PieChart>
+                            <Pie
+                              data={expensesBreakdown}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              label={({ name, pct }) => `${name} ${pct}%`}
+                              labelLine={{ stroke: '#555' }}
+                            >
+                              {expensesBreakdown.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={PIE_COLORS[entry.name] || '#999'} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }}
+                              formatter={(val) => fmt(val)}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <p style={{ color: '#666', textAlign: 'center', marginTop: 40 }}>No expense data</p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ── Stock Alerts sub-tab ── */}
+              {dashSubTab === 'stock-alerts' && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h2 style={{ color: '#ffc107', fontSize: 17, margin: 0, fontFamily: 'Playfair Display, serif' }}>
+                      ⚠️ Low &amp; Out of Stock Items
+                    </h2>
+                    <button onClick={fetchLowStockItems} style={styles.primaryBtn}>🔄 Refresh</button>
+                  </div>
+                  {stockAlertLoading && <p style={styles.loadingText}>Loading…</p>}
+                  {!stockAlertLoading && lowStockItems.length === 0 && (
+                    <div style={{ ...styles.card, textAlign: 'center', color: '#4caf50', padding: 32 }}>
+                      ✅ All inventory items are sufficiently stocked.
+                    </div>
+                  )}
+                  {!stockAlertLoading && lowStockItems.length > 0 && (() => {
+                    // Group by last vendor
+                    const byVendor = {};
+                    lowStockItems.forEach((item) => {
+                      const vKey = item.lastVendor?.name || '— No Vendor —';
+                      if (!byVendor[vKey]) byVendor[vKey] = { vendor: item.lastVendor, items: [] };
+                      byVendor[vKey].items.push(item);
+                    });
+                    return Object.entries(byVendor).map(([vName, group]) => (
+                      <div key={vName} style={{ ...styles.card, marginBottom: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <h3 style={{ ...styles.cardTitle, marginBottom: 0 }}>
+                            🏭 {vName}
+                          </h3>
+                          <button
+                            style={{ ...styles.primaryBtn, fontSize: 12, padding: '6px 14px' }}
+                            onClick={() => {
+                              // Pre-fill RR and switch to RR tab
+                              const rrItems = group.items.map((item) => ({
+                                id: 'tmp-' + item.id,
+                                inventory_item_id: item.id,
+                                inventory_name: item.name,
+                                inventory_code: item.code || '',
+                                uom: item.uom || '',
+                                qty: String(Math.max(1, (Number(item.min_stock) || 0) - (Number(item.current_stock) || 0) + 1)),
+                                cost: String(item.cost_per_unit || 0),
+                                total_cost: 0,
+                                freight_allocated: 0,
+                                total_landed_cost: 0,
+                              }));
+                              const yy = new Date().getFullYear().toString().slice(-2);
+                              setRrForm({
+                                rr_number: 'RR-' + yy + String(Date.now()).slice(-7),
+                                vendor_id: group.vendor?.id || '',
+                                vendor_name: vName === '— No Vendor —' ? '' : vName,
+                                vendor_address: '',
+                                vendor_contact: '',
+                                vendor_tin: '',
+                                date: new Date().toISOString().split('T')[0],
+                                terms: '',
+                                freight_in: '0',
+                              });
+                              setRrLineItems(rrItems);
+                              setRrEditItem(null);
+                              setRrSaveError('');
+                              setRrDialogOpen(true);
+                              setActiveTab('rr');
+                            }}
+                          >
+                            📋 Convert to Receiving Report
+                          </button>
+                        </div>
+                        <div style={styles.tableWrap}>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr>
+                                {['Code', 'Item Name', 'UoM', 'Current Stock', 'Min Stock', 'Status'].map((h) => (
+                                  <th key={h} style={styles.th}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.items.map((item, idx) => (
+                                <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{item.code}</td>
+                                  <td style={styles.td}>{item.name}</td>
+                                  <td style={styles.td}>{item.uom}</td>
+                                  <td style={{ ...styles.td, color: Number(item.current_stock) <= 0 ? '#f44336' : '#ffc107', fontWeight: 600 }}>
+                                    {Number(item.current_stock) || 0}
+                                  </td>
+                                  <td style={styles.td}>{Number(item.min_stock) || 0}</td>
+                                  <td style={styles.td}>
+                                    <span style={{
+                                      ...styles.badge,
+                                      background: item.status === 'Out of Stock' ? '#3a1a1a' : '#3a2a00',
+                                      color: item.status === 'Out of Stock' ? '#f44336' : '#ffc107',
+                                      border: `1px solid ${item.status === 'Out of Stock' ? '#f44336' : '#ffc107'}`,
+                                    }}>{item.status}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
             </div>
           )}
 
@@ -1542,7 +2401,15 @@ export default function AdminPage() {
             <div>
               <div style={styles.tabHeader}>
                 <h1 style={styles.pageTitle}>Inventory</h1>
-                <button onClick={() => openInvDialog()} style={styles.primaryBtn}>+ New Item</button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select style={{ ...styles.input, width: 160 }} value={invStatusFilter} onChange={(e) => setInvStatusFilter(e.target.value)}>
+                    <option value="">All Status</option>
+                    <option value="in-stock">In Stock</option>
+                    <option value="low-stock">Low Stock</option>
+                    <option value="out-of-stock">Out of Stock</option>
+                  </select>
+                  <button onClick={() => openInvDialog()} style={styles.primaryBtn}>+ New Item</button>
+                </div>
               </div>
 
               {/* Date Coverage */}
@@ -1553,7 +2420,7 @@ export default function AdminPage() {
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={invDateTo} onChange={(e) => setInvDateTo(e.target.value)} />
                 <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
-                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = Draft RRs in range. Sold = Delivered/Completed orders. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
+                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = All Draft RRs (all dates). Sold = Delivered/Completed orders. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
               </div>
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
@@ -1567,28 +2434,44 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, inTransit: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).map((item, idx) => (
+                    {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, inTransit: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).filter((item) => {
+                       if (!invStatusFilter) return true;
+                       const stock = Number(item.current_stock ?? item.ending) || 0;
+                       const minStock = Number(item.min_stock) || 0;
+                       if (invStatusFilter === 'out-of-stock') return stock <= 0;
+                       if (invStatusFilter === 'low-stock') return stock > 0 && stock <= minStock;
+                       if (invStatusFilter === 'in-stock') return stock > minStock;
+                       return true;
+                     }).map((item, idx) => (
                       <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{item.code}</td>
                         <td style={styles.td}>{item.name}</td>
                         <td style={styles.td}>{item.department}</td>
                         <td style={styles.td}>{item.uom}</td>
-                        <td style={{ ...styles.td, color: '#ccc' }}>{Number(item.beginning).toFixed(3)}</td>
-                        <td style={{ ...styles.td, color: '#4caf50' }}>{Number(item.purchases).toFixed(3)}</td>
-                        <td style={{ ...styles.td, color: '#f44336' }}>{Number(item.sold).toFixed(3)}</td>
-                        <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{Number(item.ending).toFixed(3)}</td>
+                        <td style={{ ...styles.td, color: '#ccc' }}>{Math.round(Number(item.beginning) || 0)}</td>
+                        <td style={{ ...styles.td, color: '#4caf50' }}>{Math.round(Number(item.purchases) || 0)}</td>
+                        <td style={{ ...styles.td, color: '#f44336' }}>{Math.round(Number(item.sold) || 0)}</td>
+                        <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{Math.round(Number(item.ending) || 0)}</td>
                         <td style={styles.td}>{fmt(item.avg_cost ?? item.cost_per_unit)}</td>
                         <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{fmt((Number(item.ending) || 0) * (Number(item.avg_cost ?? item.cost_per_unit) || 0))}</td>
-                        <td style={{ ...styles.td, color: '#2196f3' }}>{Number(item.inTransit || 0).toFixed(3)}</td>
+                        <td style={{ ...styles.td, color: '#2196f3' }}>{Math.round(Number(item.inTransit) || 0)}</td>
                         <td style={styles.td}>
-                          <span style={{
-                            ...styles.badge,
-                            background: Number(item.current_stock) > 0 ? '#1a3a1a' : '#3a1a1a',
-                            color: Number(item.current_stock) > 0 ? '#4caf50' : '#f44336',
-                            border: `1px solid ${Number(item.current_stock) > 0 ? '#4caf50' : '#f44336'}`,
-                          }}>
-                            {Number(item.current_stock) > 0 ? 'In Stock' : 'Out of Stock'}
-                          </span>
+                          {(() => {
+                            const stock = Number(item.current_stock ?? item.ending) || 0;
+                            const minStock = Number(item.min_stock) || 0;
+                            const isOut = stock <= 0;
+                            const isLow = !isOut && minStock > 0 && stock <= minStock;
+                            return (
+                              <span style={{
+                                ...styles.badge,
+                                background: isOut ? '#3a1a1a' : isLow ? '#3a2a00' : '#1a3a1a',
+                                color: isOut ? '#f44336' : isLow ? '#ffc107' : '#4caf50',
+                                border: `1px solid ${isOut ? '#f44336' : isLow ? '#ffc107' : '#4caf50'}`,
+                              }}>
+                                {isOut ? 'Out of Stock' : isLow ? 'Low Stock' : 'In Stock'}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td style={styles.td}>
                           <button onClick={() => openInvDialog(item)} style={styles.actionBtn}>Edit</button>
@@ -1618,75 +2501,6 @@ export default function AdminPage() {
                 </table>
               </div>
 
-              {/* Inventory Dialog */}
-              <Dialog.Root open={invDialogOpen} onOpenChange={setInvDialogOpen}>
-                <Dialog.Portal>
-                  <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={styles.dialogContent} aria-describedby={undefined}>
-                    <Dialog.Title style={styles.dialogTitle}>
-                      {invEditItem ? 'Edit Inventory Item' : 'New Inventory Item'}
-                    </Dialog.Title>
-                    <div style={styles.formGrid}>
-                      <label style={styles.label}>Inventory Name</label>
-                      <input
-                        style={styles.input}
-                        value={invForm.name}
-                        onChange={(e) => setInvForm((p) => ({ ...p, name: e.target.value }))}
-                        placeholder="Item name"
-                      />
-                      <label style={styles.label}>Department</label>
-                      <select
-                        style={styles.input}
-                        value={invForm.department}
-                        onChange={(e) => {
-                          const dept = e.target.value;
-                          setInvForm((p) => ({ ...p, department: dept, code: suggestCode(dept, inventoryItems) }));
-                        }}
-                      >
-                        <option value="DKS">DKS – Drinks</option>
-                        <option value="PTS">PTS – Pastries</option>
-                        <option value="FRD">FRD – Fried</option>
-                        <option value="OVH">OVH – Overhead</option>
-                      </select>
-                      <label style={styles.label}>Inventory Code</label>
-                      <div>
-                        <input
-                          style={styles.input}
-                          value={invForm.code}
-                          onChange={(e) => setInvForm((p) => ({ ...p, code: e.target.value }))}
-                        />
-                        <span style={styles.helperText}>Format: DKS######, PTS######, FRD######, OVH######</span>
-                      </div>
-                      <label style={styles.label}>Unit of Measure</label>
-                      <input
-                        style={styles.input}
-                        value={invForm.uom}
-                        onChange={(e) => setInvForm((p) => ({ ...p, uom: e.target.value }))}
-                        placeholder="pcs, kg, L, etc."
-                      />
-                      <label style={styles.label}>Cost per Unit (₱)</label>
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={invForm.cost_per_unit}
-                        onChange={(e) => setInvForm((p) => ({ ...p, cost_per_unit: e.target.value }))}
-                      />
-                      <label style={styles.label}>Current Stock</label>
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={invForm.current_stock}
-                        onChange={(e) => setInvForm((p) => ({ ...p, current_stock: e.target.value }))}
-                      />
-                    </div>
-                    <div style={styles.dialogFooter}>
-                      <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
-                      <button onClick={saveInvItem} style={styles.primaryBtn}>Save</button>
-                    </div>
-                  </Dialog.Content>
-                </Dialog.Portal>
-              </Dialog.Root>
-
               {/* Archive Confirm Dialog */}
               <Dialog.Root open={!!invDeleteConfirm} onOpenChange={() => setInvDeleteConfirm(null)}>
                 <Dialog.Portal>
@@ -1706,6 +2520,82 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* Inventory Enrollment Dialog – rendered globally so it works from any tab (e.g. RR picker + New Item) */}
+          <Dialog.Root open={invDialogOpen} onOpenChange={setInvDialogOpen}>
+            <Dialog.Portal>
+              <Dialog.Overlay style={styles.dialogOverlay} />
+              <Dialog.Content style={styles.dialogContent} aria-describedby={undefined}>
+                <Dialog.Title style={styles.dialogTitle}>
+                  {invEditItem ? 'Edit Inventory Item' : 'New Inventory Item'}
+                </Dialog.Title>
+                <div style={styles.formGrid}>
+                  <label style={styles.label}>Inventory Name</label>
+                  <input
+                    style={styles.input}
+                    value={invForm.name}
+                    onChange={(e) => setInvForm((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="Item name"
+                  />
+                  <label style={styles.label}>Department</label>
+                  <select
+                    style={styles.input}
+                    value={invForm.department}
+                    onChange={(e) => {
+                      const dept = e.target.value;
+                      setInvForm((p) => ({ ...p, department: dept, code: suggestCode(dept, inventoryItems) }));
+                    }}
+                  >
+                    <option value="DKS">DKS – Drinks</option>
+                    <option value="PTS">PTS – Pastries</option>
+                    <option value="FRD">FRD – Fried</option>
+                    <option value="OVH">OVH – Overhead</option>
+                  </select>
+                  <label style={styles.label}>Inventory Code</label>
+                  <div>
+                    <input
+                      style={styles.input}
+                      value={invForm.code}
+                      onChange={(e) => setInvForm((p) => ({ ...p, code: e.target.value }))}
+                    />
+                    <span style={styles.helperText}>Format: DKS######, PTS######, FRD######, OVH######</span>
+                  </div>
+                  <label style={styles.label}>Unit of Measure</label>
+                  <input
+                    style={styles.input}
+                    value={invForm.uom}
+                    onChange={(e) => setInvForm((p) => ({ ...p, uom: e.target.value }))}
+                    placeholder="pcs, kg, L, etc."
+                  />
+                  <label style={styles.label}>Cost per Unit (₱)</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={invForm.cost_per_unit}
+                    onChange={(e) => setInvForm((p) => ({ ...p, cost_per_unit: e.target.value }))}
+                  />
+                  <label style={styles.label}>Current Stock</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={invForm.current_stock}
+                    onChange={(e) => setInvForm((p) => ({ ...p, current_stock: e.target.value }))}
+                  />
+                  <label style={styles.label}>Min Stock (Low-Stock Threshold)</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={invForm.min_stock}
+                    onChange={(e) => setInvForm((p) => ({ ...p, min_stock: e.target.value }))}
+                  />
+                </div>
+                <div style={styles.dialogFooter}>
+                  <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
+                  <button onClick={saveInvItem} style={styles.primaryBtn}>Save</button>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+
           {/* ──────────────── PRICE COSTING ──────────────── */}
           {activeTab === 'costing' && (
             <div>
@@ -1714,6 +2604,14 @@ export default function AdminPage() {
                 <button onClick={() => openCostingDialog()} style={styles.primaryBtn}>+ New Item</button>
               </div>
               {loading && <p style={styles.loadingText}>Loading…</p>}
+              <div style={{ marginBottom: 12 }}>
+                <input
+                  style={{ ...styles.input, width: 280 }}
+                  placeholder="Search menu items…"
+                  value={costingSearch}
+                  onChange={(e) => setCostingSearch(e.target.value)}
+                />
+              </div>
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
                   <thead>
@@ -1724,7 +2622,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {costingHeaders.map((item, idx) => {
+                    {costingHeaders.filter((item) => !costingSearch || (item.menu_item_name || '').toLowerCase().includes(costingSearch.toLowerCase())).map((item, idx) => {
                       const sp = Number(item.selling_price) || 0;
                       const tec = Number(item.total_estimated_cogs) || 0;
                       const cmRatio = sp > 0 ? (sp - tec) / sp : 0;
@@ -1985,16 +2883,13 @@ export default function AdminPage() {
 
                       return (
                         <div style={styles.formGrid}>
-                          {/* Selling Price (locked to menu) */}
-                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (₱) — from Menu</label>
-                          <div>
-                            <input
-                              style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
-                              readOnly
-                              value={fmt(sellingPrice)}
-                            />
-                            <span style={styles.helperText}>Auto-filled from cashier menu price. Use 🔍 search to change.</span>
-                          </div>
+                          {/* Total Raw Materials (sum of inventory line totals) */}
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>Total Raw Materials (₱)</label>
+                          <input
+                            style={{ ...styles.input, background: '#111', color: '#4caf50', fontWeight: 700 }}
+                            readOnly
+                            value={fmt(lineSubtotal)}
+                          />
 
                           <label style={styles.label}>Labor Cost (₱)</label>
                           <input style={styles.input} type="number" value={costingForm.labor_cost}
@@ -2094,6 +2989,17 @@ export default function AdminPage() {
                               value={`${cmPct.toFixed(2)}%`}
                             />
                           </div>
+
+                          {/* Selling Price (locked to menu) */}
+                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (₱) — from Menu</label>
+                          <div>
+                            <input
+                              style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
+                              readOnly
+                              value={fmt(sellingPrice)}
+                            />
+                            <span style={styles.helperText}>Auto-filled from cashier menu price. Use 🔍 search to change.</span>
+                          </div>
                         </div>
                       );
                     })()}
@@ -2176,6 +3082,14 @@ export default function AdminPage() {
                 <button onClick={() => openRRDialog()} style={styles.primaryBtn}>+ New RR</button>
               </div>
               {loading && <p style={styles.loadingText}>Loading…</p>}
+              <div style={{ marginBottom: 12 }}>
+                <input
+                  style={{ ...styles.input, width: 280 }}
+                  placeholder="Search RR# or vendor…"
+                  value={rrSearch}
+                  onChange={(e) => setRrSearch(e.target.value)}
+                />
+              </div>
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
                   <thead>
@@ -2186,7 +3100,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rrList.map((rr, idx) => (
+                    {rrList.filter((rr) => !rrSearch || (rr.rr_number || '').toLowerCase().includes(rrSearch.toLowerCase()) || (rr.vendor?.name || '').toLowerCase().includes(rrSearch.toLowerCase())).map((rr, idx) => (
                       <tr key={rr.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{rr.rr_number}</td>
                         <td style={styles.td}>{rr.vendor?.name || '—'}</td>
@@ -2299,7 +3213,7 @@ export default function AdminPage() {
                                   <td style={styles.td}>{li.inventory_item?.name || li.inventory_name || '—'}</td>
                                   <td style={styles.td}><span style={{ fontSize: 11 }}>{li.inventory_item?.code || li.inventory_code || '—'}</span></td>
                                   <td style={styles.td}><span style={{ fontSize: 11 }}>{li.uom || '—'}</span></td>
-                                  <td style={{ ...styles.td, color: '#ccc' }}>{Number(li.qty).toFixed(3)}</td>
+                                  <td style={{ ...styles.td, color: '#ccc' }}>{Math.round(Number(li.qty) || 0)}</td>
                                   <td style={{ ...styles.td, color: '#ccc' }}>{fmt(li.cost)}</td>
                                   <td style={styles.td}>{fmt(tc)}</td>
                                   <td style={styles.td}>{fmt(Number(li.freight_allocated) || 0)}</td>
@@ -2663,6 +3577,20 @@ export default function AdminPage() {
                     </div>
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                      <button
+                        style={styles.primaryBtn}
+                        onClick={() => {
+                          const idx = invPickerOpen;
+                          setInvPickerOpen(null);
+                          setInvPickerQuery('');
+                          setRrNewItemReturnIdx(idx);
+                          // Defer to next tick so Radix UI fully unmounts the picker's
+                          // focus-trap before opening the enrollment dialog; opening both
+                          // in the same event-loop tick prevents the new dialog from
+                          // receiving focus and appearing to the user.
+                          setTimeout(() => openInvDialog(null), 0);
+                        }}
+                      >+ New Item</button>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
@@ -2683,6 +3611,7 @@ export default function AdminPage() {
                   { key: 'balance', label: 'Balance Sheet' },
                   { key: 'budget', label: 'Budget Variance' },
                   { key: 'tax', label: 'Tax Report' },
+                  { key: 'coa', label: 'Chart of Accounts' },
                 ].map((st) => (
                   <button
                     key={st.key}
@@ -2704,14 +3633,16 @@ export default function AdminPage() {
                 ))}
               </div>
 
-              {/* Date range */}
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
-                <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
-                <input type="date" style={{ ...styles.input, width: 160 }} value={finDateFrom} onChange={(e) => setFinDateFrom(e.target.value)} />
-                <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
-                <input type="date" style={{ ...styles.input, width: 160 }} value={finDateTo} onChange={(e) => setFinDateTo(e.target.value)} />
-                <button onClick={fetchFinancial} style={styles.primaryBtn}>Refresh</button>
-              </div>
+              {/* Date range (not shown for CoA) */}
+              {finSubTab !== 'coa' && (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+                  <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
+                  <input type="date" style={{ ...styles.input, width: 160 }} value={finDateFrom} onChange={(e) => setFinDateFrom(e.target.value)} />
+                  <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
+                  <input type="date" style={{ ...styles.input, width: 160 }} value={finDateTo} onChange={(e) => setFinDateTo(e.target.value)} />
+                  <button onClick={fetchFinancial} style={styles.primaryBtn}>Refresh</button>
+                </div>
+              )}
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
 
@@ -2771,6 +3702,14 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.revenue)}</td>
                       </tr>
                       <tr style={styles.trOdd}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Delivery Income</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.deliveryIncome)}</td>
+                      </tr>
+                      <tr style={{ background: '#2a2a1a' }}>
+                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Revenue</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalRevenue)}</td>
+                      </tr>
+                      <tr style={styles.trOdd}>
                         <td style={styles.td}>Cost of Goods Sold (COGS)</td>
                         <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.cogs)})</td>
                       </tr>
@@ -2778,9 +3717,21 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Gross Profit</td>
                         <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.grossProfit >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.grossProfit)}</td>
                       </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={styles.td}>Operating Expenses</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.opExp)})</td>
+                      <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, fontWeight: 600 }}>Operating Expenses</td>
+                        <td style={styles.td}></td>
+                      </tr>
+                      {finData.expByAccount && Object.entries(finData.expByAccount).map(([acct, amt], idx) => (
+                        <tr key={acct} style={idx % 2 === 0 ? styles.trOdd : styles.trEven}>
+                          <td style={{ ...styles.td, paddingLeft: 24 }}>{acct}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: amt > 0 ? '#f44336' : '#888' }}>
+                            {amt > 0 ? `(${fmt(amt)})` : fmt(0)}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr style={{ background: '#2a1a1a' }}>
+                        <td style={{ ...styles.td, fontWeight: 700, color: '#f44336' }}>Total Operating Expenses</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#f44336' }}>({fmt(finData.opExp)})</td>
                       </tr>
                       <tr style={{ background: '#3a2a0a' }}>
                         <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Net Profit</td>
@@ -2795,6 +3746,7 @@ export default function AdminPage() {
               {finSubTab === 'balance' && finData?.type === 'balance' && (
                 <div style={{ ...styles.card, maxWidth: 560 }}>
                   <h3 style={styles.cardTitle}>Balance Sheet</h3>
+                  <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>As of {finDateTo} — cumulative from all transactions up to this date.</p>
                   <table style={styles.table}>
                     <thead>
                       <tr>
@@ -2804,18 +3756,40 @@ export default function AdminPage() {
                     </thead>
                     <tbody>
                       <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, fontWeight: 600 }}>Assets</td>
+                        <td style={styles.td}></td>
+                      </tr>
+                      <tr style={styles.trOdd}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Cash on Hand</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.cashOnHand)}</td>
+                      </tr>
+                      <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Cash in Bank</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.cashInBank)}</td>
                       </tr>
                       <tr style={styles.trOdd}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Inventory Value</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.invValue)}</td>
+                      </tr>
+                      <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Kitchen Equipment</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.kitchenEquipment)}</td>
+                      </tr>
+                      <tr style={styles.trOdd}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Less: Accumulated Depreciation</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: finData.accumDepreciation > 0 ? '#f44336' : '#888' }}>
+                          {finData.accumDepreciation > 0 ? `(${fmt(finData.accumDepreciation)})` : fmt(0)}
+                        </td>
                       </tr>
                       <tr style={{ background: '#2a2a1a' }}>
                         <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Assets</td>
                         <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalAssets)}</td>
                       </tr>
                       <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, fontWeight: 600 }}>Liabilities</td>
+                        <td style={styles.td}></td>
+                      </tr>
+                      <tr style={styles.trOdd}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Accounts Payable</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ap)}</td>
                       </tr>
@@ -2823,49 +3797,174 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, fontWeight: 700, color: '#f44336' }}>Total Liabilities</td>
                         <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#f44336' }}>{fmt(finData.totalLiabilities)}</td>
                       </tr>
+                      <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, fontWeight: 600 }}>Equity</td>
+                        <td style={styles.td}></td>
+                      </tr>
+                      <tr style={styles.trOdd}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s Capital</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ownersCapital)}</td>
+                      </tr>
+                      <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, paddingLeft: 24, color: '#f44336' }}>Less: Owner&apos;s Draw</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: finData.ownersDraw > 0 ? '#f44336' : '#888' }}>
+                          {finData.ownersDraw > 0 ? `(${fmt(finData.ownersDraw)})` : fmt(0)}
+                        </td>
+                      </tr>
+                      <tr style={styles.trOdd}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Retained Earnings</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.retainedEarnings)}</td>
+                      </tr>
                       <tr style={{ background: '#1a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#4caf50' }}>Equity</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#4caf50' }}>{fmt(finData.equity)}</td>
+                        <td style={{ ...styles.td, fontWeight: 700, color: '#4caf50' }}>Total Equity</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#4caf50' }}>{fmt(finData.totalEquity)}</td>
+                      </tr>
+                      <tr style={{ background: '#1a1a2a' }}>
+                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Liabilities &amp; Equity</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalLiabilities + finData.totalEquity)}</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
               )}
 
-              {/* Budget Variance */}
+              {/* Budget Variance — follows P&L structure with editable budget rows */}
               {finSubTab === 'budget' && finData?.type === 'budget' && (
-                <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Budget Variance</h3>
-                  <p style={{ color: '#888', fontSize: 12, marginBottom: 12 }}>
-                    Note: Budget values are not yet configurable. Set budgets in a future update.
+                <div style={{ ...styles.card, maxWidth: 680 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h3 style={styles.cardTitle}>Budget Variance Report</h3>
+                    <button
+                      style={{ ...styles.actionBtn, fontSize: 11 }}
+                      onClick={() => {
+                        try { localStorage.setItem('bbc_budget_values', JSON.stringify(budgetValues)); } catch { /* noop */ }
+                        alert('Budget values saved to browser storage.');
+                      }}
+                    >💾 Save Budget</button>
+                  </div>
+                  <p style={{ color: '#888', fontSize: 11, marginBottom: 12 }}>
+                    Budget column is editable. Actual values are pulled from Journal Entries (same formula as P&amp;L). Click a Budget cell to edit.
                   </p>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr>
-                        {['Category', 'Budget (₱)', 'Actual (₱)', 'Variance (₱)', 'Variance %'].map((h) => (
-                          <th key={h} style={styles.th}>{h}</th>
-                        ))}
+                  {(() => {
+                    const bv = budgetValues;
+                    const setBv = (key, val) => {
+                      const next = { ...bv, [key]: val };
+                      setBudgetValues(next);
+                      try { localStorage.setItem('bbc_budget_values', JSON.stringify(next)); } catch { /* noop */ }
+                    };
+                    const bdgInput = (key, actual) => (
+                      <input
+                        type="number"
+                        style={{ ...styles.input, width: 110, padding: '4px 8px', fontSize: 12, textAlign: 'right' }}
+                        value={bv[key] !== undefined ? bv[key] : ''}
+                        placeholder="0.00"
+                        onChange={(e) => setBv(key, e.target.value)}
+                      />
+                    );
+                    const varRow = (label, actualVal, bKey, isExpense = false, indent = false) => {
+                      const budget = Number(bv[bKey]) || 0;
+                      const actual = Number(actualVal) || 0;
+                      const variance = isExpense ? budget - actual : actual - budget;
+                      const varPct = budget !== 0 ? ((variance / Math.abs(budget)) * 100).toFixed(1) : '—';
+                      const varColor = variance >= 0 ? '#4caf50' : '#f44336';
+                      const budgetPct = totalRevenueBudget !== 0 ? ((budget / totalRevenueBudget) * 100).toFixed(1) : '—';
+                      const actualPct = finData.totalRevenue !== 0 ? ((actual / finData.totalRevenue) * 100).toFixed(1) : '—';
+                      return (
+                        <tr key={bKey} style={{ background: '#161616' }}>
+                          <td style={{ ...styles.td, paddingLeft: indent ? 28 : 12 }}>{label}</td>
+                          <td style={{ ...styles.td, padding: '6px 8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                              <span style={{ color: '#888', fontSize: 11 }}>₱</span>
+                              {bdgInput(bKey, actual)}
+                            </div>
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>
+                            {budgetPct !== '—' ? `${budgetPct}%` : '—'}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: isExpense ? '#f44336' : '#4caf50' }}>
+                            {isExpense && actual > 0 ? `(${fmt(actual)})` : fmt(actual)}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>
+                            {actualPct !== '—' ? `${actualPct}%` : '—'}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: varColor, fontWeight: 600 }}>
+                            {variance !== 0 ? (variance > 0 ? '+' : '') + fmt(variance) : fmt(0)}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: varColor }}>
+                            {varPct !== '—' ? `${varPct}%` : '—'}
+                          </td>
+                        </tr>
+                      );
+                    };
+                    const OPEX_ACCOUNTS = [
+                      'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+                      'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+                      'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+                      'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+                    ];
+                    const headerRow = (label, bg = '#1e1e1e') => (
+                      <tr key={label} style={{ background: bg }}>
+                        <td colSpan={7} style={{ ...styles.td, fontWeight: 700, color: '#ffc107', fontSize: 13 }}>{label}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(finData.cats).map(([cat, actual], idx) => {
-                        const budget = 0;
-                        const variance = actual - budget;
-                        const variancePct = budget > 0 ? ((variance / budget) * 100).toFixed(1) : '—';
-                        return (
-                          <tr key={cat} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                            <td style={styles.td}>{cat}</td>
-                            <td style={styles.td}>{fmt(budget)}</td>
-                            <td style={styles.td}>{fmt(actual)}</td>
-                            <td style={{ ...styles.td, color: variance > 0 ? '#f44336' : '#4caf50' }}>{fmt(variance)}</td>
-                            <td style={{ ...styles.td, color: variance > 0 ? '#f44336' : '#4caf50' }}>
-                              {variancePct}{variancePct !== '—' ? '%' : ''}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                    );
+                    const totalRow = (label, actual, budget, isExpense = false, bg = '#2a2a1a') => {
+                      const variance = isExpense ? Number(budget) - Number(actual) : Number(actual) - Number(budget);
+                      const varPct = budget !== 0 ? ((variance / Math.abs(Number(budget))) * 100).toFixed(1) : '—';
+                      const varColor = variance >= 0 ? '#4caf50' : '#f44336';
+                      const budgetPct = totalRevenueBudget !== 0 ? ((Number(budget) / totalRevenueBudget) * 100).toFixed(1) : '—';
+                      const actualPct = finData.totalRevenue !== 0 ? ((Number(actual) / finData.totalRevenue) * 100).toFixed(1) : '—';
+                      return (
+                        <tr key={label} style={{ background: bg, fontWeight: 700 }}>
+                          <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>{label}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>{fmt(Number(budget) || 0)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>
+                            {budgetPct !== '—' ? `${budgetPct}%` : '—'}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: isExpense ? '#f44336' : '#4caf50' }}>
+                            {isExpense && actual > 0 ? `(${fmt(actual)})` : fmt(actual)}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>
+                            {actualPct !== '—' ? `${actualPct}%` : '—'}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: varColor, fontWeight: 700 }}>
+                            {variance !== 0 ? (variance > 0 ? '+' : '') + fmt(variance) : fmt(0)}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: varColor }}>
+                            {varPct !== '—' ? `${varPct}%` : '—'}
+                          </td>
+                        </tr>
+                      );
+                    };
+                    const totalRevenueBudget = (Number(bv['Revenue']) || 0) + (Number(bv['Delivery Income']) || 0);
+                    const grossProfitBudget = totalRevenueBudget - (Number(bv['Cost of Goods Sold']) || 0);
+                    const opExpBudget = OPEX_ACCOUNTS.reduce((s, a) => s + (Number(bv[a]) || 0), 0);
+                    const netProfitBudget = grossProfitBudget - opExpBudget;
+                    return (
+                      <div style={styles.tableWrap}>
+                        <table style={styles.table}>
+                          <thead>
+                            <tr>
+                              {['Account', 'Budget (₱)', 'Budget %', 'Actual (₱)', 'Actual %', 'Variance (₱)', 'Variance %'].map((h) => (
+                                <th key={h} style={{ ...styles.th, textAlign: h !== 'Account' ? 'right' : 'left' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {headerRow('Revenue')}
+                            {varRow('Revenue', finData.revenue, 'Revenue')}
+                            {varRow('Delivery Income', finData.deliveryIncome, 'Delivery Income', false, true)}
+                            {totalRow('Total Revenue', finData.totalRevenue, totalRevenueBudget)}
+                            {headerRow('Cost of Goods Sold')}
+                            {varRow('Cost of Goods Sold', finData.cogs, 'Cost of Goods Sold', true, true)}
+                            {totalRow('Gross Profit', finData.grossProfit, grossProfitBudget, false, '#1a3a1a')}
+                            {headerRow('Operating Expenses')}
+                            {OPEX_ACCOUNTS.map((a) => varRow(a, finData.expByAccount?.[a] || 0, a, true, true))}
+                            {totalRow('Total Operating Expenses', finData.opExp, opExpBudget, true, '#2a1a1a')}
+                            {totalRow('Net Profit', finData.netProfit, netProfitBudget, false, '#2a2a00')}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -2895,6 +3994,118 @@ export default function AdminPage() {
                       )}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {/* Chart of Accounts */}
+              {finSubTab === 'coa' && (
+                <div style={{ ...styles.card, maxWidth: 680 }}>
+                  <h3 style={styles.cardTitle}>Chart of Accounts</h3>
+                  {/* Date coverage controls */}
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+                    <label style={{ color: '#aaa', fontSize: 12 }}>Date From:</label>
+                    <input
+                      type="date"
+                      style={{ ...styles.input, width: 140 }}
+                      value={coaDateFrom}
+                      onChange={(e) => setCoaDateFrom(e.target.value)}
+                    />
+                    <label style={{ color: '#aaa', fontSize: 12 }}>To:</label>
+                    <input
+                      type="date"
+                      style={{ ...styles.input, width: 140 }}
+                      value={coaDateTo}
+                      onChange={(e) => setCoaDateTo(e.target.value)}
+                    />
+                    <button onClick={fetchCOA} style={styles.primaryBtn} disabled={coaLoading}>
+                      {coaLoading ? 'Loading…' : 'Refresh'}
+                    </button>
+                  </div>
+                  <p style={{ color: '#888', fontSize: 11, marginBottom: 16 }}>
+                    Balance Sheet accounts: opening balance (before {coaDateFrom}) + period activity. Income Statement accounts: period activity only.
+                  </p>
+                  {(() => {
+                    const COA_CATEGORIES = [
+                      {
+                        category: 'Assets',
+                        color: '#4caf50',
+                        type: 'bs',
+                        accounts: ['Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory', 'Kitchen Equipment', 'Accumulated Depreciation'],
+                      },
+                      {
+                        category: 'Liabilities',
+                        color: '#f44336',
+                        type: 'bs',
+                        accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities'],
+                      },
+                      {
+                        category: 'Equity',
+                        color: '#2196f3',
+                        type: 'bs',
+                        accounts: ["Owner's Capital", "Owner's Draw", 'Retained Earnings'],
+                      },
+                      {
+                        category: 'Revenue',
+                        color: '#ffc107',
+                        type: 'is',
+                        accounts: ['Revenue', 'Delivery Income', 'Other Income'],
+                      },
+                      {
+                        category: 'Expenses',
+                        color: '#ff9800',
+                        type: 'is',
+                        accounts: [
+                          'Cost of Goods Sold', "Rider's Fee",
+                          'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+                          'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+                          'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+                          'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense',
+                        ],
+                      },
+                    ];
+                    const allAccountsFlat = COA_CATEGORIES.flatMap((c) => c.accounts);
+                    const grandTotal = coaData
+                      ? allAccountsFlat.reduce((s, acct) => s + Math.abs(coaData[acct] || 0), 0)
+                      : 0;
+                    return (
+                      <div>
+                        <table style={styles.table}>
+                          <thead>
+                            <tr>
+                              <th style={styles.th}>Account Name</th>
+                              <th style={{ ...styles.th, textAlign: 'right' }}>Amount (₱)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {COA_CATEGORIES.map(({ category, color, accounts }) => (
+                              <React.Fragment key={category}>
+                                <tr style={{ background: '#1e1e1e' }}>
+                                  <td colSpan={2} style={{ ...styles.td, fontWeight: 700, color, fontSize: 13, borderLeft: `4px solid ${color}` }}>{category}</td>
+                                </tr>
+                                {accounts.map((acct, i) => {
+                                  const amt = coaData ? (coaData[acct] || 0) : null;
+                                  return (
+                                    <tr key={acct} style={{ background: i % 2 === 0 ? '#161616' : '#1a1a1a' }}>
+                                      <td style={{ ...styles.td, paddingLeft: 24 }}>{acct}</td>
+                                      <td style={{ ...styles.td, textAlign: 'right', color: amt !== null && amt < 0 ? '#f44336' : '#ccc' }}>
+                                        {amt === null ? '—' : fmt(amt)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </React.Fragment>
+                            ))}
+                            <tr style={{ background: '#2a2a00' }}>
+                              <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Grand Total (Absolute)</td>
+                              <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>
+                                {coaData ? fmt(grandTotal) : '—'}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -2978,88 +4189,241 @@ export default function AdminPage() {
             <div>
               <h1 style={styles.pageTitle}>Journal Entries</h1>
 
-              {/* Sub-tab filters */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-                {[
-                  { key: 'all', label: 'All' },
-                  { key: 'sales', label: 'Sales' },
-                  { key: 'purchases', label: 'Purchases' },
-                  { key: 'others', label: 'Others' },
-                ].map((st) => (
-                  <button
-                    key={st.key}
-                    onClick={() => setJournalSubTab(st.key)}
-                    style={{
-                      padding: '8px 18px', borderRadius: 20,
-                      border: `1px solid ${journalSubTab === st.key ? '#ffc107' : '#333'}`,
-                      background: journalSubTab === st.key ? '#ffc107' : 'transparent',
-                      color: journalSubTab === st.key ? '#000' : '#ccc',
-                      cursor: 'pointer', fontFamily: 'Poppins, sans-serif',
-                      fontWeight: journalSubTab === st.key ? 700 : 400, fontSize: 13,
-                    }}
-                  >{st.label}</button>
+              {/* Row 1: Report Type dropdown + sub-filters */}
+              <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <label style={{ color: '#ccc', fontSize: 13, whiteSpace: 'nowrap' }}>Report Type:</label>
+                <select
+                  value={journalSubTab}
+                  onChange={(e) => { setJournalSubTab(e.target.value); setJournalSubFilter('all'); }}
+                  style={{ ...styles.input, width: 180, paddingRight: 8 }}
+                >
+                  <option value="all">General</option>
+                  <option value="sales">Sales</option>
+                  <option value="purchases">Purchases</option>
+                  <option value="others">Adjusting Entries</option>
+                </select>
+
+                {/* Sub-filters rendered inline */}
+                {journalSubTab === 'sales' && [
+                  { key: 'all', label: 'All Sales' },
+                  { key: 'cash_sales', label: 'Cash Sales' },
+                  { key: 'gcash_sales', label: 'GCash Sales' },
+                  { key: 'points_claimed', label: 'Points Claimed' },
+                ].map((sf) => (
+                  <button key={sf.key} onClick={() => setJournalSubFilter(sf.key)}
+                    style={{ padding: '5px 14px', borderRadius: 14, cursor: 'pointer', fontFamily: 'Poppins, sans-serif', fontSize: 12,
+                      border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
+                      background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
+                      color: journalSubFilter === sf.key ? '#000' : '#aaa',
+                      fontWeight: journalSubFilter === sf.key ? 700 : 400 }}>
+                    {sf.label}
+                  </button>
+                ))}
+                {journalSubTab === 'purchases' && [
+                  { key: 'all', label: 'All Purchases' },
+                  { key: 'approved_rr', label: 'Approved RR' },
+                  { key: 'rr_cash_on_hand', label: 'Paid: Cash on Hand' },
+                  { key: 'rr_cash_in_bank', label: 'Paid: Cash in Bank' },
+                  { key: 'rr_credit_card', label: 'Paid: Credit Card' },
+                ].map((sf) => (
+                  <button key={sf.key} onClick={() => setJournalSubFilter(sf.key)}
+                    style={{ padding: '5px 14px', borderRadius: 14, cursor: 'pointer', fontFamily: 'Poppins, sans-serif', fontSize: 12,
+                      border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
+                      background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
+                      color: journalSubFilter === sf.key ? '#000' : '#aaa',
+                      fontWeight: journalSubFilter === sf.key ? 700 : 400 }}>
+                    {sf.label}
+                  </button>
+                ))}
+                {journalSubTab === 'others' && [
+                  { key: 'all', label: 'All Adjusting Entries' },
+                  { key: 'adjustments', label: 'Adjustments' },
+                  { key: 'manual_entry', label: 'Manual Entry' },
+                ].map((sf) => (
+                  <button key={sf.key} onClick={() => setJournalSubFilter(sf.key)}
+                    style={{ padding: '5px 14px', borderRadius: 14, cursor: 'pointer', fontFamily: 'Poppins, sans-serif', fontSize: 12,
+                      border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
+                      background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
+                      color: journalSubFilter === sf.key ? '#000' : '#aaa',
+                      fontWeight: journalSubFilter === sf.key ? 700 : 400 }}>
+                    {sf.label}
+                  </button>
                 ))}
               </div>
 
-              {/* Date range */}
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+              {/* Row 2: Date range + Account Name filter + Reload */}
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
                 <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={journalDateFrom} onChange={(e) => setJournalDateFrom(e.target.value)} />
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={journalDateTo} onChange={(e) => setJournalDateTo(e.target.value)} />
-                <button onClick={fetchJournal} style={styles.primaryBtn}>Refresh</button>
+                <label style={{ color: '#ccc', fontSize: 13 }}>Account Name:</label>
+                {/* Searchable dropdown for account filter */}
+                <div style={{ position: 'relative' }}>
+                  <div
+                    onClick={() => { setJournalAccountDropdownOpen((v) => !v); setJournalAccountSearch(''); }}
+                    style={{ ...styles.input, width: 200, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', userSelect: 'none' }}
+                  >
+                    <span style={{ color: journalAccountFilter ? '#fff' : '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                      {journalAccountFilter || 'All Accounts'}
+                    </span>
+                    {journalAccountFilter
+                      ? <span onClick={(e) => { e.stopPropagation(); setJournalAccountFilter(''); setJournalAccountDropdownOpen(false); }} style={{ color: '#888', cursor: 'pointer', marginLeft: 4 }}>✕</span>
+                      : <span style={{ color: '#888', marginLeft: 4 }}>▾</span>
+                    }
+                  </div>
+                  {journalAccountDropdownOpen && (
+                    <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: '#1e1e1e', border: '1px solid #555', borderRadius: 6, width: 240, maxHeight: 220, display: 'flex', flexDirection: 'column', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Search accounts…"
+                        value={journalAccountSearch}
+                        onChange={(e) => setJournalAccountSearch(e.target.value)}
+                        style={{ ...styles.input, margin: 6, width: 'calc(100% - 12px)', boxSizing: 'border-box' }}
+                      />
+                      <div style={{ overflowY: 'auto', flex: 1 }}>
+                        <div
+                          onClick={() => { setJournalAccountFilter(''); setJournalAccountDropdownOpen(false); }}
+                          style={{ padding: '6px 10px', cursor: 'pointer', color: '#aaa', fontSize: 12, background: !journalAccountFilter ? '#2a2a2a' : 'transparent' }}
+                        >All Accounts</div>
+                        {journalKnownAccounts
+                          .filter((a) => !journalAccountSearch || a.toLowerCase().includes(journalAccountSearch.toLowerCase()))
+                          .map((acct) => (
+                            <div
+                              key={acct}
+                              onClick={() => { setJournalAccountFilter(acct); setJournalAccountDropdownOpen(false); }}
+                              style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, background: journalAccountFilter === acct ? '#ffc107' : 'transparent', color: journalAccountFilter === acct ? '#000' : '#ccc' }}
+                            >{acct}</div>
+                          ))
+                        }
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <button onClick={fetchJournal} style={styles.primaryBtn}>Reload</button>
+              </div>
+
+              {/* Row 3: Search */}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+                <label style={{ color: '#ccc', fontSize: 13 }}>Search:</label>
+                <input
+                  type="text"
+                  placeholder="Filter by name, ref no., description, account, amount…"
+                  style={{ ...styles.input, width: 340 }}
+                  value={journalSearch}
+                  onChange={(e) => setJournalSearch(e.target.value)}
+                />
+                {journalSearch && (
+                  <button
+                    onClick={() => setJournalSearch('')}
+                    style={{ background: 'transparent', border: '1px solid #555', color: '#aaa', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'Poppins, sans-serif' }}
+                  >✕ Clear</button>
+                )}
               </div>
 
               {journalLoading && <p style={styles.loadingText}>Loading…</p>}
 
               {/* Transaction report */}
               {!journalLoading && (() => {
-                // Group by reference_id (or id for manual entries)
-                const groupKey = (row) => row.entry_number || (row.reference_id ? String(row.reference_id) : row.id);
+                // Group by entry_number (manual), or reference+type (to keep RR approval vs payment separate), fallback to id
+                const groupKey = (row) =>
+                  row.entry_number ||
+                  (row.reference ? `${row.reference_type}__${row.reference}` : null) ||
+                  (row.reference_id ? `${row.reference_type}__${String(row.reference_id)}` : row.id);
                 const groups = {};
                 (journalData || []).forEach((row) => {
                   const k = groupKey(row);
                   if (!groups[k]) groups[k] = [];
                   groups[k].push(row);
                 });
-                const groupEntries = Object.entries(groups);
+                // Apply client-side search across all fields
+                const srch = journalSearch.trim().toLowerCase();
+                // Apply account filter per individual line
+                const acctF = journalAccountFilter.trim().toLowerCase();
+                const allGroupEntries = Object.entries(groups);
+                const groupEntries = srch
+                  ? allGroupEntries.filter(([key, rows]) => {
+                      const refDisplay = rows[0].entry_number || rows[0].reference || rows[0].reference_type || key.slice(0, 8);
+                      const nameDisplay = (rows[0].name || '').toLowerCase();
+                      if (refDisplay.toLowerCase().includes(srch)) return true;
+                      if (nameDisplay.includes(srch)) return true;
+                      return rows.some((r) =>
+                        (r.description || '').toLowerCase().includes(srch) ||
+                        (r.debit_account || '').toLowerCase().includes(srch) ||
+                        (r.credit_account || '').toLowerCase().includes(srch) ||
+                        String(r.amount || '').includes(srch) ||
+                        (r.date || '').includes(srch)
+                      );
+                    })
+                  : allGroupEntries;
                 if (groupEntries.length === 0) {
                   return <p style={{ color: '#666', textAlign: 'center', padding: 24 }}>No journal entries found for the selected period and filter.</p>;
                 }
                 let grandTotal = 0;
+                let grandTotalCredit = 0;
                 return (
                   <div style={styles.tableWrap}>
                     <table style={{ ...styles.table, fontSize: 12 }}>
                       <thead>
                         <tr>
-                          {['Date', 'Reference', 'Name', 'Particular', 'Debit Account', 'Credit Account', 'Debit (₱)', 'Credit (₱)'].map((h) => (
+                          {['Date', 'Reference No.', 'Contact', 'Particular', 'Account Title', 'Debit (₱)', 'Credit (₱)'].map((h) => (
                             <th key={h} style={styles.th}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {groupEntries.map(([key, rows]) => {
-                          const refDisplay = rows[0].entry_number || rows[0].reference_type || key.slice(0, 8);
+                          const refDisplay =
+                            rows[0].entry_number ||
+                            rows[0].reference ||
+                            rows[0].reference_type ||
+                            key.slice(0, 8);
                           const nameDisplay = rows[0].name || '—';
                           const groupTotal = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
                           grandTotal += groupTotal;
+                          grandTotalCredit += groupTotal;
+                          // Each data row expands to a debit line + a credit line
+                          // When account filter is active, only show lines where the account matches
+                          const displayRows = rows.flatMap((row) => {
+                            const lines = [];
+                            const drMatch = !acctF || (row.debit_account || '').toLowerCase() === acctF;
+                            const crMatch = !acctF || (row.credit_account || '').toLowerCase() === acctF;
+                            if (drMatch) lines.push({ row, isDebit: true });
+                            if (crMatch) lines.push({ row, isDebit: false });
+                            return lines;
+                          });
+                          if (displayRows.length === 0) return null;
                           return (
                             <React.Fragment key={key}>
-                              {rows.map((row, ri) => (
-                                <tr key={row.id} style={ri % 2 === 0 ? styles.trEven : styles.trOdd}>
+                              {displayRows.map(({ row, isDebit }, di) => (
+                                <tr key={`${row.id}-${isDebit ? 'dr' : 'cr'}`} style={di % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  {/* Date: shown on every line */}
                                   <td style={styles.td}>{row.date}</td>
-                                  <td style={styles.td}>{ri === 0 ? refDisplay : ''}</td>
-                                  <td style={styles.td}>{ri === 0 ? nameDisplay : ''}</td>
+                                  {/* Reference: shown on every line */}
+                                  <td style={styles.td}>{refDisplay}</td>
+                                  {/* Name: shown on every line */}
+                                  <td style={styles.td}>{nameDisplay}</td>
+                                  {/* Particular: shown on every line */}
                                   <td style={styles.td}>{row.description}</td>
-                                  <td style={{ ...styles.td, color: '#4caf50' }}>{row.debit_account}</td>
-                                  <td style={{ ...styles.td, color: '#f44336' }}>{row.credit_account}</td>
-                                  <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(Number(row.amount) || 0)}</td>
-                                  <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(Number(row.amount) || 0)}</td>
+                                  {/* Account Title: Dr. flush-left, Cr. indented */}
+                                  {isDebit
+                                    ? <td style={{ ...styles.td, color: '#4caf50' }}>Dr. {row.debit_account}</td>
+                                    : <td style={{ ...styles.td, color: '#f44336', paddingLeft: 24 }}>Cr. {row.credit_account}</td>
+                                  }
+                                  {/* Debit (₱): amount only on debit line */}
+                                  <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>
+                                    {isDebit ? fmt(Number(row.amount) || 0) : '—'}
+                                  </td>
+                                  {/* Credit (₱): amount only on credit line */}
+                                  <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>
+                                    {isDebit ? '—' : fmt(Number(row.amount) || 0)}
+                                  </td>
                                 </tr>
                               ))}
                               {/* Group subtotal */}
                               <tr style={{ background: '#1e1e1e', borderTop: '1px solid #333' }}>
-                                <td colSpan={6} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontWeight: 600, fontSize: 11 }}>Subtotal ({refDisplay}):</td>
+                                <td colSpan={5} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontWeight: 600, fontSize: 11 }}>Subtotal ({refDisplay}):</td>
                                 <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(groupTotal)}</td>
                                 <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(groupTotal)}</td>
                               </tr>
@@ -3068,9 +4432,9 @@ export default function AdminPage() {
                         })}
                         {/* Grand total */}
                         <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
-                          <td colSpan={6} style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>GRAND TOTAL:</td>
+                          <td colSpan={5} style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>GRAND TOTAL:</td>
                           <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandTotal)}</td>
-                          <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(grandTotal)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(grandTotalCredit)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -3099,7 +4463,15 @@ export default function AdminPage() {
                     onChange={(e) => setManualEntryForm((p) => ({ ...p, date: e.target.value }))}
                   />
 
-                  <label style={styles.label}>Name (Vendor / Customer)</label>
+                  <label style={styles.label}>Description / Memo</label>
+                  <textarea
+                    style={{ ...styles.input, minHeight: 72, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, width: '100%', boxSizing: 'border-box' }}
+                    placeholder="Brief description of this entry…"
+                    value={manualEntryForm.description}
+                    onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
+                  />
+
+                  <label style={styles.label}>Contact</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input
                       style={{ ...styles.input, flex: 1 }}
@@ -3111,7 +4483,7 @@ export default function AdminPage() {
                       type="button"
                       title="Search contacts"
                       style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '6px 10px', fontSize: 13 }}
-                      onClick={() => { setContactPickerOpen(true); setContactPickerQuery(''); fetchContacts(''); }}
+                      onClick={() => { setContactPickerOpen(true); setContactPickerQuery(''); setNewContactMode(false); setNewContactError(''); fetchContacts(''); }}
                     >🔍</button>
                     {manualEntryForm.name && (
                       <button
@@ -3132,6 +4504,14 @@ export default function AdminPage() {
                     value={manualEntryForm.reference_number}
                     onChange={(e) => setManualEntryForm((p) => ({ ...p, reference_number: e.target.value }))}
                   />
+
+                  <label style={styles.label}>Special Note</label>
+                  <textarea
+                    style={{ ...styles.input, minHeight: 64, resize: 'vertical' }}
+                    placeholder="Optional note or explanation…"
+                    value={manualSpecialNote}
+                    onChange={(e) => setManualSpecialNote(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -3142,89 +4522,91 @@ export default function AdminPage() {
                   <button
                     type="button"
                     style={styles.primaryBtn}
-                    onClick={() => setManualEntryLines((p) => [...p, { description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' }])}
+                    onClick={() => setManualEntryLines((p) => [...p, { description: '', account: '', type: 'debit', amount: '' }])}
                   >+ Add Line</button>
                 </div>
                 <div style={styles.tableWrap}>
                   <table style={{ ...styles.table, fontSize: 12 }}>
                     <thead>
                       <tr>
-                        {['Description', 'Debit Account', 'Credit Account', 'Debit Amount (₱)', 'Credit Amount (₱)', 'Total (₱)', ''].map((h) => (
+                        {['Description', 'Account', 'Dr / Cr', 'Amount (₱)', ''].map((h) => (
                           <th key={h} style={styles.th}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {manualEntryLines.map((line, li) => {
-                        const lineAmt = Math.max(Number(line.debit_amount) || 0, Number(line.credit_amount) || 0);
-                        return (
-                          <tr key={li}>
-                            <td style={styles.td}>
-                              <input
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 160 }}
-                                value={line.description}
-                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, description: e.target.value } : l))}
-                              />
-                            </td>
-                            <td style={styles.td}>
-                              <input
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 140 }}
-                                placeholder="e.g. Cash on Hand"
-                                value={line.debit_account}
-                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, debit_account: e.target.value } : l))}
-                              />
-                            </td>
-                            <td style={styles.td}>
-                              <input
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 140 }}
-                                placeholder="e.g. Revenue"
-                                value={line.credit_account}
-                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, credit_account: e.target.value } : l))}
-                              />
-                            </td>
-                            <td style={styles.td}>
-                              <input
-                                type="number"
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
-                                value={line.debit_amount}
-                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, debit_amount: e.target.value } : l))}
-                              />
-                            </td>
-                            <td style={styles.td}>
-                              <input
-                                type="number"
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
-                                value={line.credit_amount}
-                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, credit_amount: e.target.value } : l))}
-                              />
-                            </td>
-                            <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{lineAmt > 0 ? fmt(lineAmt) : '—'}</td>
-                            <td style={styles.td}>
+                      {manualEntryLines.map((line, li) => (
+                        <tr key={li}>
+                          <td style={styles.td}>
+                            <input
+                              style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 180 }}
+                              placeholder="Line description…"
+                              value={line.description}
+                              onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, description: e.target.value } : l))}
+                            />
+                          </td>
+                          <td style={styles.td}>
+                            <input
+                              style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 180 }}
+                              placeholder="e.g. Cash on Hand"
+                              list="journal-accounts-list"
+                              value={line.account}
+                              onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, account: e.target.value } : l))}
+                            />
+                          </td>
+                          <td style={styles.td}>
+                            <div style={{ display: 'flex', gap: 4 }}>
                               <button
                                 type="button"
-                                style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
-                                onClick={() => setManualEntryLines((p) => p.filter((_, i) => i !== li))}
-                              >✕</button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                                onClick={() => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, type: 'debit' } : l))}
+                                style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: '1px solid #555', background: line.type === 'debit' ? '#1a3a1a' : '#222', color: line.type === 'debit' ? '#4caf50' : '#aaa', fontWeight: line.type === 'debit' ? 700 : 400 }}
+                              >Dr</button>
+                              <button
+                                type="button"
+                                onClick={() => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, type: 'credit' } : l))}
+                                style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: '1px solid #555', background: line.type === 'credit' ? '#3a1a1a' : '#222', color: line.type === 'credit' ? '#f44336' : '#aaa', fontWeight: line.type === 'credit' ? 700 : 400 }}
+                              >Cr</button>
+                            </div>
+                          </td>
+                          <td style={styles.td}>
+                            <input
+                              type="number"
+                              style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 110, color: line.type === 'debit' ? '#4caf50' : '#f44336' }}
+                              value={line.amount}
+                              onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, amount: e.target.value } : l))}
+                            />
+                          </td>
+                          <td style={styles.td}>
+                            <button
+                              type="button"
+                              style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                              onClick={() => setManualEntryLines((p) => p.filter((_, i) => i !== li))}
+                            >✕</button>
+                          </td>
+                        </tr>
+                      ))}
                       {/* Total row */}
                       {manualEntryLines.length > 0 && (() => {
-                        const totalDebit = manualEntryLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
-                        const totalCredit = manualEntryLines.reduce((s, l) => s + (Number(l.credit_amount) || 0), 0);
+                        const totalDebit = manualEntryLines.filter((l) => l.type === 'debit').reduce((s, l) => s + (Number(l.amount) || 0), 0);
+                        const totalCredit = manualEntryLines.filter((l) => l.type === 'credit').reduce((s, l) => s + (Number(l.amount) || 0), 0);
+                        const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
                         return (
                           <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
-                            <td colSpan={3} style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>TOTAL:</td>
-                            <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(totalDebit)}</td>
-                            <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(totalCredit)}</td>
-                            <td colSpan={2} />
+                            <td colSpan={2} style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>TOTAL:</td>
+                            <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>Dr: {fmt(totalDebit)}</td>
+                            <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>Cr: {fmt(totalCredit)}</td>
+                            <td style={{ ...styles.td, textAlign: 'center' }}>
+                              {balanced ? <span style={{ color: '#4caf50' }}>✓ Balanced</span> : <span style={{ color: '#f44336' }}>⚠ Unbalanced</span>}
+                            </td>
                           </tr>
                         );
                       })()}
                     </tbody>
                   </table>
                 </div>
+                <datalist id="journal-accounts-list">
+                  {journalKnownAccounts.map((a) => <option key={a} value={a} />)}
+                </datalist>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
                   <button onClick={saveManualEntry} style={styles.primaryBtn} disabled={manualSaving}>
@@ -3234,40 +4616,496 @@ export default function AdminPage() {
               </div>
 
               {/* Contact Picker Dialog */}
-              <Dialog.Root open={contactPickerOpen} onOpenChange={(open) => { if (!open) setContactPickerOpen(false); }}>
+              <Dialog.Root open={contactPickerOpen} onOpenChange={(open) => { if (!open) { setContactPickerOpen(false); setNewContactMode(false); setNewContactError(''); } }}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
                   <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 480 }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>Select Contact</Dialog.Title>
-                    <div style={{ marginBottom: 12 }}>
-                      <input
-                        style={styles.input}
-                        placeholder="Search vendors or customers…"
-                        value={contactPickerQuery}
-                        onChange={(e) => { setContactPickerQuery(e.target.value); fetchContacts(e.target.value); }}
-                        autoFocus
+                    {!newContactMode ? (
+                      <>
+                        <div style={{ marginBottom: 12 }}>
+                          <input
+                            style={styles.input}
+                            placeholder="Search vendors or customers…"
+                            value={contactPickerQuery}
+                            onChange={(e) => { setContactPickerQuery(e.target.value); fetchContacts(e.target.value); }}
+                            autoFocus
+                          />
+                        </div>
+                        <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
+                          {contactList.map((c) => (
+                            <div
+                              key={c.id}
+                              onClick={() => {
+                                setManualEntryForm((p) => ({ ...p, name: c.name }));
+                                setContactPickerOpen(false);
+                              }}
+                              style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
+                            >
+                              <strong>{c.name}</strong>
+                              <span style={{ color: '#888', fontSize: 12 }}> · {c.type}</span>
+                            </div>
+                          ))}
+                          {contactList.length === 0 && (
+                            <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No contacts found.</p>
+                          )}
+                        </div>
+                        <div style={{ ...styles.dialogFooter, justifyContent: 'space-between' }}>
+                          <button
+                            style={{ ...styles.primaryBtn, fontSize: 12, padding: '7px 14px' }}
+                            onClick={() => { setNewContactMode(true); setNewContactForm({ name: '', address: '', contact: '', tin: '' }); setNewContactError(''); }}
+                          >+ New Contact</button>
+                          <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p style={{ color: '#aaa', fontSize: 13, marginBottom: 12 }}>Enroll a new vendor / contact:</p>
+                        <div style={styles.formGrid}>
+                          <label style={styles.label}>Name *</label>
+                          <input style={styles.input} value={newContactForm.name} onChange={(e) => setNewContactForm((p) => ({ ...p, name: e.target.value }))} placeholder="Contact name" autoFocus />
+                          <label style={styles.label}>Address</label>
+                          <input style={styles.input} value={newContactForm.address} onChange={(e) => setNewContactForm((p) => ({ ...p, address: e.target.value }))} placeholder="Address" />
+                          <label style={styles.label}>Contact #</label>
+                          <input style={styles.input} value={newContactForm.contact} onChange={(e) => setNewContactForm((p) => ({ ...p, contact: e.target.value }))} placeholder="Phone / mobile" />
+                          <label style={styles.label}>TIN</label>
+                          <input style={styles.input} value={newContactForm.tin} onChange={(e) => setNewContactForm((p) => ({ ...p, tin: e.target.value }))} placeholder="TIN (optional)" />
+                        </div>
+                        {newContactError && <p style={{ color: '#f44336', fontSize: 12, marginTop: 8 }}>{newContactError}</p>}
+                        <div style={styles.dialogFooter}>
+                          <button style={styles.cancelBtn} onClick={() => setNewContactMode(false)}>← Back</button>
+                          <button style={styles.primaryBtn} onClick={saveNewContact} disabled={newContactSaving}>
+                            {newContactSaving ? 'Saving…' : 'Save Contact'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+            </div>
+          )}
+
+          {/* ──────────────── BILLS ──────────────── */}
+          {activeTab === 'bills' && (
+            <div>
+              <div style={styles.tabHeader}>
+                <h1 style={styles.pageTitle}>Bills</h1>
+                <button onClick={() => openBillDialog()} style={styles.primaryBtn}>+ New Bill</button>
+              </div>
+
+              {billSuccess && <p style={{ color: '#4caf50', marginBottom: 12 }}>{billSuccess}</p>}
+
+              {/* Search */}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16 }}>
+                <label style={{ color: '#ccc', fontSize: 13 }}>Search:</label>
+                <input
+                  type="text"
+                  placeholder="Filter by bill number, contact, description…"
+                  style={{ ...styles.input, width: 300 }}
+                  value={billSearch}
+                  onChange={(e) => setBillSearch(e.target.value)}
+                />
+                {billSearch && (
+                  <button onClick={() => setBillSearch('')} style={{ background: 'transparent', border: '1px solid #555', color: '#aaa', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'Poppins, sans-serif' }}>✕ Clear</button>
+                )}
+              </div>
+
+              {loading && <p style={styles.loadingText}>Loading…</p>}
+
+              {/* Bills list */}
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      {['Bill #', 'Date', 'Contact', 'Description', 'Total Amount (₱)', 'Status', 'Actions'].map((h) => (
+                        <th key={h} style={styles.th}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(billsList || []).filter((b) => {
+                      if (!billSearch) return true;
+                      const q = billSearch.toLowerCase();
+                      return (b.bill_number || '').toLowerCase().includes(q) ||
+                        (b.contact || '').toLowerCase().includes(q) ||
+                        (b.description || '').toLowerCase().includes(q);
+                    }).map((bill, idx) => {
+                      const statusColor = bill.status === 'paid' ? '#4caf50' : bill.status === 'approved' ? '#2196f3' : '#ffc107';
+                      const statusBg = bill.status === 'paid' ? '#1a3a1a' : bill.status === 'approved' ? '#0a1a2a' : '#2a2a00';
+                      return (
+                        <tr key={bill.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                          <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{bill.bill_number}</td>
+                          <td style={styles.td}>{bill.date}</td>
+                          <td style={styles.td}>{bill.contact || '—'}</td>
+                          <td style={styles.td}>{bill.description || '—'}</td>
+                          <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(bill.total_debit || 0)}</td>
+                          <td style={styles.td}>
+                            <span style={{ ...styles.badge, background: statusBg, color: statusColor, border: `1px solid ${statusColor}` }}>
+                              {bill.status || 'draft'}
+                            </span>
+                          </td>
+                          <td style={styles.td}>
+                            <button onClick={() => viewBill(bill)} style={styles.actionBtn}>View</button>
+                            {bill.status === 'draft' && (
+                              <>
+                                <button onClick={() => openBillDialog(bill)} style={styles.actionBtn}>Edit</button>
+                                <button
+                                  onClick={() => approveBill(bill)}
+                                  style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}
+                                >Approve</button>
+                              </>
+                            )}
+                            {bill.status === 'approved' && (
+                              <button
+                                onClick={() => { setBillPayItem(bill); setBillPayMethod('cash_on_hand'); setBillPayError(''); setBillPayDialogOpen(true); }}
+                                style={{ ...styles.actionBtn, color: '#4caf50', borderColor: '#4caf50' }}
+                              >Pay</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {billsList.length === 0 && !loading && (
+                      <tr><td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No bills yet. Create a new bill!</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Bill Create/Edit Dialog */}
+              <Dialog.Root open={billDialogOpen} onOpenChange={(open) => { if (!open) setBillDialogOpen(false); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 720 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>
+                      {billEditItem ? `Edit Bill – ${billNumber}` : 'New Bill'}
+                    </Dialog.Title>
+                    {billError && <p style={{ color: '#f44336', fontSize: 13, marginBottom: 10 }}>{billError}</p>}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 120px 1fr', gap: 10, marginBottom: 16 }}>
+                      <label style={styles.label}>Bill #</label>
+                      <input style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }} readOnly value={billNumber} />
+                      <label style={styles.label}>Date</label>
+                      <input type="date" style={styles.input} value={billForm.date} onChange={(e) => setBillForm((p) => ({ ...p, date: e.target.value }))} />
+
+                      <label style={styles.label}>Contact</label>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input style={{ ...styles.input, flex: 1 }} readOnly placeholder="Click 🔍 to search…" value={billForm.contact} />
+                        <button
+                          type="button"
+                          style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '6px 10px', fontSize: 13 }}
+                          onClick={() => { setBillContactPickerOpen(true); setBillContactQuery(''); fetchBillContacts(''); }}
+                        >🔍</button>
+                        {billForm.contact && (
+                          <button type="button" style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 14 }} onClick={() => setBillForm((p) => ({ ...p, contact: '' }))}>✕</button>
+                        )}
+                      </div>
+
+                      <label style={styles.label}>Description</label>
+                      <textarea
+                        style={{ ...styles.input, minHeight: 56, resize: 'vertical', gridColumn: '2 / 5', width: '100%', boxSizing: 'border-box' }}
+                        placeholder="Brief description or memo…"
+                        value={billForm.description}
+                        onChange={(e) => setBillForm((p) => ({ ...p, description: e.target.value }))}
                       />
                     </div>
-                    <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 12 }}>
-                      {contactList.map((c) => (
-                        <div
-                          key={c.id}
-                          onClick={() => {
-                            setManualEntryForm((p) => ({ ...p, name: c.name }));
-                            setContactPickerOpen(false);
-                          }}
-                          style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
-                        >
-                          <strong>{c.name}</strong>
-                          <span style={{ color: '#888', fontSize: 12 }}> · {c.type}</span>
+
+                    {/* Line Items */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <h4 style={{ color: '#ffc107', margin: 0, fontSize: 14 }}>Line Items</h4>
+                      <button
+                        type="button"
+                        style={{ ...styles.actionBtn, fontSize: 12 }}
+                        onClick={() => setBillLines((p) => [...p, { description: '', account_title: '', debit_amount: '' }])}
+                      >+ Add Line</button>
+                    </div>
+                    <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>
+                      Credit side is automatically <strong style={{ color: '#aaa' }}>Accounts Payable</strong> for the total debit amount.
+                    </p>
+                    <div style={styles.tableWrap}>
+                      <table style={{ ...styles.table, fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            {['Description', 'Account Title (Debit)', 'Amount (₱)', ''].map((h) => (
+                              <th key={h} style={styles.th}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {billLines.map((line, li) => (
+                            <tr key={li}>
+                              <td style={styles.td}>
+                                <input
+                                  style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 160 }}
+                                  placeholder="Line description…"
+                                  value={line.description}
+                                  onChange={(e) => setBillLines((p) => p.map((l, i) => i === li ? { ...l, description: e.target.value } : l))}
+                                />
+                              </td>
+                              <td style={styles.td}>
+                                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                  <input
+                                    style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 150 }}
+                                    placeholder="e.g. Utilities"
+                                    list="bill-accounts-list"
+                                    value={line.account_title}
+                                    onChange={(e) => setBillLines((p) => p.map((l, i) => i === li ? { ...l, account_title: e.target.value } : l))}
+                                  />
+                                  <button
+                                    type="button"
+                                    style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '3px 7px', fontSize: 11 }}
+                                    onClick={() => { setBillAcctPickerIdx(li); setBillAcctQuery(''); }}
+                                    title="Search account"
+                                  >🔍</button>
+                                </div>
+                              </td>
+                              <td style={styles.td}>
+                                <input
+                                  type="number"
+                                  style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100, color: '#4caf50' }}
+                                  value={line.debit_amount}
+                                  onChange={(e) => setBillLines((p) => p.map((l, i) => i === li ? { ...l, debit_amount: e.target.value } : l))}
+                                />
+                              </td>
+                              <td style={styles.td}>
+                                <button
+                                  type="button"
+                                  style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                                  onClick={() => setBillLines((p) => p.filter((_, i) => i !== li))}
+                                >✕</button>
+                              </td>
+                            </tr>
+                          ))}
+                          {billLines.length > 0 && (() => {
+                            const totalDebit = billLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
+                            return (
+                              <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
+                                <td colSpan={2} style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>TOTAL (Dr):</td>
+                                <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(totalDebit)}</td>
+                                <td style={styles.td} />
+                              </tr>
+                            );
+                          })()}
+                          <tr style={{ background: '#1a1a2a' }}>
+                            <td colSpan={2} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>Credit — Accounts Payable:</td>
+                            <td style={{ ...styles.td, color: '#f44336', textAlign: 'right', fontSize: 11 }}>
+                              {fmt(billLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0))}
+                            </td>
+                            <td style={styles.td} />
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <datalist id="bill-accounts-list">
+                      {journalKnownAccounts.map((a) => <option key={a} value={a} />)}
+                    </datalist>
+
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
+                      <button onClick={saveBill} style={styles.primaryBtn} disabled={billSaving}>
+                        {billSaving ? 'Saving…' : 'Save Bill'}
+                      </button>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* Bill View Dialog */}
+              <Dialog.Root open={!!billViewItem} onOpenChange={(open) => { if (!open) setBillViewItem(null); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 620 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>{billViewItem?.bill_number}</Dialog.Title>
+                    {billViewItem && (
+                      <div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+                          {[
+                            ['Date', billViewItem.date],
+                            ['Contact', billViewItem.contact || '—'],
+                            ['Status', billViewItem.status || 'draft'],
+                            ['Description', billViewItem.description || '—'],
+                          ].map(([label, value]) => (
+                            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <span style={{ color: '#888', fontSize: 11 }}>{label}</span>
+                              <span style={{ color: '#fff', fontSize: 13 }}>{value}</span>
+                            </div>
+                          ))}
                         </div>
+                        <div style={styles.tableWrap}>
+                          <table style={{ ...styles.table, fontSize: 12 }}>
+                            <thead>
+                              <tr>
+                                {['Description', 'Account Title (Debit)', 'Amount (₱)'].map((h) => (
+                                  <th key={h} style={styles.th}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(billViewLines || []).map((l, idx) => (
+                                <tr key={l.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{l.description || '—'}</td>
+                                  <td style={styles.td}>{l.account_title || '—'}</td>
+                                  <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{l.debit_amount > 0 ? fmt(l.debit_amount) : '—'}</td>
+                                </tr>
+                              ))}
+                              {billViewLines.length === 0 && (
+                                <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No line items</td></tr>
+                              )}
+                              {billViewLines.length > 0 && (
+                                <tr style={{ background: '#1a1a2a' }}>
+                                  <td colSpan={2} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>Credit — Accounts Payable:</td>
+                                  <td style={{ ...styles.td, color: '#f44336', textAlign: 'right', fontSize: 11 }}>
+                                    {fmt(billViewLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0))}
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* Bill Contact Picker */}
+              <Dialog.Root open={billContactPickerOpen} onOpenChange={(open) => { if (!open) { setBillContactPickerOpen(false); setBillNewContactMode(false); setBillNewContactError(''); } }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 440 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Select Contact</Dialog.Title>
+                    {!billNewContactMode ? (
+                      <>
+                        <input
+                          style={{ ...styles.input, marginBottom: 12 }}
+                          placeholder="Search contacts…"
+                          value={billContactQuery}
+                          onChange={(e) => { setBillContactQuery(e.target.value); fetchBillContacts(e.target.value); }}
+                          autoFocus
+                        />
+                        <div style={{ maxHeight: 260, overflowY: 'auto', marginBottom: 12 }}>
+                          {(billContactList || []).map((c) => (
+                            <div
+                              key={c.id}
+                              onClick={() => { setBillForm((p) => ({ ...p, contact: c.name })); setBillContactPickerOpen(false); }}
+                              style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
+                            >
+                              <strong>{c.name}</strong>
+                              <span style={{ color: '#888', fontSize: 12 }}> · {c.type}</span>
+                            </div>
+                          ))}
+                          {billContactList.length === 0 && <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No contacts found.</p>}
+                        </div>
+                        <div style={{ borderTop: '1px solid #333', paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            style={{ ...styles.primaryBtn, fontSize: 12 }}
+                            onClick={() => { setBillNewContactMode(true); setBillNewContactForm({ name: '', address: '', contact: '', tin: '' }); setBillNewContactError(''); }}
+                          >+ New Contact</button>
+                          <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <h4 style={{ color: '#ffc107', fontSize: 13, marginBottom: 12 }}>Enroll New Contact</h4>
+                        {billNewContactError && <p style={{ color: '#f44336', fontSize: 12, marginBottom: 8 }}>{billNewContactError}</p>}
+                        <div style={styles.formGrid}>
+                          <label style={styles.label}>Name *</label>
+                          <input style={styles.input} value={billNewContactForm.name} onChange={(e) => setBillNewContactForm((p) => ({ ...p, name: e.target.value }))} autoFocus />
+                          <label style={styles.label}>Address</label>
+                          <input style={styles.input} value={billNewContactForm.address} onChange={(e) => setBillNewContactForm((p) => ({ ...p, address: e.target.value }))} />
+                          <label style={styles.label}>Contact #</label>
+                          <input style={styles.input} value={billNewContactForm.contact} onChange={(e) => setBillNewContactForm((p) => ({ ...p, contact: e.target.value }))} />
+                          <label style={styles.label}>TIN</label>
+                          <input style={styles.input} value={billNewContactForm.tin} onChange={(e) => setBillNewContactForm((p) => ({ ...p, tin: e.target.value }))} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                          <button type="button" style={styles.cancelBtn} onClick={() => setBillNewContactMode(false)}>← Back</button>
+                          <button type="button" style={styles.primaryBtn} onClick={saveNewBillContact} disabled={billNewContactSaving}>
+                            {billNewContactSaving ? 'Saving…' : 'Save Contact'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* Bill Account Title Picker */}
+              <Dialog.Root open={billAcctPickerIdx !== null} onOpenChange={(open) => { if (!open) setBillAcctPickerIdx(null); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 380 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Select Account Title</Dialog.Title>
+                    <input
+                      style={{ ...styles.input, marginBottom: 10 }}
+                      placeholder="Search accounts…"
+                      value={billAcctQuery}
+                      onChange={(e) => setBillAcctQuery(e.target.value)}
+                      autoFocus
+                    />
+                    <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
+                      {journalKnownAccounts.filter((a) => !billAcctQuery || a.toLowerCase().includes(billAcctQuery.toLowerCase())).map((a) => (
+                        <div
+                          key={a}
+                          onClick={() => {
+                            if (billAcctPickerIdx !== null) {
+                              setBillLines((p) => p.map((l, i) => i === billAcctPickerIdx ? { ...l, account_title: a } : l));
+                              setBillAcctPickerIdx(null);
+                              setBillAcctQuery('');
+                            }
+                          }}
+                          style={{ padding: '7px 12px', cursor: 'pointer', borderRadius: 4, color: '#ccc', background: '#2a2a2a', marginBottom: 3, fontSize: 13 }}
+                        >{a}</div>
                       ))}
-                      {contactList.length === 0 && (
-                        <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No contacts found.</p>
-                      )}
                     </div>
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* Bill Pay Dialog */}
+              <Dialog.Root open={billPayDialogOpen} onOpenChange={(open) => { if (!open) { setBillPayDialogOpen(false); setBillPayItem(null); } }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 420 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Pay Bill — {billPayItem?.bill_number}</Dialog.Title>
+                    {billPayError && <p style={{ color: '#f44336', fontSize: 13, marginBottom: 10 }}>{billPayError}</p>}
+                    {billPayItem && (
+                      <div>
+                        <p style={{ color: '#aaa', fontSize: 13, marginBottom: 16 }}>
+                          Total Amount: <strong style={{ color: '#4caf50' }}>{fmt(billPayItem.total_debit || 0)}</strong>
+                        </p>
+                        <div style={styles.formGrid}>
+                          <label style={styles.label}>Payment Method</label>
+                          <select
+                            style={{ ...styles.input }}
+                            value={billPayMethod}
+                            onChange={(e) => setBillPayMethod(e.target.value)}
+                          >
+                            <option value="cash_on_hand">Cash on Hand</option>
+                            <option value="cash_in_bank">Cash in Bank</option>
+                            <option value="credit_card">Credit Card</option>
+                          </select>
+                        </div>
+                        <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 6, padding: '10px 14px', marginTop: 16, fontSize: 12, color: '#aaa' }}>
+                          <p style={{ margin: '0 0 6px' }}><strong style={{ color: '#ffc107' }}>Journal Entry:</strong></p>
+                          <p style={{ margin: '2px 0' }}>Dr Accounts Payable: {fmt(billPayItem.total_debit || 0)}</p>
+                          <p style={{ margin: '2px 0' }}>Cr {billPayMethod === 'cash_on_hand' ? 'Cash on Hand' : billPayMethod === 'cash_in_bank' ? 'Cash in Bank' : "Owner's Draw"}: {fmt(billPayItem.total_debit || 0)}</p>
+                        </div>
+                      </div>
+                    )}
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
+                      <button style={{ ...styles.primaryBtn, background: '#1a3a1a', color: '#4caf50', border: '1px solid #4caf50' }} onClick={payBill} disabled={billPaying}>
+                        {billPaying ? 'Processing…' : '✓ Confirm Payment'}
+                      </button>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>

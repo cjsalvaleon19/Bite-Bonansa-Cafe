@@ -21,6 +21,7 @@ const DELIVERIES_SELECT_QUERY = `*, orders(
   id, 
   order_number, 
   total, 
+  total_amount,
   subtotal, 
   customer_name, 
   customer_phone, 
@@ -282,6 +283,50 @@ export default function RiderDeliveries() {
           if (orderError) {
             console.error('[RiderDeliveries] Failed to update order status:', orderError);
             throw new Error(`Failed to update order status: ${orderError?.message || 'Unknown error'}`);
+          }
+
+          // Create sales journal entry for the delivered order (non-blocking)
+          if (delivery.orders) {
+            try {
+              const order = delivery.orders;
+              const date = new Date().toISOString().split('T')[0];
+              const totalAmount = Number(order.total_amount) || 0;
+              const pointsUsed = Number(order.points_used) || 0;
+              const paymentMethod = (order.payment_method || 'cash').toLowerCase();
+              const orderRef = order.order_number || delivery.order_id;
+              const entries = [];
+
+              if (paymentMethod.includes('points') && pointsUsed > 0) {
+                entries.push({
+                  date,
+                  description: `Sale: ${orderRef}`,
+                  debit_account: 'Accounts Payable',
+                  credit_account: 'Revenue',
+                  reference_type: 'order',
+                  reference: orderRef,
+                });
+              }
+
+              const cashAmount = Math.round((totalAmount - (paymentMethod.includes('points') ? pointsUsed : 0)) * 100) / 100;
+              if (cashAmount > 0) {
+                entries.push({
+                  date,
+                  description: `Sale: ${orderRef}`,
+                  debit_account: paymentMethod.includes('gcash') ? 'Cash in Bank' : 'Cash on Hand',
+                  credit_account: 'Revenue',
+                  amount: cashAmount,
+                  reference_type: 'order',
+                  reference: orderRef,
+                });
+              }
+
+              if (entries.length > 0) {
+                const { error: jeErr } = await supabase.from('journal_entries').insert(entries);
+                if (jeErr) console.error('[RiderDeliveries] Journal entry insert failed:', jeErr.message);
+              }
+            } catch (jeErr) {
+              console.error('[RiderDeliveries] Failed to create sales journal entry:', jeErr?.message ?? jeErr);
+            }
           }
         }
       }
