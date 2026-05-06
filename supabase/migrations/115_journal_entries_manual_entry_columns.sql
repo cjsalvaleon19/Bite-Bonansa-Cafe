@@ -23,4 +23,4 @@ CREATE INDEX IF NOT EXISTS idx_journal_entries_date
 CREATE INDEX IF NOT EXISTS idx_journal_entries_reference_type
   ON journal_entries (reference_type);
 
-RAISE NOTICE 'Migration 115: Added entry_number, name, reference columns to journal_entries';
+DO $$ BEGIN RAISE NOTICE 'Migration 115: Added entry_number, name, reference columns to journal_entries'; END $$;
