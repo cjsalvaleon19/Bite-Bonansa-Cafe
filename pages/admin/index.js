@@ -122,6 +122,35 @@ export default function AdminPage() {
   const [invPickerOpen, setInvPickerOpen] = useState(null); // row index or null
   const [invPickerQuery, setInvPickerQuery] = useState('');
 
+  // ── Costing Inventory Item Picker state ───────────────────────────────────
+  const [costingInvPickerIdx, setCostingInvPickerIdx] = useState(null); // line index or null
+  const [costingInvPickerQuery, setCostingInvPickerQuery] = useState('');
+
+  // ── Journal Entries state ─────────────────────────────────────────────────
+  const [journalSubTab, setJournalSubTab] = useState('all');
+  const [journalDateFrom, setJournalDateFrom] = useState('');
+  const [journalDateTo, setJournalDateTo] = useState('');
+  const [journalData, setJournalData] = useState([]);
+  const [journalLoading, setJournalLoading] = useState(false);
+
+  // ── Manual Entry state ────────────────────────────────────────────────────
+  const [manualEntryNumber, setManualEntryNumber] = useState('');
+  const [manualEntryForm, setManualEntryForm] = useState({
+    date: '',
+    name: '',
+    reference_number: '',
+  });
+  const [manualEntryLines, setManualEntryLines] = useState([
+    { description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' },
+  ]);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualError, setManualError] = useState('');
+  const [manualSuccess, setManualSuccess] = useState('');
+  // Contact picker for manual entry
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [contactPickerQuery, setContactPickerQuery] = useState('');
+  const [contactList, setContactList] = useState([]);
+
   // ── Financial Reports state ───────────────────────────────────────────────
   const [finSubTab, setFinSubTab] = useState('cashflow');
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -579,6 +608,112 @@ export default function AdminPage() {
     }
   }, [session]);
 
+  // ── Fetch: Journal Entries ────────────────────────────────────────────────
+  const fetchJournal = useCallback(async () => {
+    if (!supabase) return;
+    setJournalLoading(true);
+    try {
+      let q = supabase
+        .from('journal_entries')
+        .select('*')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (journalDateFrom) q = q.gte('date', journalDateFrom);
+      if (journalDateTo) q = q.lte('date', journalDateTo);
+      if (journalSubTab === 'sales') {
+        q = q.eq('reference_type', 'order');
+      } else if (journalSubTab === 'purchases') {
+        q = q.in('reference_type', ['receiving_report', 'rr_payment']);
+      } else if (journalSubTab === 'others') {
+        q = q.in('reference_type', ['cash_adjustment', 'manual_entry']);
+      }
+      const { data, error: err } = await q;
+      if (err) throw err;
+      setJournalData(data || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setJournalLoading(false);
+    }
+  }, [journalSubTab, journalDateFrom, journalDateTo]);
+
+  // ── Manual Entry: Generate Entry Number ──────────────────────────────────
+  const generateManualEntryNumber = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const yy = new Date().getFullYear().toString().slice(-2);
+      const prefix = `ME-${yy}`;
+      const { data } = await supabase
+        .from('journal_entries')
+        .select('entry_number')
+        .like('entry_number', `${prefix}%`)
+        .order('entry_number', { ascending: false })
+        .limit(1);
+      let seq = 1;
+      if (data && data.length > 0 && data[0].entry_number) {
+        const last = parseInt(data[0].entry_number.replace(prefix, ''), 10);
+        if (!isNaN(last)) seq = last + 1;
+      }
+      setManualEntryNumber(`${prefix}${String(seq).padStart(7, '0')}`);
+    } catch {
+      setManualEntryNumber('');
+    }
+  }, []);
+
+  // ── Fetch: Contacts for Manual Entry ─────────────────────────────────────
+  const fetchContacts = useCallback(async (q) => {
+    if (!supabase) return;
+    try {
+      const [{ data: vends }, { data: usrs }] = await Promise.all([
+        supabase.from('vendors').select('id, name').ilike('name', `%${q}%`).limit(10),
+        supabase.from('users').select('id, full_name, role').ilike('full_name', `%${q}%`).limit(10),
+      ]);
+      const combined = [
+        ...(vends || []).map((v) => ({ id: v.id, name: v.name, type: 'Vendor' })),
+        ...(usrs || []).map((u) => ({ id: u.id, name: u.full_name, type: u.role })),
+      ];
+      setContactList(combined);
+    } catch {
+      setContactList([]);
+    }
+  }, []);
+
+  // ── Save Manual Entry ─────────────────────────────────────────────────────
+  const saveManualEntry = useCallback(async () => {
+    if (!supabase) return;
+    setManualSaving(true);
+    setManualError('');
+    setManualSuccess('');
+    try {
+      if (!manualEntryForm.date) throw new Error('Please enter a date.');
+      const validLines = manualEntryLines.filter(
+        (l) => l.description || l.debit_account || l.credit_account || l.debit_amount || l.credit_amount,
+      );
+      if (validLines.length === 0) throw new Error('Please add at least one line item.');
+      const rows = validLines.map((l) => ({
+        date: manualEntryForm.date,
+        description: l.description || '',
+        debit_account: l.debit_account || '',
+        credit_account: l.credit_account || '',
+        amount: Math.max(Number(l.debit_amount) || 0, Number(l.credit_amount) || 0),
+        reference_type: 'manual_entry',
+        entry_number: manualEntryNumber || null,
+        name: manualEntryForm.name || null,
+        reference: manualEntryForm.reference_number || null,
+      }));
+      const { error: insertErr } = await supabase.from('journal_entries').insert(rows);
+      if (insertErr) throw insertErr;
+      setManualSuccess(`Manual entry ${manualEntryNumber} saved successfully.`);
+      setManualEntryLines([{ description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' }]);
+      setManualEntryForm({ date: '', name: '', reference_number: '' });
+      await generateManualEntryNumber();
+    } catch (err) {
+      setManualError(err.message);
+    } finally {
+      setManualSaving(false);
+    }
+  }, [supabase, manualEntryForm, manualEntryLines, manualEntryNumber, generateManualEntryNumber]);
+
   // ── Trigger fetches on tab change ─────────────────────────────────────────
   useEffect(() => {
     if (activeTab === 'dashboard') fetchDashboard();
@@ -587,11 +722,17 @@ export default function AdminPage() {
     else if (activeTab === 'rr') fetchRR();
     else if (activeTab === 'financial') fetchFinancial();
     else if (activeTab === 'profile') fetchProfile();
-  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile]);
+    else if (activeTab === 'journal') fetchJournal();
+    else if (activeTab === 'manual') generateManualEntryNumber();
+  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber]);
 
   useEffect(() => {
     if (activeTab === 'financial') fetchFinancial();
   }, [activeTab, finSubTab, finDateFrom, finDateTo, fetchFinancial]);
+
+  useEffect(() => {
+    if (activeTab === 'journal') fetchJournal();
+  }, [activeTab, journalSubTab, journalDateFrom, journalDateTo, fetchJournal]);
 
   // ── Nav items (memoised) — must be declared before any early return ──────
   const navItems = useMemo(
@@ -601,6 +742,8 @@ export default function AdminPage() {
       { key: 'costing', label: '💰 Price Costing' },
       { key: 'rr', label: '📋 Receiving Report' },
       { key: 'financial', label: '📈 Financial Reports' },
+      { key: 'journal', label: '📒 Journal Entries' },
+      { key: 'manual', label: '✏️ Manual Entry' },
       { key: 'profile', label: '👤 My Profile' },
     ],
     [],
@@ -1752,31 +1895,23 @@ export default function AdminPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {costingForm.lines.map((line, li) => {
+                             {costingForm.lines.map((line, li) => {
                               const lineTotal = (Number(line.qty) || 0) * (Number(line.cost_per_unit) || 0);
+                              const selInv = invItems.find((i) => i.id === line.inventory_item_id);
                               return (
                                 <tr key={li}>
                                   <td style={styles.td}>
-                                    <select
-                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px' }}
-                                      value={line.inventory_item_id}
-                                      onChange={(e) => {
-                                        const sel = invItems.find((i) => i.id === e.target.value);
-                                        setCostingForm((p) => {
-                                          const lines = [...p.lines];
-                                          lines[li] = {
-                                            ...lines[li],
-                                            inventory_item_id: e.target.value,
-                                            uom: sel?.uom || lines[li].uom,
-                                            cost_per_unit: sel ? String(sel.cost_per_unit || 0) : lines[li].cost_per_unit,
-                                          };
-                                          return { ...p, lines };
-                                        });
-                                      }}
-                                    >
-                                      <option value="">— Select —</option>
-                                      {invItems.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.code})</option>)}
-                                    </select>
+                                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                      <span style={{ flex: 1, fontSize: 11, color: selInv ? '#fff' : '#666' }}>
+                                        {selInv ? `${selInv.name} (${selInv.code})` : '— Select —'}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        title="Search inventory item"
+                                        style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '2px 7px', fontSize: 13 }}
+                                        onClick={() => { setCostingInvPickerIdx(li); setCostingInvPickerQuery(''); }}
+                                      >🔍</button>
+                                    </div>
                                   </td>
                                   <td style={styles.td}>
                                     <input
@@ -1939,44 +2074,26 @@ export default function AdminPage() {
                             value={fmt(totalEstCOGS)}
                           />
 
-                          {/* Contribution Margin (auto — derived from menu price) */}
-                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>Contribution Margin (auto)</label>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <input
-                                style={{ ...styles.input, width: 90, background: '#111', color: '#4caf50', fontWeight: 600 }}
-                                readOnly
-                                value={cmPct.toFixed(2)}
-                              />
-                              <span style={{ color: '#888', fontSize: 12 }}>%</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <span style={{ color: '#888', fontSize: 12 }}>₱</span>
-                              <input
-                                style={{ ...styles.input, width: 110, background: '#111', color: '#4caf50', fontWeight: 600 }}
-                                readOnly
-                                value={fmt(cmAmt)}
-                              />
-                            </div>
-                            <span style={{ color: '#888', fontSize: 11 }}>Menu Price − COGS</span>
+                          {/* Contribution Margin Amount (auto) */}
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>Contribution Margin Amount (₱)</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              style={{ ...styles.input, background: '#111', color: cmAmt >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}
+                              readOnly
+                              value={fmt(cmAmt)}
+                            />
+                            <span style={{ color: '#888', fontSize: 11 }}>Selling Price − Total COGS</span>
                           </div>
 
-                          {/* CM Ratio preview */}
-                          {sellingPrice > 0 && (() => {
-                            const cmRatio = cmAmt / sellingPrice;
-                            const target = CM_TARGETS[costingForm.menu_category] || null;
-                            const isBelowTarget = target !== null && cmRatio < target;
-                            return (
-                              <>
-                                <label style={styles.label}>CM Ratio</label>
-                                <div style={{ color: isBelowTarget ? '#f44336' : '#4caf50', fontWeight: 600, padding: '6px 0' }}>
-                                  {isBelowTarget && '⚠️ '}
-                                  {(cmRatio * 100).toFixed(2)}%
-                                  {target !== null && <span style={{ color: '#666', fontWeight: 400, fontSize: 12, marginLeft: 8 }}>Target: {(target * 100).toFixed(0)}%</span>}
-                                </div>
-                              </>
-                            );
-                          })()}
+                          {/* Contribution Margin (auto — derived from menu price) */}
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>CM Ratio (%)</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              style={{ ...styles.input, width: 100, background: '#111', color: cmAmt >= 0 ? '#4caf50' : '#f44336', fontWeight: 600 }}
+                              readOnly
+                              value={`${cmPct.toFixed(2)}%`}
+                            />
+                          </div>
                         </div>
                       );
                     })()}
@@ -1984,6 +2101,66 @@ export default function AdminPage() {
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
                       <button onClick={saveCostingItem} style={styles.primaryBtn}>Save</button>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+              {/* ── Costing Inventory Picker Dialog ── */}
+              <Dialog.Root open={costingInvPickerIdx !== null} onOpenChange={(open) => { if (!open) setCostingInvPickerIdx(null); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 480 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Select Inventory Item</Dialog.Title>
+                    <div style={{ marginBottom: 12 }}>
+                      <input
+                        style={styles.input}
+                        placeholder="Search by name or code…"
+                        value={costingInvPickerQuery}
+                        onChange={(e) => setCostingInvPickerQuery(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 12 }}>
+                      {[...invItems]
+                        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                        .filter((i) => {
+                          const q = costingInvPickerQuery.toLowerCase();
+                          return !q || (i.name || '').toLowerCase().includes(q) || (i.code || '').toLowerCase().includes(q);
+                        })
+                        .map((i) => (
+                          <div
+                            key={i.id}
+                            onClick={() => {
+                              if (costingInvPickerIdx !== null) {
+                                setCostingForm((p) => {
+                                  const lines = [...p.lines];
+                                  lines[costingInvPickerIdx] = {
+                                    ...lines[costingInvPickerIdx],
+                                    inventory_item_id: i.id,
+                                    uom: i.uom || lines[costingInvPickerIdx].uom,
+                                    cost_per_unit: String(i.cost_per_unit || 0),
+                                  };
+                                  return { ...p, lines };
+                                });
+                                setCostingInvPickerIdx(null);
+                                setCostingInvPickerQuery('');
+                              }
+                            }}
+                            style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
+                          >
+                            <strong>{i.name}</strong>
+                            <span style={{ color: '#888', fontSize: 12 }}> · {i.code} · {i.uom} · ₱{Number(i.cost_per_unit || 0).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      {[...invItems].filter((i) => {
+                        const q = costingInvPickerQuery.toLowerCase();
+                        return !q || (i.name || '').toLowerCase().includes(q) || (i.code || '').toLowerCase().includes(q);
+                      }).length === 0 && (
+                        <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No items found.</p>
+                      )}
+                    </div>
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
@@ -2790,6 +2967,307 @@ export default function AdminPage() {
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
                       <button onClick={savePassword} style={styles.primaryBtn}>Save</button>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+            </div>
+          )}
+          {/* ──────────────── JOURNAL ENTRIES ──────────────── */}
+          {activeTab === 'journal' && (
+            <div>
+              <h1 style={styles.pageTitle}>Journal Entries</h1>
+
+              {/* Sub-tab filters */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                {[
+                  { key: 'all', label: 'All' },
+                  { key: 'sales', label: 'Sales' },
+                  { key: 'purchases', label: 'Purchases' },
+                  { key: 'others', label: 'Others' },
+                ].map((st) => (
+                  <button
+                    key={st.key}
+                    onClick={() => setJournalSubTab(st.key)}
+                    style={{
+                      padding: '8px 18px', borderRadius: 20,
+                      border: `1px solid ${journalSubTab === st.key ? '#ffc107' : '#333'}`,
+                      background: journalSubTab === st.key ? '#ffc107' : 'transparent',
+                      color: journalSubTab === st.key ? '#000' : '#ccc',
+                      cursor: 'pointer', fontFamily: 'Poppins, sans-serif',
+                      fontWeight: journalSubTab === st.key ? 700 : 400, fontSize: 13,
+                    }}
+                  >{st.label}</button>
+                ))}
+              </div>
+
+              {/* Date range */}
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+                <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
+                <input type="date" style={{ ...styles.input, width: 160 }} value={journalDateFrom} onChange={(e) => setJournalDateFrom(e.target.value)} />
+                <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
+                <input type="date" style={{ ...styles.input, width: 160 }} value={journalDateTo} onChange={(e) => setJournalDateTo(e.target.value)} />
+                <button onClick={fetchJournal} style={styles.primaryBtn}>Refresh</button>
+              </div>
+
+              {journalLoading && <p style={styles.loadingText}>Loading…</p>}
+
+              {/* Transaction report */}
+              {!journalLoading && (() => {
+                // Group by reference_id (or id for manual entries)
+                const groupKey = (row) => row.entry_number || (row.reference_id ? String(row.reference_id) : row.id);
+                const groups = {};
+                (journalData || []).forEach((row) => {
+                  const k = groupKey(row);
+                  if (!groups[k]) groups[k] = [];
+                  groups[k].push(row);
+                });
+                const groupEntries = Object.entries(groups);
+                if (groupEntries.length === 0) {
+                  return <p style={{ color: '#666', textAlign: 'center', padding: 24 }}>No journal entries found for the selected period and filter.</p>;
+                }
+                let grandTotal = 0;
+                return (
+                  <div style={styles.tableWrap}>
+                    <table style={{ ...styles.table, fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          {['Date', 'Reference', 'Name', 'Particular', 'Debit Account', 'Credit Account', 'Debit (₱)', 'Credit (₱)'].map((h) => (
+                            <th key={h} style={styles.th}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupEntries.map(([key, rows]) => {
+                          const refDisplay = rows[0].entry_number || rows[0].reference_type || key.slice(0, 8);
+                          const nameDisplay = rows[0].name || '—';
+                          const groupTotal = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+                          grandTotal += groupTotal;
+                          return (
+                            <React.Fragment key={key}>
+                              {rows.map((row, ri) => (
+                                <tr key={row.id} style={ri % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{row.date}</td>
+                                  <td style={styles.td}>{ri === 0 ? refDisplay : ''}</td>
+                                  <td style={styles.td}>{ri === 0 ? nameDisplay : ''}</td>
+                                  <td style={styles.td}>{row.description}</td>
+                                  <td style={{ ...styles.td, color: '#4caf50' }}>{row.debit_account}</td>
+                                  <td style={{ ...styles.td, color: '#f44336' }}>{row.credit_account}</td>
+                                  <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(Number(row.amount) || 0)}</td>
+                                  <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(Number(row.amount) || 0)}</td>
+                                </tr>
+                              ))}
+                              {/* Group subtotal */}
+                              <tr style={{ background: '#1e1e1e', borderTop: '1px solid #333' }}>
+                                <td colSpan={6} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontWeight: 600, fontSize: 11 }}>Subtotal ({refDisplay}):</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(groupTotal)}</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(groupTotal)}</td>
+                              </tr>
+                            </React.Fragment>
+                          );
+                        })}
+                        {/* Grand total */}
+                        <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
+                          <td colSpan={6} style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>GRAND TOTAL:</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandTotal)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(grandTotal)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ──────────────── MANUAL ENTRY ──────────────── */}
+          {activeTab === 'manual' && (
+            <div>
+              <h1 style={styles.pageTitle}>Manual Journal Entry</h1>
+
+              {manualError && <p style={{ color: '#f44336', marginBottom: 12 }}>{manualError}</p>}
+              {manualSuccess && <p style={{ color: '#4caf50', marginBottom: 12 }}>{manualSuccess}</p>}
+
+              {/* Header fields */}
+              <div style={{ ...styles.card, marginBottom: 16 }}>
+                <div style={styles.formGrid}>
+                  <label style={styles.label}>Date</label>
+                  <input
+                    type="date"
+                    style={styles.input}
+                    value={manualEntryForm.date}
+                    onChange={(e) => setManualEntryForm((p) => ({ ...p, date: e.target.value }))}
+                  />
+
+                  <label style={styles.label}>Name (Vendor / Customer)</label>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      style={{ ...styles.input, flex: 1 }}
+                      readOnly
+                      placeholder="Click 🔍 to search contacts…"
+                      value={manualEntryForm.name}
+                    />
+                    <button
+                      type="button"
+                      title="Search contacts"
+                      style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '6px 10px', fontSize: 13 }}
+                      onClick={() => { setContactPickerOpen(true); setContactPickerQuery(''); fetchContacts(''); }}
+                    >🔍</button>
+                    {manualEntryForm.name && (
+                      <button
+                        type="button"
+                        style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 14 }}
+                        onClick={() => setManualEntryForm((p) => ({ ...p, name: '' }))}
+                      >✕</button>
+                    )}
+                  </div>
+
+                  <label style={styles.label}>Entry Number</label>
+                  <input style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }} readOnly value={manualEntryNumber} />
+
+                  <label style={styles.label}>Reference Number</label>
+                  <input
+                    style={styles.input}
+                    placeholder="Optional reference…"
+                    value={manualEntryForm.reference_number}
+                    onChange={(e) => setManualEntryForm((p) => ({ ...p, reference_number: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Line items */}
+              <div style={styles.card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 style={styles.cardTitle}>Line Items</h3>
+                  <button
+                    type="button"
+                    style={styles.primaryBtn}
+                    onClick={() => setManualEntryLines((p) => [...p, { description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' }])}
+                  >+ Add Line</button>
+                </div>
+                <div style={styles.tableWrap}>
+                  <table style={{ ...styles.table, fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        {['Description', 'Debit Account', 'Credit Account', 'Debit Amount (₱)', 'Credit Amount (₱)', ''].map((h) => (
+                          <th key={h} style={styles.th}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {manualEntryLines.map((line, li) => {
+                        const lineAmt = Math.max(Number(line.debit_amount) || 0, Number(line.credit_amount) || 0);
+                        return (
+                          <tr key={li}>
+                            <td style={styles.td}>
+                              <input
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 160 }}
+                                value={line.description}
+                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, description: e.target.value } : l))}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 140 }}
+                                placeholder="e.g. Cash on Hand"
+                                value={line.debit_account}
+                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, debit_account: e.target.value } : l))}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 140 }}
+                                placeholder="e.g. Revenue"
+                                value={line.credit_account}
+                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, credit_account: e.target.value } : l))}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
+                                value={line.debit_amount}
+                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, debit_amount: e.target.value } : l))}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
+                                value={line.credit_amount}
+                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, credit_amount: e.target.value } : l))}
+                              />
+                            </td>
+                            <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{lineAmt > 0 ? fmt(lineAmt) : '—'}</td>
+                            <td style={styles.td}>
+                              <button
+                                type="button"
+                                style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                                onClick={() => setManualEntryLines((p) => p.filter((_, i) => i !== li))}
+                              >✕</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {/* Total row */}
+                      {manualEntryLines.length > 0 && (() => {
+                        const totalDebit = manualEntryLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
+                        const totalCredit = manualEntryLines.reduce((s, l) => s + (Number(l.credit_amount) || 0), 0);
+                        return (
+                          <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
+                            <td colSpan={3} style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>TOTAL:</td>
+                            <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(totalDebit)}</td>
+                            <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(totalCredit)}</td>
+                            <td colSpan={2} />
+                          </tr>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+                  <button onClick={saveManualEntry} style={styles.primaryBtn} disabled={manualSaving}>
+                    {manualSaving ? 'Saving…' : 'Save Entry'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Contact Picker Dialog */}
+              <Dialog.Root open={contactPickerOpen} onOpenChange={(open) => { if (!open) setContactPickerOpen(false); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 480 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Select Contact</Dialog.Title>
+                    <div style={{ marginBottom: 12 }}>
+                      <input
+                        style={styles.input}
+                        placeholder="Search vendors or customers…"
+                        value={contactPickerQuery}
+                        onChange={(e) => { setContactPickerQuery(e.target.value); fetchContacts(e.target.value); }}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 12 }}>
+                      {contactList.map((c) => (
+                        <div
+                          key={c.id}
+                          onClick={() => {
+                            setManualEntryForm((p) => ({ ...p, name: c.name }));
+                            setContactPickerOpen(false);
+                          }}
+                          style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
+                        >
+                          <strong>{c.name}</strong>
+                          <span style={{ color: '#888', fontSize: 12 }}> · {c.type}</span>
+                        </div>
+                      ))}
+                      {contactList.length === 0 && (
+                        <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No contacts found.</p>
+                      )}
+                    </div>
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
