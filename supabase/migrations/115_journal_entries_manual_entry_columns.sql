@@ -6,11 +6,19 @@
 --   - reference: alternate column name alias (journal_entries already has reference_id)
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- Ensure all columns from migration 102 exist (table may have pre-dated that migration)
 ALTER TABLE journal_entries
-  ADD COLUMN IF NOT EXISTS date         DATE         NOT NULL DEFAULT CURRENT_DATE,
-  ADD COLUMN IF NOT EXISTS entry_number TEXT,
-  ADD COLUMN IF NOT EXISTS name         TEXT,
-  ADD COLUMN IF NOT EXISTS reference    TEXT;
+  ADD COLUMN IF NOT EXISTS date          DATE          NOT NULL DEFAULT CURRENT_DATE,
+  ADD COLUMN IF NOT EXISTS description   TEXT          NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS debit_account VARCHAR(100)  NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS credit_account VARCHAR(100) NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS amount        DECIMAL(12,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS reference_id  UUID,
+  ADD COLUMN IF NOT EXISTS reference_type VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS entry_number  TEXT,
+  ADD COLUMN IF NOT EXISTS name          TEXT,
+  ADD COLUMN IF NOT EXISTS reference     TEXT;
 
 -- Index for fast lookup by entry_number (used by sequence generation)
 CREATE INDEX IF NOT EXISTS idx_journal_entries_entry_number
