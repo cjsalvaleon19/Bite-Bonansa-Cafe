@@ -48,23 +48,27 @@ export default function AdminPage() {
   const [invDeleteConfirm, setInvDeleteConfirm] = useState(null);
 
   // ── Price Costing state ───────────────────────────────────────────────────
-  const [costingItems, setCostingItems] = useState([]);
+  const [costingHeaders, setCostingHeaders] = useState([]);
   const [invItems, setInvItems] = useState([]);
+  const [menuItemsList, setMenuItemsList] = useState([]);
   const [costingDialogOpen, setCostingDialogOpen] = useState(false);
   const [costingEditItem, setCostingEditItem] = useState(null);
+  const [menuSearchOpen, setMenuSearchOpen] = useState(false);
+  const [menuSearchQuery, setMenuSearchQuery] = useState('');
   const [costingForm, setCostingForm] = useState({
+    id: null,
     menu_item_name: '',
-    inventory_item_id: '',
-    uom: '',
-    qty: '0',
-    cost: '0',
-    total_cogs: '0',
+    menu_category: '',
+    menu_item_price: '0', // locked to cashier menu price
     labor_cost: '0',
     overhead_cost: '0',
     wastage_pct: '0',
+    wastage_amount: '0',
     contingency_pct: '0',
+    contingency_amount: '0',
     contribution_margin_pct: '0',
-    selling_price: '0',
+    contribution_margin_amount: '0',
+    lines: [], // [{ id, inventory_item_id, uom, qty, cost_per_unit }]
   });
 
   // ── Receiving Report state ────────────────────────────────────────────────
@@ -117,6 +121,35 @@ export default function AdminPage() {
   // ── RR Inventory Item Picker state ────────────────────────────────────────
   const [invPickerOpen, setInvPickerOpen] = useState(null); // row index or null
   const [invPickerQuery, setInvPickerQuery] = useState('');
+
+  // ── Costing Inventory Item Picker state ───────────────────────────────────
+  const [costingInvPickerIdx, setCostingInvPickerIdx] = useState(null); // line index or null
+  const [costingInvPickerQuery, setCostingInvPickerQuery] = useState('');
+
+  // ── Journal Entries state ─────────────────────────────────────────────────
+  const [journalSubTab, setJournalSubTab] = useState('all');
+  const [journalDateFrom, setJournalDateFrom] = useState('');
+  const [journalDateTo, setJournalDateTo] = useState('');
+  const [journalData, setJournalData] = useState([]);
+  const [journalLoading, setJournalLoading] = useState(false);
+
+  // ── Manual Entry state ────────────────────────────────────────────────────
+  const [manualEntryNumber, setManualEntryNumber] = useState('');
+  const [manualEntryForm, setManualEntryForm] = useState({
+    date: '',
+    name: '',
+    reference_number: '',
+  });
+  const [manualEntryLines, setManualEntryLines] = useState([
+    { description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' },
+  ]);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualError, setManualError] = useState('');
+  const [manualSuccess, setManualSuccess] = useState('');
+  // Contact picker for manual entry
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [contactPickerQuery, setContactPickerQuery] = useState('');
+  const [contactList, setContactList] = useState([]);
 
   // ── Financial Reports state ───────────────────────────────────────────────
   const [finSubTab, setFinSubTab] = useState('cashflow');
@@ -254,38 +287,52 @@ export default function AdminPage() {
       if (err) throw err;
       setInventoryItems(items || []);
 
-      // 2. Approved / Paid RR IDs within date range (both statuses are "received")
-      const { data: approvedRRs } = await supabase
-        .from('receiving_reports')
-        .select('id')
-        .in('status', ['approved', 'paid'])
-        .gte('date', invDateFrom)
-        .lte('date', invDateTo);
-      const rrIds = (approvedRRs || []).map((r) => r.id);
+      // 2 + 3. Line items for the selected date range — single join query (avoids large .in() URL)
+      // Use !receiving_report_id hint to disambiguate when multiple FK relationships exist
+      // 1.2: Purchases = "paid" status only
+      const { data: rrItemsRaw, error: riErr } = await supabase
+        .from('receiving_report_items')
+        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!receiving_report_id(status, date)')
+        .eq('receiving_reports.status', 'paid')
+        .gte('receiving_reports.date', invDateFrom)
+        .lte('receiving_reports.date', invDateTo);
+      if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
+      const rrItems = rrItemsRaw || [];
 
-      // 3. Line items for those RRs (include inventory_name for name-based fallback)
-      let rrItems = [];
-      if (rrIds.length > 0) {
-        const { data: ri, error: riErr } = await supabase
-          .from('receiving_report_items')
-          .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost')
-          .in('receiving_report_id', rrIds);
-        if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
-        rrItems = ri || [];
-      }
+      // 1.3: In Transit = "draft" status receiving reports in date range
+      const { data: inTransitRaw } = await supabase
+        .from('receiving_report_items')
+        .select('inventory_item_id, inventory_name, qty, receiving_reports!receiving_report_id(status, date)')
+        .eq('receiving_reports.status', 'draft')
+        .gte('receiving_reports.date', invDateFrom)
+        .lte('receiving_reports.date', invDateTo);
+      const inTransitItems = inTransitRaw || [];
+
+      // 2b + 3b. Line items from Jan 1, 2026 → invDateTo — single join query for Average Cost
+      // 1.4: Beginning Balance = "paid" status only (Jan 1, 2026 → start date − 1 day)
+      const AVG_COST_START = '2026-01-01';
+      const { data: allPeriodItemsRaw, error: ri2Err } = await supabase
+        .from('receiving_report_items')
+        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!receiving_report_id(status, date)')
+        .eq('receiving_reports.status', 'paid')
+        .gte('receiving_reports.date', AVG_COST_START)
+        .lte('receiving_reports.date', invDateTo);
+      if (ri2Err) throw new Error('Failed to fetch all-period receiving report items: ' + ri2Err.message);
+      const allPeriodItems = allPeriodItemsRaw || [];
 
       // 4. Price costing map (menu_item_name → inventory usage)
       const { data: costings } = await supabase
         .from('price_costing_items')
         .select('inventory_item_id, menu_item_name, qty');
 
-      // 5. Delivered orders with items in date range
+      // 5. Delivered/completed orders with items in date range
+      // 1.5: Sold = "order_delivered" + "completed" statuses
       const fromISO = new Date(invDateFrom + 'T00:00:00').toISOString();
       const toISO = new Date(invDateTo + 'T23:59:59.999').toISOString();
       const { data: orders } = await supabase
         .from('orders')
         .select('id, order_items(name, quantity)')
-        .eq('status', 'order_delivered')
+        .in('status', ['order_delivered', 'completed'])
         .gte('created_at', fromISO)
         .lte('created_at', toISO);
 
@@ -313,7 +360,7 @@ export default function AdminPage() {
         nameToIdMap[inv.name?.toLowerCase().trim()] = inv.id;
       });
 
-      // Build purchases map: inventory_item_id -> { qty, totalCost, totalLandedCost }
+      // Build purchases map (period): inventory_item_id -> { qty, totalCost, totalLandedCost }
       const purchasesMap = {};
       rrItems.forEach((ri) => {
         // Resolve the inventory item id — prefer the stored FK, fall back to name match
@@ -328,20 +375,49 @@ export default function AdminPage() {
         purchasesMap[resolvedId].totalLandedCost += Number(ri.total_landed_cost) || 0;
       });
 
-      // Compute report rows (Beginning = Ending - Purchases + Sold)
-      // avg_cost = (Ending Balance Amount + Period Total Landed Cost) / (Ending Qty + Purchased Qty)
+      // Build in-transit map (draft RRs in date range): inventory_item_id -> qty
+      const inTransitMap = {};
+      inTransitItems.forEach((ri) => {
+        const resolvedId = ri.inventory_item_id
+          || nameToIdMap[(ri.inventory_name || '').toLowerCase().trim()];
+        if (!resolvedId) return;
+        inTransitMap[resolvedId] = (inTransitMap[resolvedId] || 0) + (Number(ri.qty) || 0);
+      });
+
+      // Build all-period purchases map (Jan 1, 2026 → invDateTo): for Average Cost/Unit
+      // Average Cost/Unit = Total Landed Cost / Total Purchase Qty (full period)
+      const allPeriodPurchasesMap = {};
+      allPeriodItems.forEach((ri) => {
+        const resolvedId = ri.inventory_item_id
+          || nameToIdMap[(ri.inventory_name || '').toLowerCase().trim()];
+        if (!resolvedId) return;
+        if (!allPeriodPurchasesMap[resolvedId]) allPeriodPurchasesMap[resolvedId] = { qty: 0, totalLandedCost: 0 };
+        allPeriodPurchasesMap[resolvedId].qty += Number(ri.qty) || 0;
+        // total_landed_cost = (qty * cost) + freight_allocated (DB-generated column)
+        allPeriodPurchasesMap[resolvedId].totalLandedCost += Number(ri.total_landed_cost) || 0;
+      });
+
+      // Compute report rows
+      // Beginning = Total Qty Purchased (Jan 1, 2026 → start date − 1 day) [paid only]
+      //           = allPeriodQty (Jan 1 → end date) − purchases (start date → end date)
+      // Purchases = Total Qty Purchased in the selected period [paid only]
+      // In Transit= Total Qty in draft RRs in the selected period
+      // Sold      = Total Qty Sold in the selected period [order_delivered + completed]
+      // Ending    = Beginning + Purchases − Sold (derived)
+      // avg_cost  = Total Landed Cost (Jan 1, 2026 → end date) / Total Purchase Qty (same range)
+      // total_cost = Ending Qty × avg_cost
       const report = (items || []).map((item) => {
         const purchases = purchasesMap[item.id]?.qty || 0;
+        const inTransit = inTransitMap[item.id] || 0;
         const sold = soldMap[item.id] || 0;
-        const ending = Number(item.current_stock) || 0;
-        const beginning = ending - purchases + sold;
-        const periodTlc = purchasesMap[item.id]?.totalLandedCost || 0;
-        const endingAmount = ending * (Number(item.cost_per_unit) || 0);
-        const denom = ending + purchases;
-        const avg_cost = denom > 0
-          ? (endingAmount + periodTlc) / denom
+        const allPeriodQty = allPeriodPurchasesMap[item.id]?.qty || 0;
+        const allPeriodAmt = allPeriodPurchasesMap[item.id]?.totalLandedCost || 0;
+        const beginning = allPeriodQty - purchases;
+        const ending = beginning + purchases - sold;
+        const avg_cost = allPeriodQty > 0
+          ? allPeriodAmt / allPeriodQty
           : (Number(item.cost_per_unit) || 0);
-        return { ...item, beginning, purchases, sold, ending, avg_cost };
+        return { ...item, beginning, purchases, inTransit, sold, ending, avg_cost };
       });
 
       setInvReport(report);
@@ -357,17 +433,26 @@ export default function AdminPage() {
     if (!supabase) return;
     setLoading(true);
     try {
-      const [{ data: costing, error: e1 }, { data: inv, error: e2 }] = await Promise.all([
+      const [{ data: headers, error: e1 }, { data: inv, error: e2 }, { data: menus }] = await Promise.all([
         supabase
-          .from('price_costing_items')
-          .select('*, inventory_item:admin_inventory_items(id,name,code,uom)')
+          .from('price_costing_headers')
+          .select('*, lines:price_costing_items(id, inventory_item_id, uom, qty, cost, inventory_item:admin_inventory_items(id,name,code,uom,cost_per_unit))')
           .order('menu_item_name'),
         supabase.from('admin_inventory_items').select('*').order('name'),
+        supabase.from('menu_items').select('id, name, category, price, base_price, has_variants, menu_item_variant_types(id, variant_type_name, is_required, options:menu_item_variant_options(id, option_name, price_modifier, available))').eq('available', true).order('name'),
       ]);
-      if (e1) throw e1;
+      if (e1) {
+        if (e1.message && e1.message.includes('price_costing_headers')) {
+          throw new Error(
+            'Table "price_costing_headers" not found. Please apply migration 114 in Supabase SQL Editor. See supabase/migrations/RUN_MIGRATION_114.md for instructions.'
+          );
+        }
+        throw e1;
+      }
       if (e2) throw e2;
-      setCostingItems(costing || []);
+      setCostingHeaders(headers || []);
       setInvItems(inv || []);
+      setMenuItemsList(menus || []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -523,6 +608,112 @@ export default function AdminPage() {
     }
   }, [session]);
 
+  // ── Fetch: Journal Entries ────────────────────────────────────────────────
+  const fetchJournal = useCallback(async () => {
+    if (!supabase) return;
+    setJournalLoading(true);
+    try {
+      let q = supabase
+        .from('journal_entries')
+        .select('*')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (journalDateFrom) q = q.gte('date', journalDateFrom);
+      if (journalDateTo) q = q.lte('date', journalDateTo);
+      if (journalSubTab === 'sales') {
+        q = q.eq('reference_type', 'order');
+      } else if (journalSubTab === 'purchases') {
+        q = q.in('reference_type', ['receiving_report', 'rr_payment']);
+      } else if (journalSubTab === 'others') {
+        q = q.in('reference_type', ['cash_adjustment', 'manual_entry']);
+      }
+      const { data, error: err } = await q;
+      if (err) throw err;
+      setJournalData(data || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setJournalLoading(false);
+    }
+  }, [journalSubTab, journalDateFrom, journalDateTo]);
+
+  // ── Manual Entry: Generate Entry Number ──────────────────────────────────
+  const generateManualEntryNumber = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const yy = new Date().getFullYear().toString().slice(-2);
+      const prefix = `ME-${yy}`;
+      const { data } = await supabase
+        .from('journal_entries')
+        .select('entry_number')
+        .like('entry_number', `${prefix}%`)
+        .order('entry_number', { ascending: false })
+        .limit(1);
+      let seq = 1;
+      if (data && data.length > 0 && data[0].entry_number) {
+        const last = parseInt(data[0].entry_number.slice(prefix.length), 10);
+        if (!isNaN(last)) seq = last + 1;
+      }
+      setManualEntryNumber(`${prefix}${String(seq).padStart(7, '0')}`);
+    } catch {
+      setManualEntryNumber('');
+    }
+  }, []);
+
+  // ── Fetch: Contacts for Manual Entry ─────────────────────────────────────
+  const fetchContacts = useCallback(async (q) => {
+    if (!supabase) return;
+    try {
+      const [{ data: vends }, { data: usrs }] = await Promise.all([
+        supabase.from('vendors').select('id, name').ilike('name', `%${q}%`).limit(10),
+        supabase.from('users').select('id, full_name, role').ilike('full_name', `%${q}%`).limit(10),
+      ]);
+      const combined = [
+        ...(vends || []).map((v) => ({ id: v.id, name: v.name, type: 'Vendor' })),
+        ...(usrs || []).map((u) => ({ id: u.id, name: u.full_name, type: u.role })),
+      ];
+      setContactList(combined);
+    } catch {
+      setContactList([]);
+    }
+  }, []);
+
+  // ── Save Manual Entry ─────────────────────────────────────────────────────
+  const saveManualEntry = useCallback(async () => {
+    if (!supabase) return;
+    setManualSaving(true);
+    setManualError('');
+    setManualSuccess('');
+    try {
+      if (!manualEntryForm.date) throw new Error('Please enter a date.');
+      const validLines = manualEntryLines.filter(
+        (l) => l.description || l.debit_account || l.credit_account || l.debit_amount || l.credit_amount,
+      );
+      if (validLines.length === 0) throw new Error('Please add at least one line item.');
+      const rows = validLines.map((l) => ({
+        date: manualEntryForm.date,
+        description: l.description || '',
+        debit_account: l.debit_account || '',
+        credit_account: l.credit_account || '',
+        amount: Math.max(Number(l.debit_amount) || 0, Number(l.credit_amount) || 0),
+        reference_type: 'manual_entry',
+        entry_number: manualEntryNumber || null,
+        name: manualEntryForm.name || null,
+        reference: manualEntryForm.reference_number || null,
+      }));
+      const { error: insertErr } = await supabase.from('journal_entries').insert(rows);
+      if (insertErr) throw insertErr;
+      setManualSuccess(`Manual entry ${manualEntryNumber} saved successfully.`);
+      setManualEntryLines([{ description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' }]);
+      setManualEntryForm({ date: '', name: '', reference_number: '' });
+      await generateManualEntryNumber();
+    } catch (err) {
+      setManualError(err.message);
+    } finally {
+      setManualSaving(false);
+    }
+  }, [supabase, manualEntryForm, manualEntryLines, manualEntryNumber, generateManualEntryNumber]);
+
   // ── Trigger fetches on tab change ─────────────────────────────────────────
   useEffect(() => {
     if (activeTab === 'dashboard') fetchDashboard();
@@ -531,11 +722,17 @@ export default function AdminPage() {
     else if (activeTab === 'rr') fetchRR();
     else if (activeTab === 'financial') fetchFinancial();
     else if (activeTab === 'profile') fetchProfile();
-  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile]);
+    else if (activeTab === 'journal') fetchJournal();
+    else if (activeTab === 'manual') generateManualEntryNumber();
+  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber]);
 
   useEffect(() => {
     if (activeTab === 'financial') fetchFinancial();
   }, [activeTab, finSubTab, finDateFrom, finDateTo, fetchFinancial]);
+
+  useEffect(() => {
+    if (activeTab === 'journal') fetchJournal();
+  }, [activeTab, journalSubTab, journalDateFrom, journalDateTo, fetchJournal]);
 
   // ── Nav items (memoised) — must be declared before any early return ──────
   const navItems = useMemo(
@@ -545,6 +742,8 @@ export default function AdminPage() {
       { key: 'costing', label: '💰 Price Costing' },
       { key: 'rr', label: '📋 Receiving Report' },
       { key: 'financial', label: '📈 Financial Reports' },
+      { key: 'journal', label: '📒 Journal Entries' },
+      { key: 'manual', label: '✏️ Manual Entry' },
       { key: 'profile', label: '👤 My Profile' },
     ],
     [],
@@ -623,66 +822,136 @@ export default function AdminPage() {
   };
 
   // ── Costing helpers ───────────────────────────────────────────────────────
-  const calcSellingPrice = (form) => {
-    const cogs = Number(form.total_cogs) || 0;
-    const labor = Number(form.labor_cost) || 0;
-    const overhead = Number(form.overhead_cost) || 0;
-    const wastage = (Number(form.wastage_pct) || 0) / 100;
-    const contingency = (Number(form.contingency_pct) || 0) / 100;
-    const cm = (Number(form.contribution_margin_pct) || 0) / 100;
-    return cogs + labor + overhead + (wastage + contingency + cm) * cogs;
+
+  // Category-level contribution margin ratio targets (2.3.3–2.3.9)
+  const CM_TARGETS = {
+    'Snacks & Bites': 0.50,
+    'Noodles': 0.60,
+    'Rice & More': 0.50,
+    'Milktea Series': 0.60,
+    'Hot/Iced Drinks': 0.60,
+    'Frappe Series': 0.60,
+    'Fruit Soda & Lemonade': 0.60,
+  };
+
+  // Derive computed costing values from form fields
+  const calcCostingValues = (form) => {
+    const lineSubtotal = (form.lines || []).reduce(
+      (s, l) => s + (Number(l.qty) || 0) * (Number(l.cost_per_unit) || 0), 0,
+    );
+    const baseCOGS = lineSubtotal + (Number(form.labor_cost) || 0) + (Number(form.overhead_cost) || 0);
+    const wastageAmt = Number(form.wastage_amount) || 0;
+    const contingencyAmt = Number(form.contingency_amount) || 0;
+    const totalEstimatedCOGS = baseCOGS + wastageAmt + contingencyAmt;
+    // Selling price is locked to the menu item price
+    const sellingPrice = Number(form.menu_item_price) || 0;
+    const cmAmt = sellingPrice - totalEstimatedCOGS;
+    const cmPct = sellingPrice > 0 ? (cmAmt / sellingPrice) * 100 : 0;
+    return { lineSubtotal, baseCOGS, totalEstimatedCOGS, sellingPrice, cmAmt, cmPct };
   };
 
   const openCostingDialog = (item = null) => {
     setCostingEditItem(item);
     if (item) {
       setCostingForm({
+        id: item.id,
         menu_item_name: item.menu_item_name || '',
-        inventory_item_id: item.inventory_item_id || '',
-        uom: item.uom || '',
-        qty: String(item.qty || 0),
-        cost: String(item.cost || 0),
-        total_cogs: String(item.total_cogs || 0),
+        menu_category: item.menu_category || '',
+        menu_item_price: String(item.selling_price || 0),
         labor_cost: String(item.labor_cost || 0),
         overhead_cost: String(item.overhead_cost || 0),
         wastage_pct: String(item.wastage_pct || 0),
+        wastage_amount: String(item.wastage_amount || 0),
         contingency_pct: String(item.contingency_pct || 0),
+        contingency_amount: String(item.contingency_amount || 0),
         contribution_margin_pct: String(item.contribution_margin_pct || 0),
-        selling_price: String(item.selling_price || 0),
+        contribution_margin_amount: String(item.contribution_margin_amount || 0),
+        lines: (item.lines || []).map((l) => ({
+          id: l.id,
+          inventory_item_id: l.inventory_item_id || '',
+          uom: l.uom || '',
+          qty: String(l.qty || 0),
+          cost_per_unit: String(l.cost || 0),
+        })),
       });
     } else {
       setCostingForm({
-        menu_item_name: '', inventory_item_id: '', uom: '', qty: '0', cost: '0',
-        total_cogs: '0', labor_cost: '0', overhead_cost: '0', wastage_pct: '0',
-        contingency_pct: '0', contribution_margin_pct: '0', selling_price: '0',
+        id: null,
+        menu_item_name: '',
+        menu_category: '',
+        menu_item_price: '0',
+        labor_cost: '0',
+        overhead_cost: '0',
+        wastage_pct: '0',
+        wastage_amount: '0',
+        contingency_pct: '0',
+        contingency_amount: '0',
+        contribution_margin_pct: '0',
+        contribution_margin_amount: '0',
+        lines: [],
       });
     }
+    setMenuSearchOpen(false);
+    setMenuSearchQuery('');
     setCostingDialogOpen(true);
   };
 
   const saveCostingItem = async () => {
     if (!supabase) return;
     try {
-      const sp = calcSellingPrice(costingForm);
-      const payload = {
+      const { totalEstimatedCOGS, sellingPrice, cmAmt, cmPct } = calcCostingValues(costingForm);
+      const headerPayload = {
         menu_item_name: costingForm.menu_item_name,
-        inventory_item_id: costingForm.inventory_item_id || null,
-        uom: costingForm.uom,
-        qty: Number(costingForm.qty),
-        cost: Number(costingForm.cost),
-        total_cogs: Number(costingForm.total_cogs),
+        menu_category: costingForm.menu_category || null,
         labor_cost: Number(costingForm.labor_cost),
         overhead_cost: Number(costingForm.overhead_cost),
         wastage_pct: Number(costingForm.wastage_pct),
+        wastage_amount: Number(costingForm.wastage_amount),
         contingency_pct: Number(costingForm.contingency_pct),
-        contribution_margin_pct: Number(costingForm.contribution_margin_pct),
-        selling_price: sp,
+        contingency_amount: Number(costingForm.contingency_amount),
+        contribution_margin_pct: cmPct,
+        contribution_margin_amount: cmAmt,
+        total_estimated_cogs: totalEstimatedCOGS,
+        selling_price: sellingPrice,
+        updated_at: new Date().toISOString(),
       };
-      if (costingEditItem) {
-        await supabase.from('price_costing_items').update(payload).eq('id', costingEditItem.id);
+
+      let headerId = costingForm.id;
+      if (headerId) {
+        await supabase.from('price_costing_headers').update(headerPayload).eq('id', headerId);
       } else {
-        await supabase.from('price_costing_items').insert(payload);
+        const { data: inserted, error: insErr } = await supabase
+          .from('price_costing_headers')
+          .insert({ ...headerPayload, created_at: new Date().toISOString() })
+          .select()
+          .single();
+        if (insErr) throw insErr;
+        headerId = inserted.id;
       }
+
+      // Delete old line items, then re-insert
+      await supabase.from('price_costing_items').delete().eq('costing_header_id', headerId);
+
+      if (costingForm.lines.length > 0) {
+        const lineRows = costingForm.lines.map((l) => ({
+          costing_header_id: headerId,
+          menu_item_name: costingForm.menu_item_name,
+          inventory_item_id: l.inventory_item_id || null,
+          uom: l.uom || '',
+          qty: Number(l.qty),
+          cost: Number(l.cost_per_unit),
+          total_cogs: totalEstimatedCOGS,
+          labor_cost: 0,
+          overhead_cost: 0,
+          wastage_pct: 0,
+          contingency_pct: 0,
+          contribution_margin_pct: 0,
+          selling_price: sellingPrice,
+        }));
+        const { error: lineErr } = await supabase.from('price_costing_items').insert(lineRows);
+        if (lineErr) throw lineErr;
+      }
+
       setCostingDialogOpen(false);
       fetchCosting();
     } catch (err) {
@@ -738,19 +1007,22 @@ export default function AdminPage() {
         // Surface any fetch error so the user knows items failed to load
         if (liLoadErr) setError(`Failed to load line items: ${liLoadErr.message}`);
         setRrLineItems(
-          (li || []).map((l) => ({
-            id: l.id,
-            inventory_item_id: l.inventory_item_id || '',
-            // Fall back to the stored inventory_name when the join returns nothing
-            inventory_name: l.inventory_item?.name || l.inventory_name || '',
-            inventory_code: l.inventory_item?.code || l.inventory_code || '',
-            uom: l.uom || '',
-            qty: String(l.qty || 0),
-            cost: String(l.cost || 0),
-            total_cost: (Number(l.qty) || 0) * (Number(l.cost) || 0),
-            freight_allocated: Number(l.freight_allocated) || 0,
-            total_landed_cost: Number(l.total_landed_cost) || 0,
-          })),
+          calcFreight(
+            (li || []).map((l) => ({
+              id: l.id,
+              inventory_item_id: l.inventory_item_id || '',
+              // Fall back to the stored inventory_name when the join returns nothing
+              inventory_name: l.inventory_item?.name || l.inventory_name || '',
+              inventory_code: l.inventory_item?.code || l.inventory_code || '',
+              uom: l.uom || '',
+              qty: String(l.qty || 0),
+              cost: String(l.cost || 0),
+              total_cost: (Number(l.qty) || 0) * (Number(l.cost) || 0),
+              freight_allocated: Number(l.freight_allocated) || 0,
+              total_landed_cost: Number(l.total_landed_cost) || 0,
+            })),
+            item.freight_in,
+          ),
         );
       }
     } else {
@@ -1281,7 +1553,7 @@ export default function AdminPage() {
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={invDateTo} onChange={(e) => setInvDateTo(e.target.value)} />
                 <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
-                <span style={{ color: '#666', fontSize: 11 }}>Purchases & Sold computed for the selected period. Ending = current stock.</span>
+                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = Draft RRs in range. Sold = Delivered/Completed orders. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
               </div>
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
@@ -1289,13 +1561,13 @@ export default function AdminPage() {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      {['Code', 'Name', 'Dept', 'UoM', 'Beginning', 'Purchases', 'Sold', 'Ending', 'Avg Cost/Unit (₱)', 'Total Cost (₱)', 'Status', 'Actions'].map((h) => (
+                      {['Code', 'Name', 'Dept', 'UoM', 'Beginning', 'Purchases', 'Sold', 'Ending', 'Avg Cost/Unit (₱)', 'Total Cost (₱)', 'In Transit', 'Status', 'Actions'].map((h) => (
                         <th key={h} style={styles.th}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).map((item, idx) => (
+                    {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, inTransit: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).map((item, idx) => (
                       <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{item.code}</td>
                         <td style={styles.td}>{item.name}</td>
@@ -1307,6 +1579,7 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{Number(item.ending).toFixed(3)}</td>
                         <td style={styles.td}>{fmt(item.avg_cost ?? item.cost_per_unit)}</td>
                         <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{fmt((Number(item.ending) || 0) * (Number(item.avg_cost ?? item.cost_per_unit) || 0))}</td>
+                        <td style={{ ...styles.td, color: '#2196f3' }}>{Number(item.inTransit || 0).toFixed(3)}</td>
                         <td style={styles.td}>
                           <span style={{
                             ...styles.badge,
@@ -1324,9 +1597,24 @@ export default function AdminPage() {
                       </tr>
                     ))}
                     {inventoryItems.length === 0 && !loading && (
-                      <tr><td colSpan={12} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No inventory items. Add one!</td></tr>
+                      <tr><td colSpan={13} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No inventory items. Add one!</td></tr>
                     )}
                   </tbody>
+                  {/* 1.1 Grand Total row */}
+                  {invReport.length > 0 && (() => {
+                    const grandTotal = invReport.reduce(
+                      (s, item) => s + (Number(item.ending) || 0) * (Number(item.avg_cost ?? item.cost_per_unit) || 0), 0,
+                    );
+                    return (
+                      <tfoot>
+                        <tr style={{ background: '#1a2a1a', borderTop: '2px solid #ffc107' }}>
+                          <td colSpan={9} style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>Grand Total:</td>
+                          <td style={{ ...styles.td, color: '#ffc107', fontWeight: 700 }}>{fmt(grandTotal)}</td>
+                          <td colSpan={3} style={styles.td} />
+                        </tr>
+                      </tfoot>
+                    );
+                  })()}
                 </table>
               </div>
 
@@ -1430,119 +1718,449 @@ export default function AdminPage() {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      {['Menu Item', 'Inventory', 'Code', 'UoM', 'Qty', 'Cost', 'Total Cost', 'COGS', 'Selling Price', 'Actions'].map((h) => (
+                      {['Menu Item', 'Menu Category', 'Total Est. COGS (₱)', 'Selling Price (₱)', 'CM Ratio', 'Actions'].map((h) => (
                         <th key={h} style={styles.th}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {costingItems.map((item, idx) => (
-                      <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                        <td style={styles.td}>{item.menu_item_name}</td>
-                        <td style={styles.td}>{item.inventory_item?.name || '—'}</td>
-                        <td style={styles.td}>{item.inventory_item?.code || '—'}</td>
-                        <td style={styles.td}>{item.uom}</td>
-                        <td style={styles.td}>{item.qty}</td>
-                        <td style={styles.td}>{fmt(item.cost)}</td>
-                        <td style={styles.td}>{fmt((Number(item.qty) || 0) * (Number(item.cost) || 0))}</td>
-                        <td style={styles.td}>{fmt(item.total_cogs)}</td>
-                        <td style={{ ...styles.td, color: '#ffc107' }}>{fmt(item.selling_price)}</td>
-                        <td style={styles.td}>
-                          <button onClick={() => openCostingDialog(item)} style={styles.actionBtn}>Edit</button>
-                          <button
-                            onClick={async () => {
-                              if (!supabase) return;
-                              await supabase.from('price_costing_items').delete().eq('id', item.id);
-                              fetchCosting();
-                            }}
-                            style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
-                          >Delete</button>
-                        </td>
-                      </tr>
-                    ))}
-                    {costingItems.length === 0 && !loading && (
-                      <tr><td colSpan={10} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
+                    {costingHeaders.map((item, idx) => {
+                      const sp = Number(item.selling_price) || 0;
+                      const tec = Number(item.total_estimated_cogs) || 0;
+                      const cmRatio = sp > 0 ? (sp - tec) / sp : 0;
+                      const target = CM_TARGETS[item.menu_category] || null;
+                      const isBelowTarget = target !== null && cmRatio < target;
+                      return (
+                        <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                          <td style={styles.td}>
+                            <div>{item.menu_item_name}</div>
+                          </td>
+                          <td style={styles.td}>{item.menu_category || '—'}</td>
+                          <td style={styles.td}>{fmt(tec)}</td>
+                          <td style={{ ...styles.td, color: '#ffc107' }}>{fmt(sp)}</td>
+                          <td style={{ ...styles.td, color: isBelowTarget ? '#f44336' : '#4caf50', fontWeight: 600 }}>
+                            {isBelowTarget && <span title={`Below target ${(target * 100).toFixed(0)}%`}>⚠️ </span>}
+                            {(cmRatio * 100).toFixed(1)}%
+                            {target !== null && <div style={{ fontSize: 10, color: '#666', fontWeight: 400 }}>Target: {(target * 100).toFixed(0)}%</div>}
+                          </td>
+                          <td style={styles.td}>
+                            <button onClick={() => openCostingDialog(item)} style={styles.actionBtn}>Edit</button>
+                            <button
+                              onClick={async () => {
+                                if (!supabase) return;
+                                await supabase.from('price_costing_items').delete().eq('costing_header_id', item.id);
+                                await supabase.from('price_costing_headers').delete().eq('id', item.id);
+                                fetchCosting();
+                              }}
+                              style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
+                            >Delete</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {costingHeaders.length === 0 && !loading && (
+                      <tr><td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
 
-              {/* Costing Dialog */}
-              <Dialog.Root open={costingDialogOpen} onOpenChange={setCostingDialogOpen}>
+              {/* Costing Dialog — 75% screen width */}
+              <Dialog.Root open={costingDialogOpen} onOpenChange={(open) => { if (!open) setMenuSearchOpen(false); setCostingDialogOpen(open); }}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 560 }} aria-describedby={undefined}>
+                  <Dialog.Content
+                    style={{ ...styles.dialogContent, maxWidth: '75vw', width: '75vw', maxHeight: '90vh', overflowY: 'auto' }}
+                    aria-describedby={undefined}
+                  >
                     <Dialog.Title style={styles.dialogTitle}>
                       {costingEditItem ? 'Edit Costing Item' : 'New Costing Item'}
                     </Dialog.Title>
+
+                    {/* ── Menu Item + Category ── */}
                     <div style={styles.formGrid}>
                       <label style={styles.label}>Menu Item Name</label>
-                      <input style={styles.input} value={costingForm.menu_item_name} onChange={(e) => setCostingForm((p) => ({ ...p, menu_item_name: e.target.value }))} />
-
-                      <label style={styles.label}>Inventory Item</label>
-                      <select
-                        style={styles.input}
-                        value={costingForm.inventory_item_id}
-                        onChange={(e) => {
-                          const selected = invItems.find((i) => i.id === e.target.value);
-                          if (selected) {
-                            setCostingForm((p) => ({ ...p, inventory_item_id: selected.id, uom: selected.uom || '', cost: String(selected.cost_per_unit || 0) }));
-                          } else {
-                            setCostingForm((p) => ({ ...p, inventory_item_id: '' }));
-                          }
-                        }}
-                      >
-                        <option value="">— Select —</option>
-                        {invItems.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.code})</option>)}
-                      </select>
-
-                      <label style={styles.label}>UoM</label>
-                      <input style={styles.input} value={costingForm.uom} onChange={(e) => setCostingForm((p) => ({ ...p, uom: e.target.value }))} />
-
-                      <label style={styles.label}>Quantity</label>
-                      <input style={styles.input} type="number" value={costingForm.qty} onChange={(e) => setCostingForm((p) => ({ ...p, qty: e.target.value }))} />
-
-                      <label style={styles.label}>Cost per Unit (₱)</label>
-                      <input style={styles.input} type="number" value={costingForm.cost} onChange={(e) => setCostingForm((p) => ({ ...p, cost: e.target.value }))} />
-
-                      <label style={styles.label}>Total Cost (auto)</label>
-                      <input
-                        style={{ ...styles.input, background: '#111', color: '#888' }}
-                        readOnly
-                        value={fmt((Number(costingForm.qty) || 0) * (Number(costingForm.cost) || 0))}
-                      />
-
-                      <label style={styles.label}>Total COGS (₱)</label>
-                      <input style={styles.input} type="number" value={costingForm.total_cogs} onChange={(e) => setCostingForm((p) => ({ ...p, total_cogs: e.target.value }))} />
-
-                      <label style={styles.label}>Labor Cost (₱)</label>
-                      <input style={styles.input} type="number" value={costingForm.labor_cost} onChange={(e) => setCostingForm((p) => ({ ...p, labor_cost: e.target.value }))} />
-
-                      <label style={styles.label}>Overhead Cost (₱)</label>
-                      <input style={styles.input} type="number" value={costingForm.overhead_cost} onChange={(e) => setCostingForm((p) => ({ ...p, overhead_cost: e.target.value }))} />
-
-                      <label style={styles.label}>Wastage %</label>
-                      <input style={styles.input} type="number" value={costingForm.wastage_pct} onChange={(e) => setCostingForm((p) => ({ ...p, wastage_pct: e.target.value }))} />
-
-                      <label style={styles.label}>Contingency %</label>
-                      <input style={styles.input} type="number" value={costingForm.contingency_pct} onChange={(e) => setCostingForm((p) => ({ ...p, contingency_pct: e.target.value }))} />
-
-                      <label style={styles.label}>Contribution Margin %</label>
-                      <input style={styles.input} type="number" value={costingForm.contribution_margin_pct} onChange={(e) => setCostingForm((p) => ({ ...p, contribution_margin_pct: e.target.value }))} />
-
-                      <label style={styles.label}>Selling Price (auto)</label>
-                      <div>
+                      <div style={{ display: 'flex', gap: 8 }}>
                         <input
-                          style={{ ...styles.input, background: '#111', color: '#ffc107' }}
-                          readOnly
-                          value={fmt(calcSellingPrice(costingForm))}
+                          style={{ ...styles.input, flex: 1 }}
+                          value={costingForm.menu_item_name}
+                          onChange={(e) => setCostingForm((p) => ({ ...p, menu_item_name: e.target.value }))}
+                          placeholder="Type or search…"
                         />
-                        <span style={styles.helperText}>COGS + Labor + Overhead + (Wastage% + Contingency% + CM%) × COGS</span>
+                        <button
+                          type="button"
+                          title="Search Menu Items"
+                          style={{ ...styles.actionBtn, padding: '0 12px', fontSize: 16 }}
+                          onClick={() => { setMenuSearchOpen((v) => !v); setMenuSearchQuery(''); }}
+                        >🔍</button>
+                      </div>
+
+                      {/* Menu Item Search Popup */}
+                      {menuSearchOpen && (
+                        <div style={{ gridColumn: '1 / -1', background: '#1a1a1a', border: '1px solid #444', borderRadius: 6, padding: 12, marginBottom: 8 }}>
+                          <input
+                            style={{ ...styles.input, marginBottom: 8 }}
+                            placeholder="Search menu…"
+                            value={menuSearchQuery}
+                            onChange={(e) => setMenuSearchQuery(e.target.value)}
+                            autoFocus
+                          />
+                          <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                            {(() => {
+                              // Build expanded list: base items + variant options
+                              const expanded = [];
+                              for (const m of menuItemsList) {
+                                const basePrice = Number(m.price || m.base_price || 0);
+                                if (!m.has_variants || !m.menu_item_variant_types || m.menu_item_variant_types.length === 0) {
+                                  expanded.push({ key: `base-${m.id || m.name}`, displayName: m.name, category: m.category || '', price: basePrice });
+                                } else {
+                                  // Show base item entry
+                                  expanded.push({ key: `base-${m.id || m.name}`, displayName: m.name, category: m.category || '', price: basePrice });
+                                  // Expand each variant type option
+                                  for (const vt of m.menu_item_variant_types) {
+                                    const vtName = vt.variant_type_name.toLowerCase().replace(/[^a-z]/g, '');
+                                    const isAddOn = vtName === 'addon' || vtName === 'addons' || vtName === 'addon' || vtName.startsWith('addon');
+                                    for (const opt of (vt.options || []).filter((o) => o.available !== false)) {
+                                      const variantPrice = isAddOn
+                                        ? Number(opt.price_modifier || 0)
+                                        : basePrice + Number(opt.price_modifier || 0);
+                                      expanded.push({
+                                        key: `${m.id || m.name}-${vt.id}-${opt.id}`,
+                                        displayName: `${m.name} - ${opt.option_name}${isAddOn ? ' (Add On)' : ''}`,
+                                        category: m.category || '',
+                                        price: variantPrice,
+                                      });
+                                    }
+                                  }
+                                }
+                              }
+                              const q = menuSearchQuery.toLowerCase();
+                              const filtered = expanded.filter((e) => e.displayName.toLowerCase().includes(q));
+                              if (filtered.length === 0) {
+                                return <div style={{ color: '#666', fontSize: 13, padding: '6px 8px' }}>No menu items found.</div>;
+                              }
+                              return filtered.map((entry) => (
+                                <div
+                                  key={entry.key}
+                                  style={{ padding: '6px 8px', cursor: 'pointer', borderRadius: 4, color: '#ccc', fontSize: 13 }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = '#333'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                                  onClick={() => {
+                                    setCostingForm((p) => ({
+                                      ...p,
+                                      menu_item_name: entry.displayName,
+                                      menu_category: entry.category,
+                                      menu_item_price: String(entry.price),
+                                    }));
+                                    setMenuSearchOpen(false);
+                                  }}
+                                >
+                                  {entry.displayName} <span style={{ color: '#888', fontSize: 11 }}>({entry.category}) — {fmt(entry.price)}</span>
+                                </div>
+                              ));
+                            })()}
+                          </div>
+                        </div>
+                      )}
+
+                      <label style={styles.label}>Menu Category</label>
+                      <input
+                        style={{ ...styles.input, background: '#111', color: '#aaa' }}
+                        value={costingForm.menu_category}
+                        onChange={(e) => setCostingForm((p) => ({ ...p, menu_category: e.target.value }))}
+                        placeholder="Auto-filled from menu search"
+                      />
+                    </div>
+
+                    {/* ── Inventory Lines ── */}
+                    <div style={{ marginTop: 16, marginBottom: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ color: '#ffc107', fontWeight: 600, fontSize: 13 }}>Inventory Items</span>
+                        <button
+                          type="button"
+                          style={styles.primaryBtn}
+                          onClick={() => setCostingForm((p) => ({
+                            ...p,
+                            lines: [...p.lines, { id: null, inventory_item_id: '', uom: '', qty: '0', cost_per_unit: '0' }],
+                          }))}
+                        >+ Add Line</button>
+                      </div>
+                      <div style={styles.tableWrap}>
+                        <table style={{ ...styles.table, fontSize: 12 }}>
+                          <thead>
+                            <tr>
+                              {['Inventory Item', 'UoM', 'Qty', 'Cost/Unit (₱)', 'Line Total (₱)', ''].map((h) => (
+                                <th key={h} style={styles.th}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                             {costingForm.lines.map((line, li) => {
+                              const lineTotal = (Number(line.qty) || 0) * (Number(line.cost_per_unit) || 0);
+                              const selInv = invItems.find((i) => i.id === line.inventory_item_id);
+                              return (
+                                <tr key={li}>
+                                  <td style={styles.td}>
+                                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                      <span style={{ flex: 1, fontSize: 11, color: selInv ? '#fff' : '#666' }}>
+                                        {selInv ? `${selInv.name} (${selInv.code})` : '— Select —'}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        title="Search inventory item"
+                                        style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '2px 7px', fontSize: 13 }}
+                                        onClick={() => { setCostingInvPickerIdx(li); setCostingInvPickerQuery(''); }}
+                                      >🔍</button>
+                                    </div>
+                                  </td>
+                                  <td style={styles.td}>
+                                    <input
+                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 70 }}
+                                      value={line.uom}
+                                      onChange={(e) => setCostingForm((p) => {
+                                        const lines = [...p.lines];
+                                        lines[li] = { ...lines[li], uom: e.target.value };
+                                        return { ...p, lines };
+                                      })}
+                                    />
+                                  </td>
+                                  <td style={styles.td}>
+                                    <input
+                                      type="number"
+                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 80 }}
+                                      value={line.qty}
+                                      onChange={(e) => setCostingForm((p) => {
+                                        const lines = [...p.lines];
+                                        lines[li] = { ...lines[li], qty: e.target.value };
+                                        return { ...p, lines };
+                                      })}
+                                    />
+                                  </td>
+                                  <td style={styles.td}>
+                                    <input
+                                      type="number"
+                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
+                                      value={line.cost_per_unit}
+                                      onChange={(e) => setCostingForm((p) => {
+                                        const lines = [...p.lines];
+                                        lines[li] = { ...lines[li], cost_per_unit: e.target.value };
+                                        return { ...p, lines };
+                                      })}
+                                    />
+                                  </td>
+                                  <td style={{ ...styles.td, color: '#4caf50' }}>{fmt(lineTotal)}</td>
+                                  <td style={styles.td}>
+                                    <button
+                                      type="button"
+                                      style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                                      onClick={() => setCostingForm((p) => ({ ...p, lines: p.lines.filter((_, i) => i !== li) }))}
+                                    >✕</button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {costingForm.lines.length === 0 && (
+                              <tr><td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#555', padding: 16, fontSize: 12 }}>No inventory lines. Click "+ Add Line".</td></tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
+
+                    {/* ── Costing Fields ── */}
+                    {(() => {
+                      const lineSubtotal = costingForm.lines.reduce(
+                        (s, l) => s + (Number(l.qty) || 0) * (Number(l.cost_per_unit) || 0), 0,
+                      );
+                      const baseCOGS = lineSubtotal
+                        + (Number(costingForm.labor_cost) || 0)
+                        + (Number(costingForm.overhead_cost) || 0);
+                      const wastageAmt = Number(costingForm.wastage_amount) || 0;
+                      const contingencyAmt = Number(costingForm.contingency_amount) || 0;
+                      const totalEstCOGS = baseCOGS + wastageAmt + contingencyAmt;
+                      // Selling price is locked to the menu item's actual price
+                      const sellingPrice = Number(costingForm.menu_item_price) || 0;
+                      const cmAmt = sellingPrice - totalEstCOGS;
+                      const cmPct = sellingPrice > 0 ? (cmAmt / sellingPrice) * 100 : 0;
+
+                      return (
+                        <div style={styles.formGrid}>
+                          {/* Selling Price (locked to menu) */}
+                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (₱) — from Menu</label>
+                          <div>
+                            <input
+                              style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
+                              readOnly
+                              value={fmt(sellingPrice)}
+                            />
+                            <span style={styles.helperText}>Auto-filled from cashier menu price. Use 🔍 search to change.</span>
+                          </div>
+
+                          <label style={styles.label}>Labor Cost (₱)</label>
+                          <input style={styles.input} type="number" value={costingForm.labor_cost}
+                            onChange={(e) => setCostingForm((p) => ({ ...p, labor_cost: e.target.value }))} />
+
+                          <label style={styles.label}>Overhead Cost (₱)</label>
+                          <input style={styles.input} type="number" value={costingForm.overhead_cost}
+                            onChange={(e) => setCostingForm((p) => ({ ...p, overhead_cost: e.target.value }))} />
+
+                          {/* Wastage: pct + amount */}
+                          <label style={styles.label}>Wastage</label>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 90 }}
+                                value={costingForm.wastage_pct}
+                                onChange={(e) => {
+                                  const pct = Number(e.target.value) || 0;
+                                  const amt = (pct / 100) * baseCOGS;
+                                  setCostingForm((p) => ({ ...p, wastage_pct: e.target.value, wastage_amount: amt.toFixed(4) }));
+                                }}
+                              />
+                              <span style={{ color: '#888', fontSize: 12 }}>%</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ color: '#888', fontSize: 12 }}>₱</span>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 110 }}
+                                value={costingForm.wastage_amount}
+                                onChange={(e) => {
+                                  const amt = Number(e.target.value) || 0;
+                                  const pct = baseCOGS > 0 ? (amt / baseCOGS) * 100 : 0;
+                                  setCostingForm((p) => ({ ...p, wastage_amount: e.target.value, wastage_pct: pct.toFixed(4) }));
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Contingency: pct + amount */}
+                          <label style={styles.label}>Contingency</label>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 90 }}
+                                value={costingForm.contingency_pct}
+                                onChange={(e) => {
+                                  const pct = Number(e.target.value) || 0;
+                                  const amt = (pct / 100) * baseCOGS;
+                                  setCostingForm((p) => ({ ...p, contingency_pct: e.target.value, contingency_amount: amt.toFixed(4) }));
+                                }}
+                              />
+                              <span style={{ color: '#888', fontSize: 12 }}>%</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ color: '#888', fontSize: 12 }}>₱</span>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 110 }}
+                                value={costingForm.contingency_amount}
+                                onChange={(e) => {
+                                  const amt = Number(e.target.value) || 0;
+                                  const pct = baseCOGS > 0 ? (amt / baseCOGS) * 100 : 0;
+                                  setCostingForm((p) => ({ ...p, contingency_amount: e.target.value, contingency_pct: pct.toFixed(4) }));
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Total Estimated COGS (auto) */}
+                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Total Estimated COGS (auto)</label>
+                          <input
+                            style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
+                            readOnly
+                            value={fmt(totalEstCOGS)}
+                          />
+
+                          {/* Contribution Margin Amount (auto) */}
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>Contribution Margin Amount (₱)</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              style={{ ...styles.input, background: '#111', color: cmAmt >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}
+                              readOnly
+                              value={fmt(cmAmt)}
+                            />
+                            <span style={{ color: '#888', fontSize: 11 }}>Selling Price − Total COGS</span>
+                          </div>
+
+                          {/* Contribution Margin (auto — derived from menu price) */}
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>CM Ratio (%)</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              style={{ ...styles.input, width: 100, background: '#111', color: cmAmt >= 0 ? '#4caf50' : '#f44336', fontWeight: 600 }}
+                              readOnly
+                              value={`${cmPct.toFixed(2)}%`}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
                       <button onClick={saveCostingItem} style={styles.primaryBtn}>Save</button>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+              {/* ── Costing Inventory Picker Dialog ── */}
+              <Dialog.Root open={costingInvPickerIdx !== null} onOpenChange={(open) => { if (!open) setCostingInvPickerIdx(null); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 480 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Select Inventory Item</Dialog.Title>
+                    <div style={{ marginBottom: 12 }}>
+                      <input
+                        style={styles.input}
+                        placeholder="Search by name or code…"
+                        value={costingInvPickerQuery}
+                        onChange={(e) => setCostingInvPickerQuery(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 12 }}>
+                      {[...invItems]
+                        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                        .filter((i) => {
+                          const q = costingInvPickerQuery.toLowerCase();
+                          return !q || (i.name || '').toLowerCase().includes(q) || (i.code || '').toLowerCase().includes(q);
+                        })
+                        .map((i) => (
+                          <div
+                            key={i.id}
+                            onClick={() => {
+                              if (costingInvPickerIdx !== null) {
+                                setCostingForm((p) => {
+                                  const lines = [...p.lines];
+                                  lines[costingInvPickerIdx] = {
+                                    ...lines[costingInvPickerIdx],
+                                    inventory_item_id: i.id,
+                                    uom: i.uom || lines[costingInvPickerIdx].uom,
+                                    cost_per_unit: String(i.cost_per_unit || 0),
+                                  };
+                                  return { ...p, lines };
+                                });
+                                setCostingInvPickerIdx(null);
+                                setCostingInvPickerQuery('');
+                              }
+                            }}
+                            style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
+                          >
+                            <strong>{i.name}</strong>
+                            <span style={{ color: '#888', fontSize: 12 }}> · {i.code} · {i.uom} · ₱{Number(i.cost_per_unit || 0).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      {[...invItems].filter((i) => {
+                        const q = costingInvPickerQuery.toLowerCase();
+                        return !q || (i.name || '').toLowerCase().includes(q) || (i.code || '').toLowerCase().includes(q);
+                      }).length === 0 && (
+                        <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No items found.</p>
+                      )}
+                    </div>
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
@@ -1696,7 +2314,10 @@ export default function AdminPage() {
                         </table>
                       </div>
                       <div style={{ marginTop: 8, textAlign: 'right', color: '#ffc107', fontWeight: 600 }}>
-                        Total Landed Cost: {fmt(rrViewItem?.total_landed_cost || 0)}
+                        Total Landed Cost: {fmt(rrViewLineItems.reduce((s, li) => {
+                          const tc = (Number(li.qty) || 0) * (Number(li.cost) || 0);
+                          return s + (Number(li.total_landed_cost) || (tc + (Number(li.freight_allocated) || 0)));
+                        }, 0))}
                       </div>
                     </div>
                     <div style={styles.dialogFooter}>
@@ -2346,6 +2967,307 @@ export default function AdminPage() {
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
                       <button onClick={savePassword} style={styles.primaryBtn}>Save</button>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+            </div>
+          )}
+          {/* ──────────────── JOURNAL ENTRIES ──────────────── */}
+          {activeTab === 'journal' && (
+            <div>
+              <h1 style={styles.pageTitle}>Journal Entries</h1>
+
+              {/* Sub-tab filters */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                {[
+                  { key: 'all', label: 'All' },
+                  { key: 'sales', label: 'Sales' },
+                  { key: 'purchases', label: 'Purchases' },
+                  { key: 'others', label: 'Others' },
+                ].map((st) => (
+                  <button
+                    key={st.key}
+                    onClick={() => setJournalSubTab(st.key)}
+                    style={{
+                      padding: '8px 18px', borderRadius: 20,
+                      border: `1px solid ${journalSubTab === st.key ? '#ffc107' : '#333'}`,
+                      background: journalSubTab === st.key ? '#ffc107' : 'transparent',
+                      color: journalSubTab === st.key ? '#000' : '#ccc',
+                      cursor: 'pointer', fontFamily: 'Poppins, sans-serif',
+                      fontWeight: journalSubTab === st.key ? 700 : 400, fontSize: 13,
+                    }}
+                  >{st.label}</button>
+                ))}
+              </div>
+
+              {/* Date range */}
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+                <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
+                <input type="date" style={{ ...styles.input, width: 160 }} value={journalDateFrom} onChange={(e) => setJournalDateFrom(e.target.value)} />
+                <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
+                <input type="date" style={{ ...styles.input, width: 160 }} value={journalDateTo} onChange={(e) => setJournalDateTo(e.target.value)} />
+                <button onClick={fetchJournal} style={styles.primaryBtn}>Refresh</button>
+              </div>
+
+              {journalLoading && <p style={styles.loadingText}>Loading…</p>}
+
+              {/* Transaction report */}
+              {!journalLoading && (() => {
+                // Group by reference_id (or id for manual entries)
+                const groupKey = (row) => row.entry_number || (row.reference_id ? String(row.reference_id) : row.id);
+                const groups = {};
+                (journalData || []).forEach((row) => {
+                  const k = groupKey(row);
+                  if (!groups[k]) groups[k] = [];
+                  groups[k].push(row);
+                });
+                const groupEntries = Object.entries(groups);
+                if (groupEntries.length === 0) {
+                  return <p style={{ color: '#666', textAlign: 'center', padding: 24 }}>No journal entries found for the selected period and filter.</p>;
+                }
+                let grandTotal = 0;
+                return (
+                  <div style={styles.tableWrap}>
+                    <table style={{ ...styles.table, fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          {['Date', 'Reference', 'Name', 'Particular', 'Debit Account', 'Credit Account', 'Debit (₱)', 'Credit (₱)'].map((h) => (
+                            <th key={h} style={styles.th}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupEntries.map(([key, rows]) => {
+                          const refDisplay = rows[0].entry_number || rows[0].reference_type || key.slice(0, 8);
+                          const nameDisplay = rows[0].name || '—';
+                          const groupTotal = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+                          grandTotal += groupTotal;
+                          return (
+                            <React.Fragment key={key}>
+                              {rows.map((row, ri) => (
+                                <tr key={row.id} style={ri % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{row.date}</td>
+                                  <td style={styles.td}>{ri === 0 ? refDisplay : ''}</td>
+                                  <td style={styles.td}>{ri === 0 ? nameDisplay : ''}</td>
+                                  <td style={styles.td}>{row.description}</td>
+                                  <td style={{ ...styles.td, color: '#4caf50' }}>{row.debit_account}</td>
+                                  <td style={{ ...styles.td, color: '#f44336' }}>{row.credit_account}</td>
+                                  <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(Number(row.amount) || 0)}</td>
+                                  <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(Number(row.amount) || 0)}</td>
+                                </tr>
+                              ))}
+                              {/* Group subtotal */}
+                              <tr style={{ background: '#1e1e1e', borderTop: '1px solid #333' }}>
+                                <td colSpan={6} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontWeight: 600, fontSize: 11 }}>Subtotal ({refDisplay}):</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(groupTotal)}</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(groupTotal)}</td>
+                              </tr>
+                            </React.Fragment>
+                          );
+                        })}
+                        {/* Grand total */}
+                        <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
+                          <td colSpan={6} style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>GRAND TOTAL:</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandTotal)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(grandTotal)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ──────────────── MANUAL ENTRY ──────────────── */}
+          {activeTab === 'manual' && (
+            <div>
+              <h1 style={styles.pageTitle}>Manual Journal Entry</h1>
+
+              {manualError && <p style={{ color: '#f44336', marginBottom: 12 }}>{manualError}</p>}
+              {manualSuccess && <p style={{ color: '#4caf50', marginBottom: 12 }}>{manualSuccess}</p>}
+
+              {/* Header fields */}
+              <div style={{ ...styles.card, marginBottom: 16 }}>
+                <div style={styles.formGrid}>
+                  <label style={styles.label}>Date</label>
+                  <input
+                    type="date"
+                    style={styles.input}
+                    value={manualEntryForm.date}
+                    onChange={(e) => setManualEntryForm((p) => ({ ...p, date: e.target.value }))}
+                  />
+
+                  <label style={styles.label}>Name (Vendor / Customer)</label>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      style={{ ...styles.input, flex: 1 }}
+                      readOnly
+                      placeholder="Click 🔍 to search contacts…"
+                      value={manualEntryForm.name}
+                    />
+                    <button
+                      type="button"
+                      title="Search contacts"
+                      style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '6px 10px', fontSize: 13 }}
+                      onClick={() => { setContactPickerOpen(true); setContactPickerQuery(''); fetchContacts(''); }}
+                    >🔍</button>
+                    {manualEntryForm.name && (
+                      <button
+                        type="button"
+                        style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 14 }}
+                        onClick={() => setManualEntryForm((p) => ({ ...p, name: '' }))}
+                      >✕</button>
+                    )}
+                  </div>
+
+                  <label style={styles.label}>Entry Number</label>
+                  <input style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }} readOnly value={manualEntryNumber} />
+
+                  <label style={styles.label}>Reference Number</label>
+                  <input
+                    style={styles.input}
+                    placeholder="Optional reference…"
+                    value={manualEntryForm.reference_number}
+                    onChange={(e) => setManualEntryForm((p) => ({ ...p, reference_number: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Line items */}
+              <div style={styles.card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 style={styles.cardTitle}>Line Items</h3>
+                  <button
+                    type="button"
+                    style={styles.primaryBtn}
+                    onClick={() => setManualEntryLines((p) => [...p, { description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' }])}
+                  >+ Add Line</button>
+                </div>
+                <div style={styles.tableWrap}>
+                  <table style={{ ...styles.table, fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        {['Description', 'Debit Account', 'Credit Account', 'Debit Amount (₱)', 'Credit Amount (₱)', 'Total (₱)', ''].map((h) => (
+                          <th key={h} style={styles.th}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {manualEntryLines.map((line, li) => {
+                        const lineAmt = Math.max(Number(line.debit_amount) || 0, Number(line.credit_amount) || 0);
+                        return (
+                          <tr key={li}>
+                            <td style={styles.td}>
+                              <input
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 160 }}
+                                value={line.description}
+                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, description: e.target.value } : l))}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 140 }}
+                                placeholder="e.g. Cash on Hand"
+                                value={line.debit_account}
+                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, debit_account: e.target.value } : l))}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 140 }}
+                                placeholder="e.g. Revenue"
+                                value={line.credit_account}
+                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, credit_account: e.target.value } : l))}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
+                                value={line.debit_amount}
+                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, debit_amount: e.target.value } : l))}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
+                                value={line.credit_amount}
+                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, credit_amount: e.target.value } : l))}
+                              />
+                            </td>
+                            <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{lineAmt > 0 ? fmt(lineAmt) : '—'}</td>
+                            <td style={styles.td}>
+                              <button
+                                type="button"
+                                style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                                onClick={() => setManualEntryLines((p) => p.filter((_, i) => i !== li))}
+                              >✕</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {/* Total row */}
+                      {manualEntryLines.length > 0 && (() => {
+                        const totalDebit = manualEntryLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
+                        const totalCredit = manualEntryLines.reduce((s, l) => s + (Number(l.credit_amount) || 0), 0);
+                        return (
+                          <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
+                            <td colSpan={3} style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>TOTAL:</td>
+                            <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(totalDebit)}</td>
+                            <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(totalCredit)}</td>
+                            <td colSpan={2} />
+                          </tr>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+                  <button onClick={saveManualEntry} style={styles.primaryBtn} disabled={manualSaving}>
+                    {manualSaving ? 'Saving…' : 'Save Entry'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Contact Picker Dialog */}
+              <Dialog.Root open={contactPickerOpen} onOpenChange={(open) => { if (!open) setContactPickerOpen(false); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 480 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Select Contact</Dialog.Title>
+                    <div style={{ marginBottom: 12 }}>
+                      <input
+                        style={styles.input}
+                        placeholder="Search vendors or customers…"
+                        value={contactPickerQuery}
+                        onChange={(e) => { setContactPickerQuery(e.target.value); fetchContacts(e.target.value); }}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 12 }}>
+                      {contactList.map((c) => (
+                        <div
+                          key={c.id}
+                          onClick={() => {
+                            setManualEntryForm((p) => ({ ...p, name: c.name }));
+                            setContactPickerOpen(false);
+                          }}
+                          style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
+                        >
+                          <strong>{c.name}</strong>
+                          <span style={{ color: '#888', fontSize: 12 }}> · {c.type}</span>
+                        </div>
+                      ))}
+                      {contactList.length === 0 && (
+                        <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No contacts found.</p>
+                      )}
+                    </div>
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
