@@ -129,8 +129,18 @@ export default function AdminPage() {
   // ── Journal Entries state ─────────────────────────────────────────────────
   const [journalSubTab, setJournalSubTab] = useState('all');
   const [journalSubFilter, setJournalSubFilter] = useState('all');
-  const [journalDateFrom, setJournalDateFrom] = useState('');
-  const [journalDateTo, setJournalDateTo] = useState('');
+  const journalMonthFrom = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  }, []);
+  const journalMonthTo = useMemo(() => {
+    const d = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
+    return d.toISOString().split('T')[0];
+  }, []);
+  const [journalDateFrom, setJournalDateFrom] = useState(journalMonthFrom);
+  const [journalDateTo, setJournalDateTo] = useState(journalMonthTo);
+  const [journalAccountFilter, setJournalAccountFilter] = useState('');
+  const [journalSearch, setJournalSearch] = useState('');
   const [journalData, setJournalData] = useState([]);
   const [journalLoading, setJournalLoading] = useState(false);
 
@@ -646,6 +656,12 @@ export default function AdminPage() {
         else if (journalSubFilter === 'manual_entry') q = q.eq('reference_type', 'manual_entry');
       }
 
+      // Apply account name filter (server-side OR on debit/credit account)
+      if (journalAccountFilter.trim()) {
+        const af = `%${journalAccountFilter.trim()}%`;
+        q = q.or(`debit_account.ilike.${af},credit_account.ilike.${af}`);
+      }
+
       const { data, error: err } = await q;
       if (err) throw err;
       setJournalData(data || []);
@@ -654,7 +670,7 @@ export default function AdminPage() {
     } finally {
       setJournalLoading(false);
     }
-  }, [journalSubTab, journalSubFilter, journalDateFrom, journalDateTo]);
+  }, [journalSubTab, journalSubFilter, journalDateFrom, journalDateTo, journalAccountFilter]);
 
   // ── Manual Entry: Generate Entry Number ──────────────────────────────────
   const generateManualEntryNumber = useCallback(async () => {
@@ -751,7 +767,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (activeTab === 'journal') fetchJournal();
-  }, [activeTab, journalSubTab, journalSubFilter, journalDateFrom, journalDateTo, fetchJournal]);
+  }, [activeTab, journalSubTab, journalSubFilter, journalDateFrom, journalDateTo, journalAccountFilter, fetchJournal]);
 
   // ── Nav items (memoised) — must be declared before any early return ──────
   const navItems = useMemo(
@@ -3001,118 +3017,101 @@ export default function AdminPage() {
             <div>
               <h1 style={styles.pageTitle}>Journal Entries</h1>
 
-              {/* Main tab filters */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                {[
-                  { key: 'all', label: 'All' },
-                  { key: 'sales', label: 'Sales' },
-                  { key: 'purchases', label: 'Purchases' },
-                  { key: 'others', label: 'Others' },
-                ].map((st) => (
-                  <button
-                    key={st.key}
-                    onClick={() => { setJournalSubTab(st.key); setJournalSubFilter('all'); }}
-                    style={{
-                      padding: '8px 18px', borderRadius: 20,
-                      border: `1px solid ${journalSubTab === st.key ? '#ffc107' : '#333'}`,
-                      background: journalSubTab === st.key ? '#ffc107' : 'transparent',
-                      color: journalSubTab === st.key ? '#000' : '#ccc',
-                      cursor: 'pointer', fontFamily: 'Poppins, sans-serif',
-                      fontWeight: journalSubTab === st.key ? 700 : 400, fontSize: 13,
-                    }}
-                  >{st.label}</button>
+              {/* Row 1: Report Type dropdown + sub-filters */}
+              <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <label style={{ color: '#ccc', fontSize: 13, whiteSpace: 'nowrap' }}>Report Type:</label>
+                <select
+                  value={journalSubTab}
+                  onChange={(e) => { setJournalSubTab(e.target.value); setJournalSubFilter('all'); }}
+                  style={{ ...styles.input, width: 180, paddingRight: 8 }}
+                >
+                  <option value="all">General</option>
+                  <option value="sales">Sales</option>
+                  <option value="purchases">Purchases</option>
+                  <option value="others">Adjusting Entries</option>
+                </select>
+
+                {/* Sub-filters rendered inline */}
+                {journalSubTab === 'sales' && [
+                  { key: 'all', label: 'All Sales' },
+                  { key: 'cash_sales', label: 'Cash Sales' },
+                  { key: 'gcash_sales', label: 'GCash Sales' },
+                  { key: 'points_claimed', label: 'Points Claimed' },
+                ].map((sf) => (
+                  <button key={sf.key} onClick={() => setJournalSubFilter(sf.key)}
+                    style={{ padding: '5px 14px', borderRadius: 14, cursor: 'pointer', fontFamily: 'Poppins, sans-serif', fontSize: 12,
+                      border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
+                      background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
+                      color: journalSubFilter === sf.key ? '#000' : '#aaa',
+                      fontWeight: journalSubFilter === sf.key ? 700 : 400 }}>
+                    {sf.label}
+                  </button>
+                ))}
+                {journalSubTab === 'purchases' && [
+                  { key: 'all', label: 'All Purchases' },
+                  { key: 'approved_rr', label: 'Approved RR' },
+                  { key: 'rr_cash_on_hand', label: 'Paid: Cash on Hand' },
+                  { key: 'rr_cash_in_bank', label: 'Paid: Cash in Bank' },
+                  { key: 'rr_credit_card', label: 'Paid: Credit Card' },
+                ].map((sf) => (
+                  <button key={sf.key} onClick={() => setJournalSubFilter(sf.key)}
+                    style={{ padding: '5px 14px', borderRadius: 14, cursor: 'pointer', fontFamily: 'Poppins, sans-serif', fontSize: 12,
+                      border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
+                      background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
+                      color: journalSubFilter === sf.key ? '#000' : '#aaa',
+                      fontWeight: journalSubFilter === sf.key ? 700 : 400 }}>
+                    {sf.label}
+                  </button>
+                ))}
+                {journalSubTab === 'others' && [
+                  { key: 'all', label: 'All Adjusting Entries' },
+                  { key: 'adjustments', label: 'Adjustments' },
+                  { key: 'manual_entry', label: 'Manual Entry' },
+                ].map((sf) => (
+                  <button key={sf.key} onClick={() => setJournalSubFilter(sf.key)}
+                    style={{ padding: '5px 14px', borderRadius: 14, cursor: 'pointer', fontFamily: 'Poppins, sans-serif', fontSize: 12,
+                      border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
+                      background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
+                      color: journalSubFilter === sf.key ? '#000' : '#aaa',
+                      fontWeight: journalSubFilter === sf.key ? 700 : 400 }}>
+                    {sf.label}
+                  </button>
                 ))}
               </div>
 
-              {/* Sales sub-filters */}
-              {journalSubTab === 'sales' && (
-                <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', paddingLeft: 8 }}>
-                  {[
-                    { key: 'all', label: 'All Sales' },
-                    { key: 'cash_sales', label: 'Cash Sales' },
-                    { key: 'gcash_sales', label: 'GCash Sales' },
-                    { key: 'points_claimed', label: 'Points Claimed' },
-                  ].map((sf) => (
-                    <button
-                      key={sf.key}
-                      onClick={() => setJournalSubFilter(sf.key)}
-                      style={{
-                        padding: '5px 14px', borderRadius: 14,
-                        border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
-                        background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
-                        color: journalSubFilter === sf.key ? '#000' : '#aaa',
-                        cursor: 'pointer', fontFamily: 'Poppins, sans-serif',
-                        fontWeight: journalSubFilter === sf.key ? 700 : 400, fontSize: 12,
-                      }}
-                    >{sf.label}</button>
-                  ))}
-                </div>
-              )}
-
-              {/* Purchases sub-filters */}
-              {journalSubTab === 'purchases' && (
-                <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', paddingLeft: 8 }}>
-                  {[
-                    { key: 'all', label: 'All Purchases' },
-                    { key: 'approved_rr', label: 'Approved RR' },
-                    { key: 'rr_cash_on_hand', label: 'Paid: Cash on Hand' },
-                    { key: 'rr_cash_in_bank', label: 'Paid: Cash in Bank' },
-                    { key: 'rr_credit_card', label: 'Paid: Credit Card' },
-                  ].map((sf) => (
-                    <button
-                      key={sf.key}
-                      onClick={() => setJournalSubFilter(sf.key)}
-                      style={{
-                        padding: '5px 14px', borderRadius: 14,
-                        border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
-                        background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
-                        color: journalSubFilter === sf.key ? '#000' : '#aaa',
-                        cursor: 'pointer', fontFamily: 'Poppins, sans-serif',
-                        fontWeight: journalSubFilter === sf.key ? 700 : 400, fontSize: 12,
-                      }}
-                    >{sf.label}</button>
-                  ))}
-                </div>
-              )}
-
-              {/* Others sub-filters */}
-              {journalSubTab === 'others' && (
-                <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', paddingLeft: 8 }}>
-                  {[
-                    { key: 'all', label: 'All Others' },
-                    { key: 'adjustments', label: 'Adjustments' },
-                    { key: 'manual_entry', label: 'Manual Entry' },
-                  ].map((sf) => (
-                    <button
-                      key={sf.key}
-                      onClick={() => setJournalSubFilter(sf.key)}
-                      style={{
-                        padding: '5px 14px', borderRadius: 14,
-                        border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
-                        background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
-                        color: journalSubFilter === sf.key ? '#000' : '#aaa',
-                        cursor: 'pointer', fontFamily: 'Poppins, sans-serif',
-                        fontWeight: journalSubFilter === sf.key ? 700 : 400, fontSize: 12,
-                      }}
-                    >{sf.label}</button>
-                  ))}
-                </div>
-              )}
-
-              {/* Date range */}
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+              {/* Row 2: Date range + Account Name filter + Reload */}
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
                 <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={journalDateFrom} onChange={(e) => setJournalDateFrom(e.target.value)} />
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={journalDateTo} onChange={(e) => setJournalDateTo(e.target.value)} />
-                <button onClick={fetchJournal} style={styles.primaryBtn}>Refresh</button>
-                <button
-                  onClick={() => { setJournalDateFrom(''); setJournalDateTo(''); }}
-                  title="Remove date filters to show all journal entries"
-                  style={{ background: 'transparent', border: '1px solid #555', color: '#aaa', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontFamily: 'Poppins, sans-serif' }}
-                >
-                  All Time
-                </button>
+                <label style={{ color: '#ccc', fontSize: 13 }}>Account Name:</label>
+                <input
+                  type="text"
+                  placeholder="Filter by account…"
+                  style={{ ...styles.input, width: 180 }}
+                  value={journalAccountFilter}
+                  onChange={(e) => setJournalAccountFilter(e.target.value)}
+                />
+                <button onClick={fetchJournal} style={styles.primaryBtn}>Reload</button>
+              </div>
+
+              {/* Row 3: Search */}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+                <label style={{ color: '#ccc', fontSize: 13 }}>Search:</label>
+                <input
+                  type="text"
+                  placeholder="Filter by name, ref no., description, account, amount…"
+                  style={{ ...styles.input, width: 340 }}
+                  value={journalSearch}
+                  onChange={(e) => setJournalSearch(e.target.value)}
+                />
+                {journalSearch && (
+                  <button
+                    onClick={() => setJournalSearch('')}
+                    style={{ background: 'transparent', border: '1px solid #555', color: '#aaa', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'Poppins, sans-serif' }}
+                  >✕ Clear</button>
+                )}
               </div>
 
               {journalLoading && <p style={styles.loadingText}>Loading…</p>}
@@ -3130,7 +3129,24 @@ export default function AdminPage() {
                   if (!groups[k]) groups[k] = [];
                   groups[k].push(row);
                 });
-                const groupEntries = Object.entries(groups);
+                // Apply client-side search across all fields
+                const srch = journalSearch.trim().toLowerCase();
+                const allGroupEntries = Object.entries(groups);
+                const groupEntries = srch
+                  ? allGroupEntries.filter(([key, rows]) => {
+                      const refDisplay = rows[0].entry_number || rows[0].reference || rows[0].reference_type || key.slice(0, 8);
+                      const nameDisplay = (rows[0].name || '').toLowerCase();
+                      if (refDisplay.toLowerCase().includes(srch)) return true;
+                      if (nameDisplay.includes(srch)) return true;
+                      return rows.some((r) =>
+                        (r.description || '').toLowerCase().includes(srch) ||
+                        (r.debit_account || '').toLowerCase().includes(srch) ||
+                        (r.credit_account || '').toLowerCase().includes(srch) ||
+                        String(r.amount || '').includes(srch) ||
+                        (r.date || '').includes(srch)
+                      );
+                    })
+                  : allGroupEntries;
                 if (groupEntries.length === 0) {
                   return <p style={{ color: '#666', textAlign: 'center', padding: 24 }}>No journal entries found for the selected period and filter.</p>;
                 }
