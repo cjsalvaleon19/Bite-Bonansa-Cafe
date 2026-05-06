@@ -1418,10 +1418,11 @@ export default function AdminPage() {
       if (stored) {
         setBudgetValues(JSON.parse(stored));
       } else {
-        // Fall back to previous month's budget as default
-        const prevDate = new Date(finDateFrom);
-        prevDate.setMonth(prevDate.getMonth() - 1);
-        const prevMonth = prevDate.toISOString().slice(0, 7);
+        // Fall back to previous month's budget as default (timezone-safe string parsing)
+        const [yr, mo] = (finDateFrom || '').split('-').map(Number);
+        const prevYear = mo === 1 ? yr - 1 : yr;
+        const prevMonthNum = mo === 1 ? 12 : mo - 1;
+        const prevMonth = `${prevYear}-${String(prevMonthNum).padStart(2, '0')}`;
         const prevStored = localStorage.getItem(`bbc_budget_${prevMonth}`);
         setBudgetValues(prevStored ? JSON.parse(prevStored) : {});
       }
@@ -3885,7 +3886,7 @@ export default function AdminPage() {
                       const rawVal = bv[key] !== undefined ? String(bv[key]) : '';
                       const isEditing = budgetEditKey === key;
                       const numVal = parseFloat(rawVal.replace(/,/g, '')) || 0;
-                      const formattedVal = numVal > 0 ? numVal.toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '';
+                      const formattedVal = rawVal !== '' ? numVal.toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '';
                       return (
                         <input
                           type="text"
@@ -3896,7 +3897,7 @@ export default function AdminPage() {
                           onBlur={(e) => {
                             setBudgetEditKey(null);
                             const parsed = parseFloat(e.target.value.replace(/,/g, ''));
-                            if (!isNaN(parsed)) setBv(key, String(parsed));
+                            setBv(key, !isNaN(parsed) ? String(parsed) : '');
                           }}
                           onChange={(e) => setBv(key, e.target.value)}
                         />
