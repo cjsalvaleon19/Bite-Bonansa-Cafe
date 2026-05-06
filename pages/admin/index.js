@@ -2571,7 +2571,7 @@ export default function AdminPage() {
                                   <td style={styles.td}>{li.inventory_item?.name || li.inventory_name || '—'}</td>
                                   <td style={styles.td}><span style={{ fontSize: 11 }}>{li.inventory_item?.code || li.inventory_code || '—'}</span></td>
                                   <td style={styles.td}><span style={{ fontSize: 11 }}>{li.uom || '—'}</span></td>
-                                  <td style={{ ...styles.td, color: '#ccc' }}>{Number(li.qty).toFixed(3)}</td>
+                                  <td style={{ ...styles.td, color: '#ccc' }}>{Math.round(Number(li.qty) || 0)}</td>
                                   <td style={{ ...styles.td, color: '#ccc' }}>{fmt(li.cost)}</td>
                                   <td style={styles.td}>{fmt(tc)}</td>
                                   <td style={styles.td}>{fmt(Number(li.freight_allocated) || 0)}</td>
