@@ -118,7 +118,55 @@ export default function OrdersQueue() {
 
 
 
-  const handleItemServed = async (orderId, itemId) => {
+  // Insert a double-entry sales journal record for a completed order.
+  // Errors are logged but never thrown so order completion is never blocked.
+  const insertSalesJournalEntry = async (order) => {
+    if (!supabase) return;
+    try {
+      const date = new Date().toISOString().split('T')[0];
+      const totalAmount = Number(order.total_amount) || 0;
+      const pointsUsed = Number(order.points_used) || 0;
+      const paymentMethod = (order.payment_method || 'cash').toLowerCase();
+      const orderRef = order.order_number || order.id;
+      const entries = [];
+
+      // Loyalty-points portion → reduce Accounts Payable
+      if (paymentMethod.includes('points') && pointsUsed > 0) {
+        entries.push({
+          date,
+          description: `Sale: ${orderRef}`,
+          debit_account: 'Accounts Payable',
+          credit_account: 'Sales Revenue',
+          amount: Math.round(pointsUsed * 100) / 100,
+          reference_type: 'order',
+          reference: orderRef,
+        });
+      }
+
+      // Cash / GCash portion
+      const cashAmount = Math.round((totalAmount - (paymentMethod.includes('points') ? pointsUsed : 0)) * 100) / 100;
+      if (cashAmount > 0) {
+        entries.push({
+          date,
+          description: `Sale: ${orderRef}`,
+          debit_account: paymentMethod.includes('gcash') ? 'Cash in Bank' : 'Cash on Hand',
+          credit_account: 'Sales Revenue',
+          amount: cashAmount,
+          reference_type: 'order',
+          reference: orderRef,
+        });
+      }
+
+      if (entries.length > 0) {
+        const { error } = await supabase.from('journal_entries').insert(entries);
+        if (error) console.error('[OrdersQueue] Journal entry insert failed:', error.message);
+      }
+    } catch (err) {
+      console.error('[OrdersQueue] Failed to create sales journal entry:', err?.message ?? err);
+    }
+  };
+
+  const handleItemServed = async (orderId, itemId, order) => {
     if (!supabase) return;
 
     try {
@@ -149,6 +197,9 @@ export default function OrdersQueue() {
           .eq('id', orderId);
 
         if (updateOrderError) throw updateOrderError;
+
+        // Create sales journal entry for the completed order (non-blocking)
+        if (order) await insertSalesJournalEntry(order);
       }
 
       fetchOrders();
@@ -425,6 +476,9 @@ export default function OrdersQueue() {
         .eq('id', order.id);
 
       if (error) throw error;
+
+      // Create sales journal entry for the completed order (non-blocking)
+      await insertSalesJournalEntry(order);
 
       alert('Order marked as complete!');
       fetchOrders();
@@ -763,7 +817,7 @@ export default function OrdersQueue() {
                             ) : (
                               <button
                                 style={styles.itemServedBtn}
-                                onClick={() => handleItemServed(order.id, item.id)}
+                                onClick={() => handleItemServed(order.id, item.id, order)}
                               >
                                 ✓ Served
                               </button>
