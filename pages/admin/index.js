@@ -128,6 +128,7 @@ export default function AdminPage() {
 
   // ── Journal Entries state ─────────────────────────────────────────────────
   const [journalSubTab, setJournalSubTab] = useState('all');
+  const [journalSubFilter, setJournalSubFilter] = useState('all');
   const [journalDateFrom, setJournalDateFrom] = useState('');
   const [journalDateTo, setJournalDateTo] = useState('');
   const [journalData, setJournalData] = useState([]);
@@ -620,6 +621,8 @@ export default function AdminPage() {
         .order('created_at', { ascending: false });
       if (journalDateFrom) q = q.gte('date', journalDateFrom);
       if (journalDateTo) q = q.lte('date', journalDateTo);
+
+      // Apply main tab filter
       if (journalSubTab === 'sales') {
         q = q.eq('reference_type', 'order');
       } else if (journalSubTab === 'purchases') {
@@ -627,6 +630,22 @@ export default function AdminPage() {
       } else if (journalSubTab === 'others') {
         q = q.in('reference_type', ['cash_adjustment', 'manual_entry']);
       }
+
+      // Apply sub-filter
+      if (journalSubTab === 'sales' && journalSubFilter !== 'all') {
+        if (journalSubFilter === 'cash_sales') q = q.eq('debit_account', 'Cash on Hand');
+        else if (journalSubFilter === 'gcash_sales') q = q.eq('debit_account', 'Cash in Bank');
+        else if (journalSubFilter === 'points_claimed') q = q.eq('debit_account', 'Accounts Payable');
+      } else if (journalSubTab === 'purchases' && journalSubFilter !== 'all') {
+        if (journalSubFilter === 'approved_rr') q = q.eq('reference_type', 'receiving_report');
+        else if (journalSubFilter === 'rr_cash_on_hand') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash on Hand');
+        else if (journalSubFilter === 'rr_cash_in_bank') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash in Bank');
+        else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', "Owner's Draw");
+      } else if (journalSubTab === 'others' && journalSubFilter !== 'all') {
+        if (journalSubFilter === 'adjustments') q = q.eq('reference_type', 'cash_adjustment');
+        else if (journalSubFilter === 'manual_entry') q = q.eq('reference_type', 'manual_entry');
+      }
+
       const { data, error: err } = await q;
       if (err) throw err;
       setJournalData(data || []);
@@ -635,7 +654,7 @@ export default function AdminPage() {
     } finally {
       setJournalLoading(false);
     }
-  }, [journalSubTab, journalDateFrom, journalDateTo]);
+  }, [journalSubTab, journalSubFilter, journalDateFrom, journalDateTo]);
 
   // ── Manual Entry: Generate Entry Number ──────────────────────────────────
   const generateManualEntryNumber = useCallback(async () => {
@@ -732,7 +751,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (activeTab === 'journal') fetchJournal();
-  }, [activeTab, journalSubTab, journalDateFrom, journalDateTo, fetchJournal]);
+  }, [activeTab, journalSubTab, journalSubFilter, journalDateFrom, journalDateTo, fetchJournal]);
 
   // ── Nav items (memoised) — must be declared before any early return ──────
   const navItems = useMemo(
@@ -2978,8 +2997,8 @@ export default function AdminPage() {
             <div>
               <h1 style={styles.pageTitle}>Journal Entries</h1>
 
-              {/* Sub-tab filters */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+              {/* Main tab filters */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                 {[
                   { key: 'all', label: 'All' },
                   { key: 'sales', label: 'Sales' },
@@ -2988,7 +3007,7 @@ export default function AdminPage() {
                 ].map((st) => (
                   <button
                     key={st.key}
-                    onClick={() => setJournalSubTab(st.key)}
+                    onClick={() => { setJournalSubTab(st.key); setJournalSubFilter('all'); }}
                     style={{
                       padding: '8px 18px', borderRadius: 20,
                       border: `1px solid ${journalSubTab === st.key ? '#ffc107' : '#333'}`,
@@ -3000,6 +3019,81 @@ export default function AdminPage() {
                   >{st.label}</button>
                 ))}
               </div>
+
+              {/* Sales sub-filters */}
+              {journalSubTab === 'sales' && (
+                <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', paddingLeft: 8 }}>
+                  {[
+                    { key: 'all', label: 'All Sales' },
+                    { key: 'cash_sales', label: 'Cash Sales' },
+                    { key: 'gcash_sales', label: 'GCash Sales' },
+                    { key: 'points_claimed', label: 'Points Claimed' },
+                  ].map((sf) => (
+                    <button
+                      key={sf.key}
+                      onClick={() => setJournalSubFilter(sf.key)}
+                      style={{
+                        padding: '5px 14px', borderRadius: 14,
+                        border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
+                        background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
+                        color: journalSubFilter === sf.key ? '#000' : '#aaa',
+                        cursor: 'pointer', fontFamily: 'Poppins, sans-serif',
+                        fontWeight: journalSubFilter === sf.key ? 700 : 400, fontSize: 12,
+                      }}
+                    >{sf.label}</button>
+                  ))}
+                </div>
+              )}
+
+              {/* Purchases sub-filters */}
+              {journalSubTab === 'purchases' && (
+                <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', paddingLeft: 8 }}>
+                  {[
+                    { key: 'all', label: 'All Purchases' },
+                    { key: 'approved_rr', label: 'Approved RR' },
+                    { key: 'rr_cash_on_hand', label: 'Paid: Cash on Hand' },
+                    { key: 'rr_cash_in_bank', label: 'Paid: Cash in Bank' },
+                    { key: 'rr_credit_card', label: 'Paid: Credit Card' },
+                  ].map((sf) => (
+                    <button
+                      key={sf.key}
+                      onClick={() => setJournalSubFilter(sf.key)}
+                      style={{
+                        padding: '5px 14px', borderRadius: 14,
+                        border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
+                        background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
+                        color: journalSubFilter === sf.key ? '#000' : '#aaa',
+                        cursor: 'pointer', fontFamily: 'Poppins, sans-serif',
+                        fontWeight: journalSubFilter === sf.key ? 700 : 400, fontSize: 12,
+                      }}
+                    >{sf.label}</button>
+                  ))}
+                </div>
+              )}
+
+              {/* Others sub-filters */}
+              {journalSubTab === 'others' && (
+                <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', paddingLeft: 8 }}>
+                  {[
+                    { key: 'all', label: 'All Others' },
+                    { key: 'adjustments', label: 'Adjustments' },
+                    { key: 'manual_entry', label: 'Manual Entry' },
+                  ].map((sf) => (
+                    <button
+                      key={sf.key}
+                      onClick={() => setJournalSubFilter(sf.key)}
+                      style={{
+                        padding: '5px 14px', borderRadius: 14,
+                        border: `1px solid ${journalSubFilter === sf.key ? '#4caf50' : '#444'}`,
+                        background: journalSubFilter === sf.key ? '#4caf50' : 'transparent',
+                        color: journalSubFilter === sf.key ? '#000' : '#aaa',
+                        cursor: 'pointer', fontFamily: 'Poppins, sans-serif',
+                        fontWeight: journalSubFilter === sf.key ? 700 : 400, fontSize: 12,
+                      }}
+                    >{sf.label}</button>
+                  ))}
+                </div>
+              )}
 
               {/* Date range */}
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
@@ -3014,8 +3108,11 @@ export default function AdminPage() {
 
               {/* Transaction report */}
               {!journalLoading && (() => {
-                // Group by reference_id (or id for manual entries)
-                const groupKey = (row) => row.entry_number || (row.reference_id ? String(row.reference_id) : row.id);
+                // Group by reference (order/rr number), entry_number (manual), or reference_id, fallback to id
+                const groupKey = (row) =>
+                  row.entry_number ||
+                  row.reference ||
+                  (row.reference_id ? String(row.reference_id) : row.id);
                 const groups = {};
                 (journalData || []).forEach((row) => {
                   const k = groupKey(row);
@@ -3032,14 +3129,18 @@ export default function AdminPage() {
                     <table style={{ ...styles.table, fontSize: 12 }}>
                       <thead>
                         <tr>
-                          {['Date', 'Reference', 'Name', 'Particular', 'Debit Account', 'Credit Account', 'Debit (₱)', 'Credit (₱)'].map((h) => (
+                          {['Date', 'Reference No.', 'Name', 'Particular', 'Debit Account', 'Credit Account', 'Debit (₱)', 'Credit (₱)'].map((h) => (
                             <th key={h} style={styles.th}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {groupEntries.map(([key, rows]) => {
-                          const refDisplay = rows[0].entry_number || rows[0].reference_type || key.slice(0, 8);
+                          const refDisplay =
+                            rows[0].entry_number ||
+                            rows[0].reference ||
+                            rows[0].reference_type ||
+                            key.slice(0, 8);
                           const nameDisplay = rows[0].name || '—';
                           const groupTotal = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
                           grandTotal += groupTotal;
