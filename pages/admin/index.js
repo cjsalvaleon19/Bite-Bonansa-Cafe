@@ -344,21 +344,27 @@ export default function AdminPage() {
       if (err) throw err;
       setInventoryItems(items || []);
 
-      // 2 + 3. Line items for the selected date range — single join query (avoids large .in() URL)
-      // Use !receiving_report_id hint to disambiguate when multiple FK relationships exist
-      // 1.2: Purchases = "paid" status only
-      const { data: rrItemsRaw, error: riErr } = await supabase
-        .from('receiving_report_items')
-        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!receiving_report_id(status, date)')
-        .eq('receiving_reports.status', 'paid')
-        .gte('receiving_reports.date', invDateFrom)
-        .lte('receiving_reports.date', invDateTo);
-      if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
-      const rrItems = rrItemsRaw || [];
+      // 2 + 3. Line items for the selected date range — Purchases = "paid" status only
+      // NOTE: .eq() on a joined table in Supabase only nullifies the join, it does NOT
+      // filter parent rows.  We must first fetch paid RR IDs then filter by them.
+      const { data: paidRRsInRange } = await supabase
+        .from('receiving_reports')
+        .select('id')
+        .eq('status', 'paid')
+        .gte('date', invDateFrom)
+        .lte('date', invDateTo);
+      const paidRRIdsInRange = (paidRRsInRange || []).map((r) => r.id);
+      let rrItems = [];
+      if (paidRRIdsInRange.length > 0) {
+        const { data: rrItemsRaw, error: riErr } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost')
+          .in('receiving_report_id', paidRRIdsInRange);
+        if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
+        rrItems = rrItemsRaw || [];
+      }
 
       // 1.3: In Transit = ALL "draft" status receiving reports (no date filter)
-      // NOTE: .eq() on a joined table in Supabase only nullifies the join, it does NOT
-      // filter parent rows.  We must first fetch draft RR IDs then filter by them.
       const { data: draftRRs } = await supabase
         .from('receiving_reports')
         .select('id')
@@ -373,17 +379,25 @@ export default function AdminPage() {
         inTransitItems = inTransitRaw || [];
       }
 
-      // 2b + 3b. Line items from Jan 1, 2026 → invDateTo — single join query for Average Cost
+      // 2b + 3b. Line items from Jan 1, 2026 → invDateTo for Average Cost
       // 1.4: Beginning Balance = "paid" status only (Jan 1, 2026 → start date − 1 day)
       const AVG_COST_START = '2026-01-01';
-      const { data: allPeriodItemsRaw, error: ri2Err } = await supabase
-        .from('receiving_report_items')
-        .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!receiving_report_id(status, date)')
-        .eq('receiving_reports.status', 'paid')
-        .gte('receiving_reports.date', AVG_COST_START)
-        .lte('receiving_reports.date', invDateTo);
-      if (ri2Err) throw new Error('Failed to fetch all-period receiving report items: ' + ri2Err.message);
-      const allPeriodItems = allPeriodItemsRaw || [];
+      const { data: allPaidRRs } = await supabase
+        .from('receiving_reports')
+        .select('id')
+        .eq('status', 'paid')
+        .gte('date', AVG_COST_START)
+        .lte('date', invDateTo);
+      const allPaidRRIds = (allPaidRRs || []).map((r) => r.id);
+      let allPeriodItems = [];
+      if (allPaidRRIds.length > 0) {
+        const { data: allPeriodItemsRaw, error: ri2Err } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost')
+          .in('receiving_report_id', allPaidRRIds);
+        if (ri2Err) throw new Error('Failed to fetch all-period receiving report items: ' + ri2Err.message);
+        allPeriodItems = allPeriodItemsRaw || [];
+      }
 
       // 4. Price costing map (menu_item_name → inventory usage)
       const { data: costings } = await supabase
@@ -1790,82 +1804,6 @@ export default function AdminPage() {
                 </table>
               </div>
 
-              {/* Inventory Dialog */}
-              <Dialog.Root open={invDialogOpen} onOpenChange={setInvDialogOpen}>
-                <Dialog.Portal>
-                  <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={styles.dialogContent} aria-describedby={undefined}>
-                    <Dialog.Title style={styles.dialogTitle}>
-                      {invEditItem ? 'Edit Inventory Item' : 'New Inventory Item'}
-                    </Dialog.Title>
-                    <div style={styles.formGrid}>
-                      <label style={styles.label}>Inventory Name</label>
-                      <input
-                        style={styles.input}
-                        value={invForm.name}
-                        onChange={(e) => setInvForm((p) => ({ ...p, name: e.target.value }))}
-                        placeholder="Item name"
-                      />
-                      <label style={styles.label}>Department</label>
-                      <select
-                        style={styles.input}
-                        value={invForm.department}
-                        onChange={(e) => {
-                          const dept = e.target.value;
-                          setInvForm((p) => ({ ...p, department: dept, code: suggestCode(dept, inventoryItems) }));
-                        }}
-                      >
-                        <option value="DKS">DKS – Drinks</option>
-                        <option value="PTS">PTS – Pastries</option>
-                        <option value="FRD">FRD – Fried</option>
-                        <option value="OVH">OVH – Overhead</option>
-                      </select>
-                      <label style={styles.label}>Inventory Code</label>
-                      <div>
-                        <input
-                          style={styles.input}
-                          value={invForm.code}
-                          onChange={(e) => setInvForm((p) => ({ ...p, code: e.target.value }))}
-                        />
-                        <span style={styles.helperText}>Format: DKS######, PTS######, FRD######, OVH######</span>
-                      </div>
-                      <label style={styles.label}>Unit of Measure</label>
-                      <input
-                        style={styles.input}
-                        value={invForm.uom}
-                        onChange={(e) => setInvForm((p) => ({ ...p, uom: e.target.value }))}
-                        placeholder="pcs, kg, L, etc."
-                      />
-                      <label style={styles.label}>Cost per Unit (₱)</label>
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={invForm.cost_per_unit}
-                        onChange={(e) => setInvForm((p) => ({ ...p, cost_per_unit: e.target.value }))}
-                      />
-                      <label style={styles.label}>Current Stock</label>
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={invForm.current_stock}
-                        onChange={(e) => setInvForm((p) => ({ ...p, current_stock: e.target.value }))}
-                      />
-                      <label style={styles.label}>Min Stock (Low-Stock Threshold)</label>
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={invForm.min_stock}
-                        onChange={(e) => setInvForm((p) => ({ ...p, min_stock: e.target.value }))}
-                      />
-                    </div>
-                    <div style={styles.dialogFooter}>
-                      <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
-                      <button onClick={saveInvItem} style={styles.primaryBtn}>Save</button>
-                    </div>
-                  </Dialog.Content>
-                </Dialog.Portal>
-              </Dialog.Root>
-
               {/* Archive Confirm Dialog */}
               <Dialog.Root open={!!invDeleteConfirm} onOpenChange={() => setInvDeleteConfirm(null)}>
                 <Dialog.Portal>
@@ -1884,6 +1822,82 @@ export default function AdminPage() {
               </Dialog.Root>
             </div>
           )}
+
+          {/* Inventory Enrollment Dialog – rendered globally so it works from any tab (e.g. RR picker + New Item) */}
+          <Dialog.Root open={invDialogOpen} onOpenChange={setInvDialogOpen}>
+            <Dialog.Portal>
+              <Dialog.Overlay style={styles.dialogOverlay} />
+              <Dialog.Content style={styles.dialogContent} aria-describedby={undefined}>
+                <Dialog.Title style={styles.dialogTitle}>
+                  {invEditItem ? 'Edit Inventory Item' : 'New Inventory Item'}
+                </Dialog.Title>
+                <div style={styles.formGrid}>
+                  <label style={styles.label}>Inventory Name</label>
+                  <input
+                    style={styles.input}
+                    value={invForm.name}
+                    onChange={(e) => setInvForm((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="Item name"
+                  />
+                  <label style={styles.label}>Department</label>
+                  <select
+                    style={styles.input}
+                    value={invForm.department}
+                    onChange={(e) => {
+                      const dept = e.target.value;
+                      setInvForm((p) => ({ ...p, department: dept, code: suggestCode(dept, inventoryItems) }));
+                    }}
+                  >
+                    <option value="DKS">DKS – Drinks</option>
+                    <option value="PTS">PTS – Pastries</option>
+                    <option value="FRD">FRD – Fried</option>
+                    <option value="OVH">OVH – Overhead</option>
+                  </select>
+                  <label style={styles.label}>Inventory Code</label>
+                  <div>
+                    <input
+                      style={styles.input}
+                      value={invForm.code}
+                      onChange={(e) => setInvForm((p) => ({ ...p, code: e.target.value }))}
+                    />
+                    <span style={styles.helperText}>Format: DKS######, PTS######, FRD######, OVH######</span>
+                  </div>
+                  <label style={styles.label}>Unit of Measure</label>
+                  <input
+                    style={styles.input}
+                    value={invForm.uom}
+                    onChange={(e) => setInvForm((p) => ({ ...p, uom: e.target.value }))}
+                    placeholder="pcs, kg, L, etc."
+                  />
+                  <label style={styles.label}>Cost per Unit (₱)</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={invForm.cost_per_unit}
+                    onChange={(e) => setInvForm((p) => ({ ...p, cost_per_unit: e.target.value }))}
+                  />
+                  <label style={styles.label}>Current Stock</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={invForm.current_stock}
+                    onChange={(e) => setInvForm((p) => ({ ...p, current_stock: e.target.value }))}
+                  />
+                  <label style={styles.label}>Min Stock (Low-Stock Threshold)</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={invForm.min_stock}
+                    onChange={(e) => setInvForm((p) => ({ ...p, min_stock: e.target.value }))}
+                  />
+                </div>
+                <div style={styles.dialogFooter}>
+                  <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
+                  <button onClick={saveInvItem} style={styles.primaryBtn}>Save</button>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
 
           {/* ──────────────── PRICE COSTING ──────────────── */}
           {activeTab === 'costing' && (
