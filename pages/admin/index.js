@@ -1675,7 +1675,8 @@ export default function AdminPage() {
                                   expanded.push({ key: `base-${m.id || m.name}`, displayName: m.name, category: m.category || '', price: basePrice });
                                   // Expand each variant type option
                                   for (const vt of m.menu_item_variant_types) {
-                                    const isAddOn = vt.variant_type_name.toLowerCase().includes('add');
+                                    const vtName = vt.variant_type_name.toLowerCase().replace(/[^a-z]/g, '');
+                                    const isAddOn = vtName === 'addon' || vtName === 'addons' || vtName === 'addon' || vtName.startsWith('addon');
                                     for (const opt of (vt.options || []).filter((o) => o.available !== false)) {
                                       const variantPrice = isAddOn
                                         ? Number(opt.price_modifier || 0)
