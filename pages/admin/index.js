@@ -1420,6 +1420,7 @@ export default function AdminPage() {
       } else {
         // Fall back to previous month's budget as default (timezone-safe string parsing)
         const [yr, mo] = (finDateFrom || '').split('-').map(Number);
+        if (!yr || !mo) { setBudgetValues({}); return; }
         const prevYear = mo === 1 ? yr - 1 : yr;
         const prevMonthNum = mo === 1 ? 12 : mo - 1;
         const prevMonth = `${prevYear}-${String(prevMonthNum).padStart(2, '0')}`;
