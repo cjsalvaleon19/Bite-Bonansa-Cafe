@@ -129,8 +129,12 @@ export default function AdminPage() {
   // ── Journal Entries state ─────────────────────────────────────────────────
   const [journalSubTab, setJournalSubTab] = useState('all');
   const [journalSubFilter, setJournalSubFilter] = useState('all');
-  const [journalDateFrom, setJournalDateFrom] = useState('');
-  const [journalDateTo, setJournalDateTo] = useState('');
+  const [journalDateFrom, setJournalDateFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split('T')[0];
+  });
+  const [journalDateTo, setJournalDateTo] = useState(() => new Date().toISOString().split('T')[0]);
   const [journalData, setJournalData] = useState([]);
   const [journalLoading, setJournalLoading] = useState(false);
 
