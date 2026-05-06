@@ -2903,8 +2903,10 @@ export default function AdminPage() {
                           setInvPickerOpen(null);
                           setInvPickerQuery('');
                           setRrNewItemReturnIdx(idx);
-                          // Defer to next tick so Radix UI finishes closing the picker
-                          // before opening the enrollment dialog (avoids focus-trap conflict)
+                          // Defer to next tick so Radix UI fully unmounts the picker's
+                          // focus-trap before opening the enrollment dialog; opening both
+                          // in the same event-loop tick prevents the new dialog from
+                          // receiving focus and appearing to the user.
                           setTimeout(() => openInvDialog(null), 0);
                         }}
                       >+ New Item</button>
