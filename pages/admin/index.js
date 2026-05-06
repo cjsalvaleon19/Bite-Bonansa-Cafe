@@ -1,5 +1,5 @@
 // ─── Admin: Comprehensive Admin Interface ──────────────────────────────────
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -773,6 +773,23 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === 'journal') fetchJournal();
   }, [activeTab, journalSubTab, journalSubFilter, journalDateFrom, journalDateTo, fetchJournal]);
+
+  // ── Real-time subscription for Journal Entries ────────────────────────────
+  // Keep a ref so the subscription can always call the latest fetchJournal
+  // (which carries the current filter state) without needing to be recreated.
+  const fetchJournalRef = useRef(fetchJournal);
+  useEffect(() => { fetchJournalRef.current = fetchJournal; }, [fetchJournal]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel('admin_journal_entries_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_entries' }, () => {
+        fetchJournalRef.current?.();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Nav items (memoised) — must be declared before any early return ──────
   const navItems = useMemo(
