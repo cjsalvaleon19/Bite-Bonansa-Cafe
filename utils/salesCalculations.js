@@ -17,21 +17,21 @@ export function calculateSalesBreakdown(orders) {
   let pointsSales = 0;
 
   orders.forEach(order => {
-    // Cash Sales = actual sales amount paid in cash, not cash tendered
+    // Cash Sales = subtotal (pre-VAT, pre-delivery) for cash orders
     if (order.payment_method === 'cash') {
-      // Pure cash payment - use total_amount (the actual sale amount)
-      cashSales += parseFloat(order.total_amount || 0);
+      // Pure cash payment - use subtotal (matches "Subtotal" line on printed receipt)
+      cashSales += parseFloat(order.subtotal || 0);
     } else if (order.payment_method === 'points+cash') {
-      // Combined payment - only count the cash portion (total - points)
+      // Combined payment - cash portion of the subtotal after points deduction
       cashSales += getPaymentPortion(order);
     }
     
-    // GCash Sales = actual sales amount paid via GCash
+    // GCash Sales = subtotal (pre-VAT, pre-delivery) for gcash orders
     if (order.payment_method === 'gcash') {
       // Pure gcash payment
-      gcashSales += parseFloat(order.total_amount || 0);
+      gcashSales += parseFloat(order.subtotal || 0);
     } else if (order.payment_method === 'points+gcash') {
-      // Combined payment - only count the gcash portion (total - points)
+      // Combined payment - gcash portion of the subtotal after points deduction
       gcashSales += getPaymentPortion(order);
     }
     
@@ -76,9 +76,9 @@ export function calculateAdjustmentDeductions(adjustments) {
  * @returns {number} Payment portion amount after deducting points
  */
 export function getPaymentPortion(order) {
-  const totalAmount = parseFloat(order.total_amount || 0);
+  const subtotal = parseFloat(order.subtotal || 0);
   const pointsUsed = parseFloat(order.points_used || 0);
-  return Math.max(0, totalAmount - pointsUsed);
+  return Math.max(0, subtotal - pointsUsed);
 }
 
 /**
@@ -90,7 +90,7 @@ export function getPaymentPortion(order) {
  */
 export function getGCashAmount(order) {
   if (order.payment_method === 'gcash') {
-    return parseFloat(order.total_amount || 0);
+    return parseFloat(order.subtotal || 0);
   } else if (order.payment_method === 'points+gcash') {
     return getPaymentPortion(order);
   }
