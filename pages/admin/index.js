@@ -355,13 +355,11 @@ export default function AdminPage() {
       if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
       const rrItems = rrItemsRaw || [];
 
-      // 1.3: In Transit = "draft" status receiving reports in date range
+      // 1.3: In Transit = ALL "draft" status receiving reports (no date filter)
       const { data: inTransitRaw } = await supabase
         .from('receiving_report_items')
-        .select('inventory_item_id, inventory_name, qty, receiving_reports!receiving_report_id(status, date)')
-        .eq('receiving_reports.status', 'draft')
-        .gte('receiving_reports.date', invDateFrom)
-        .lte('receiving_reports.date', invDateTo);
+        .select('inventory_item_id, inventory_name, qty, receiving_reports!receiving_report_id(status)')
+        .eq('receiving_reports.status', 'draft');
       const inTransitItems = inTransitRaw || [];
 
       // 2b + 3b. Line items from Jan 1, 2026 → invDateTo — single join query for Average Cost
@@ -1691,7 +1689,7 @@ export default function AdminPage() {
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={invDateTo} onChange={(e) => setInvDateTo(e.target.value)} />
                 <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
-                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = Draft RRs in range. Sold = Delivered/Completed orders. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
+                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = All Draft RRs (all dates). Sold = Delivered/Completed orders. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
               </div>
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
