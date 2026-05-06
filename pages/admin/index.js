@@ -126,6 +126,7 @@ export default function AdminPage() {
   // ── RR Inventory Item Picker state ────────────────────────────────────────
   const [invPickerOpen, setInvPickerOpen] = useState(null); // row index or null
   const [invPickerQuery, setInvPickerQuery] = useState('');
+  const [rrNewItemReturnIdx, setRrNewItemReturnIdx] = useState(null); // row index to re-open picker after new item saved
 
   // ── Costing Inventory Item Picker state ───────────────────────────────────
   const [costingInvPickerIdx, setCostingInvPickerIdx] = useState(null); // line index or null
@@ -901,7 +902,16 @@ export default function AdminPage() {
         await supabase.from('admin_inventory_items').insert(payload);
       }
       setInvDialogOpen(false);
-      fetchInventory();
+      // If triggered from RR item picker, refresh invItems and re-open the picker
+      if (rrNewItemReturnIdx !== null) {
+        const returnIdx = rrNewItemReturnIdx;
+        setRrNewItemReturnIdx(null);
+        await fetchRR();
+        setInvPickerQuery('');
+        setInvPickerOpen(returnIdx);
+      } else {
+        fetchInventory();
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -2846,6 +2856,16 @@ export default function AdminPage() {
                     </div>
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                      <button
+                        style={styles.primaryBtn}
+                        onClick={() => {
+                          const idx = invPickerOpen;
+                          setInvPickerOpen(null);
+                          setInvPickerQuery('');
+                          setRrNewItemReturnIdx(idx);
+                          openInvDialog(null);
+                        }}
+                      >+ New Item</button>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
