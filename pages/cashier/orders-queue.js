@@ -180,6 +180,46 @@ export default function OrdersQueue() {
         });
         if (loyaltyErr) console.error('[OrdersQueue] Loyalty points journal entry failed:', loyaltyErr.message);
       }
+      // COGS entry: Debit COGS / Credit Inventory (based on price costing)
+      try {
+        const orderItems = order.order_items || order.items || [];
+        if (orderItems.length > 0) {
+          // Fetch price costing headers for menu items in this order (match by name)
+          const itemNames = [...new Set(orderItems.map((i) => i.name).filter(Boolean))];
+          const { data: costingRows } = await supabase
+            .from('price_costing_headers')
+            .select('menu_item_name, lines:price_costing_items(qty, cost)')
+            .in('menu_item_name', itemNames);
+          if (costingRows && costingRows.length > 0) {
+            // Build lookup: menu_item_name → raw materials total (sum of qty×cost)
+            const rawMaterialMap = {};
+            costingRows.forEach((h) => {
+              const total = (h.lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.cost) || 0), 0);
+              rawMaterialMap[h.menu_item_name] = total;
+            });
+            // Sum COGS across all ordered items
+            const totalCOGS = orderItems.reduce((s, item) => {
+              const rm = rawMaterialMap[item.name] || 0;
+              return s + rm * (Number(item.quantity) || 1);
+            }, 0);
+            if (totalCOGS > 0) {
+              const { error: cogsErr } = await supabase.from('journal_entries').insert({
+                date,
+                description: `COGS: ${orderRef}`,
+                debit_account: 'Cost of Goods Sold',
+                credit_account: 'Inventory',
+                amount: Math.round(totalCOGS * 100) / 100,
+                reference_type: 'order',
+                reference: orderRef,
+                name: customerName,
+              });
+              if (cogsErr) console.error('[OrdersQueue] COGS journal entry failed:', cogsErr.message);
+            }
+          }
+        }
+      } catch (cogsLookupErr) {
+        console.error('[OrdersQueue] COGS lookup failed:', cogsLookupErr?.message ?? cogsLookupErr);
+      }
     } catch (err) {
       console.error('[OrdersQueue] Failed to create sales journal entry:', err?.message ?? err);
     }

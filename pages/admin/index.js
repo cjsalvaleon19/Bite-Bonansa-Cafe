@@ -2110,6 +2110,14 @@ export default function AdminPage() {
                             </div>
                           </div>
 
+                          {/* Total Raw Materials (sum of inventory line totals) */}
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>Total Raw Materials (₱)</label>
+                          <input
+                            style={{ ...styles.input, background: '#111', color: '#4caf50', fontWeight: 700 }}
+                            readOnly
+                            value={fmt(lineSubtotal)}
+                          />
+
                           {/* Total Estimated COGS (auto) */}
                           <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Total Estimated COGS (auto)</label>
                           <input
