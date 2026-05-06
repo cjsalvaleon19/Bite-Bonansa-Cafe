@@ -7,6 +7,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 
 ALTER TABLE journal_entries
+  ADD COLUMN IF NOT EXISTS date         DATE         NOT NULL DEFAULT CURRENT_DATE,
   ADD COLUMN IF NOT EXISTS entry_number TEXT,
   ADD COLUMN IF NOT EXISTS name         TEXT,
   ADD COLUMN IF NOT EXISTS reference    TEXT;
