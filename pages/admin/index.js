@@ -1888,7 +1888,7 @@ export default function AdminPage() {
                           />
 
                           {/* Contribution Margin: pct + amount */}
-                          <label style={styles.label}>Contribution Margin</label>
+                          <label style={styles.label}>Contribution Margin <span style={{ color: '#666', fontSize: 10, fontWeight: 400 }}>(% of COGS)</span></label>
                           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                               <input
