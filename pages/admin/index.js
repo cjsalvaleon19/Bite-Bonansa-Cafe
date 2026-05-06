@@ -238,7 +238,7 @@ export default function AdminPage() {
     description: '',
   });
   const [billLines, setBillLines] = useState([
-    { description: '', account_title: '', debit_amount: '', credit_amount: '' },
+    { description: '', account_title: '', debit_amount: '' },
   ]);
   const [billSaving, setBillSaving] = useState(false);
   const [billError, setBillError] = useState('');
@@ -252,6 +252,17 @@ export default function AdminPage() {
   const [billAcctQuery, setBillAcctQuery] = useState('');
   const [billViewItem, setBillViewItem] = useState(null);
   const [billViewLines, setBillViewLines] = useState([]);
+  // Pay dialog
+  const [billPayDialogOpen, setBillPayDialogOpen] = useState(false);
+  const [billPayItem, setBillPayItem] = useState(null);
+  const [billPayMethod, setBillPayMethod] = useState('cash_on_hand');
+  const [billPaying, setBillPaying] = useState(false);
+  const [billPayError, setBillPayError] = useState('');
+  // New contact enrollment inside contact picker
+  const [billNewContactMode, setBillNewContactMode] = useState(false);
+  const [billNewContactForm, setBillNewContactForm] = useState({ name: '', address: '', contact: '', tin: '' });
+  const [billNewContactSaving, setBillNewContactSaving] = useState(false);
+  const [billNewContactError, setBillNewContactError] = useState('');
 
   // ── My Profile state ──────────────────────────────────────────────────────
   const [profileData, setProfileData] = useState(null);
@@ -692,10 +703,11 @@ export default function AdminPage() {
     setBillSuccess('');
     try {
       if (!billForm.date) throw new Error('Please enter a date.');
-      const validLines = billLines.filter((l) => l.account_title || l.debit_amount || l.credit_amount);
+      const validLines = billLines.filter((l) => l.account_title || l.debit_amount);
       if (validLines.length === 0) throw new Error('Please add at least one line item.');
       const totalDebit = validLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
-      const totalCredit = validLines.reduce((s, l) => s + (Number(l.credit_amount) || 0), 0);
+      // total_credit equals total_debit — credited to Accounts Payable automatically
+      const totalCredit = totalDebit;
 
       const payload = {
         bill_number: billNumber,
@@ -704,7 +716,7 @@ export default function AdminPage() {
         description: billForm.description || null,
         total_debit: totalDebit,
         total_credit: totalCredit,
-        status: 'draft',
+        status: billEditItem?.status === 'approved' || billEditItem?.status === 'paid' ? billEditItem.status : 'draft',
         updated_at: new Date().toISOString(),
       };
 
@@ -728,7 +740,7 @@ export default function AdminPage() {
           description: l.description || null,
           account_title: l.account_title || null,
           debit_amount: Number(l.debit_amount) || 0,
-          credit_amount: Number(l.credit_amount) || 0,
+          credit_amount: 0,
         }));
         const { error: lineErr } = await supabase.from('bill_items').insert(lineRows);
         if (lineErr) throw lineErr;
@@ -758,23 +770,123 @@ export default function AdminPage() {
       });
       setBillNumber(item.bill_number || '');
       if (supabase) {
-        const { data: lines } = await supabase
-          .from('bill_items')
-          .select('*')
-          .eq('bill_id', item.id);
-        setBillLines((lines || []).map((l) => ({
-          description: l.description || '',
-          account_title: l.account_title || '',
-          debit_amount: String(l.debit_amount || ''),
-          credit_amount: String(l.credit_amount || ''),
-        })));
+        try {
+          const { data: lines } = await supabase
+            .from('bill_items')
+            .select('*')
+            .eq('bill_id', item.id);
+          setBillLines((lines && lines.length > 0) ? lines.map((l) => ({
+            description: l.description || '',
+            account_title: l.account_title || '',
+            debit_amount: String(l.debit_amount || ''),
+          })) : [{ description: '', account_title: '', debit_amount: '' }]);
+        } catch {
+          setBillLines([{ description: '', account_title: '', debit_amount: '' }]);
+        }
       }
     } else {
       setBillForm({ date: new Date().toISOString().split('T')[0], contact: '', description: '' });
-      setBillLines([{ description: '', account_title: '', debit_amount: '', credit_amount: '' }]);
+      setBillLines([{ description: '', account_title: '', debit_amount: '' }]);
       await generateBillNumber();
     }
     setBillDialogOpen(true);
+  };
+
+  // ── Bills: Approve bill ───────────────────────────────────────────────────
+  const approveBill = async (bill) => {
+    if (!supabase) return;
+    if (!window.confirm(`Approve Bill ${bill.bill_number}? This will record Journal Entries.`)) return;
+    try {
+      // Fetch line items
+      const { data: lines, error: lErr } = await supabase.from('bill_items').select('*').eq('bill_id', bill.id);
+      if (lErr) throw lErr;
+      const validLines = (lines || []).filter((l) => l.account_title && (Number(l.debit_amount) || 0) > 0);
+      if (validLines.length === 0) throw new Error('No valid line items to approve.');
+      const today = new Date().toISOString().split('T')[0];
+      // Create a JE per line: Dr [account_title] / Cr Accounts Payable
+      const jeRows = validLines.map((l) => ({
+        date: today,
+        debit_account: l.account_title,
+        credit_account: 'Accounts Payable',
+        amount: Number(l.debit_amount),
+        description: `Bill ${bill.bill_number}${l.description ? ' – ' + l.description : ''}`,
+        reference_type: 'bill',
+        reference: bill.id,
+      }));
+      const { error: jeErr } = await supabase.from('journal_entries').insert(jeRows);
+      if (jeErr) throw jeErr;
+      // Update bill status
+      const { error: updErr } = await supabase.from('bills').update({ status: 'approved', updated_at: new Date().toISOString() }).eq('id', bill.id);
+      if (updErr) throw updErr;
+      await fetchBills();
+      setBillSuccess(`Bill ${bill.bill_number} approved. Journal entries recorded.`);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // ── Bills: Pay bill ───────────────────────────────────────────────────────
+  const payBill = async () => {
+    if (!supabase || !billPayItem) return;
+    setBillPaying(true);
+    setBillPayError('');
+    try {
+      const creditAccount = billPayMethod === 'cash_on_hand' ? 'Cash on Hand'
+        : billPayMethod === 'cash_in_bank' ? 'Cash in Bank'
+        : "Owner's Draw"; // credit card
+      const today = new Date().toISOString().split('T')[0];
+      const jeRow = {
+        date: today,
+        debit_account: 'Accounts Payable',
+        credit_account: creditAccount,
+        amount: Number(billPayItem.total_debit) || 0,
+        description: `Payment for Bill ${billPayItem.bill_number}`,
+        reference_type: 'bill',
+        reference: billPayItem.id,
+      };
+      const { error: jeErr } = await supabase.from('journal_entries').insert([jeRow]);
+      if (jeErr) throw jeErr;
+      const { error: updErr } = await supabase.from('bills').update({
+        status: 'paid',
+        payment_method: billPayMethod,
+        updated_at: new Date().toISOString(),
+      }).eq('id', billPayItem.id);
+      if (updErr) throw updErr;
+      setBillPayDialogOpen(false);
+      setBillPayItem(null);
+      await fetchBills();
+      setBillSuccess(`Bill ${billPayItem.bill_number} marked as paid.`);
+    } catch (err) {
+      setBillPayError(err.message);
+    } finally {
+      setBillPaying(false);
+    }
+  };
+
+  // ── Bills: Save new contact (vendor enrollment) ───────────────────────────
+  const saveNewBillContact = async () => {
+    if (!supabase) return;
+    if (!billNewContactForm.name.trim()) { setBillNewContactError('Name is required.'); return; }
+    setBillNewContactSaving(true);
+    setBillNewContactError('');
+    try {
+      const { data: inserted, error: err } = await supabase.from('vendors').insert({
+        name: billNewContactForm.name.trim(),
+        address: billNewContactForm.address || null,
+        contact_number: billNewContactForm.contact || null,
+        tin: billNewContactForm.tin || null,
+      }).select().single();
+      if (err) throw err;
+      // Auto-select the new contact
+      setBillForm((p) => ({ ...p, contact: inserted.name }));
+      setBillContactPickerOpen(false);
+      setBillNewContactMode(false);
+      setBillNewContactForm({ name: '', address: '', contact: '', tin: '' });
+    } catch (err) {
+      setBillNewContactError(err.message);
+    } finally {
+      setBillNewContactSaving(false);
+    }
   };
 
   // ── Bills: View bill ──────────────────────────────────────────────────────
@@ -911,19 +1023,23 @@ export default function AdminPage() {
         const totalRevenue = revenue + deliveryIncome;
         setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit: totalRevenue - cogs, expByAccount, opExp, netProfit: totalRevenue - cogs - opExp });
       } else if (finSubTab === 'balance') {
-        // Balance Sheet: cumulative position as of finDateTo
-        // Opening balance = Jan 1, 2026; add all journal entries up to finDateTo.
+        // Balance Sheet: Balance as of Jan 1, 2026 (opening) + total JE transactions up to finDateTo.
+        // All amounts are derived purely from Journal Entries (Dr - Cr per account).
         const bsDateTo = toISO.split('T')[0];
         const [
-          { data: allCash }, { data: invList }, { data: rrApproved },
+          { data: invList },
+          { data: cashOnHandDebit }, { data: cashOnHandCredit },
+          { data: cashInBankDebit }, { data: cashInBankCredit },
           { data: kitEquipDebit }, { data: kitEquipCredit }, { data: accumDeprData },
           { data: ownCapCredit }, { data: ownCapDebit }, { data: retEarnCredit }, { data: retEarnDebit },
           { data: ownDrawDebit }, { data: ownDrawCredit },
-          { data: cashInBankDebit }, { data: cashInBankCredit },
+          { data: apCredit }, { data: apDebit },
         ] = await Promise.all([
-          supabase.from('cash_drawer_transactions').select('amount, transaction_type').lte('created_at', toISO),
           supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
-          supabase.from('receiving_reports').select('total_landed_cost').eq('status', 'approved').lte('created_at', toISO),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Cash on Hand').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Cash on Hand').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Cash in Bank').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Cash in Bank').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Kitchen Equipment').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Kitchen Equipment').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Accumulated Depreciation').lte('date', bsDateTo),
@@ -933,28 +1049,20 @@ export default function AdminPage() {
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Retained Earnings').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Draw").lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Draw").lte('date', bsDateTo),
-          supabase.from('journal_entries').select('amount').eq('debit_account', 'Cash in Bank').lte('date', bsDateTo),
-          supabase.from('journal_entries').select('amount').eq('credit_account', 'Cash in Bank').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Accounts Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Accounts Payable').lte('date', bsDateTo),
         ]);
-        let cashOnHand = 0;
-        (allCash || []).forEach((tx) => {
-          const amt = Number(tx.amount) || 0;
-          if (tx.transaction_type === 'cash-in') cashOnHand += amt;
-          else cashOnHand -= amt;
-        });
-        const cashInBank = (cashInBankDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
-          - (cashInBankCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const sumAmt = (arr) => (arr || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const cashOnHand = sumAmt(cashOnHandDebit) - sumAmt(cashOnHandCredit);
+        const cashInBank = sumAmt(cashInBankDebit) - sumAmt(cashInBankCredit);
         const invValue = (invList || []).reduce((s, i) => s + (Number(i.current_stock) || 0) * (Number(i.cost_per_unit) || 0), 0);
-        const ap = (rrApproved || []).reduce((s, r) => s + (Number(r.total_landed_cost) || 0), 0);
-        const kitchenEquipment = (kitEquipDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
-          - (kitEquipCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-        const accumDepreciation = (accumDeprData || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-        const ownersCapital = (ownCapCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
-          - (ownCapDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-        const retainedEarnings = (retEarnCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
-          - (retEarnDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-        const ownersDraw = (ownDrawDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
-          - (ownDrawCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        // Accounts Payable: credit (increases liability) - debit (decreases liability)
+        const ap = sumAmt(apCredit) - sumAmt(apDebit);
+        const kitchenEquipment = sumAmt(kitEquipDebit) - sumAmt(kitEquipCredit);
+        const accumDepreciation = sumAmt(accumDeprData);
+        const ownersCapital = sumAmt(ownCapCredit) - sumAmt(ownCapDebit);
+        const retainedEarnings = sumAmt(retEarnCredit) - sumAmt(retEarnDebit);
+        const ownersDraw = sumAmt(ownDrawDebit) - sumAmt(ownDrawCredit);
         const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
         const totalEquity = ownersCapital - ownersDraw + retainedEarnings;
         setFinData({
@@ -3758,12 +3866,25 @@ export default function AdminPage() {
                       const variance = isExpense ? budget - actual : actual - budget;
                       const varPct = budget !== 0 ? ((variance / Math.abs(budget)) * 100).toFixed(1) : '—';
                       const varColor = variance >= 0 ? '#4caf50' : '#f44336';
+                      const budgetPct = totalRevenueBudget !== 0 ? ((budget / totalRevenueBudget) * 100).toFixed(1) : '—';
+                      const actualPct = finData.totalRevenue !== 0 ? ((actual / finData.totalRevenue) * 100).toFixed(1) : '—';
                       return (
                         <tr key={bKey} style={{ background: '#161616' }}>
                           <td style={{ ...styles.td, paddingLeft: indent ? 28 : 12 }}>{label}</td>
-                          <td style={{ ...styles.td, textAlign: 'right', padding: '6px 8px' }}>{bdgInput(bKey, actual)}</td>
+                          <td style={{ ...styles.td, padding: '6px 8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                              <span style={{ color: '#888', fontSize: 11 }}>₱</span>
+                              {bdgInput(bKey, actual)}
+                            </div>
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>
+                            {budgetPct !== '—' ? `${budgetPct}%` : '—'}
+                          </td>
                           <td style={{ ...styles.td, textAlign: 'right', color: isExpense ? '#f44336' : '#4caf50' }}>
                             {isExpense && actual > 0 ? `(${fmt(actual)})` : fmt(actual)}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>
+                            {actualPct !== '—' ? `${actualPct}%` : '—'}
                           </td>
                           <td style={{ ...styles.td, textAlign: 'right', color: varColor, fontWeight: 600 }}>
                             {variance !== 0 ? (variance > 0 ? '+' : '') + fmt(variance) : fmt(0)}
@@ -3782,19 +3903,27 @@ export default function AdminPage() {
                     ];
                     const headerRow = (label, bg = '#1e1e1e') => (
                       <tr key={label} style={{ background: bg }}>
-                        <td colSpan={5} style={{ ...styles.td, fontWeight: 700, color: '#ffc107', fontSize: 13 }}>{label}</td>
+                        <td colSpan={7} style={{ ...styles.td, fontWeight: 700, color: '#ffc107', fontSize: 13 }}>{label}</td>
                       </tr>
                     );
                     const totalRow = (label, actual, budget, isExpense = false, bg = '#2a2a1a') => {
                       const variance = isExpense ? Number(budget) - Number(actual) : Number(actual) - Number(budget);
                       const varPct = budget !== 0 ? ((variance / Math.abs(Number(budget))) * 100).toFixed(1) : '—';
                       const varColor = variance >= 0 ? '#4caf50' : '#f44336';
+                      const budgetPct = totalRevenueBudget !== 0 ? ((Number(budget) / totalRevenueBudget) * 100).toFixed(1) : '—';
+                      const actualPct = finData.totalRevenue !== 0 ? ((Number(actual) / finData.totalRevenue) * 100).toFixed(1) : '—';
                       return (
                         <tr key={label} style={{ background: bg, fontWeight: 700 }}>
                           <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>{label}</td>
                           <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>{fmt(Number(budget) || 0)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>
+                            {budgetPct !== '—' ? `${budgetPct}%` : '—'}
+                          </td>
                           <td style={{ ...styles.td, textAlign: 'right', color: isExpense ? '#f44336' : '#4caf50' }}>
                             {isExpense && actual > 0 ? `(${fmt(actual)})` : fmt(actual)}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>
+                            {actualPct !== '—' ? `${actualPct}%` : '—'}
                           </td>
                           <td style={{ ...styles.td, textAlign: 'right', color: varColor, fontWeight: 700 }}>
                             {variance !== 0 ? (variance > 0 ? '+' : '') + fmt(variance) : fmt(0)}
@@ -3814,7 +3943,7 @@ export default function AdminPage() {
                         <table style={styles.table}>
                           <thead>
                             <tr>
-                              {['Account', 'Budget (₱)', 'Actual (₱)', 'Variance (₱)', 'Variance %'].map((h) => (
+                              {['Account', 'Budget (₱)', 'Budget %', 'Actual (₱)', 'Actual %', 'Variance (₱)', 'Variance %'].map((h) => (
                                 <th key={h} style={{ ...styles.th, textAlign: h !== 'Account' ? 'right' : 'left' }}>{h}</th>
                               ))}
                             </tr>
@@ -4589,7 +4718,7 @@ export default function AdminPage() {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      {['Bill #', 'Date', 'Contact', 'Description', 'Total Debit (₱)', 'Total Credit (₱)', 'Status', 'Actions'].map((h) => (
+                      {['Bill #', 'Date', 'Contact', 'Description', 'Total Amount (₱)', 'Status', 'Actions'].map((h) => (
                         <th key={h} style={styles.th}>{h}</th>
                       ))}
                     </tr>
@@ -4601,30 +4730,44 @@ export default function AdminPage() {
                       return (b.bill_number || '').toLowerCase().includes(q) ||
                         (b.contact || '').toLowerCase().includes(q) ||
                         (b.description || '').toLowerCase().includes(q);
-                    }).map((bill, idx) => (
-                      <tr key={bill.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                        <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{bill.bill_number}</td>
-                        <td style={styles.td}>{bill.date}</td>
-                        <td style={styles.td}>{bill.contact || '—'}</td>
-                        <td style={styles.td}>{bill.description || '—'}</td>
-                        <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(bill.total_debit || 0)}</td>
-                        <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(bill.total_credit || 0)}</td>
-                        <td style={styles.td}>
-                          <span style={{
-                            ...styles.badge,
-                            background: bill.status === 'paid' ? '#1a3a1a' : '#2a2a00',
-                            color: bill.status === 'paid' ? '#4caf50' : '#ffc107',
-                            border: `1px solid ${bill.status === 'paid' ? '#4caf50' : '#ffc107'}`,
-                          }}>{bill.status || 'draft'}</span>
-                        </td>
-                        <td style={styles.td}>
-                          <button onClick={() => viewBill(bill)} style={styles.actionBtn}>View</button>
-                          <button onClick={() => openBillDialog(bill)} style={styles.actionBtn}>Edit</button>
-                        </td>
-                      </tr>
-                    ))}
+                    }).map((bill, idx) => {
+                      const statusColor = bill.status === 'paid' ? '#4caf50' : bill.status === 'approved' ? '#2196f3' : '#ffc107';
+                      const statusBg = bill.status === 'paid' ? '#1a3a1a' : bill.status === 'approved' ? '#0a1a2a' : '#2a2a00';
+                      return (
+                        <tr key={bill.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                          <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{bill.bill_number}</td>
+                          <td style={styles.td}>{bill.date}</td>
+                          <td style={styles.td}>{bill.contact || '—'}</td>
+                          <td style={styles.td}>{bill.description || '—'}</td>
+                          <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(bill.total_debit || 0)}</td>
+                          <td style={styles.td}>
+                            <span style={{ ...styles.badge, background: statusBg, color: statusColor, border: `1px solid ${statusColor}` }}>
+                              {bill.status || 'draft'}
+                            </span>
+                          </td>
+                          <td style={styles.td}>
+                            <button onClick={() => viewBill(bill)} style={styles.actionBtn}>View</button>
+                            {bill.status === 'draft' && (
+                              <>
+                                <button onClick={() => openBillDialog(bill)} style={styles.actionBtn}>Edit</button>
+                                <button
+                                  onClick={() => approveBill(bill)}
+                                  style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}
+                                >Approve</button>
+                              </>
+                            )}
+                            {bill.status === 'approved' && (
+                              <button
+                                onClick={() => { setBillPayItem(bill); setBillPayMethod('cash_on_hand'); setBillPayError(''); setBillPayDialogOpen(true); }}
+                                style={{ ...styles.actionBtn, color: '#4caf50', borderColor: '#4caf50' }}
+                              >Pay</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {billsList.length === 0 && !loading && (
-                      <tr><td colSpan={8} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No bills yet. Create a new bill!</td></tr>
+                      <tr><td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No bills yet. Create a new bill!</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -4674,14 +4817,17 @@ export default function AdminPage() {
                       <button
                         type="button"
                         style={{ ...styles.actionBtn, fontSize: 12 }}
-                        onClick={() => setBillLines((p) => [...p, { description: '', account_title: '', debit_amount: '', credit_amount: '' }])}
+                        onClick={() => setBillLines((p) => [...p, { description: '', account_title: '', debit_amount: '' }])}
                       >+ Add Line</button>
                     </div>
+                    <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>
+                      Credit side is automatically <strong style={{ color: '#aaa' }}>Accounts Payable</strong> for the total debit amount.
+                    </p>
                     <div style={styles.tableWrap}>
                       <table style={{ ...styles.table, fontSize: 12 }}>
                         <thead>
                           <tr>
-                            {['Description', 'Account Title', 'Debit (₱)', 'Credit (₱)', ''].map((h) => (
+                            {['Description', 'Account Title (Debit)', 'Amount (₱)', ''].map((h) => (
                               <th key={h} style={styles.th}>{h}</th>
                             ))}
                           </tr>
@@ -4701,7 +4847,7 @@ export default function AdminPage() {
                                 <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                                   <input
                                     style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 150 }}
-                                    placeholder="e.g. Accounts Payable"
+                                    placeholder="e.g. Utilities"
                                     list="bill-accounts-list"
                                     value={line.account_title}
                                     onChange={(e) => setBillLines((p) => p.map((l, i) => i === li ? { ...l, account_title: e.target.value } : l))}
@@ -4723,14 +4869,6 @@ export default function AdminPage() {
                                 />
                               </td>
                               <td style={styles.td}>
-                                <input
-                                  type="number"
-                                  style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100, color: '#f44336' }}
-                                  value={line.credit_amount}
-                                  onChange={(e) => setBillLines((p) => p.map((l, i) => i === li ? { ...l, credit_amount: e.target.value } : l))}
-                                />
-                              </td>
-                              <td style={styles.td}>
                                 <button
                                   type="button"
                                   style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
@@ -4741,16 +4879,21 @@ export default function AdminPage() {
                           ))}
                           {billLines.length > 0 && (() => {
                             const totalDebit = billLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
-                            const totalCredit = billLines.reduce((s, l) => s + (Number(l.credit_amount) || 0), 0);
                             return (
                               <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
-                                <td colSpan={2} style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>TOTAL:</td>
+                                <td colSpan={2} style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>TOTAL (Dr):</td>
                                 <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(totalDebit)}</td>
-                                <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(totalCredit)}</td>
                                 <td style={styles.td} />
                               </tr>
                             );
                           })()}
+                          <tr style={{ background: '#1a1a2a' }}>
+                            <td colSpan={2} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>Credit — Accounts Payable:</td>
+                            <td style={{ ...styles.td, color: '#f44336', textAlign: 'right', fontSize: 11 }}>
+                              {fmt(billLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0))}
+                            </td>
+                            <td style={styles.td} />
+                          </tr>
                         </tbody>
                       </table>
                     </div>
@@ -4793,7 +4936,7 @@ export default function AdminPage() {
                           <table style={{ ...styles.table, fontSize: 12 }}>
                             <thead>
                               <tr>
-                                {['Description', 'Account Title', 'Debit (₱)', 'Credit (₱)'].map((h) => (
+                                {['Description', 'Account Title (Debit)', 'Amount (₱)'].map((h) => (
                                   <th key={h} style={styles.th}>{h}</th>
                                 ))}
                               </tr>
@@ -4804,11 +4947,18 @@ export default function AdminPage() {
                                   <td style={styles.td}>{l.description || '—'}</td>
                                   <td style={styles.td}>{l.account_title || '—'}</td>
                                   <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{l.debit_amount > 0 ? fmt(l.debit_amount) : '—'}</td>
-                                  <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{l.credit_amount > 0 ? fmt(l.credit_amount) : '—'}</td>
                                 </tr>
                               ))}
                               {billViewLines.length === 0 && (
-                                <tr><td colSpan={4} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No line items</td></tr>
+                                <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No line items</td></tr>
+                              )}
+                              {billViewLines.length > 0 && (
+                                <tr style={{ background: '#1a1a2a' }}>
+                                  <td colSpan={2} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>Credit — Accounts Payable:</td>
+                                  <td style={{ ...styles.td, color: '#f44336', textAlign: 'right', fontSize: 11 }}>
+                                    {fmt(billViewLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0))}
+                                  </td>
+                                </tr>
                               )}
                             </tbody>
                           </table>
@@ -4823,34 +4973,64 @@ export default function AdminPage() {
               </Dialog.Root>
 
               {/* Bill Contact Picker */}
-              <Dialog.Root open={billContactPickerOpen} onOpenChange={(open) => { if (!open) setBillContactPickerOpen(false); }}>
+              <Dialog.Root open={billContactPickerOpen} onOpenChange={(open) => { if (!open) { setBillContactPickerOpen(false); setBillNewContactMode(false); setBillNewContactError(''); } }}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
                   <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 440 }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>Select Contact</Dialog.Title>
-                    <input
-                      style={{ ...styles.input, marginBottom: 12 }}
-                      placeholder="Search contacts…"
-                      value={billContactQuery}
-                      onChange={(e) => { setBillContactQuery(e.target.value); fetchBillContacts(e.target.value); }}
-                      autoFocus
-                    />
-                    <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
-                      {(billContactList || []).map((c) => (
-                        <div
-                          key={c.id}
-                          onClick={() => { setBillForm((p) => ({ ...p, contact: c.name })); setBillContactPickerOpen(false); }}
-                          style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
-                        >
-                          <strong>{c.name}</strong>
-                          <span style={{ color: '#888', fontSize: 12 }}> · {c.type}</span>
+                    {!billNewContactMode ? (
+                      <>
+                        <input
+                          style={{ ...styles.input, marginBottom: 12 }}
+                          placeholder="Search contacts…"
+                          value={billContactQuery}
+                          onChange={(e) => { setBillContactQuery(e.target.value); fetchBillContacts(e.target.value); }}
+                          autoFocus
+                        />
+                        <div style={{ maxHeight: 260, overflowY: 'auto', marginBottom: 12 }}>
+                          {(billContactList || []).map((c) => (
+                            <div
+                              key={c.id}
+                              onClick={() => { setBillForm((p) => ({ ...p, contact: c.name })); setBillContactPickerOpen(false); }}
+                              style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
+                            >
+                              <strong>{c.name}</strong>
+                              <span style={{ color: '#888', fontSize: 12 }}> · {c.type}</span>
+                            </div>
+                          ))}
+                          {billContactList.length === 0 && <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No contacts found.</p>}
                         </div>
-                      ))}
-                      {billContactList.length === 0 && <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No contacts found.</p>}
-                    </div>
-                    <div style={styles.dialogFooter}>
-                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
-                    </div>
+                        <div style={{ borderTop: '1px solid #333', paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            style={{ ...styles.primaryBtn, fontSize: 12 }}
+                            onClick={() => { setBillNewContactMode(true); setBillNewContactForm({ name: '', address: '', contact: '', tin: '' }); setBillNewContactError(''); }}
+                          >+ New Contact</button>
+                          <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <h4 style={{ color: '#ffc107', fontSize: 13, marginBottom: 12 }}>Enroll New Contact</h4>
+                        {billNewContactError && <p style={{ color: '#f44336', fontSize: 12, marginBottom: 8 }}>{billNewContactError}</p>}
+                        <div style={styles.formGrid}>
+                          <label style={styles.label}>Name *</label>
+                          <input style={styles.input} value={billNewContactForm.name} onChange={(e) => setBillNewContactForm((p) => ({ ...p, name: e.target.value }))} autoFocus />
+                          <label style={styles.label}>Address</label>
+                          <input style={styles.input} value={billNewContactForm.address} onChange={(e) => setBillNewContactForm((p) => ({ ...p, address: e.target.value }))} />
+                          <label style={styles.label}>Contact #</label>
+                          <input style={styles.input} value={billNewContactForm.contact} onChange={(e) => setBillNewContactForm((p) => ({ ...p, contact: e.target.value }))} />
+                          <label style={styles.label}>TIN</label>
+                          <input style={styles.input} value={billNewContactForm.tin} onChange={(e) => setBillNewContactForm((p) => ({ ...p, tin: e.target.value }))} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                          <button type="button" style={styles.cancelBtn} onClick={() => setBillNewContactMode(false)}>← Back</button>
+                          <button type="button" style={styles.primaryBtn} onClick={saveNewBillContact} disabled={billNewContactSaving}>
+                            {billNewContactSaving ? 'Saving…' : 'Save Contact'}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </Dialog.Content>
                 </Dialog.Portal>
               </Dialog.Root>
@@ -4885,6 +5065,47 @@ export default function AdminPage() {
                     </div>
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* Bill Pay Dialog */}
+              <Dialog.Root open={billPayDialogOpen} onOpenChange={(open) => { if (!open) { setBillPayDialogOpen(false); setBillPayItem(null); } }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 420 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Pay Bill — {billPayItem?.bill_number}</Dialog.Title>
+                    {billPayError && <p style={{ color: '#f44336', fontSize: 13, marginBottom: 10 }}>{billPayError}</p>}
+                    {billPayItem && (
+                      <div>
+                        <p style={{ color: '#aaa', fontSize: 13, marginBottom: 16 }}>
+                          Total Amount: <strong style={{ color: '#4caf50' }}>{fmt(billPayItem.total_debit || 0)}</strong>
+                        </p>
+                        <div style={styles.formGrid}>
+                          <label style={styles.label}>Payment Method</label>
+                          <select
+                            style={{ ...styles.input }}
+                            value={billPayMethod}
+                            onChange={(e) => setBillPayMethod(e.target.value)}
+                          >
+                            <option value="cash_on_hand">Cash on Hand</option>
+                            <option value="cash_in_bank">Cash in Bank</option>
+                            <option value="credit_card">Credit Card</option>
+                          </select>
+                        </div>
+                        <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 6, padding: '10px 14px', marginTop: 16, fontSize: 12, color: '#aaa' }}>
+                          <p style={{ margin: '0 0 6px' }}><strong style={{ color: '#ffc107' }}>Journal Entry:</strong></p>
+                          <p style={{ margin: '2px 0' }}>Dr Accounts Payable: {fmt(billPayItem.total_debit || 0)}</p>
+                          <p style={{ margin: '2px 0' }}>Cr {billPayMethod === 'cash_on_hand' ? 'Cash on Hand' : billPayMethod === 'cash_in_bank' ? 'Cash in Bank' : "Owner's Draw"}: {fmt(billPayItem.total_debit || 0)}</p>
+                        </div>
+                      </div>
+                    )}
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
+                      <button style={{ ...styles.primaryBtn, background: '#1a3a1a', color: '#4caf50', border: '1px solid #4caf50' }} onClick={payBill} disabled={billPaying}>
+                        {billPaying ? 'Processing…' : '✓ Confirm Payment'}
+                      </button>
                     </div>
                   </Dialog.Content>
                 </Dialog.Portal>
