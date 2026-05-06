@@ -219,13 +219,20 @@ export default function AdminPage() {
   const [coaDateTo, setCoaDateTo] = useState(todayStr);
   const [coaData, setCoaData] = useState(null);
   const [coaLoading, setCoaLoading] = useState(false);
-  // Editable budget values (persisted in localStorage)
+  // Editable budget values (persisted in localStorage, keyed by YYYY-MM month)
   const [budgetValues, setBudgetValues] = useState(() => {
     try {
-      const stored = typeof window !== 'undefined' && localStorage.getItem('bbc_budget_values');
-      return stored ? JSON.parse(stored) : {};
+      if (typeof window === 'undefined') return {};
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const stored = localStorage.getItem(`bbc_budget_${currentMonth}`);
+      if (stored) return JSON.parse(stored);
+      // Migrate from old un-keyed storage
+      const legacy = localStorage.getItem('bbc_budget_values');
+      return legacy ? JSON.parse(legacy) : {};
     } catch { return {}; }
   });
+  // Track which budget cell is being edited (for formatted display)
+  const [budgetEditKey, setBudgetEditKey] = useState(null);
 
   // ── Bills state ───────────────────────────────────────────────────────────
   const [billsList, setBillsList] = useState([]);
@@ -1007,12 +1014,12 @@ export default function AdminPage() {
         ];
         const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount, debit_account').in('debit_account', OPEX_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const expByAccount = {};
         OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
@@ -1092,12 +1099,12 @@ export default function AdminPage() {
         ];
         const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount, debit_account').in('debit_account', OPEX_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const expByAccount = {};
         OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
@@ -1233,7 +1240,7 @@ export default function AdminPage() {
       if (journalSubTab === 'sales') {
         q = q.eq('reference_type', 'order');
       } else if (journalSubTab === 'purchases') {
-        q = q.in('reference_type', ['receiving_report', 'rr_payment']);
+        q = q.in('reference_type', ['receiving_report', 'rr_payment', 'bill']);
       } else if (journalSubTab === 'others') {
         q = q.in('reference_type', ['cash_adjustment', 'manual_entry']);
       }
@@ -1248,6 +1255,9 @@ export default function AdminPage() {
         else if (journalSubFilter === 'rr_cash_on_hand') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash on Hand');
         else if (journalSubFilter === 'rr_cash_in_bank') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash in Bank');
         else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', "Owner's Draw");
+        else if (journalSubFilter === 'bill_all') q = q.eq('reference_type', 'bill');
+        else if (journalSubFilter === 'bill_approved') q = q.eq('reference_type', 'bill').eq('credit_account', 'Accounts Payable');
+        else if (journalSubFilter === 'bill_paid') q = q.eq('reference_type', 'bill').eq('debit_account', 'Accounts Payable');
       } else if (journalSubTab === 'others' && journalSubFilter !== 'all') {
         if (journalSubFilter === 'adjustments') q = q.eq('reference_type', 'cash_adjustment');
         else if (journalSubFilter === 'manual_entry') q = q.eq('reference_type', 'manual_entry');
@@ -1397,6 +1407,26 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === 'financial' && finSubTab === 'coa') fetchCOA();
   }, [activeTab, finSubTab, coaDateFrom, coaDateTo, fetchCOA]);
+
+  // ── Reload budget values when date range changes on Budget Variance tab ───
+  useEffect(() => {
+    if (finSubTab !== 'budget') return;
+    try {
+      if (typeof window === 'undefined') return;
+      const month = (finDateFrom || '').slice(0, 7);
+      const stored = localStorage.getItem(`bbc_budget_${month}`);
+      if (stored) {
+        setBudgetValues(JSON.parse(stored));
+      } else {
+        // Fall back to previous month's budget as default
+        const prevDate = new Date(finDateFrom);
+        prevDate.setMonth(prevDate.getMonth() - 1);
+        const prevMonth = prevDate.toISOString().slice(0, 7);
+        const prevStored = localStorage.getItem(`bbc_budget_${prevMonth}`);
+        setBudgetValues(prevStored ? JSON.parse(prevStored) : {});
+      }
+    } catch { /* noop */ }
+  }, [finDateFrom, finSubTab]);
 
   useEffect(() => {
     if (activeTab === 'journal') fetchJournal();
@@ -3836,30 +3866,42 @@ export default function AdminPage() {
                     <button
                       style={{ ...styles.actionBtn, fontSize: 11 }}
                       onClick={() => {
-                        try { localStorage.setItem('bbc_budget_values', JSON.stringify(budgetValues)); } catch { /* noop */ }
-                        alert('Budget values saved to browser storage.');
+                        const month = (finDateFrom || '').slice(0, 7);
+                        try { localStorage.setItem(`bbc_budget_${month}`, JSON.stringify(budgetValues)); } catch { /* noop */ }
+                        alert(`Budget for ${month} saved.`);
                       }}
                     >💾 Save Budget</button>
                   </div>
                   <p style={{ color: '#888', fontSize: 11, marginBottom: 12 }}>
-                    Budget column is editable. Actual values are pulled from Journal Entries (same formula as P&amp;L). Click a Budget cell to edit.
+                    Budget column is editable. Actual values are pulled from orders/Journal Entries. Click a Budget cell to edit, then click &ldquo;Save Budget&rdquo; to persist for this month.
                   </p>
                   {(() => {
                     const bv = budgetValues;
                     const setBv = (key, val) => {
                       const next = { ...bv, [key]: val };
                       setBudgetValues(next);
-                      try { localStorage.setItem('bbc_budget_values', JSON.stringify(next)); } catch { /* noop */ }
                     };
-                    const bdgInput = (key, actual) => (
-                      <input
-                        type="number"
-                        style={{ ...styles.input, width: 110, padding: '4px 8px', fontSize: 12, textAlign: 'right' }}
-                        value={bv[key] !== undefined ? bv[key] : ''}
-                        placeholder="0.00"
-                        onChange={(e) => setBv(key, e.target.value)}
-                      />
-                    );
+                    const bdgInput = (key) => {
+                      const rawVal = bv[key] !== undefined ? String(bv[key]) : '';
+                      const isEditing = budgetEditKey === key;
+                      const numVal = parseFloat(rawVal.replace(/,/g, '')) || 0;
+                      const formattedVal = numVal > 0 ? numVal.toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '';
+                      return (
+                        <input
+                          type="text"
+                          style={{ ...styles.input, width: 110, padding: '4px 8px', fontSize: 12, textAlign: 'right' }}
+                          value={isEditing ? rawVal : formattedVal}
+                          placeholder="0.00"
+                          onFocus={() => setBudgetEditKey(key)}
+                          onBlur={(e) => {
+                            setBudgetEditKey(null);
+                            const parsed = parseFloat(e.target.value.replace(/,/g, ''));
+                            if (!isNaN(parsed)) setBv(key, String(parsed));
+                          }}
+                          onChange={(e) => setBv(key, e.target.value)}
+                        />
+                      );
+                    };
                     const varRow = (label, actualVal, bKey, isExpense = false, indent = false) => {
                       const budget = Number(bv[bKey]) || 0;
                       const actual = Number(actualVal) || 0;
@@ -3874,7 +3916,7 @@ export default function AdminPage() {
                           <td style={{ ...styles.td, padding: '6px 8px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
                               <span style={{ color: '#888', fontSize: 11 }}>₱</span>
-                              {bdgInput(bKey, actual)}
+                              {bdgInput(bKey)}
                             </div>
                           </td>
                           <td style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>
@@ -4225,6 +4267,9 @@ export default function AdminPage() {
                   { key: 'rr_cash_on_hand', label: 'Paid: Cash on Hand' },
                   { key: 'rr_cash_in_bank', label: 'Paid: Cash in Bank' },
                   { key: 'rr_credit_card', label: 'Paid: Credit Card' },
+                  { key: 'bill_all', label: 'All Bills' },
+                  { key: 'bill_approved', label: 'Bill Approved' },
+                  { key: 'bill_paid', label: 'Bill Paid' },
                 ].map((sf) => (
                   <button key={sf.key} onClick={() => setJournalSubFilter(sf.key)}
                     style={{ padding: '5px 14px', borderRadius: 14, cursor: 'pointer', fontFamily: 'Poppins, sans-serif', fontSize: 12,
