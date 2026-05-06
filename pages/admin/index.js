@@ -59,6 +59,7 @@ export default function AdminPage() {
     id: null,
     menu_item_name: '',
     menu_category: '',
+    menu_item_price: '0', // locked to cashier menu price
     labor_cost: '0',
     overhead_cost: '0',
     wastage_pct: '0',
@@ -409,7 +410,7 @@ export default function AdminPage() {
           .select('*, lines:price_costing_items(id, inventory_item_id, uom, qty, cost, inventory_item:admin_inventory_items(id,name,code,uom,cost_per_unit))')
           .order('menu_item_name'),
         supabase.from('admin_inventory_items').select('*').order('name'),
-        supabase.from('menu_items').select('name, category, price').eq('available', true).order('name'),
+        supabase.from('menu_items').select('id, name, category, price, base_price, has_variants, menu_item_variant_types(id, variant_type_name, is_required, options:menu_item_variant_options(id, option_name, price_modifier, available))').eq('available', true).order('name'),
       ]);
       if (e1) {
         if (e1.message && e1.message.includes('price_costing_headers')) {
@@ -699,9 +700,11 @@ export default function AdminPage() {
     const wastageAmt = Number(form.wastage_amount) || 0;
     const contingencyAmt = Number(form.contingency_amount) || 0;
     const totalEstimatedCOGS = baseCOGS + wastageAmt + contingencyAmt;
-    const cmAmt = Number(form.contribution_margin_amount) || 0;
-    const sellingPrice = totalEstimatedCOGS + cmAmt;
-    return { lineSubtotal, baseCOGS, totalEstimatedCOGS, sellingPrice };
+    // Selling price is locked to the menu item price
+    const sellingPrice = Number(form.menu_item_price) || 0;
+    const cmAmt = sellingPrice - totalEstimatedCOGS;
+    const cmPct = sellingPrice > 0 ? (cmAmt / sellingPrice) * 100 : 0;
+    return { lineSubtotal, baseCOGS, totalEstimatedCOGS, sellingPrice, cmAmt, cmPct };
   };
 
   const openCostingDialog = (item = null) => {
@@ -711,6 +714,7 @@ export default function AdminPage() {
         id: item.id,
         menu_item_name: item.menu_item_name || '',
         menu_category: item.menu_category || '',
+        menu_item_price: String(item.selling_price || 0),
         labor_cost: String(item.labor_cost || 0),
         overhead_cost: String(item.overhead_cost || 0),
         wastage_pct: String(item.wastage_pct || 0),
@@ -732,6 +736,7 @@ export default function AdminPage() {
         id: null,
         menu_item_name: '',
         menu_category: '',
+        menu_item_price: '0',
         labor_cost: '0',
         overhead_cost: '0',
         wastage_pct: '0',
@@ -751,7 +756,7 @@ export default function AdminPage() {
   const saveCostingItem = async () => {
     if (!supabase) return;
     try {
-      const { totalEstimatedCOGS, sellingPrice } = calcCostingValues(costingForm);
+      const { totalEstimatedCOGS, sellingPrice, cmAmt, cmPct } = calcCostingValues(costingForm);
       const headerPayload = {
         menu_item_name: costingForm.menu_item_name,
         menu_category: costingForm.menu_category || null,
@@ -761,8 +766,8 @@ export default function AdminPage() {
         wastage_amount: Number(costingForm.wastage_amount),
         contingency_pct: Number(costingForm.contingency_pct),
         contingency_amount: Number(costingForm.contingency_amount),
-        contribution_margin_pct: Number(costingForm.contribution_margin_pct),
-        contribution_margin_amount: Number(costingForm.contribution_margin_amount),
+        contribution_margin_pct: cmPct,
+        contribution_margin_amount: cmAmt,
         total_estimated_cogs: totalEstimatedCOGS,
         selling_price: sellingPrice,
         updated_at: new Date().toISOString(),
@@ -1570,7 +1575,7 @@ export default function AdminPage() {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      {['Menu Item', 'Menu Category', 'Inventory Items', 'Total Est. COGS (₱)', 'Selling Price (₱)', 'CM Ratio', 'Actions'].map((h) => (
+                      {['Menu Item', 'Menu Category', 'Total Est. COGS (₱)', 'Selling Price (₱)', 'CM Ratio', 'Actions'].map((h) => (
                         <th key={h} style={styles.th}>{h}</th>
                       ))}
                     </tr>
@@ -1582,19 +1587,12 @@ export default function AdminPage() {
                       const cmRatio = sp > 0 ? (sp - tec) / sp : 0;
                       const target = CM_TARGETS[item.menu_category] || null;
                       const isBelowTarget = target !== null && cmRatio < target;
-                      const menuPrice = (menuItemsList.find((m) => m.name === item.menu_item_name))?.price;
-                      const inventoryNames = (item.lines || [])
-                        .map((l) => l.inventory_item?.name || '—').filter(Boolean).join(', ') || '—';
                       return (
                         <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                           <td style={styles.td}>
                             <div>{item.menu_item_name}</div>
-                            {menuPrice !== undefined && (
-                              <div style={{ fontSize: 11, color: '#888' }}>Menu price: {fmt(menuPrice)}</div>
-                            )}
                           </td>
                           <td style={styles.td}>{item.menu_category || '—'}</td>
-                          <td style={{ ...styles.td, maxWidth: 200, whiteSpace: 'normal', fontSize: 12 }}>{inventoryNames}</td>
                           <td style={styles.td}>{fmt(tec)}</td>
                           <td style={{ ...styles.td, color: '#ffc107' }}>{fmt(sp)}</td>
                           <td style={{ ...styles.td, color: isBelowTarget ? '#f44336' : '#4caf50', fontWeight: 600 }}>
@@ -1618,7 +1616,7 @@ export default function AdminPage() {
                       );
                     })}
                     {costingHeaders.length === 0 && !loading && (
-                      <tr><td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
+                      <tr><td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1664,26 +1662,59 @@ export default function AdminPage() {
                             onChange={(e) => setMenuSearchQuery(e.target.value)}
                             autoFocus
                           />
-                          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                            {menuItemsList
-                              .filter((m) => m.name.toLowerCase().includes(menuSearchQuery.toLowerCase()))
-                              .map((m) => (
+                          <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                            {(() => {
+                              // Build expanded list: base items + variant options
+                              const expanded = [];
+                              for (const m of menuItemsList) {
+                                const basePrice = Number(m.price || m.base_price || 0);
+                                if (!m.has_variants || !m.menu_item_variant_types || m.menu_item_variant_types.length === 0) {
+                                  expanded.push({ key: `base-${m.id || m.name}`, displayName: m.name, category: m.category || '', price: basePrice });
+                                } else {
+                                  // Show base item entry
+                                  expanded.push({ key: `base-${m.id || m.name}`, displayName: m.name, category: m.category || '', price: basePrice });
+                                  // Expand each variant type option
+                                  for (const vt of m.menu_item_variant_types) {
+                                    const isAddOn = vt.variant_type_name.toLowerCase().includes('add');
+                                    for (const opt of (vt.options || []).filter((o) => o.available !== false)) {
+                                      const variantPrice = isAddOn
+                                        ? Number(opt.price_modifier || 0)
+                                        : basePrice + Number(opt.price_modifier || 0);
+                                      expanded.push({
+                                        key: `${m.id || m.name}-${vt.id}-${opt.id}`,
+                                        displayName: `${m.name} - ${opt.option_name}${isAddOn ? ' (Add On)' : ''}`,
+                                        category: m.category || '',
+                                        price: variantPrice,
+                                      });
+                                    }
+                                  }
+                                }
+                              }
+                              const q = menuSearchQuery.toLowerCase();
+                              const filtered = expanded.filter((e) => e.displayName.toLowerCase().includes(q));
+                              if (filtered.length === 0) {
+                                return <div style={{ color: '#666', fontSize: 13, padding: '6px 8px' }}>No menu items found.</div>;
+                              }
+                              return filtered.map((entry) => (
                                 <div
-                                  key={m.name}
+                                  key={entry.key}
                                   style={{ padding: '6px 8px', cursor: 'pointer', borderRadius: 4, color: '#ccc', fontSize: 13 }}
                                   onMouseEnter={(e) => { e.currentTarget.style.background = '#333'; }}
                                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                                   onClick={() => {
-                                    setCostingForm((p) => ({ ...p, menu_item_name: m.name, menu_category: m.category || '' }));
+                                    setCostingForm((p) => ({
+                                      ...p,
+                                      menu_item_name: entry.displayName,
+                                      menu_category: entry.category,
+                                      menu_item_price: String(entry.price),
+                                    }));
                                     setMenuSearchOpen(false);
                                   }}
                                 >
-                                  {m.name} <span style={{ color: '#888', fontSize: 11 }}>({m.category}) — {fmt(m.price)}</span>
+                                  {entry.displayName} <span style={{ color: '#888', fontSize: 11 }}>({entry.category}) — {fmt(entry.price)}</span>
                                 </div>
-                              ))}
-                            {menuItemsList.filter((m) => m.name.toLowerCase().includes(menuSearchQuery.toLowerCase())).length === 0 && (
-                              <div style={{ color: '#666', fontSize: 13, padding: '6px 8px' }}>No menu items found.</div>
-                            )}
+                              ));
+                            })()}
                           </div>
                         </div>
                       )}
@@ -1811,11 +1842,24 @@ export default function AdminPage() {
                       const wastageAmt = Number(costingForm.wastage_amount) || 0;
                       const contingencyAmt = Number(costingForm.contingency_amount) || 0;
                       const totalEstCOGS = baseCOGS + wastageAmt + contingencyAmt;
-                      const cmAmt = Number(costingForm.contribution_margin_amount) || 0;
-                      const sellingPrice = totalEstCOGS + cmAmt;
+                      // Selling price is locked to the menu item's actual price
+                      const sellingPrice = Number(costingForm.menu_item_price) || 0;
+                      const cmAmt = sellingPrice - totalEstCOGS;
+                      const cmPct = sellingPrice > 0 ? (cmAmt / sellingPrice) * 100 : 0;
 
                       return (
                         <div style={styles.formGrid}>
+                          {/* Selling Price (locked to menu) */}
+                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (₱) — from Menu</label>
+                          <div>
+                            <input
+                              style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
+                              readOnly
+                              value={fmt(sellingPrice)}
+                            />
+                            <span style={styles.helperText}>Auto-filled from cashier menu price. Use 🔍 search to change.</span>
+                          </div>
+
                           <label style={styles.label}>Labor Cost (₱)</label>
                           <input style={styles.input} type="number" value={costingForm.labor_cost}
                             onChange={(e) => setCostingForm((p) => ({ ...p, labor_cost: e.target.value }))} />
@@ -1886,7 +1930,7 @@ export default function AdminPage() {
                             </div>
                           </div>
 
-                          {/* Total Estimated COGS (auto) — between Contingency and CM */}
+                          {/* Total Estimated COGS (auto) */}
                           <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Total Estimated COGS (auto)</label>
                           <input
                             style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
@@ -1894,56 +1938,36 @@ export default function AdminPage() {
                             value={fmt(totalEstCOGS)}
                           />
 
-                          {/* Contribution Margin: pct + amount */}
-                          <label style={styles.label}>Contribution Margin <span style={{ color: '#666', fontSize: 10, fontWeight: 400 }}>(% of COGS)</span></label>
+                          {/* Contribution Margin (auto — derived from menu price) */}
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>Contribution Margin (auto)</label>
                           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                               <input
-                                type="number"
-                                style={{ ...styles.input, width: 90 }}
-                                value={costingForm.contribution_margin_pct}
-                                onChange={(e) => {
-                                  const pct = Number(e.target.value) || 0;
-                                  const amt = (pct / 100) * totalEstCOGS;
-                                  setCostingForm((p) => ({ ...p, contribution_margin_pct: e.target.value, contribution_margin_amount: amt.toFixed(4) }));
-                                }}
+                                style={{ ...styles.input, width: 90, background: '#111', color: '#4caf50', fontWeight: 600 }}
+                                readOnly
+                                value={cmPct.toFixed(2)}
                               />
                               <span style={{ color: '#888', fontSize: 12 }}>%</span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                               <span style={{ color: '#888', fontSize: 12 }}>₱</span>
                               <input
-                                type="number"
-                                style={{ ...styles.input, width: 110 }}
-                                value={costingForm.contribution_margin_amount}
-                                onChange={(e) => {
-                                  const amt = Number(e.target.value) || 0;
-                                  const pct = totalEstCOGS > 0 ? (amt / totalEstCOGS) * 100 : 0;
-                                  setCostingForm((p) => ({ ...p, contribution_margin_amount: e.target.value, contribution_margin_pct: pct.toFixed(4) }));
-                                }}
+                                style={{ ...styles.input, width: 110, background: '#111', color: '#4caf50', fontWeight: 600 }}
+                                readOnly
+                                value={fmt(cmAmt)}
                               />
                             </div>
-                          </div>
-
-                          {/* Selling Price (auto) = Total COGS + CM Amount */}
-                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (auto)</label>
-                          <div>
-                            <input
-                              style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
-                              readOnly
-                              value={fmt(sellingPrice)}
-                            />
-                            <span style={styles.helperText}>Total Estimated COGS + Contribution Margin Amount</span>
+                            <span style={{ color: '#888', fontSize: 11 }}>Menu Price − COGS</span>
                           </div>
 
                           {/* CM Ratio preview */}
                           {sellingPrice > 0 && (() => {
-                            const cmRatio = (sellingPrice - totalEstCOGS) / sellingPrice;
+                            const cmRatio = cmAmt / sellingPrice;
                             const target = CM_TARGETS[costingForm.menu_category] || null;
                             const isBelowTarget = target !== null && cmRatio < target;
                             return (
                               <>
-                                <label style={styles.label}>CM Ratio (preview)</label>
+                                <label style={styles.label}>CM Ratio</label>
                                 <div style={{ color: isBelowTarget ? '#f44336' : '#4caf50', fontWeight: 600, padding: '6px 0' }}>
                                   {isBelowTarget && '⚠️ '}
                                   {(cmRatio * 100).toFixed(2)}%
