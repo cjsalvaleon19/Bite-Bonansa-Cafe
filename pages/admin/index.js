@@ -651,7 +651,7 @@ export default function AdminPage() {
         .limit(1);
       let seq = 1;
       if (data && data.length > 0 && data[0].entry_number) {
-        const last = parseInt(data[0].entry_number.replace(prefix, ''), 10);
+        const last = parseInt(data[0].entry_number.slice(prefix.length), 10);
         if (!isNaN(last)) seq = last + 1;
       }
       setManualEntryNumber(`${prefix}${String(seq).padStart(7, '0')}`);
@@ -3149,7 +3149,7 @@ export default function AdminPage() {
                   <table style={{ ...styles.table, fontSize: 12 }}>
                     <thead>
                       <tr>
-                        {['Description', 'Debit Account', 'Credit Account', 'Debit Amount (₱)', 'Credit Amount (₱)', ''].map((h) => (
+                        {['Description', 'Debit Account', 'Credit Account', 'Debit Amount (₱)', 'Credit Amount (₱)', 'Total (₱)', ''].map((h) => (
                           <th key={h} style={styles.th}>{h}</th>
                         ))}
                       </tr>
