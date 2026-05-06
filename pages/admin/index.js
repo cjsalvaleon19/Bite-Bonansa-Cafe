@@ -411,7 +411,14 @@ export default function AdminPage() {
         supabase.from('admin_inventory_items').select('*').order('name'),
         supabase.from('menu_items').select('name, category, price').eq('available', true).order('name'),
       ]);
-      if (e1) throw e1;
+      if (e1) {
+        if (e1.message && e1.message.includes('price_costing_headers')) {
+          throw new Error(
+            'Table "price_costing_headers" not found. Please apply migration 114 in Supabase SQL Editor. See supabase/migrations/RUN_MIGRATION_114.md for instructions.'
+          );
+        }
+        throw e1;
+      }
       if (e2) throw e2;
       setCostingHeaders(headers || []);
       setInvItems(inv || []);
