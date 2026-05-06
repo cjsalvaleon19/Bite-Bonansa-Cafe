@@ -184,12 +184,28 @@ export default function OrdersQueue() {
       try {
         const orderItems = order.order_items || order.items || [];
         if (orderItems.length > 0) {
-          // Fetch price costing headers for menu items in this order (match by name)
-          const itemNames = [...new Set(orderItems.map((i) => i.name).filter(Boolean))];
+          // Build candidate lookup names for each item: try 'Base Name - VariantValue'
+          // (e.g. 'Brown Sugar Milktea - 16oz') as well as the plain base name.
+          // This handles costing headers whose menu_item_name includes the size variant.
+          const buildCandidateNames = (item) => {
+            const names = [item.name];
+            const vd = item.variant_details;
+            if (vd && typeof vd === 'object') {
+              Object.entries(vd).forEach(([type, value]) => {
+                const typeL = type.toLowerCase().replace(/[^a-z]/g, '');
+                if (typeL !== 'addon' && typeL !== 'addons' && value) {
+                  names.push(`${item.name} - ${value}`);
+                }
+              });
+            }
+            return names;
+          };
+
+          const allCandidateNames = [...new Set(orderItems.flatMap(buildCandidateNames).filter(Boolean))];
           const { data: costingRows } = await supabase
             .from('price_costing_headers')
             .select('menu_item_name, lines:price_costing_items(qty, cost)')
-            .in('menu_item_name', itemNames);
+            .in('menu_item_name', allCandidateNames);
           if (costingRows && costingRows.length > 0) {
             // Build lookup: menu_item_name → raw materials total (sum of qty×cost)
             const rawMaterialMap = {};
@@ -197,9 +213,18 @@ export default function OrdersQueue() {
               const total = (h.lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.cost) || 0), 0);
               rawMaterialMap[h.menu_item_name] = total;
             });
+            // For each item, prefer the variant-combined name over the base name
+            const getRawMaterialCost = (item) => {
+              const candidates = buildCandidateNames(item);
+              // Try variant-combined candidates first (skip index 0 which is the base name)
+              for (let i = 1; i < candidates.length; i++) {
+                if (rawMaterialMap[candidates[i]] !== undefined) return rawMaterialMap[candidates[i]];
+              }
+              return rawMaterialMap[item.name] || 0;
+            };
             // Sum COGS across all ordered items
             const totalCOGS = orderItems.reduce((s, item) => {
-              const rm = rawMaterialMap[item.name] || 0;
+              const rm = getRawMaterialCost(item);
               return s + rm * (Number(item.quantity) || 1);
             }, 0);
             if (totalCOGS > 0) {
