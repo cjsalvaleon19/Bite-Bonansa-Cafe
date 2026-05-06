@@ -48,23 +48,26 @@ export default function AdminPage() {
   const [invDeleteConfirm, setInvDeleteConfirm] = useState(null);
 
   // ── Price Costing state ───────────────────────────────────────────────────
-  const [costingItems, setCostingItems] = useState([]);
+  const [costingHeaders, setCostingHeaders] = useState([]);
   const [invItems, setInvItems] = useState([]);
+  const [menuItemsList, setMenuItemsList] = useState([]);
   const [costingDialogOpen, setCostingDialogOpen] = useState(false);
   const [costingEditItem, setCostingEditItem] = useState(null);
+  const [menuSearchOpen, setMenuSearchOpen] = useState(false);
+  const [menuSearchQuery, setMenuSearchQuery] = useState('');
   const [costingForm, setCostingForm] = useState({
+    id: null,
     menu_item_name: '',
-    inventory_item_id: '',
-    uom: '',
-    qty: '0',
-    cost: '0',
-    total_cogs: '0',
+    menu_category: '',
     labor_cost: '0',
     overhead_cost: '0',
     wastage_pct: '0',
+    wastage_amount: '0',
     contingency_pct: '0',
+    contingency_amount: '0',
     contribution_margin_pct: '0',
-    selling_price: '0',
+    contribution_margin_amount: '0',
+    lines: [], // [{ id, inventory_item_id, uom, qty, cost_per_unit }]
   });
 
   // ── Receiving Report state ────────────────────────────────────────────────
@@ -256,21 +259,32 @@ export default function AdminPage() {
 
       // 2 + 3. Line items for the selected date range — single join query (avoids large .in() URL)
       // Use !receiving_report_id hint to disambiguate when multiple FK relationships exist
+      // 1.2: Purchases = "paid" status only
       const { data: rrItemsRaw, error: riErr } = await supabase
         .from('receiving_report_items')
         .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!receiving_report_id(status, date)')
-        .in('receiving_reports.status', ['approved', 'paid'])
+        .eq('receiving_reports.status', 'paid')
         .gte('receiving_reports.date', invDateFrom)
         .lte('receiving_reports.date', invDateTo);
       if (riErr) throw new Error('Failed to fetch receiving report items: ' + riErr.message);
       const rrItems = rrItemsRaw || [];
 
+      // 1.3: In Transit = "draft" status receiving reports in date range
+      const { data: inTransitRaw } = await supabase
+        .from('receiving_report_items')
+        .select('inventory_item_id, inventory_name, qty, receiving_reports!receiving_report_id(status, date)')
+        .eq('receiving_reports.status', 'draft')
+        .gte('receiving_reports.date', invDateFrom)
+        .lte('receiving_reports.date', invDateTo);
+      const inTransitItems = inTransitRaw || [];
+
       // 2b + 3b. Line items from Jan 1, 2026 → invDateTo — single join query for Average Cost
+      // 1.4: Beginning Balance = "paid" status only (Jan 1, 2026 → start date − 1 day)
       const AVG_COST_START = '2026-01-01';
       const { data: allPeriodItemsRaw, error: ri2Err } = await supabase
         .from('receiving_report_items')
         .select('inventory_item_id, inventory_name, qty, cost, total_landed_cost, receiving_reports!receiving_report_id(status, date)')
-        .in('receiving_reports.status', ['approved', 'paid'])
+        .eq('receiving_reports.status', 'paid')
         .gte('receiving_reports.date', AVG_COST_START)
         .lte('receiving_reports.date', invDateTo);
       if (ri2Err) throw new Error('Failed to fetch all-period receiving report items: ' + ri2Err.message);
@@ -281,13 +295,14 @@ export default function AdminPage() {
         .from('price_costing_items')
         .select('inventory_item_id, menu_item_name, qty');
 
-      // 5. Delivered orders with items in date range
+      // 5. Delivered/completed orders with items in date range
+      // 1.5: Sold = "order_delivered" + "completed" statuses
       const fromISO = new Date(invDateFrom + 'T00:00:00').toISOString();
       const toISO = new Date(invDateTo + 'T23:59:59.999').toISOString();
       const { data: orders } = await supabase
         .from('orders')
         .select('id, order_items(name, quantity)')
-        .eq('status', 'order_delivered')
+        .in('status', ['order_delivered', 'completed'])
         .gte('created_at', fromISO)
         .lte('created_at', toISO);
 
@@ -330,6 +345,15 @@ export default function AdminPage() {
         purchasesMap[resolvedId].totalLandedCost += Number(ri.total_landed_cost) || 0;
       });
 
+      // Build in-transit map (draft RRs in date range): inventory_item_id -> qty
+      const inTransitMap = {};
+      inTransitItems.forEach((ri) => {
+        const resolvedId = ri.inventory_item_id
+          || nameToIdMap[(ri.inventory_name || '').toLowerCase().trim()];
+        if (!resolvedId) return;
+        inTransitMap[resolvedId] = (inTransitMap[resolvedId] || 0) + (Number(ri.qty) || 0);
+      });
+
       // Build all-period purchases map (Jan 1, 2026 → invDateTo): for Average Cost/Unit
       // Average Cost/Unit = Total Landed Cost / Total Purchase Qty (full period)
       const allPeriodPurchasesMap = {};
@@ -344,15 +368,17 @@ export default function AdminPage() {
       });
 
       // Compute report rows
-      // Beginning = Total Qty Purchased (Jan 1, 2026 → start date − 1 day)
+      // Beginning = Total Qty Purchased (Jan 1, 2026 → start date − 1 day) [paid only]
       //           = allPeriodQty (Jan 1 → end date) − purchases (start date → end date)
-      // Purchases = Total Qty Purchased in the selected period
-      // Sold      = Total Qty Sold in the selected period
+      // Purchases = Total Qty Purchased in the selected period [paid only]
+      // In Transit= Total Qty in draft RRs in the selected period
+      // Sold      = Total Qty Sold in the selected period [order_delivered + completed]
       // Ending    = Beginning + Purchases − Sold (derived)
       // avg_cost  = Total Landed Cost (Jan 1, 2026 → end date) / Total Purchase Qty (same range)
       // total_cost = Ending Qty × avg_cost
       const report = (items || []).map((item) => {
         const purchases = purchasesMap[item.id]?.qty || 0;
+        const inTransit = inTransitMap[item.id] || 0;
         const sold = soldMap[item.id] || 0;
         const allPeriodQty = allPeriodPurchasesMap[item.id]?.qty || 0;
         const allPeriodAmt = allPeriodPurchasesMap[item.id]?.totalLandedCost || 0;
@@ -361,7 +387,7 @@ export default function AdminPage() {
         const avg_cost = allPeriodQty > 0
           ? allPeriodAmt / allPeriodQty
           : (Number(item.cost_per_unit) || 0);
-        return { ...item, beginning, purchases, sold, ending, avg_cost };
+        return { ...item, beginning, purchases, inTransit, sold, ending, avg_cost };
       });
 
       setInvReport(report);
@@ -377,17 +403,19 @@ export default function AdminPage() {
     if (!supabase) return;
     setLoading(true);
     try {
-      const [{ data: costing, error: e1 }, { data: inv, error: e2 }] = await Promise.all([
+      const [{ data: headers, error: e1 }, { data: inv, error: e2 }, { data: menus }] = await Promise.all([
         supabase
-          .from('price_costing_items')
-          .select('*, inventory_item:admin_inventory_items(id,name,code,uom)')
+          .from('price_costing_headers')
+          .select('*, lines:price_costing_items(id, inventory_item_id, uom, qty, cost, inventory_item:admin_inventory_items(id,name,code,uom,cost_per_unit))')
           .order('menu_item_name'),
         supabase.from('admin_inventory_items').select('*').order('name'),
+        supabase.from('menu_items').select('name, category, price').eq('available', true).order('name'),
       ]);
       if (e1) throw e1;
       if (e2) throw e2;
-      setCostingItems(costing || []);
+      setCostingHeaders(headers || []);
       setInvItems(inv || []);
+      setMenuItemsList(menus || []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -643,66 +671,132 @@ export default function AdminPage() {
   };
 
   // ── Costing helpers ───────────────────────────────────────────────────────
-  const calcSellingPrice = (form) => {
-    const cogs = Number(form.total_cogs) || 0;
-    const labor = Number(form.labor_cost) || 0;
-    const overhead = Number(form.overhead_cost) || 0;
-    const wastage = (Number(form.wastage_pct) || 0) / 100;
-    const contingency = (Number(form.contingency_pct) || 0) / 100;
-    const cm = (Number(form.contribution_margin_pct) || 0) / 100;
-    return cogs + labor + overhead + (wastage + contingency + cm) * cogs;
+
+  // Category-level contribution margin ratio targets (2.3.3–2.3.9)
+  const CM_TARGETS = {
+    'Snacks & Bites': 0.50,
+    'Noodles': 0.60,
+    'Rice & More': 0.50,
+    'Milktea Series': 0.60,
+    'Hot/Iced Drinks': 0.60,
+    'Frappe Series': 0.60,
+    'Fruit Soda & Lemonade': 0.60,
+  };
+
+  // Derive computed costing values from form fields
+  const calcCostingValues = (form) => {
+    const lineSubtotal = (form.lines || []).reduce(
+      (s, l) => s + (Number(l.qty) || 0) * (Number(l.cost_per_unit) || 0), 0,
+    );
+    const baseCOGS = lineSubtotal + (Number(form.labor_cost) || 0) + (Number(form.overhead_cost) || 0);
+    const wastageAmt = Number(form.wastage_amount) || 0;
+    const contingencyAmt = Number(form.contingency_amount) || 0;
+    const totalEstimatedCOGS = baseCOGS + wastageAmt + contingencyAmt;
+    const cmAmt = Number(form.contribution_margin_amount) || 0;
+    const sellingPrice = totalEstimatedCOGS + cmAmt;
+    return { lineSubtotal, baseCOGS, totalEstimatedCOGS, sellingPrice };
   };
 
   const openCostingDialog = (item = null) => {
     setCostingEditItem(item);
     if (item) {
       setCostingForm({
+        id: item.id,
         menu_item_name: item.menu_item_name || '',
-        inventory_item_id: item.inventory_item_id || '',
-        uom: item.uom || '',
-        qty: String(item.qty || 0),
-        cost: String(item.cost || 0),
-        total_cogs: String(item.total_cogs || 0),
+        menu_category: item.menu_category || '',
         labor_cost: String(item.labor_cost || 0),
         overhead_cost: String(item.overhead_cost || 0),
         wastage_pct: String(item.wastage_pct || 0),
+        wastage_amount: String(item.wastage_amount || 0),
         contingency_pct: String(item.contingency_pct || 0),
+        contingency_amount: String(item.contingency_amount || 0),
         contribution_margin_pct: String(item.contribution_margin_pct || 0),
-        selling_price: String(item.selling_price || 0),
+        contribution_margin_amount: String(item.contribution_margin_amount || 0),
+        lines: (item.lines || []).map((l) => ({
+          id: l.id,
+          inventory_item_id: l.inventory_item_id || '',
+          uom: l.uom || '',
+          qty: String(l.qty || 0),
+          cost_per_unit: String(l.cost || 0),
+        })),
       });
     } else {
       setCostingForm({
-        menu_item_name: '', inventory_item_id: '', uom: '', qty: '0', cost: '0',
-        total_cogs: '0', labor_cost: '0', overhead_cost: '0', wastage_pct: '0',
-        contingency_pct: '0', contribution_margin_pct: '0', selling_price: '0',
+        id: null,
+        menu_item_name: '',
+        menu_category: '',
+        labor_cost: '0',
+        overhead_cost: '0',
+        wastage_pct: '0',
+        wastage_amount: '0',
+        contingency_pct: '0',
+        contingency_amount: '0',
+        contribution_margin_pct: '0',
+        contribution_margin_amount: '0',
+        lines: [],
       });
     }
+    setMenuSearchOpen(false);
+    setMenuSearchQuery('');
     setCostingDialogOpen(true);
   };
 
   const saveCostingItem = async () => {
     if (!supabase) return;
     try {
-      const sp = calcSellingPrice(costingForm);
-      const payload = {
+      const { totalEstimatedCOGS, sellingPrice } = calcCostingValues(costingForm);
+      const headerPayload = {
         menu_item_name: costingForm.menu_item_name,
-        inventory_item_id: costingForm.inventory_item_id || null,
-        uom: costingForm.uom,
-        qty: Number(costingForm.qty),
-        cost: Number(costingForm.cost),
-        total_cogs: Number(costingForm.total_cogs),
+        menu_category: costingForm.menu_category || null,
         labor_cost: Number(costingForm.labor_cost),
         overhead_cost: Number(costingForm.overhead_cost),
         wastage_pct: Number(costingForm.wastage_pct),
+        wastage_amount: Number(costingForm.wastage_amount),
         contingency_pct: Number(costingForm.contingency_pct),
+        contingency_amount: Number(costingForm.contingency_amount),
         contribution_margin_pct: Number(costingForm.contribution_margin_pct),
-        selling_price: sp,
+        contribution_margin_amount: Number(costingForm.contribution_margin_amount),
+        total_estimated_cogs: totalEstimatedCOGS,
+        selling_price: sellingPrice,
+        updated_at: new Date().toISOString(),
       };
-      if (costingEditItem) {
-        await supabase.from('price_costing_items').update(payload).eq('id', costingEditItem.id);
+
+      let headerId = costingForm.id;
+      if (headerId) {
+        await supabase.from('price_costing_headers').update(headerPayload).eq('id', headerId);
       } else {
-        await supabase.from('price_costing_items').insert(payload);
+        const { data: inserted, error: insErr } = await supabase
+          .from('price_costing_headers')
+          .insert({ ...headerPayload, created_at: new Date().toISOString() })
+          .select()
+          .single();
+        if (insErr) throw insErr;
+        headerId = inserted.id;
       }
+
+      // Delete old line items, then re-insert
+      await supabase.from('price_costing_items').delete().eq('costing_header_id', headerId);
+
+      if (costingForm.lines.length > 0) {
+        const lineRows = costingForm.lines.map((l) => ({
+          costing_header_id: headerId,
+          menu_item_name: costingForm.menu_item_name,
+          inventory_item_id: l.inventory_item_id || null,
+          uom: l.uom || '',
+          qty: Number(l.qty),
+          cost: Number(l.cost_per_unit),
+          total_cogs: totalEstimatedCOGS,
+          labor_cost: 0,
+          overhead_cost: 0,
+          wastage_pct: 0,
+          contingency_pct: 0,
+          contribution_margin_pct: 0,
+          selling_price: sellingPrice,
+        }));
+        const { error: lineErr } = await supabase.from('price_costing_items').insert(lineRows);
+        if (lineErr) throw lineErr;
+      }
+
       setCostingDialogOpen(false);
       fetchCosting();
     } catch (err) {
@@ -1304,7 +1398,7 @@ export default function AdminPage() {
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={invDateTo} onChange={(e) => setInvDateTo(e.target.value)} />
                 <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
-                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day). Purchases & Sold shown for selected period. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty (Jan 1, 2026 – End Date). Total Cost = Ending Qty × Avg Cost/Unit.</span>
+                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = Draft RRs in range. Sold = Delivered/Completed orders. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
               </div>
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
@@ -1312,13 +1406,13 @@ export default function AdminPage() {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      {['Code', 'Name', 'Dept', 'UoM', 'Beginning', 'Purchases', 'Sold', 'Ending', 'Avg Cost/Unit (₱)', 'Total Cost (₱)', 'Status', 'Actions'].map((h) => (
+                      {['Code', 'Name', 'Dept', 'UoM', 'Beginning', 'Purchases', 'Sold', 'Ending', 'Avg Cost/Unit (₱)', 'Total Cost (₱)', 'In Transit', 'Status', 'Actions'].map((h) => (
                         <th key={h} style={styles.th}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).map((item, idx) => (
+                    {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, inTransit: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).map((item, idx) => (
                       <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{item.code}</td>
                         <td style={styles.td}>{item.name}</td>
@@ -1330,6 +1424,7 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{Number(item.ending).toFixed(3)}</td>
                         <td style={styles.td}>{fmt(item.avg_cost ?? item.cost_per_unit)}</td>
                         <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{fmt((Number(item.ending) || 0) * (Number(item.avg_cost ?? item.cost_per_unit) || 0))}</td>
+                        <td style={{ ...styles.td, color: '#2196f3' }}>{Number(item.inTransit || 0).toFixed(3)}</td>
                         <td style={styles.td}>
                           <span style={{
                             ...styles.badge,
@@ -1347,9 +1442,24 @@ export default function AdminPage() {
                       </tr>
                     ))}
                     {inventoryItems.length === 0 && !loading && (
-                      <tr><td colSpan={12} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No inventory items. Add one!</td></tr>
+                      <tr><td colSpan={13} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No inventory items. Add one!</td></tr>
                     )}
                   </tbody>
+                  {/* 1.1 Grand Total row */}
+                  {invReport.length > 0 && (() => {
+                    const grandTotal = invReport.reduce(
+                      (s, item) => s + (Number(item.ending) || 0) * (Number(item.avg_cost ?? item.cost_per_unit) || 0), 0,
+                    );
+                    return (
+                      <tfoot>
+                        <tr style={{ background: '#1a2a1a', borderTop: '2px solid #ffc107' }}>
+                          <td colSpan={9} style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>Grand Total:</td>
+                          <td style={{ ...styles.td, color: '#ffc107', fontWeight: 700 }}>{fmt(grandTotal)}</td>
+                          <td colSpan={3} style={styles.td} />
+                        </tr>
+                      </tfoot>
+                    );
+                  })()}
                 </table>
               </div>
 
@@ -1453,116 +1563,392 @@ export default function AdminPage() {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      {['Menu Item', 'Inventory', 'Code', 'UoM', 'Qty', 'Cost', 'Total Cost', 'COGS', 'Selling Price', 'Actions'].map((h) => (
+                      {['Menu Item', 'Menu Category', 'Inventory Items', 'Total Est. COGS (₱)', 'Selling Price (₱)', 'CM Ratio', 'Actions'].map((h) => (
                         <th key={h} style={styles.th}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {costingItems.map((item, idx) => (
-                      <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                        <td style={styles.td}>{item.menu_item_name}</td>
-                        <td style={styles.td}>{item.inventory_item?.name || '—'}</td>
-                        <td style={styles.td}>{item.inventory_item?.code || '—'}</td>
-                        <td style={styles.td}>{item.uom}</td>
-                        <td style={styles.td}>{item.qty}</td>
-                        <td style={styles.td}>{fmt(item.cost)}</td>
-                        <td style={styles.td}>{fmt((Number(item.qty) || 0) * (Number(item.cost) || 0))}</td>
-                        <td style={styles.td}>{fmt(item.total_cogs)}</td>
-                        <td style={{ ...styles.td, color: '#ffc107' }}>{fmt(item.selling_price)}</td>
-                        <td style={styles.td}>
-                          <button onClick={() => openCostingDialog(item)} style={styles.actionBtn}>Edit</button>
-                          <button
-                            onClick={async () => {
-                              if (!supabase) return;
-                              await supabase.from('price_costing_items').delete().eq('id', item.id);
-                              fetchCosting();
-                            }}
-                            style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
-                          >Delete</button>
-                        </td>
-                      </tr>
-                    ))}
-                    {costingItems.length === 0 && !loading && (
-                      <tr><td colSpan={10} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
+                    {costingHeaders.map((item, idx) => {
+                      const sp = Number(item.selling_price) || 0;
+                      const tec = Number(item.total_estimated_cogs) || 0;
+                      const cmRatio = sp > 0 ? (sp - tec) / sp : 0;
+                      const target = CM_TARGETS[item.menu_category] || null;
+                      const isBelowTarget = target !== null && cmRatio < target;
+                      const menuPrice = (menuItemsList.find((m) => m.name === item.menu_item_name))?.price;
+                      const inventoryNames = (item.lines || [])
+                        .map((l) => l.inventory_item?.name || '—').filter(Boolean).join(', ') || '—';
+                      return (
+                        <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                          <td style={styles.td}>
+                            <div>{item.menu_item_name}</div>
+                            {menuPrice !== undefined && (
+                              <div style={{ fontSize: 11, color: '#888' }}>Menu price: {fmt(menuPrice)}</div>
+                            )}
+                          </td>
+                          <td style={styles.td}>{item.menu_category || '—'}</td>
+                          <td style={{ ...styles.td, maxWidth: 200, whiteSpace: 'normal', fontSize: 12 }}>{inventoryNames}</td>
+                          <td style={styles.td}>{fmt(tec)}</td>
+                          <td style={{ ...styles.td, color: '#ffc107' }}>{fmt(sp)}</td>
+                          <td style={{ ...styles.td, color: isBelowTarget ? '#f44336' : '#4caf50', fontWeight: 600 }}>
+                            {isBelowTarget && <span title={`Below target ${(target * 100).toFixed(0)}%`}>⚠️ </span>}
+                            {(cmRatio * 100).toFixed(1)}%
+                            {target !== null && <div style={{ fontSize: 10, color: '#666', fontWeight: 400 }}>Target: {(target * 100).toFixed(0)}%</div>}
+                          </td>
+                          <td style={styles.td}>
+                            <button onClick={() => openCostingDialog(item)} style={styles.actionBtn}>Edit</button>
+                            <button
+                              onClick={async () => {
+                                if (!supabase) return;
+                                await supabase.from('price_costing_items').delete().eq('costing_header_id', item.id);
+                                await supabase.from('price_costing_headers').delete().eq('id', item.id);
+                                fetchCosting();
+                              }}
+                              style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
+                            >Delete</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {costingHeaders.length === 0 && !loading && (
+                      <tr><td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
 
-              {/* Costing Dialog */}
-              <Dialog.Root open={costingDialogOpen} onOpenChange={setCostingDialogOpen}>
+              {/* Costing Dialog — 75% screen width */}
+              <Dialog.Root open={costingDialogOpen} onOpenChange={(open) => { if (!open) setMenuSearchOpen(false); setCostingDialogOpen(open); }}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
-                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 560 }} aria-describedby={undefined}>
+                  <Dialog.Content
+                    style={{ ...styles.dialogContent, maxWidth: '75vw', width: '75vw', maxHeight: '90vh', overflowY: 'auto' }}
+                    aria-describedby={undefined}
+                  >
                     <Dialog.Title style={styles.dialogTitle}>
                       {costingEditItem ? 'Edit Costing Item' : 'New Costing Item'}
                     </Dialog.Title>
+
+                    {/* ── Menu Item + Category ── */}
                     <div style={styles.formGrid}>
                       <label style={styles.label}>Menu Item Name</label>
-                      <input style={styles.input} value={costingForm.menu_item_name} onChange={(e) => setCostingForm((p) => ({ ...p, menu_item_name: e.target.value }))} />
-
-                      <label style={styles.label}>Inventory Item</label>
-                      <select
-                        style={styles.input}
-                        value={costingForm.inventory_item_id}
-                        onChange={(e) => {
-                          const selected = invItems.find((i) => i.id === e.target.value);
-                          if (selected) {
-                            setCostingForm((p) => ({ ...p, inventory_item_id: selected.id, uom: selected.uom || '', cost: String(selected.cost_per_unit || 0) }));
-                          } else {
-                            setCostingForm((p) => ({ ...p, inventory_item_id: '' }));
-                          }
-                        }}
-                      >
-                        <option value="">— Select —</option>
-                        {invItems.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.code})</option>)}
-                      </select>
-
-                      <label style={styles.label}>UoM</label>
-                      <input style={styles.input} value={costingForm.uom} onChange={(e) => setCostingForm((p) => ({ ...p, uom: e.target.value }))} />
-
-                      <label style={styles.label}>Quantity</label>
-                      <input style={styles.input} type="number" value={costingForm.qty} onChange={(e) => setCostingForm((p) => ({ ...p, qty: e.target.value }))} />
-
-                      <label style={styles.label}>Cost per Unit (₱)</label>
-                      <input style={styles.input} type="number" value={costingForm.cost} onChange={(e) => setCostingForm((p) => ({ ...p, cost: e.target.value }))} />
-
-                      <label style={styles.label}>Total Cost (auto)</label>
-                      <input
-                        style={{ ...styles.input, background: '#111', color: '#888' }}
-                        readOnly
-                        value={fmt((Number(costingForm.qty) || 0) * (Number(costingForm.cost) || 0))}
-                      />
-
-                      <label style={styles.label}>Total COGS (₱)</label>
-                      <input style={styles.input} type="number" value={costingForm.total_cogs} onChange={(e) => setCostingForm((p) => ({ ...p, total_cogs: e.target.value }))} />
-
-                      <label style={styles.label}>Labor Cost (₱)</label>
-                      <input style={styles.input} type="number" value={costingForm.labor_cost} onChange={(e) => setCostingForm((p) => ({ ...p, labor_cost: e.target.value }))} />
-
-                      <label style={styles.label}>Overhead Cost (₱)</label>
-                      <input style={styles.input} type="number" value={costingForm.overhead_cost} onChange={(e) => setCostingForm((p) => ({ ...p, overhead_cost: e.target.value }))} />
-
-                      <label style={styles.label}>Wastage %</label>
-                      <input style={styles.input} type="number" value={costingForm.wastage_pct} onChange={(e) => setCostingForm((p) => ({ ...p, wastage_pct: e.target.value }))} />
-
-                      <label style={styles.label}>Contingency %</label>
-                      <input style={styles.input} type="number" value={costingForm.contingency_pct} onChange={(e) => setCostingForm((p) => ({ ...p, contingency_pct: e.target.value }))} />
-
-                      <label style={styles.label}>Contribution Margin %</label>
-                      <input style={styles.input} type="number" value={costingForm.contribution_margin_pct} onChange={(e) => setCostingForm((p) => ({ ...p, contribution_margin_pct: e.target.value }))} />
-
-                      <label style={styles.label}>Selling Price (auto)</label>
-                      <div>
+                      <div style={{ display: 'flex', gap: 8 }}>
                         <input
-                          style={{ ...styles.input, background: '#111', color: '#ffc107' }}
-                          readOnly
-                          value={fmt(calcSellingPrice(costingForm))}
+                          style={{ ...styles.input, flex: 1 }}
+                          value={costingForm.menu_item_name}
+                          onChange={(e) => setCostingForm((p) => ({ ...p, menu_item_name: e.target.value }))}
+                          placeholder="Type or search…"
                         />
-                        <span style={styles.helperText}>COGS + Labor + Overhead + (Wastage% + Contingency% + CM%) × COGS</span>
+                        <button
+                          type="button"
+                          title="Search Menu Items"
+                          style={{ ...styles.actionBtn, padding: '0 12px', fontSize: 16 }}
+                          onClick={() => { setMenuSearchOpen((v) => !v); setMenuSearchQuery(''); }}
+                        >🔍</button>
+                      </div>
+
+                      {/* Menu Item Search Popup */}
+                      {menuSearchOpen && (
+                        <div style={{ gridColumn: '1 / -1', background: '#1a1a1a', border: '1px solid #444', borderRadius: 6, padding: 12, marginBottom: 8 }}>
+                          <input
+                            style={{ ...styles.input, marginBottom: 8 }}
+                            placeholder="Search menu…"
+                            value={menuSearchQuery}
+                            onChange={(e) => setMenuSearchQuery(e.target.value)}
+                            autoFocus
+                          />
+                          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                            {menuItemsList
+                              .filter((m) => m.name.toLowerCase().includes(menuSearchQuery.toLowerCase()))
+                              .map((m) => (
+                                <div
+                                  key={m.name}
+                                  style={{ padding: '6px 8px', cursor: 'pointer', borderRadius: 4, color: '#ccc', fontSize: 13 }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = '#333'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                                  onClick={() => {
+                                    setCostingForm((p) => ({ ...p, menu_item_name: m.name, menu_category: m.category || '' }));
+                                    setMenuSearchOpen(false);
+                                  }}
+                                >
+                                  {m.name} <span style={{ color: '#888', fontSize: 11 }}>({m.category}) — {fmt(m.price)}</span>
+                                </div>
+                              ))}
+                            {menuItemsList.filter((m) => m.name.toLowerCase().includes(menuSearchQuery.toLowerCase())).length === 0 && (
+                              <div style={{ color: '#666', fontSize: 13, padding: '6px 8px' }}>No menu items found.</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <label style={styles.label}>Menu Category</label>
+                      <input
+                        style={{ ...styles.input, background: '#111', color: '#aaa' }}
+                        value={costingForm.menu_category}
+                        onChange={(e) => setCostingForm((p) => ({ ...p, menu_category: e.target.value }))}
+                        placeholder="Auto-filled from menu search"
+                      />
+                    </div>
+
+                    {/* ── Inventory Lines ── */}
+                    <div style={{ marginTop: 16, marginBottom: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ color: '#ffc107', fontWeight: 600, fontSize: 13 }}>Inventory Items</span>
+                        <button
+                          type="button"
+                          style={styles.primaryBtn}
+                          onClick={() => setCostingForm((p) => ({
+                            ...p,
+                            lines: [...p.lines, { id: null, inventory_item_id: '', uom: '', qty: '0', cost_per_unit: '0' }],
+                          }))}
+                        >+ Add Line</button>
+                      </div>
+                      <div style={styles.tableWrap}>
+                        <table style={{ ...styles.table, fontSize: 12 }}>
+                          <thead>
+                            <tr>
+                              {['Inventory Item', 'UoM', 'Qty', 'Cost/Unit (₱)', 'Line Total (₱)', ''].map((h) => (
+                                <th key={h} style={styles.th}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {costingForm.lines.map((line, li) => {
+                              const lineTotal = (Number(line.qty) || 0) * (Number(line.cost_per_unit) || 0);
+                              return (
+                                <tr key={li}>
+                                  <td style={styles.td}>
+                                    <select
+                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px' }}
+                                      value={line.inventory_item_id}
+                                      onChange={(e) => {
+                                        const sel = invItems.find((i) => i.id === e.target.value);
+                                        setCostingForm((p) => {
+                                          const lines = [...p.lines];
+                                          lines[li] = {
+                                            ...lines[li],
+                                            inventory_item_id: e.target.value,
+                                            uom: sel?.uom || lines[li].uom,
+                                            cost_per_unit: sel ? String(sel.cost_per_unit || 0) : lines[li].cost_per_unit,
+                                          };
+                                          return { ...p, lines };
+                                        });
+                                      }}
+                                    >
+                                      <option value="">— Select —</option>
+                                      {invItems.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.code})</option>)}
+                                    </select>
+                                  </td>
+                                  <td style={styles.td}>
+                                    <input
+                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 70 }}
+                                      value={line.uom}
+                                      onChange={(e) => setCostingForm((p) => {
+                                        const lines = [...p.lines];
+                                        lines[li] = { ...lines[li], uom: e.target.value };
+                                        return { ...p, lines };
+                                      })}
+                                    />
+                                  </td>
+                                  <td style={styles.td}>
+                                    <input
+                                      type="number"
+                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 80 }}
+                                      value={line.qty}
+                                      onChange={(e) => setCostingForm((p) => {
+                                        const lines = [...p.lines];
+                                        lines[li] = { ...lines[li], qty: e.target.value };
+                                        return { ...p, lines };
+                                      })}
+                                    />
+                                  </td>
+                                  <td style={styles.td}>
+                                    <input
+                                      type="number"
+                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
+                                      value={line.cost_per_unit}
+                                      onChange={(e) => setCostingForm((p) => {
+                                        const lines = [...p.lines];
+                                        lines[li] = { ...lines[li], cost_per_unit: e.target.value };
+                                        return { ...p, lines };
+                                      })}
+                                    />
+                                  </td>
+                                  <td style={{ ...styles.td, color: '#4caf50' }}>{fmt(lineTotal)}</td>
+                                  <td style={styles.td}>
+                                    <button
+                                      type="button"
+                                      style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                                      onClick={() => setCostingForm((p) => ({ ...p, lines: p.lines.filter((_, i) => i !== li) }))}
+                                    >✕</button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {costingForm.lines.length === 0 && (
+                              <tr><td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#555', padding: 16, fontSize: 12 }}>No inventory lines. Click "+ Add Line".</td></tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
+
+                    {/* ── Costing Fields ── */}
+                    {(() => {
+                      const lineSubtotal = costingForm.lines.reduce(
+                        (s, l) => s + (Number(l.qty) || 0) * (Number(l.cost_per_unit) || 0), 0,
+                      );
+                      const baseCOGS = lineSubtotal
+                        + (Number(costingForm.labor_cost) || 0)
+                        + (Number(costingForm.overhead_cost) || 0);
+                      const wastageAmt = Number(costingForm.wastage_amount) || 0;
+                      const contingencyAmt = Number(costingForm.contingency_amount) || 0;
+                      const totalEstCOGS = baseCOGS + wastageAmt + contingencyAmt;
+                      const cmAmt = Number(costingForm.contribution_margin_amount) || 0;
+                      const sellingPrice = totalEstCOGS + cmAmt;
+
+                      return (
+                        <div style={styles.formGrid}>
+                          <label style={styles.label}>Labor Cost (₱)</label>
+                          <input style={styles.input} type="number" value={costingForm.labor_cost}
+                            onChange={(e) => setCostingForm((p) => ({ ...p, labor_cost: e.target.value }))} />
+
+                          <label style={styles.label}>Overhead Cost (₱)</label>
+                          <input style={styles.input} type="number" value={costingForm.overhead_cost}
+                            onChange={(e) => setCostingForm((p) => ({ ...p, overhead_cost: e.target.value }))} />
+
+                          {/* Wastage: pct + amount */}
+                          <label style={styles.label}>Wastage</label>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 90 }}
+                                value={costingForm.wastage_pct}
+                                onChange={(e) => {
+                                  const pct = Number(e.target.value) || 0;
+                                  const amt = (pct / 100) * baseCOGS;
+                                  setCostingForm((p) => ({ ...p, wastage_pct: e.target.value, wastage_amount: amt.toFixed(4) }));
+                                }}
+                              />
+                              <span style={{ color: '#888', fontSize: 12 }}>%</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ color: '#888', fontSize: 12 }}>₱</span>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 110 }}
+                                value={costingForm.wastage_amount}
+                                onChange={(e) => {
+                                  const amt = Number(e.target.value) || 0;
+                                  const pct = baseCOGS > 0 ? (amt / baseCOGS) * 100 : 0;
+                                  setCostingForm((p) => ({ ...p, wastage_amount: e.target.value, wastage_pct: pct.toFixed(4) }));
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Contingency: pct + amount */}
+                          <label style={styles.label}>Contingency</label>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 90 }}
+                                value={costingForm.contingency_pct}
+                                onChange={(e) => {
+                                  const pct = Number(e.target.value) || 0;
+                                  const amt = (pct / 100) * baseCOGS;
+                                  setCostingForm((p) => ({ ...p, contingency_pct: e.target.value, contingency_amount: amt.toFixed(4) }));
+                                }}
+                              />
+                              <span style={{ color: '#888', fontSize: 12 }}>%</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ color: '#888', fontSize: 12 }}>₱</span>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 110 }}
+                                value={costingForm.contingency_amount}
+                                onChange={(e) => {
+                                  const amt = Number(e.target.value) || 0;
+                                  const pct = baseCOGS > 0 ? (amt / baseCOGS) * 100 : 0;
+                                  setCostingForm((p) => ({ ...p, contingency_amount: e.target.value, contingency_pct: pct.toFixed(4) }));
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Total Estimated COGS (auto) — between Contingency and CM */}
+                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Total Estimated COGS (auto)</label>
+                          <input
+                            style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
+                            readOnly
+                            value={fmt(totalEstCOGS)}
+                          />
+
+                          {/* Contribution Margin: pct + amount */}
+                          <label style={styles.label}>Contribution Margin</label>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 90 }}
+                                value={costingForm.contribution_margin_pct}
+                                onChange={(e) => {
+                                  const pct = Number(e.target.value) || 0;
+                                  const amt = (pct / 100) * totalEstCOGS;
+                                  setCostingForm((p) => ({ ...p, contribution_margin_pct: e.target.value, contribution_margin_amount: amt.toFixed(4) }));
+                                }}
+                              />
+                              <span style={{ color: '#888', fontSize: 12 }}>%</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ color: '#888', fontSize: 12 }}>₱</span>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 110 }}
+                                value={costingForm.contribution_margin_amount}
+                                onChange={(e) => {
+                                  const amt = Number(e.target.value) || 0;
+                                  const pct = totalEstCOGS > 0 ? (amt / totalEstCOGS) * 100 : 0;
+                                  setCostingForm((p) => ({ ...p, contribution_margin_amount: e.target.value, contribution_margin_pct: pct.toFixed(4) }));
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Selling Price (auto) = Total COGS + CM Amount */}
+                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (auto)</label>
+                          <div>
+                            <input
+                              style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
+                              readOnly
+                              value={fmt(sellingPrice)}
+                            />
+                            <span style={styles.helperText}>Total Estimated COGS + Contribution Margin Amount</span>
+                          </div>
+
+                          {/* CM Ratio preview */}
+                          {sellingPrice > 0 && (() => {
+                            const cmRatio = (sellingPrice - totalEstCOGS) / sellingPrice;
+                            const target = CM_TARGETS[costingForm.menu_category] || null;
+                            const isBelowTarget = target !== null && cmRatio < target;
+                            return (
+                              <>
+                                <label style={styles.label}>CM Ratio (preview)</label>
+                                <div style={{ color: isBelowTarget ? '#f44336' : '#4caf50', fontWeight: 600, padding: '6px 0' }}>
+                                  {isBelowTarget && '⚠️ '}
+                                  {(cmRatio * 100).toFixed(2)}%
+                                  {target !== null && <span style={{ color: '#666', fontWeight: 400, fontSize: 12, marginLeft: 8 }}>Target: {(target * 100).toFixed(0)}%</span>}
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })()}
+
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
                       <button onClick={saveCostingItem} style={styles.primaryBtn}>Save</button>
