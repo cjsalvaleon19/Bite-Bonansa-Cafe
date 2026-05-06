@@ -153,7 +153,23 @@ export default function AdminPage() {
   const [journalLoading, setJournalLoading] = useState(false);
   // Derive unique account names from fetched data; includes known default accounts too
   const journalKnownAccounts = useMemo(() => {
-    const defaults = ['Cash on Hand', 'Cash in Bank', 'Accounts Payable', 'Accounts Payable - Rewards', 'Revenue', 'Inventory', "Owner's Draw", 'Rewards', 'Cost of Goods Sold'];
+    const defaults = [
+      'Cash on Hand', 'Cash in Bank',
+      'Accounts Payable', 'Accounts Payable - Rewards',
+      'Revenue', 'Inventory', "Owner's Draw", "Owner's Capital", 'Retained Earnings',
+      'Rewards', 'Cost of Goods Sold',
+      // Income
+      'Delivery Income',
+      // Operating Expenses
+      'Salaries & Wages', 'Utilities', 'Supplies',
+      'Repairs & Maintenance', 'Advertising & Marketing',
+      'Software Subscriptions', 'Professional Fees', 'Transportation',
+      'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+      "Rider's Fee", 'Kitchen Tools', 'Miscellaneous Expense',
+      'Depreciation Expense',
+      // Balance Sheet
+      'Kitchen Equipment', 'Accumulated Depreciation',
+    ];
     const fromData = (journalData || []).flatMap((r) => [r.debit_account, r.credit_account].filter(Boolean));
     const all = Array.from(new Set([...defaults, ...fromData])).sort();
     return all;
@@ -436,7 +452,7 @@ export default function AdminPage() {
       // Build name→id lookup for fallback when inventory_item_id is null
       const nameToIdMap = {};
       (items || []).forEach((inv) => {
-        nameToIdMap[inv.name?.toLowerCase().trim()] = inv.id;
+        nameToIdMap[(inv.name || '').toLowerCase().trim()] = inv.id;
       });
 
       // Build purchases map (period): inventory_item_id -> { qty, totalCost, totalLandedCost }
@@ -2887,7 +2903,9 @@ export default function AdminPage() {
                           setInvPickerOpen(null);
                           setInvPickerQuery('');
                           setRrNewItemReturnIdx(idx);
-                          openInvDialog(null);
+                          // Defer to next tick so Radix UI finishes closing the picker
+                          // before opening the enrollment dialog (avoids focus-trap conflict)
+                          setTimeout(() => openInvDialog(null), 0);
                         }}
                       >+ New Item</button>
                     </div>
