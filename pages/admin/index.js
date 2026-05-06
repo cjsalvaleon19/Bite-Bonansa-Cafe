@@ -3106,6 +3106,13 @@ export default function AdminPage() {
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={journalDateTo} onChange={(e) => setJournalDateTo(e.target.value)} />
                 <button onClick={fetchJournal} style={styles.primaryBtn}>Refresh</button>
+                <button
+                  onClick={() => { setJournalDateFrom(''); setJournalDateTo(''); }}
+                  title="Remove date filters to show all journal entries"
+                  style={{ background: 'transparent', border: '1px solid #555', color: '#aaa', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontFamily: 'Poppins, sans-serif' }}
+                >
+                  All Time
+                </button>
               </div>
 
               {journalLoading && <p style={styles.loadingText}>Loading…</p>}

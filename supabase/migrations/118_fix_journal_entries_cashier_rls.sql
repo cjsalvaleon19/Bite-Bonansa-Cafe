@@ -56,4 +56,7 @@ CREATE POLICY "journal_entries_cashier_insert"
   ON journal_entries FOR INSERT TO authenticated
   WITH CHECK (public.get_auth_user_role() IN ('cashier', 'admin', 'superadmin'));
 
+-- Reload PostgREST schema cache so new policies are immediately visible
+NOTIFY pgrst, 'reload schema';
+
 DO $$ BEGIN RAISE NOTICE 'Migration 118: journal_entries RLS fixed — admin INSERT no longer recursive; cashier INSERT now allowed.'; END $$;

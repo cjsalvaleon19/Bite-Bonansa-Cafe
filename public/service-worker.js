@@ -15,6 +15,10 @@
  *    Returns a 503 on cache-miss + network failure instead of throwing, to prevent
  *    the browser error page.
  *
+ * BREAKING CHANGE (v9): Cache version bumped to 'bite-bonansa-v9'.
+ *  Added /admin to precache list so the admin page is available offline.
+ *  The activate handler purges all older caches automatically.
+ *
  * BREAKING CHANGE (v8): Cache version bumped to 'bite-bonansa-v8'.
  *  The activate handler purges all older caches ('bite-bonansa-v1' through 'bite-bonansa-v7')
  *  automatically so stale or corrupt cache entries do not persist.
@@ -22,7 +26,7 @@
  *  Fixed: Skip caching partial responses (HTTP 206) to prevent cache.put() errors.
  */
 
-const CACHE_NAME = 'bite-bonansa-v8';
+const CACHE_NAME = 'bite-bonansa-v9';
 
 // Key pages and assets to pre-cache on service worker install so they are
 // available offline even on first visit (including the dashboard).
@@ -30,6 +34,7 @@ const PRECACHE_URLS = [
   '/',
   '/login',
   '/dashboard',
+  '/admin',
   '/customer/dashboard',
   '/customer/order',
   '/cashier/dashboard',
