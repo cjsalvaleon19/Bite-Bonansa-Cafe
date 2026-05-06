@@ -357,11 +357,21 @@ export default function AdminPage() {
       const rrItems = rrItemsRaw || [];
 
       // 1.3: In Transit = ALL "draft" status receiving reports (no date filter)
-      const { data: inTransitRaw } = await supabase
-        .from('receiving_report_items')
-        .select('inventory_item_id, inventory_name, qty, receiving_reports!receiving_report_id(status)')
-        .eq('receiving_reports.status', 'draft');
-      const inTransitItems = inTransitRaw || [];
+      // NOTE: .eq() on a joined table in Supabase only nullifies the join, it does NOT
+      // filter parent rows.  We must first fetch draft RR IDs then filter by them.
+      const { data: draftRRs } = await supabase
+        .from('receiving_reports')
+        .select('id')
+        .eq('status', 'draft');
+      const draftRRIds = (draftRRs || []).map((r) => r.id);
+      let inTransitItems = [];
+      if (draftRRIds.length > 0) {
+        const { data: inTransitRaw } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, inventory_name, qty')
+          .in('receiving_report_id', draftRRIds);
+        inTransitItems = inTransitRaw || [];
+      }
 
       // 2b + 3b. Line items from Jan 1, 2026 → invDateTo — single join query for Average Cost
       // 1.4: Beginning Balance = "paid" status only (Jan 1, 2026 → start date − 1 day)
