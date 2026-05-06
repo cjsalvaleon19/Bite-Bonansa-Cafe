@@ -36,6 +36,8 @@ export default function AdminPage() {
   const [cashFlowData, setCashFlowData] = useState([]);
   const [cashFlowSummary, setCashFlowSummary] = useState({ inflow: 0, outflow: 0 });
   const [saleableItems, setSaleableItems] = useState([]);
+  const [saleableItemsThisMonth, setSaleableItemsThisMonth] = useState([]);
+  const [saleableItemsLastMonth, setSaleableItemsLastMonth] = useState([]);
   const [expensesBreakdown, setExpensesBreakdown] = useState([]);
 
   // ── Inventory state ───────────────────────────────────────────────────────
@@ -43,12 +45,14 @@ export default function AdminPage() {
   const [invDialogOpen, setInvDialogOpen] = useState(false);
   const [invEditItem, setInvEditItem] = useState(null);
   const [invForm, setInvForm] = useState({
-    name: '', department: 'DKS', code: '', uom: 'pcs', cost_per_unit: '0', current_stock: '0',
+    name: '', department: 'DKS', code: '', uom: 'pcs', cost_per_unit: '0', current_stock: '0', min_stock: '0',
   });
   const [invDeleteConfirm, setInvDeleteConfirm] = useState(null);
+  const [invStatusFilter, setInvStatusFilter] = useState('');
 
   // ── Price Costing state ───────────────────────────────────────────────────
   const [costingHeaders, setCostingHeaders] = useState([]);
+  const [costingSearch, setCostingSearch] = useState('');
   const [invItems, setInvItems] = useState([]);
   const [menuItemsList, setMenuItemsList] = useState([]);
   const [costingDialogOpen, setCostingDialogOpen] = useState(false);
@@ -93,6 +97,7 @@ export default function AdminPage() {
   const [enrollingVendor, setEnrollingVendor] = useState(false);
   const [newVendorForm, setNewVendorForm] = useState({ name: '', address: '', contact: '', tin: '' });
   const [rrDeleteConfirm, setRrDeleteConfirm] = useState(null);
+  const [rrSearch, setRrSearch] = useState('');
   const [rrViewItem, setRrViewItem] = useState(null);
   const [rrViewLineItems, setRrViewLineItems] = useState([]);
   const [rrSaveError, setRrSaveError] = useState('');
@@ -147,7 +152,7 @@ export default function AdminPage() {
   const [journalLoading, setJournalLoading] = useState(false);
   // Derive unique account names from fetched data; includes known default accounts too
   const journalKnownAccounts = useMemo(() => {
-    const defaults = ['Cash on Hand', 'Cash in Bank', 'Accounts Payable', 'Sales Revenue', 'Inventory', "Owner's Draw", 'Rewards'];
+    const defaults = ['Cash on Hand', 'Cash in Bank', 'Accounts Payable', 'Accounts Payable - Rewards', 'Revenue', 'Inventory', "Owner's Draw", 'Rewards', 'Cost of Goods Sold'];
     const fromData = (journalData || []).flatMap((r) => [r.debit_account, r.credit_account].filter(Boolean));
     const all = Array.from(new Set([...defaults, ...fromData])).sort();
     return all;
@@ -156,16 +161,17 @@ export default function AdminPage() {
   // ── Manual Entry state ────────────────────────────────────────────────────
   const [manualEntryNumber, setManualEntryNumber] = useState('');
   const [manualEntryForm, setManualEntryForm] = useState({
-    date: '',
+    date: new Date().toISOString().split('T')[0],
     name: '',
     reference_number: '',
   });
   const [manualEntryLines, setManualEntryLines] = useState([
-    { description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' },
+    { description: '', account: '', type: 'debit', amount: '' },
   ]);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState('');
   const [manualSuccess, setManualSuccess] = useState('');
+  const [manualSpecialNote, setManualSpecialNote] = useState('');
   // Contact picker for manual entry
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [contactPickerQuery, setContactPickerQuery] = useState('');
@@ -213,11 +219,17 @@ export default function AdminPage() {
           const weekIdx = Math.min(Math.floor(diffDays / 7), 3);
           weeks[weekIdx] += Number(o.total) || 0;
         });
+        const fmtRange = (idx) => {
+          const start = new Date(sinceMs + idx * 7 * 86400000);
+          const end = new Date(sinceMs + (idx + 1) * 7 * 86400000 - 86400000);
+          const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+          return `${fmt(start)}–${fmt(end)}`;
+        };
         setSalesTrend([
-          { week: 'Week 1', sales: weeks[0] },
-          { week: 'Week 2', sales: weeks[1] },
-          { week: 'Week 3', sales: weeks[2] },
-          { week: 'Week 4', sales: weeks[3] },
+          { week: fmtRange(0), sales: weeks[0] },
+          { week: fmtRange(1), sales: weeks[1] },
+          { week: fmtRange(2), sales: weeks[2] },
+          { week: fmtRange(3), sales: weeks[3] },
         ]);
       }
 
@@ -251,11 +263,34 @@ export default function AdminPage() {
         setCashFlowSummary({ inflow: totalIn, outflow: totalOut });
       }
 
-      const { data: menuItems } = await supabase
-        .from('menu_items')
-        .select('name, category, price')
-        .eq('available', true);
-      if (menuItems) setSaleableItems(menuItems);
+      // Saleable items: ranked by quantity sold this month vs last month
+      const now = new Date();
+      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+      const [{ data: tmItems }, { data: lmItems }] = await Promise.all([
+        supabase
+          .from('order_items')
+          .select('name, quantity')
+          .gte('created_at', thisMonthStart),
+        supabase
+          .from('order_items')
+          .select('name, quantity')
+          .gte('created_at', lastMonthStart)
+          .lt('created_at', lastMonthEnd),
+      ]);
+
+      const aggregate = (rows) => {
+        const map = {};
+        (rows || []).forEach((r) => { map[r.name] = (map[r.name] || 0) + (Number(r.quantity) || 1); });
+        return Object.entries(map)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([name, qty]) => ({ name, qty }));
+      };
+      setSaleableItemsThisMonth(aggregate(tmItems));
+      setSaleableItemsLastMonth(aggregate(lmItems));
 
       const since30 = new Date();
       since30.setDate(since30.getDate() - 30);
@@ -489,7 +524,7 @@ export default function AdminPage() {
         supabase
           .from('receiving_reports')
           .select('*, vendor:vendors(name)')
-          .order('date', { ascending: false }),
+          .order('rr_number', { ascending: false }),
         supabase.from('admin_inventory_items').select('*').order('name'),
       ]);
       if (rrErr) throw rrErr;
@@ -529,14 +564,14 @@ export default function AdminPage() {
         });
         setFinData({ type: 'cashflow', rows });
       } else if (finSubTab === 'pl') {
-        const [{ data: ordersData }, { data: expData }, { data: cogData }] = await Promise.all([
-          supabase.from('orders').select('total').eq('status', 'order_delivered').gte('created_at', fromISO).lte('created_at', toISO),
+        const [{ data: revenueData }, { data: cogsData }, { data: expData }] = await Promise.all([
+          supabase.from('journal_entries').select('credit_amount').eq('credit_account', 'Revenue').gte('created_at', fromISO).lte('created_at', toISO),
+          supabase.from('journal_entries').select('debit_amount').eq('debit_account', 'Cost of Goods Sold').gte('created_at', fromISO).lte('created_at', toISO),
           supabase.from('cash_drawer_transactions').select('amount').in('transaction_type', ['pay-expense', 'pay-bill']).gte('created_at', fromISO).lte('created_at', toISO),
-          supabase.from('price_costing_items').select('total_cogs'),
         ]);
-        const revenue = (ordersData || []).reduce((s, o) => s + (Number(o.total) || 0), 0);
+        const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.credit_amount) || 0), 0);
+        const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.debit_amount) || 0), 0);
         const opExp = (expData || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-        const cogs = (cogData || []).reduce((s, c) => s + (Number(c.total_cogs) || 0), 0);
         setFinData({ type: 'pl', revenue, cogs, opExp, grossProfit: revenue - cogs, netProfit: revenue - cogs - opExp });
       } else if (finSubTab === 'balance') {
         const [{ data: allCash }, { data: invList }, { data: rrApproved }] = await Promise.all([
@@ -726,16 +761,14 @@ export default function AdminPage() {
     setManualSuccess('');
     try {
       if (!manualEntryForm.date) throw new Error('Please enter a date.');
-      const validLines = manualEntryLines.filter(
-        (l) => l.description || l.debit_account || l.credit_account || l.debit_amount || l.credit_amount,
-      );
+      const validLines = manualEntryLines.filter((l) => l.account && l.amount);
       if (validLines.length === 0) throw new Error('Please add at least one line item.');
       const rows = validLines.map((l) => ({
         date: manualEntryForm.date,
-        description: l.description || '',
-        debit_account: l.debit_account || '',
-        credit_account: l.credit_account || '',
-        amount: Math.max(Number(l.debit_amount) || 0, Number(l.credit_amount) || 0),
+        description: l.description || manualSpecialNote || '',
+        debit_account: l.type === 'debit' ? l.account : '',
+        credit_account: l.type === 'credit' ? l.account : '',
+        amount: Number(l.amount) || 0,
         reference_type: 'manual_entry',
         entry_number: manualEntryNumber || null,
         name: manualEntryForm.name || null,
@@ -744,15 +777,16 @@ export default function AdminPage() {
       const { error: insertErr } = await supabase.from('journal_entries').insert(rows);
       if (insertErr) throw insertErr;
       setManualSuccess(`Manual entry ${manualEntryNumber} saved successfully.`);
-      setManualEntryLines([{ description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' }]);
-      setManualEntryForm({ date: '', name: '', reference_number: '' });
+      setManualEntryLines([{ description: '', account: '', type: 'debit', amount: '' }]);
+      setManualEntryForm({ date: new Date().toISOString().split('T')[0], name: '', reference_number: '' });
+      setManualSpecialNote('');
       await generateManualEntryNumber();
     } catch (err) {
       setManualError(err.message);
     } finally {
       setManualSaving(false);
     }
-  }, [supabase, manualEntryForm, manualEntryLines, manualEntryNumber, generateManualEntryNumber]);
+  }, [supabase, manualEntryForm, manualEntryLines, manualEntryNumber, manualSpecialNote, generateManualEntryNumber]);
 
   // ── Trigger fetches on tab change ─────────────────────────────────────────
   useEffect(() => {
@@ -763,7 +797,7 @@ export default function AdminPage() {
     else if (activeTab === 'financial') fetchFinancial();
     else if (activeTab === 'profile') fetchProfile();
     else if (activeTab === 'journal') fetchJournal();
-    else if (activeTab === 'manual') generateManualEntryNumber();
+    else if (activeTab === 'manual') { setManualSpecialNote(''); generateManualEntryNumber(); }
   }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber]);
 
   useEffect(() => {
@@ -836,10 +870,11 @@ export default function AdminPage() {
         uom: item.uom || 'pcs',
         cost_per_unit: String(item.cost_per_unit || 0),
         current_stock: String(item.current_stock || 0),
+        min_stock: String(item.min_stock || 0),
       });
     } else {
       const dept = 'DKS';
-      setInvForm({ name: '', department: dept, code: suggestCode(dept, inventoryItems), uom: 'pcs', cost_per_unit: '0', current_stock: '0' });
+      setInvForm({ name: '', department: dept, code: suggestCode(dept, inventoryItems), uom: 'pcs', cost_per_unit: '0', current_stock: '0', min_stock: '0' });
     }
     setInvDialogOpen(true);
   };
@@ -854,6 +889,7 @@ export default function AdminPage() {
         uom: invForm.uom,
         cost_per_unit: Number(invForm.cost_per_unit),
         current_stock: Number(invForm.current_stock),
+        min_stock: Number(invForm.min_stock),
       };
       if (invEditItem) {
         await supabase.from('admin_inventory_items').update(payload).eq('id', invEditItem.id);
@@ -1536,31 +1572,58 @@ export default function AdminPage() {
                   })()}
                 </div>
 
-                {/* Widget 1.3 – Saleable Items */}
+                {/* Widget 1.3 – Top Selling Items */}
                 <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Saleable Items</h3>
-                  <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-                    <table style={styles.table}>
-                      <thead>
-                        <tr>
-                          <th style={styles.th}>Name</th>
-                          <th style={styles.th}>Category</th>
-                          <th style={styles.th}>Price</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {saleableItems.map((item, idx) => (
-                          <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                            <td style={styles.td}>{item.name}</td>
-                            <td style={styles.td}>{item.category}</td>
-                            <td style={styles.td}>{fmt(item.price)}</td>
+                  <h3 style={styles.cardTitle}>Top Selling Items</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <p style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>This Month</p>
+                      <table style={styles.table}>
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>#</th>
+                            <th style={styles.th}>Item</th>
+                            <th style={styles.th}>Qty</th>
                           </tr>
-                        ))}
-                        {saleableItems.length === 0 && (
-                          <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No items</td></tr>
-                        )}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {saleableItemsThisMonth.map((item, idx) => (
+                            <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                              <td style={styles.td}>{idx + 1}</td>
+                              <td style={styles.td}>{item.name}</td>
+                              <td style={styles.td}>{item.qty}</td>
+                            </tr>
+                          ))}
+                          {saleableItemsThisMonth.length === 0 && (
+                            <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No data</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>Last Month</p>
+                      <table style={styles.table}>
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>#</th>
+                            <th style={styles.th}>Item</th>
+                            <th style={styles.th}>Qty</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {saleableItemsLastMonth.map((item, idx) => (
+                            <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                              <td style={styles.td}>{idx + 1}</td>
+                              <td style={styles.td}>{item.name}</td>
+                              <td style={styles.td}>{item.qty}</td>
+                            </tr>
+                          ))}
+                          {saleableItemsLastMonth.length === 0 && (
+                            <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No data</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
 
@@ -1603,7 +1666,15 @@ export default function AdminPage() {
             <div>
               <div style={styles.tabHeader}>
                 <h1 style={styles.pageTitle}>Inventory</h1>
-                <button onClick={() => openInvDialog()} style={styles.primaryBtn}>+ New Item</button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select style={{ ...styles.input, width: 160 }} value={invStatusFilter} onChange={(e) => setInvStatusFilter(e.target.value)}>
+                    <option value="">All Status</option>
+                    <option value="in-stock">In Stock</option>
+                    <option value="low-stock">Low Stock</option>
+                    <option value="out-of-stock">Out of Stock</option>
+                  </select>
+                  <button onClick={() => openInvDialog()} style={styles.primaryBtn}>+ New Item</button>
+                </div>
               </div>
 
               {/* Date Coverage */}
@@ -1628,7 +1699,15 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, inTransit: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).map((item, idx) => (
+                    {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, inTransit: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).filter((item) => {
+                       if (!invStatusFilter) return true;
+                       const stock = Number(item.current_stock ?? item.ending) || 0;
+                       const minStock = Number(item.min_stock) || 0;
+                       if (invStatusFilter === 'out-of-stock') return stock <= 0;
+                       if (invStatusFilter === 'low-stock') return stock > 0 && stock <= minStock;
+                       if (invStatusFilter === 'in-stock') return stock > minStock;
+                       return true;
+                     }).map((item, idx) => (
                       <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{item.code}</td>
                         <td style={styles.td}>{item.name}</td>
@@ -1642,14 +1721,22 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{fmt((Number(item.ending) || 0) * (Number(item.avg_cost ?? item.cost_per_unit) || 0))}</td>
                         <td style={{ ...styles.td, color: '#2196f3' }}>{Number(item.inTransit || 0).toFixed(3)}</td>
                         <td style={styles.td}>
-                          <span style={{
-                            ...styles.badge,
-                            background: Number(item.current_stock) > 0 ? '#1a3a1a' : '#3a1a1a',
-                            color: Number(item.current_stock) > 0 ? '#4caf50' : '#f44336',
-                            border: `1px solid ${Number(item.current_stock) > 0 ? '#4caf50' : '#f44336'}`,
-                          }}>
-                            {Number(item.current_stock) > 0 ? 'In Stock' : 'Out of Stock'}
-                          </span>
+                          {(() => {
+                            const stock = Number(item.current_stock ?? item.ending) || 0;
+                            const minStock = Number(item.min_stock) || 0;
+                            const isOut = stock <= 0;
+                            const isLow = !isOut && minStock > 0 && stock <= minStock;
+                            return (
+                              <span style={{
+                                ...styles.badge,
+                                background: isOut ? '#3a1a1a' : isLow ? '#3a2a00' : '#1a3a1a',
+                                color: isOut ? '#f44336' : isLow ? '#ffc107' : '#4caf50',
+                                border: `1px solid ${isOut ? '#f44336' : isLow ? '#ffc107' : '#4caf50'}`,
+                              }}>
+                                {isOut ? 'Out of Stock' : isLow ? 'Low Stock' : 'In Stock'}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td style={styles.td}>
                           <button onClick={() => openInvDialog(item)} style={styles.actionBtn}>Edit</button>
@@ -1739,6 +1826,13 @@ export default function AdminPage() {
                         value={invForm.current_stock}
                         onChange={(e) => setInvForm((p) => ({ ...p, current_stock: e.target.value }))}
                       />
+                      <label style={styles.label}>Min Stock (Low-Stock Threshold)</label>
+                      <input
+                        style={styles.input}
+                        type="number"
+                        value={invForm.min_stock}
+                        onChange={(e) => setInvForm((p) => ({ ...p, min_stock: e.target.value }))}
+                      />
                     </div>
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
@@ -1775,6 +1869,14 @@ export default function AdminPage() {
                 <button onClick={() => openCostingDialog()} style={styles.primaryBtn}>+ New Item</button>
               </div>
               {loading && <p style={styles.loadingText}>Loading…</p>}
+              <div style={{ marginBottom: 12 }}>
+                <input
+                  style={{ ...styles.input, width: 280 }}
+                  placeholder="Search menu items…"
+                  value={costingSearch}
+                  onChange={(e) => setCostingSearch(e.target.value)}
+                />
+              </div>
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
                   <thead>
@@ -1785,7 +1887,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {costingHeaders.map((item, idx) => {
+                    {costingHeaders.filter((item) => !costingSearch || (item.menu_item_name || '').toLowerCase().includes(costingSearch.toLowerCase())).map((item, idx) => {
                       const sp = Number(item.selling_price) || 0;
                       const tec = Number(item.total_estimated_cogs) || 0;
                       const cmRatio = sp > 0 ? (sp - tec) / sp : 0;
@@ -2245,6 +2347,14 @@ export default function AdminPage() {
                 <button onClick={() => openRRDialog()} style={styles.primaryBtn}>+ New RR</button>
               </div>
               {loading && <p style={styles.loadingText}>Loading…</p>}
+              <div style={{ marginBottom: 12 }}>
+                <input
+                  style={{ ...styles.input, width: 280 }}
+                  placeholder="Search RR# or vendor…"
+                  value={rrSearch}
+                  onChange={(e) => setRrSearch(e.target.value)}
+                />
+              </div>
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
                   <thead>
@@ -2255,7 +2365,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rrList.map((rr, idx) => (
+                    {rrList.filter((rr) => !rrSearch || (rr.rr_number || '').toLowerCase().includes(rrSearch.toLowerCase()) || (rr.vendor?.name || '').toLowerCase().includes(rrSearch.toLowerCase())).map((rr, idx) => (
                       <tr key={rr.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{rr.rr_number}</td>
                         <td style={styles.td}>{rr.vendor?.name || '—'}</td>
@@ -3321,7 +3431,15 @@ export default function AdminPage() {
                     onChange={(e) => setManualEntryForm((p) => ({ ...p, date: e.target.value }))}
                   />
 
-                  <label style={styles.label}>Name (Vendor / Customer)</label>
+                  <label style={styles.label}>Description / Memo</label>
+                  <input
+                    style={styles.input}
+                    placeholder="Brief description of this entry…"
+                    value={manualEntryForm.name}
+                    onChange={(e) => setManualEntryForm((p) => ({ ...p, name: e.target.value }))}
+                  />
+
+                  <label style={styles.label}>Contact (Vendor / Customer)</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input
                       style={{ ...styles.input, flex: 1 }}
@@ -3354,6 +3472,14 @@ export default function AdminPage() {
                     value={manualEntryForm.reference_number}
                     onChange={(e) => setManualEntryForm((p) => ({ ...p, reference_number: e.target.value }))}
                   />
+
+                  <label style={styles.label}>Special Note</label>
+                  <textarea
+                    style={{ ...styles.input, minHeight: 64, resize: 'vertical' }}
+                    placeholder="Optional note or explanation…"
+                    value={manualSpecialNote}
+                    onChange={(e) => setManualSpecialNote(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -3364,89 +3490,91 @@ export default function AdminPage() {
                   <button
                     type="button"
                     style={styles.primaryBtn}
-                    onClick={() => setManualEntryLines((p) => [...p, { description: '', debit_account: '', credit_account: '', debit_amount: '', credit_amount: '' }])}
+                    onClick={() => setManualEntryLines((p) => [...p, { description: '', account: '', type: 'debit', amount: '' }])}
                   >+ Add Line</button>
                 </div>
                 <div style={styles.tableWrap}>
                   <table style={{ ...styles.table, fontSize: 12 }}>
                     <thead>
                       <tr>
-                        {['Description', 'Debit Account', 'Credit Account', 'Debit Amount (₱)', 'Credit Amount (₱)', 'Total (₱)', ''].map((h) => (
+                        {['Description', 'Account', 'Dr / Cr', 'Amount (₱)', ''].map((h) => (
                           <th key={h} style={styles.th}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {manualEntryLines.map((line, li) => {
-                        const lineAmt = Math.max(Number(line.debit_amount) || 0, Number(line.credit_amount) || 0);
-                        return (
-                          <tr key={li}>
-                            <td style={styles.td}>
-                              <input
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 160 }}
-                                value={line.description}
-                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, description: e.target.value } : l))}
-                              />
-                            </td>
-                            <td style={styles.td}>
-                              <input
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 140 }}
-                                placeholder="e.g. Cash on Hand"
-                                value={line.debit_account}
-                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, debit_account: e.target.value } : l))}
-                              />
-                            </td>
-                            <td style={styles.td}>
-                              <input
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 140 }}
-                                placeholder="e.g. Revenue"
-                                value={line.credit_account}
-                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, credit_account: e.target.value } : l))}
-                              />
-                            </td>
-                            <td style={styles.td}>
-                              <input
-                                type="number"
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
-                                value={line.debit_amount}
-                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, debit_amount: e.target.value } : l))}
-                              />
-                            </td>
-                            <td style={styles.td}>
-                              <input
-                                type="number"
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
-                                value={line.credit_amount}
-                                onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, credit_amount: e.target.value } : l))}
-                              />
-                            </td>
-                            <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{lineAmt > 0 ? fmt(lineAmt) : '—'}</td>
-                            <td style={styles.td}>
+                      {manualEntryLines.map((line, li) => (
+                        <tr key={li}>
+                          <td style={styles.td}>
+                            <input
+                              style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 180 }}
+                              placeholder="Line description…"
+                              value={line.description}
+                              onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, description: e.target.value } : l))}
+                            />
+                          </td>
+                          <td style={styles.td}>
+                            <input
+                              style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 180 }}
+                              placeholder="e.g. Cash on Hand"
+                              list="journal-accounts-list"
+                              value={line.account}
+                              onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, account: e.target.value } : l))}
+                            />
+                          </td>
+                          <td style={styles.td}>
+                            <div style={{ display: 'flex', gap: 4 }}>
                               <button
                                 type="button"
-                                style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
-                                onClick={() => setManualEntryLines((p) => p.filter((_, i) => i !== li))}
-                              >✕</button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                                onClick={() => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, type: 'debit' } : l))}
+                                style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: '1px solid #555', background: line.type === 'debit' ? '#1a3a1a' : '#222', color: line.type === 'debit' ? '#4caf50' : '#aaa', fontWeight: line.type === 'debit' ? 700 : 400 }}
+                              >Dr</button>
+                              <button
+                                type="button"
+                                onClick={() => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, type: 'credit' } : l))}
+                                style={{ padding: '4px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: '1px solid #555', background: line.type === 'credit' ? '#3a1a1a' : '#222', color: line.type === 'credit' ? '#f44336' : '#aaa', fontWeight: line.type === 'credit' ? 700 : 400 }}
+                              >Cr</button>
+                            </div>
+                          </td>
+                          <td style={styles.td}>
+                            <input
+                              type="number"
+                              style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 110, color: line.type === 'debit' ? '#4caf50' : '#f44336' }}
+                              value={line.amount}
+                              onChange={(e) => setManualEntryLines((p) => p.map((l, i) => i === li ? { ...l, amount: e.target.value } : l))}
+                            />
+                          </td>
+                          <td style={styles.td}>
+                            <button
+                              type="button"
+                              style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                              onClick={() => setManualEntryLines((p) => p.filter((_, i) => i !== li))}
+                            >✕</button>
+                          </td>
+                        </tr>
+                      ))}
                       {/* Total row */}
                       {manualEntryLines.length > 0 && (() => {
-                        const totalDebit = manualEntryLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
-                        const totalCredit = manualEntryLines.reduce((s, l) => s + (Number(l.credit_amount) || 0), 0);
+                        const totalDebit = manualEntryLines.filter((l) => l.type === 'debit').reduce((s, l) => s + (Number(l.amount) || 0), 0);
+                        const totalCredit = manualEntryLines.filter((l) => l.type === 'credit').reduce((s, l) => s + (Number(l.amount) || 0), 0);
+                        const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
                         return (
                           <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
-                            <td colSpan={3} style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>TOTAL:</td>
-                            <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(totalDebit)}</td>
-                            <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(totalCredit)}</td>
-                            <td colSpan={2} />
+                            <td colSpan={2} style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>TOTAL:</td>
+                            <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>Dr: {fmt(totalDebit)}</td>
+                            <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>Cr: {fmt(totalCredit)}</td>
+                            <td style={{ ...styles.td, textAlign: 'center' }}>
+                              {balanced ? <span style={{ color: '#4caf50' }}>✓ Balanced</span> : <span style={{ color: '#f44336' }}>⚠ Unbalanced</span>}
+                            </td>
                           </tr>
                         );
                       })()}
                     </tbody>
                   </table>
                 </div>
+                <datalist id="journal-accounts-list">
+                  {journalKnownAccounts.map((a) => <option key={a} value={a} />)}
+                </datalist>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
                   <button onClick={saveManualEntry} style={styles.primaryBtn} disabled={manualSaving}>
