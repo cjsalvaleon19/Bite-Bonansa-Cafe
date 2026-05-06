@@ -129,12 +129,8 @@ export default function AdminPage() {
   // ── Journal Entries state ─────────────────────────────────────────────────
   const [journalSubTab, setJournalSubTab] = useState('all');
   const [journalSubFilter, setJournalSubFilter] = useState('all');
-  const [journalDateFrom, setJournalDateFrom] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().split('T')[0];
-  });
-  const [journalDateTo, setJournalDateTo] = useState(() => new Date().toISOString().split('T')[0]);
+  const [journalDateFrom, setJournalDateFrom] = useState('');
+  const [journalDateTo, setJournalDateTo] = useState('');
   const [journalData, setJournalData] = useState([]);
   const [journalLoading, setJournalLoading] = useState(false);
 
@@ -1239,7 +1235,7 @@ export default function AdminPage() {
         return s + tlc;
       }, 0);
       if (totalLC > 0) {
-        await supabase.from('journal_entries').insert({
+        const { error: jeErr } = await supabase.from('journal_entries').insert({
           date: rr.date || new Date().toISOString().split('T')[0],
           description: `RR Approval: ${rr.rr_number}`,
           debit_account: 'Inventory',
@@ -1248,6 +1244,7 @@ export default function AdminPage() {
           reference_id: rr.id,
           reference_type: 'receiving_report',
         });
+        if (jeErr) console.error('[Admin] RR Approval journal entry failed:', jeErr.message);
       }
 
       fetchRR();
@@ -1316,7 +1313,7 @@ export default function AdminPage() {
         rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
         rrPayForm.payment_mode === 'credit_card'  ? "Owner's Draw" :
         'Cash on Hand';
-      await supabase.from('journal_entries').insert({
+      const { error: jeErr } = await supabase.from('journal_entries').insert({
         date: rrPayForm.payment_date,
         description: `RR Payment: ${rrPayItem.rr_number} (${rrPayForm.payment_mode.replace(/_/g, ' ')})`,
         debit_account: 'Accounts Payable',
@@ -1325,6 +1322,7 @@ export default function AdminPage() {
         reference_id: rrPayItem.id,
         reference_type: 'rr_payment',
       });
+      if (jeErr) console.error('[Admin] RR Payment journal entry failed:', jeErr.message);
 
       // Mark RR as paid
       await supabase.from('receiving_reports').update({ status: 'paid' }).eq('id', rrPayItem.id);
