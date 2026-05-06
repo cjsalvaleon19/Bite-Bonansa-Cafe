@@ -164,6 +164,22 @@ export default function OrdersQueue() {
         const { error } = await supabase.from('journal_entries').insert(entries);
         if (error) console.error('[OrdersQueue] Journal entry insert failed:', error.message);
       }
+
+      // Loyalty points earned: Debit Rewards (Expense), Credit Accounts Payable
+      const pointsEarned = Number(order.earnings_amount) || 0;
+      if (pointsEarned > 0) {
+        const { error: loyaltyErr } = await supabase.from('journal_entries').insert({
+          date,
+          description: `Loyalty Points Earned: ${orderRef}`,
+          debit_account: 'Rewards',
+          credit_account: 'Accounts Payable',
+          amount: Math.round(pointsEarned * 100) / 100,
+          reference_type: 'order',
+          reference: orderRef,
+          name: customerName,
+        });
+        if (loyaltyErr) console.error('[OrdersQueue] Loyalty points journal entry failed:', loyaltyErr.message);
+      }
     } catch (err) {
       console.error('[OrdersQueue] Failed to create sales journal entry:', err?.message ?? err);
     }

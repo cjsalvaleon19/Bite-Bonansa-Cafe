@@ -140,9 +140,18 @@ export default function AdminPage() {
   const [journalDateFrom, setJournalDateFrom] = useState(journalMonthFrom);
   const [journalDateTo, setJournalDateTo] = useState(journalMonthTo);
   const [journalAccountFilter, setJournalAccountFilter] = useState('');
+  const [journalAccountDropdownOpen, setJournalAccountDropdownOpen] = useState(false);
+  const [journalAccountSearch, setJournalAccountSearch] = useState('');
   const [journalSearch, setJournalSearch] = useState('');
   const [journalData, setJournalData] = useState([]);
   const [journalLoading, setJournalLoading] = useState(false);
+  // Derive unique account names from fetched data; includes known default accounts too
+  const journalKnownAccounts = useMemo(() => {
+    const defaults = ['Cash on Hand', 'Cash in Bank', 'Accounts Payable', 'Sales Revenue', 'Inventory', "Owner's Draw", 'Rewards'];
+    const fromData = (journalData || []).flatMap((r) => [r.debit_account, r.credit_account].filter(Boolean));
+    const all = Array.from(new Set([...defaults, ...fromData])).sort();
+    return all;
+  }, [journalData]);
 
   // ── Manual Entry state ────────────────────────────────────────────────────
   const [manualEntryNumber, setManualEntryNumber] = useState('');
@@ -656,11 +665,7 @@ export default function AdminPage() {
         else if (journalSubFilter === 'manual_entry') q = q.eq('reference_type', 'manual_entry');
       }
 
-      // Apply account name filter (server-side OR on debit/credit account)
-      if (journalAccountFilter.trim()) {
-        const af = `%${journalAccountFilter.trim()}%`;
-        q = q.or(`debit_account.ilike.${af},credit_account.ilike.${af}`);
-      }
+      // Account name filter is applied client-side per-line in the display layer
 
       const { data, error: err } = await q;
       if (err) throw err;
@@ -670,7 +675,7 @@ export default function AdminPage() {
     } finally {
       setJournalLoading(false);
     }
-  }, [journalSubTab, journalSubFilter, journalDateFrom, journalDateTo, journalAccountFilter]);
+  }, [journalSubTab, journalSubFilter, journalDateFrom, journalDateTo]);
 
   // ── Manual Entry: Generate Entry Number ──────────────────────────────────
   const generateManualEntryNumber = useCallback(async () => {
@@ -767,7 +772,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (activeTab === 'journal') fetchJournal();
-  }, [activeTab, journalSubTab, journalSubFilter, journalDateFrom, journalDateTo, journalAccountFilter, fetchJournal]);
+  }, [activeTab, journalSubTab, journalSubFilter, journalDateFrom, journalDateTo, fetchJournal]);
 
   // ── Nav items (memoised) — must be declared before any early return ──────
   const navItems = useMemo(
@@ -3086,13 +3091,49 @@ export default function AdminPage() {
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                 <input type="date" style={{ ...styles.input, width: 160 }} value={journalDateTo} onChange={(e) => setJournalDateTo(e.target.value)} />
                 <label style={{ color: '#ccc', fontSize: 13 }}>Account Name:</label>
-                <input
-                  type="text"
-                  placeholder="Filter by account…"
-                  style={{ ...styles.input, width: 180 }}
-                  value={journalAccountFilter}
-                  onChange={(e) => setJournalAccountFilter(e.target.value)}
-                />
+                {/* Searchable dropdown for account filter */}
+                <div style={{ position: 'relative' }}>
+                  <div
+                    onClick={() => { setJournalAccountDropdownOpen((v) => !v); setJournalAccountSearch(''); }}
+                    style={{ ...styles.input, width: 200, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', userSelect: 'none' }}
+                  >
+                    <span style={{ color: journalAccountFilter ? '#fff' : '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                      {journalAccountFilter || 'All Accounts'}
+                    </span>
+                    {journalAccountFilter
+                      ? <span onClick={(e) => { e.stopPropagation(); setJournalAccountFilter(''); setJournalAccountDropdownOpen(false); }} style={{ color: '#888', cursor: 'pointer', marginLeft: 4 }}>✕</span>
+                      : <span style={{ color: '#888', marginLeft: 4 }}>▾</span>
+                    }
+                  </div>
+                  {journalAccountDropdownOpen && (
+                    <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: '#1e1e1e', border: '1px solid #555', borderRadius: 6, width: 240, maxHeight: 220, display: 'flex', flexDirection: 'column', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Search accounts…"
+                        value={journalAccountSearch}
+                        onChange={(e) => setJournalAccountSearch(e.target.value)}
+                        style={{ ...styles.input, margin: 6, width: 'calc(100% - 12px)', boxSizing: 'border-box' }}
+                      />
+                      <div style={{ overflowY: 'auto', flex: 1 }}>
+                        <div
+                          onClick={() => { setJournalAccountFilter(''); setJournalAccountDropdownOpen(false); }}
+                          style={{ padding: '6px 10px', cursor: 'pointer', color: '#aaa', fontSize: 12, background: !journalAccountFilter ? '#2a2a2a' : 'transparent' }}
+                        >All Accounts</div>
+                        {journalKnownAccounts
+                          .filter((a) => !journalAccountSearch || a.toLowerCase().includes(journalAccountSearch.toLowerCase()))
+                          .map((acct) => (
+                            <div
+                              key={acct}
+                              onClick={() => { setJournalAccountFilter(acct); setJournalAccountDropdownOpen(false); }}
+                              style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, background: journalAccountFilter === acct ? '#ffc107' : 'transparent', color: journalAccountFilter === acct ? '#000' : '#ccc' }}
+                            >{acct}</div>
+                          ))
+                        }
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <button onClick={fetchJournal} style={styles.primaryBtn}>Reload</button>
               </div>
 
@@ -3118,11 +3159,11 @@ export default function AdminPage() {
 
               {/* Transaction report */}
               {!journalLoading && (() => {
-                // Group by reference (order/rr number), entry_number (manual), or reference_id, fallback to id
+                // Group by entry_number (manual), or reference+type (to keep RR approval vs payment separate), fallback to id
                 const groupKey = (row) =>
                   row.entry_number ||
-                  row.reference ||
-                  (row.reference_id ? String(row.reference_id) : row.id);
+                  (row.reference ? `${row.reference_type}__${row.reference}` : null) ||
+                  (row.reference_id ? `${row.reference_type}__${String(row.reference_id)}` : row.id);
                 const groups = {};
                 (journalData || []).forEach((row) => {
                   const k = groupKey(row);
@@ -3131,6 +3172,8 @@ export default function AdminPage() {
                 });
                 // Apply client-side search across all fields
                 const srch = journalSearch.trim().toLowerCase();
+                // Apply account filter per individual line
+                const acctF = journalAccountFilter.trim().toLowerCase();
                 const allGroupEntries = Object.entries(groups);
                 const groupEntries = srch
                   ? allGroupEntries.filter(([key, rows]) => {
@@ -3151,6 +3194,7 @@ export default function AdminPage() {
                   return <p style={{ color: '#666', textAlign: 'center', padding: 24 }}>No journal entries found for the selected period and filter.</p>;
                 }
                 let grandTotal = 0;
+                let grandTotalCredit = 0;
                 return (
                   <div style={styles.tableWrap}>
                     <table style={{ ...styles.table, fontSize: 12 }}>
@@ -3171,23 +3215,30 @@ export default function AdminPage() {
                           const nameDisplay = rows[0].name || '—';
                           const groupTotal = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
                           grandTotal += groupTotal;
+                          grandTotalCredit += groupTotal;
                           // Each data row expands to a debit line + a credit line
-                          const displayRows = rows.flatMap((row, ri) => [
-                            { row, ri, isDebit: true },
-                            { row, ri, isDebit: false },
-                          ]);
+                          // When account filter is active, only show lines where the account matches
+                          const displayRows = rows.flatMap((row) => {
+                            const lines = [];
+                            const drMatch = !acctF || (row.debit_account || '').toLowerCase() === acctF;
+                            const crMatch = !acctF || (row.credit_account || '').toLowerCase() === acctF;
+                            if (drMatch) lines.push({ row, isDebit: true });
+                            if (crMatch) lines.push({ row, isDebit: false });
+                            return lines;
+                          });
+                          if (displayRows.length === 0) return null;
                           return (
                             <React.Fragment key={key}>
-                              {displayRows.map(({ row, ri, isDebit }, di) => (
+                              {displayRows.map(({ row, isDebit }, di) => (
                                 <tr key={`${row.id}-${isDebit ? 'dr' : 'cr'}`} style={di % 2 === 0 ? styles.trEven : styles.trOdd}>
-                                  {/* Date: only on the first debit line of the first data row */}
-                                  <td style={styles.td}>{di === 0 ? row.date : ''}</td>
-                                  {/* Reference: only on the very first line of the group */}
-                                  <td style={styles.td}>{di === 0 ? refDisplay : ''}</td>
-                                  {/* Name: only on the very first line of the group */}
-                                  <td style={styles.td}>{di === 0 ? nameDisplay : ''}</td>
-                                  {/* Particular: only on debit line of each data row */}
-                                  <td style={styles.td}>{isDebit ? row.description : ''}</td>
+                                  {/* Date: shown on every line */}
+                                  <td style={styles.td}>{row.date}</td>
+                                  {/* Reference: shown on every line */}
+                                  <td style={styles.td}>{refDisplay}</td>
+                                  {/* Name: shown on every line */}
+                                  <td style={styles.td}>{nameDisplay}</td>
+                                  {/* Particular: shown on every line */}
+                                  <td style={styles.td}>{row.description}</td>
                                   {/* Account Title: Dr. flush-left, Cr. indented */}
                                   {isDebit
                                     ? <td style={{ ...styles.td, color: '#4caf50' }}>Dr. {row.debit_account}</td>
@@ -3216,7 +3267,7 @@ export default function AdminPage() {
                         <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
                           <td colSpan={5} style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>GRAND TOTAL:</td>
                           <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandTotal)}</td>
-                          <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(grandTotal)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(grandTotalCredit)}</td>
                         </tr>
                       </tbody>
                     </table>
