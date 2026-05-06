@@ -214,6 +214,11 @@ export default function AdminPage() {
   const [finDateFrom, setFinDateFrom] = useState(thirtyAgoStr);
   const [finDateTo, setFinDateTo] = useState(todayStr);
   const [finData, setFinData] = useState(null);
+  // Chart of Accounts state (separate date coverage from finDateFrom/To)
+  const [coaDateFrom, setCoaDateFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
+  const [coaDateTo, setCoaDateTo] = useState(todayStr);
+  const [coaData, setCoaData] = useState(null);
+  const [coaLoading, setCoaLoading] = useState(false);
   // Editable budget values (persisted in localStorage)
   const [budgetValues, setBudgetValues] = useState(() => {
     try {
@@ -906,24 +911,30 @@ export default function AdminPage() {
         const totalRevenue = revenue + deliveryIncome;
         setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit: totalRevenue - cogs, expByAccount, opExp, netProfit: totalRevenue - cogs - opExp });
       } else if (finSubTab === 'balance') {
+        // Balance Sheet: cumulative position as of finDateTo
+        // Opening balance = Jan 1, 2026; add all journal entries up to finDateTo.
+        const bsDateTo = toISO.split('T')[0];
         const [
           { data: allCash }, { data: invList }, { data: rrApproved },
           { data: kitEquipDebit }, { data: kitEquipCredit }, { data: accumDeprData },
           { data: ownCapCredit }, { data: ownCapDebit }, { data: retEarnCredit }, { data: retEarnDebit },
           { data: ownDrawDebit }, { data: ownDrawCredit },
+          { data: cashInBankDebit }, { data: cashInBankCredit },
         ] = await Promise.all([
-          supabase.from('cash_drawer_transactions').select('amount, transaction_type'),
+          supabase.from('cash_drawer_transactions').select('amount, transaction_type').lte('created_at', toISO),
           supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
-          supabase.from('receiving_reports').select('total_landed_cost').eq('status', 'approved'),
-          supabase.from('journal_entries').select('amount').eq('debit_account', 'Kitchen Equipment'),
-          supabase.from('journal_entries').select('amount').eq('credit_account', 'Kitchen Equipment'),
-          supabase.from('journal_entries').select('amount').eq('credit_account', 'Accumulated Depreciation'),
-          supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Capital"),
-          supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Capital"),
-          supabase.from('journal_entries').select('amount').eq('credit_account', 'Retained Earnings'),
-          supabase.from('journal_entries').select('amount').eq('debit_account', 'Retained Earnings'),
-          supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Draw"),
-          supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Draw"),
+          supabase.from('receiving_reports').select('total_landed_cost').eq('status', 'approved').lte('created_at', toISO),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Kitchen Equipment').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Kitchen Equipment').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Accumulated Depreciation').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Capital").lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Capital").lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Retained Earnings').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Retained Earnings').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Draw").lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Draw").lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Cash in Bank').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Cash in Bank').lte('date', bsDateTo),
         ]);
         let cashOnHand = 0;
         (allCash || []).forEach((tx) => {
@@ -931,6 +942,8 @@ export default function AdminPage() {
           if (tx.transaction_type === 'cash-in') cashOnHand += amt;
           else cashOnHand -= amt;
         });
+        const cashInBank = (cashInBankDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+          - (cashInBankCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
         const invValue = (invList || []).reduce((s, i) => s + (Number(i.current_stock) || 0) * (Number(i.cost_per_unit) || 0), 0);
         const ap = (rrApproved || []).reduce((s, r) => s + (Number(r.total_landed_cost) || 0), 0);
         const kitchenEquipment = (kitEquipDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
@@ -942,11 +955,12 @@ export default function AdminPage() {
           - (retEarnDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
         const ownersDraw = (ownDrawDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
           - (ownDrawCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-        const totalAssets = cashOnHand + invValue + kitchenEquipment - accumDepreciation;
+        const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
         const totalEquity = ownersCapital - ownersDraw + retainedEarnings;
         setFinData({
           type: 'balance',
           cashOnHand,
+          cashInBank,
           invValue,
           kitchenEquipment,
           accumDepreciation,
@@ -1012,6 +1026,65 @@ export default function AdminPage() {
       setLoading(false);
     }
   }, [finSubTab, finDateFrom, finDateTo]);
+
+  // ── Fetch: Chart of Accounts ──────────────────────────────────────────────
+  const fetchCOA = useCallback(async () => {
+    if (!supabase) return;
+    setCoaLoading(true);
+    try {
+      // Compute day before coaDateFrom for opening balance
+      const prevDay = new Date(coaDateFrom);
+      prevDay.setDate(prevDay.getDate() - 1);
+      const prevDayStr = prevDay.toISOString().split('T')[0];
+
+      const [{ data: periodEntries }, { data: openingEntries }] = await Promise.all([
+        supabase.from('journal_entries').select('debit_account, credit_account, amount').gte('date', coaDateFrom).lte('date', coaDateTo),
+        supabase.from('journal_entries').select('debit_account, credit_account, amount').lte('date', prevDayStr),
+      ]);
+
+      // net[account] = totalDebits - totalCredits
+      const computeNets = (entries) => {
+        const nets = {};
+        (entries || []).forEach((e) => {
+          if (e.debit_account) nets[e.debit_account] = (nets[e.debit_account] || 0) + (Number(e.amount) || 0);
+          if (e.credit_account) nets[e.credit_account] = (nets[e.credit_account] || 0) - (Number(e.amount) || 0);
+        });
+        return nets;
+      };
+      const periodNets = computeNets(periodEntries);
+      const openingNets = computeNets(openingEntries);
+
+      // Balance Sheet accounts use opening balance + period activity
+      const BS_ACCOUNTS = [
+        'Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory',
+        'Kitchen Equipment', 'Accumulated Depreciation',
+        'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities',
+        "Owner's Capital", "Owner's Draw", 'Retained Earnings',
+      ];
+      // Income Statement accounts use period activity only
+      const IS_ACCOUNTS = [
+        'Revenue', 'Delivery Income', 'Other Income',
+        'Cost of Goods Sold', "Rider's Fee",
+        'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+        'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+        'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+        'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense',
+      ];
+
+      const amounts = {};
+      BS_ACCOUNTS.forEach((acct) => {
+        amounts[acct] = (openingNets[acct] || 0) + (periodNets[acct] || 0);
+      });
+      IS_ACCOUNTS.forEach((acct) => {
+        amounts[acct] = periodNets[acct] || 0;
+      });
+      setCoaData(amounts);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCoaLoading(false);
+    }
+  }, [supabase, coaDateFrom, coaDateTo]);
 
   // ── Fetch: Profile ────────────────────────────────────────────────────────
   const fetchProfile = useCallback(async () => {
@@ -1212,6 +1285,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === 'financial') fetchFinancial();
   }, [activeTab, finSubTab, finDateFrom, finDateTo, fetchFinancial]);
+
+  useEffect(() => {
+    if (activeTab === 'financial' && finSubTab === 'coa') fetchCOA();
+  }, [activeTab, finSubTab, coaDateFrom, coaDateTo, fetchCOA]);
 
   useEffect(() => {
     if (activeTab === 'journal') fetchJournal();
@@ -3561,6 +3638,7 @@ export default function AdminPage() {
               {finSubTab === 'balance' && finData?.type === 'balance' && (
                 <div style={{ ...styles.card, maxWidth: 560 }}>
                   <h3 style={styles.cardTitle}>Balance Sheet</h3>
+                  <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>As of {finDateTo} — cumulative from all transactions up to this date.</p>
                   <table style={styles.table}>
                     <thead>
                       <tr>
@@ -3578,14 +3656,18 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.cashOnHand)}</td>
                       </tr>
                       <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Cash in Bank</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.cashInBank)}</td>
+                      </tr>
+                      <tr style={styles.trOdd}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Inventory Value</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.invValue)}</td>
                       </tr>
-                      <tr style={styles.trOdd}>
+                      <tr style={styles.trEven}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Kitchen Equipment</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.kitchenEquipment)}</td>
                       </tr>
-                      <tr style={styles.trEven}>
+                      <tr style={styles.trOdd}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Less: Accumulated Depreciation</td>
                         <td style={{ ...styles.td, textAlign: 'right', color: finData.accumDepreciation > 0 ? '#f44336' : '#888' }}>
                           {finData.accumDepreciation > 0 ? `(${fmt(finData.accumDepreciation)})` : fmt(0)}
@@ -3746,7 +3828,7 @@ export default function AdminPage() {
                             {varRow('Cost of Goods Sold', finData.cogs, 'Cost of Goods Sold', true, true)}
                             {totalRow('Gross Profit', finData.grossProfit, grossProfitBudget, false, '#1a3a1a')}
                             {headerRow('Operating Expenses')}
-                            {OPEX_ACCOUNTS.filter((a) => (finData.expByAccount?.[a] || 0) > 0 || (Number(bv[a]) || 0) > 0).map((a) => varRow(a, finData.expByAccount?.[a] || 0, a, true, true))}
+                            {OPEX_ACCOUNTS.map((a) => varRow(a, finData.expByAccount?.[a] || 0, a, true, true))}
                             {totalRow('Total Operating Expenses', finData.opExp, opExpBudget, true, '#2a1a1a')}
                             {totalRow('Net Profit', finData.netProfit, netProfitBudget, false, '#2a2a00')}
                           </tbody>
@@ -3788,55 +3870,113 @@ export default function AdminPage() {
 
               {/* Chart of Accounts */}
               {finSubTab === 'coa' && (
-                <div style={{ ...styles.card, maxWidth: 600 }}>
+                <div style={{ ...styles.card, maxWidth: 680 }}>
                   <h3 style={styles.cardTitle}>Chart of Accounts</h3>
-                  <p style={{ color: '#888', fontSize: 12, marginBottom: 16 }}>
-                    Summary of all account names used in P&amp;L and Balance Sheet, ordered by category.
+                  {/* Date coverage controls */}
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+                    <label style={{ color: '#aaa', fontSize: 12 }}>Date From:</label>
+                    <input
+                      type="date"
+                      style={{ ...styles.input, width: 140 }}
+                      value={coaDateFrom}
+                      onChange={(e) => setCoaDateFrom(e.target.value)}
+                    />
+                    <label style={{ color: '#aaa', fontSize: 12 }}>To:</label>
+                    <input
+                      type="date"
+                      style={{ ...styles.input, width: 140 }}
+                      value={coaDateTo}
+                      onChange={(e) => setCoaDateTo(e.target.value)}
+                    />
+                    <button onClick={fetchCOA} style={styles.primaryBtn} disabled={coaLoading}>
+                      {coaLoading ? 'Loading…' : 'Refresh'}
+                    </button>
+                  </div>
+                  <p style={{ color: '#888', fontSize: 11, marginBottom: 16 }}>
+                    Balance Sheet accounts: opening balance (before {coaDateFrom}) + period activity. Income Statement accounts: period activity only.
                   </p>
-                  {[
-                    {
-                      category: 'Assets',
-                      color: '#4caf50',
-                      accounts: ['Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory', 'Kitchen Equipment', 'Accumulated Depreciation'],
-                    },
-                    {
-                      category: 'Liabilities',
-                      color: '#f44336',
-                      accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities'],
-                    },
-                    {
-                      category: 'Equity',
-                      color: '#2196f3',
-                      accounts: ["Owner's Capital", "Owner's Draw", 'Retained Earnings'],
-                    },
-                    {
-                      category: 'Revenue',
-                      color: '#ffc107',
-                      accounts: ['Revenue', 'Delivery Income', 'Other Income'],
-                    },
-                    {
-                      category: 'Expenses',
-                      color: '#ff9800',
-                      accounts: [
-                        'Cost of Goods Sold', "Rider's Fee",
-                        'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
-                        'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
-                        'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-                        'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense',
-                      ],
-                    },
-                  ].map(({ category, color, accounts }) => (
-                    <div key={category} style={{ marginBottom: 20 }}>
-                      <div style={{ padding: '6px 12px', background: '#222', borderLeft: `4px solid ${color}`, marginBottom: 4 }}>
-                        <span style={{ fontWeight: 700, color, fontSize: 13 }}>{category}</span>
+                  {(() => {
+                    const COA_CATEGORIES = [
+                      {
+                        category: 'Assets',
+                        color: '#4caf50',
+                        type: 'bs',
+                        accounts: ['Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory', 'Kitchen Equipment', 'Accumulated Depreciation'],
+                      },
+                      {
+                        category: 'Liabilities',
+                        color: '#f44336',
+                        type: 'bs',
+                        accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities'],
+                      },
+                      {
+                        category: 'Equity',
+                        color: '#2196f3',
+                        type: 'bs',
+                        accounts: ["Owner's Capital", "Owner's Draw", 'Retained Earnings'],
+                      },
+                      {
+                        category: 'Revenue',
+                        color: '#ffc107',
+                        type: 'is',
+                        accounts: ['Revenue', 'Delivery Income', 'Other Income'],
+                      },
+                      {
+                        category: 'Expenses',
+                        color: '#ff9800',
+                        type: 'is',
+                        accounts: [
+                          'Cost of Goods Sold', "Rider's Fee",
+                          'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+                          'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+                          'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+                          'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense',
+                        ],
+                      },
+                    ];
+                    const allAccountsFlat = COA_CATEGORIES.flatMap((c) => c.accounts);
+                    const grandTotal = coaData
+                      ? allAccountsFlat.reduce((s, acct) => s + Math.abs(coaData[acct] || 0), 0)
+                      : 0;
+                    return (
+                      <div>
+                        <table style={styles.table}>
+                          <thead>
+                            <tr>
+                              <th style={styles.th}>Account Name</th>
+                              <th style={{ ...styles.th, textAlign: 'right' }}>Amount (₱)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {COA_CATEGORIES.map(({ category, color, accounts }) => (
+                              <React.Fragment key={category}>
+                                <tr style={{ background: '#1e1e1e' }}>
+                                  <td colSpan={2} style={{ ...styles.td, fontWeight: 700, color, fontSize: 13, borderLeft: `4px solid ${color}` }}>{category}</td>
+                                </tr>
+                                {accounts.map((acct, i) => {
+                                  const amt = coaData ? (coaData[acct] || 0) : null;
+                                  return (
+                                    <tr key={acct} style={{ background: i % 2 === 0 ? '#161616' : '#1a1a1a' }}>
+                                      <td style={{ ...styles.td, paddingLeft: 24 }}>{acct}</td>
+                                      <td style={{ ...styles.td, textAlign: 'right', color: amt !== null && amt < 0 ? '#f44336' : '#ccc' }}>
+                                        {amt === null ? '—' : fmt(amt)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </React.Fragment>
+                            ))}
+                            <tr style={{ background: '#2a2a00' }}>
+                              <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Grand Total (Absolute)</td>
+                              <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>
+                                {coaData ? fmt(grandTotal) : '—'}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
-                      {accounts.map((acct, i) => (
-                        <div key={acct} style={{ padding: '6px 12px 6px 24px', background: i % 2 === 0 ? '#161616' : '#1a1a1a', fontSize: 13, color: '#ccc', borderBottom: '1px solid #222' }}>
-                          {acct}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
+                    );
+                  })()}
                 </div>
               )}
             </div>
