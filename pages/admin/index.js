@@ -164,6 +164,7 @@ export default function AdminPage() {
     date: new Date().toISOString().split('T')[0],
     name: '',
     reference_number: '',
+    description: '',
   });
   const [manualEntryLines, setManualEntryLines] = useState([
     { description: '', account: '', type: 'debit', amount: '' },
@@ -567,12 +568,12 @@ export default function AdminPage() {
         const dateFrom = fromISO.split('T')[0];
         const dateTo = toISO.split('T')[0];
         const [{ data: revenueData }, { data: cogsData }, { data: expData }] = await Promise.all([
-          supabase.from('journal_entries').select('credit_amount').eq('credit_account', 'Revenue').gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('journal_entries').select('debit_amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('cash_drawer_transactions').select('amount').in('transaction_type', ['pay-expense', 'pay-bill']).gte('created_at', fromISO).lte('created_at', toISO),
         ]);
-        const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.credit_amount) || 0), 0);
-        const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.debit_amount) || 0), 0);
+        const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const opExp = (expData || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
         setFinData({ type: 'pl', revenue, cogs, opExp, grossProfit: revenue - cogs, netProfit: revenue - cogs - opExp });
       } else if (finSubTab === 'balance') {
@@ -770,7 +771,7 @@ export default function AdminPage() {
       if (Math.abs(totalDebit - totalCredit) > 0.01) throw new Error(`Entry is unbalanced: Debit ₱${totalDebit.toFixed(2)} ≠ Credit ₱${totalCredit.toFixed(2)}.`);
       const rows = validLines.map((l) => ({
         date: manualEntryForm.date,
-        description: l.description || manualSpecialNote || '',
+        description: l.description || manualEntryForm.description || '',
         debit_account: l.type === 'debit' ? l.account : '',
         credit_account: l.type === 'credit' ? l.account : '',
         amount: Number(l.amount) || 0,
@@ -783,7 +784,7 @@ export default function AdminPage() {
       if (insertErr) throw insertErr;
       setManualSuccess(`Manual entry ${manualEntryNumber} saved successfully.`);
       setManualEntryLines([{ description: '', account: '', type: 'debit', amount: '' }]);
-      setManualEntryForm({ date: new Date().toISOString().split('T')[0], name: '', reference_number: '' });
+      setManualEntryForm({ date: new Date().toISOString().split('T')[0], name: '', reference_number: '', description: '' });
       setManualSpecialNote('');
       await generateManualEntryNumber();
     } catch (err) {
@@ -3437,11 +3438,11 @@ export default function AdminPage() {
                   />
 
                   <label style={styles.label}>Description / Memo</label>
-                  <input
-                    style={styles.input}
+                  <textarea
+                    style={{ ...styles.input, minHeight: 72, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
                     placeholder="Brief description of this entry…"
-                    value={manualEntryForm.name}
-                    onChange={(e) => setManualEntryForm((p) => ({ ...p, name: e.target.value }))}
+                    value={manualEntryForm.description}
+                    onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
                   />
 
                   <label style={styles.label}>Contact (Vendor / Customer)</label>

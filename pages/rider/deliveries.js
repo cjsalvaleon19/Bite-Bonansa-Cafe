@@ -301,8 +301,7 @@ export default function RiderDeliveries() {
                   date,
                   description: `Sale: ${orderRef}`,
                   debit_account: 'Accounts Payable',
-                  credit_account: 'Sales Revenue',
-                  amount: Math.round(pointsUsed * 100) / 100,
+                  credit_account: 'Revenue',
                   reference_type: 'order',
                   reference: orderRef,
                 });
@@ -314,7 +313,7 @@ export default function RiderDeliveries() {
                   date,
                   description: `Sale: ${orderRef}`,
                   debit_account: paymentMethod.includes('gcash') ? 'Cash in Bank' : 'Cash on Hand',
-                  credit_account: 'Sales Revenue',
+                  credit_account: 'Revenue',
                   amount: cashAmount,
                   reference_type: 'order',
                   reference: orderRef,
