@@ -606,20 +606,45 @@ export default function AdminPage() {
       } else if (finSubTab === 'pl') {
         const dateFrom = fromISO.split('T')[0];
         const dateTo = toISO.split('T')[0];
-        const [{ data: revenueData }, { data: cogsData }, { data: expData }] = await Promise.all([
+        const OPEX_ACCOUNTS = [
+          'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+          'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+          'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+          'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+        ];
+        const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('cash_drawer_transactions').select('amount').in('transaction_type', ['pay-expense', 'pay-bill']).gte('created_at', fromISO).lte('created_at', toISO),
+          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', OPEX_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
-        const opExp = (expData || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-        setFinData({ type: 'pl', revenue, cogs, opExp, grossProfit: revenue - cogs, netProfit: revenue - cogs - opExp });
+        const expByAccount = {};
+        OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        (expAllData || []).forEach((e) => {
+          if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
+        });
+        const opExp = Object.values(expByAccount).reduce((s, v) => s + v, 0);
+        const totalRevenue = revenue + deliveryIncome;
+        setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit: totalRevenue - cogs, expByAccount, opExp, netProfit: totalRevenue - cogs - opExp });
       } else if (finSubTab === 'balance') {
-        const [{ data: allCash }, { data: invList }, { data: rrApproved }] = await Promise.all([
+        const [
+          { data: allCash }, { data: invList }, { data: rrApproved },
+          { data: kitEquipDebit }, { data: kitEquipCredit }, { data: accumDeprData },
+          { data: ownCapCredit }, { data: ownCapDebit }, { data: retEarnCredit }, { data: retEarnDebit },
+        ] = await Promise.all([
           supabase.from('cash_drawer_transactions').select('amount, transaction_type'),
           supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
           supabase.from('receiving_reports').select('total_landed_cost').eq('status', 'approved'),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Kitchen Equipment'),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Kitchen Equipment'),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Accumulated Depreciation'),
+          supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Capital"),
+          supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Capital"),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Retained Earnings'),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Retained Earnings'),
         ]);
         let cashOnHand = 0;
         (allCash || []).forEach((tx) => {
@@ -629,14 +654,28 @@ export default function AdminPage() {
         });
         const invValue = (invList || []).reduce((s, i) => s + (Number(i.current_stock) || 0) * (Number(i.cost_per_unit) || 0), 0);
         const ap = (rrApproved || []).reduce((s, r) => s + (Number(r.total_landed_cost) || 0), 0);
+        const kitchenEquipment = (kitEquipDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+          - (kitEquipCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const accumDepreciation = (accumDeprData || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const ownersCapital = (ownCapCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+          - (ownCapDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const retainedEarnings = (retEarnCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+          - (retEarnDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const totalAssets = cashOnHand + invValue + kitchenEquipment - accumDepreciation;
+        const totalEquity = ownersCapital + retainedEarnings;
         setFinData({
           type: 'balance',
           cashOnHand,
           invValue,
-          totalAssets: cashOnHand + invValue,
+          kitchenEquipment,
+          accumDepreciation,
+          totalAssets,
           ap,
           totalLiabilities: ap,
-          equity: cashOnHand + invValue - ap,
+          ownersCapital,
+          retainedEarnings,
+          totalEquity,
+          equity: totalAssets - ap,
         });
       } else if (finSubTab === 'budget') {
         const { data: expData } = await supabase
@@ -3018,6 +3057,14 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.revenue)}</td>
                       </tr>
                       <tr style={styles.trOdd}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Delivery Income</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.deliveryIncome)}</td>
+                      </tr>
+                      <tr style={{ background: '#2a2a1a' }}>
+                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Revenue</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalRevenue)}</td>
+                      </tr>
+                      <tr style={styles.trOdd}>
                         <td style={styles.td}>Cost of Goods Sold (COGS)</td>
                         <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.cogs)})</td>
                       </tr>
@@ -3025,9 +3072,21 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Gross Profit</td>
                         <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.grossProfit >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.grossProfit)}</td>
                       </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={styles.td}>Operating Expenses</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.opExp)})</td>
+                      <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, fontWeight: 600 }}>Operating Expenses</td>
+                        <td style={styles.td}></td>
+                      </tr>
+                      {finData.expByAccount && Object.entries(finData.expByAccount).map(([acct, amt], idx) => (
+                        <tr key={acct} style={idx % 2 === 0 ? styles.trOdd : styles.trEven}>
+                          <td style={{ ...styles.td, paddingLeft: 24 }}>{acct}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: amt > 0 ? '#f44336' : '#888' }}>
+                            {amt > 0 ? `(${fmt(amt)})` : fmt(0)}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr style={{ background: '#2a1a1a' }}>
+                        <td style={{ ...styles.td, fontWeight: 700, color: '#f44336' }}>Total Operating Expenses</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#f44336' }}>({fmt(finData.opExp)})</td>
                       </tr>
                       <tr style={{ background: '#3a2a0a' }}>
                         <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Net Profit</td>
@@ -3051,18 +3110,36 @@ export default function AdminPage() {
                     </thead>
                     <tbody>
                       <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, fontWeight: 600 }}>Assets</td>
+                        <td style={styles.td}></td>
+                      </tr>
+                      <tr style={styles.trOdd}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Cash on Hand</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.cashOnHand)}</td>
                       </tr>
-                      <tr style={styles.trOdd}>
+                      <tr style={styles.trEven}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Inventory Value</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.invValue)}</td>
+                      </tr>
+                      <tr style={styles.trOdd}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Kitchen Equipment</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.kitchenEquipment)}</td>
+                      </tr>
+                      <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Less: Accumulated Depreciation</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: finData.accumDepreciation > 0 ? '#f44336' : '#888' }}>
+                          {finData.accumDepreciation > 0 ? `(${fmt(finData.accumDepreciation)})` : fmt(0)}
+                        </td>
                       </tr>
                       <tr style={{ background: '#2a2a1a' }}>
                         <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Assets</td>
                         <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalAssets)}</td>
                       </tr>
                       <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, fontWeight: 600 }}>Liabilities</td>
+                        <td style={styles.td}></td>
+                      </tr>
+                      <tr style={styles.trOdd}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Accounts Payable</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ap)}</td>
                       </tr>
@@ -3070,9 +3147,25 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, fontWeight: 700, color: '#f44336' }}>Total Liabilities</td>
                         <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#f44336' }}>{fmt(finData.totalLiabilities)}</td>
                       </tr>
+                      <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, fontWeight: 600 }}>Equity</td>
+                        <td style={styles.td}></td>
+                      </tr>
+                      <tr style={styles.trOdd}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s Capital</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ownersCapital)}</td>
+                      </tr>
+                      <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Retained Earnings</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.retainedEarnings)}</td>
+                      </tr>
                       <tr style={{ background: '#1a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#4caf50' }}>Equity</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#4caf50' }}>{fmt(finData.equity)}</td>
+                        <td style={{ ...styles.td, fontWeight: 700, color: '#4caf50' }}>Total Equity</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#4caf50' }}>{fmt(finData.totalEquity)}</td>
+                      </tr>
+                      <tr style={{ background: '#1a1a2a' }}>
+                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Liabilities &amp; Equity</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalLiabilities + finData.totalEquity)}</td>
                       </tr>
                     </tbody>
                   </table>
