@@ -1243,6 +1243,7 @@ export default function AdminPage() {
           amount: Math.round(totalLC * 100) / 100,
           reference_id: rr.id,
           reference_type: 'receiving_report',
+          name: rr.vendor?.name || '',
         });
         if (jeErr) console.error('[Admin] RR Approval journal entry failed:', jeErr.message);
       }
@@ -1321,6 +1322,7 @@ export default function AdminPage() {
         amount: amt,
         reference_id: rrPayItem.id,
         reference_type: 'rr_payment',
+        name: rrPayItem.vendor?.name || '',
       });
       if (jeErr) console.error('[Admin] RR Payment journal entry failed:', jeErr.message);
 
@@ -3138,7 +3140,7 @@ export default function AdminPage() {
                     <table style={{ ...styles.table, fontSize: 12 }}>
                       <thead>
                         <tr>
-                          {['Date', 'Reference No.', 'Name', 'Particular', 'Debit Account', 'Credit Account', 'Debit (₱)', 'Credit (₱)'].map((h) => (
+                          {['Date', 'Reference No.', 'Name', 'Particular', 'Account Title', 'Debit (₱)', 'Credit (₱)'].map((h) => (
                             <th key={h} style={styles.th}>{h}</th>
                           ))}
                         </tr>
@@ -3153,23 +3155,41 @@ export default function AdminPage() {
                           const nameDisplay = rows[0].name || '—';
                           const groupTotal = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
                           grandTotal += groupTotal;
+                          // Each data row expands to a debit line + a credit line
+                          const displayRows = rows.flatMap((row, ri) => [
+                            { row, ri, isDebit: true },
+                            { row, ri, isDebit: false },
+                          ]);
                           return (
                             <React.Fragment key={key}>
-                              {rows.map((row, ri) => (
-                                <tr key={row.id} style={ri % 2 === 0 ? styles.trEven : styles.trOdd}>
-                                  <td style={styles.td}>{row.date}</td>
-                                  <td style={styles.td}>{ri === 0 ? refDisplay : ''}</td>
-                                  <td style={styles.td}>{ri === 0 ? nameDisplay : ''}</td>
-                                  <td style={styles.td}>{row.description}</td>
-                                  <td style={{ ...styles.td, color: '#4caf50' }}>{row.debit_account}</td>
-                                  <td style={{ ...styles.td, color: '#f44336' }}>{row.credit_account}</td>
-                                  <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(Number(row.amount) || 0)}</td>
-                                  <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(Number(row.amount) || 0)}</td>
+                              {displayRows.map(({ row, ri, isDebit }, di) => (
+                                <tr key={`${row.id}-${isDebit ? 'dr' : 'cr'}`} style={di % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  {/* Date: only on the first debit line of the first data row */}
+                                  <td style={styles.td}>{di === 0 ? row.date : ''}</td>
+                                  {/* Reference: only on the very first line of the group */}
+                                  <td style={styles.td}>{di === 0 ? refDisplay : ''}</td>
+                                  {/* Name: only on the very first line of the group */}
+                                  <td style={styles.td}>{di === 0 ? nameDisplay : ''}</td>
+                                  {/* Particular: only on debit line of each data row */}
+                                  <td style={styles.td}>{isDebit ? row.description : ''}</td>
+                                  {/* Account Title: Dr. flush-left, Cr. indented */}
+                                  {isDebit
+                                    ? <td style={{ ...styles.td, color: '#4caf50' }}>Dr. {row.debit_account}</td>
+                                    : <td style={{ ...styles.td, color: '#f44336', paddingLeft: 24 }}>Cr. {row.credit_account}</td>
+                                  }
+                                  {/* Debit (₱): amount only on debit line */}
+                                  <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>
+                                    {isDebit ? fmt(Number(row.amount) || 0) : '—'}
+                                  </td>
+                                  {/* Credit (₱): amount only on credit line */}
+                                  <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>
+                                    {isDebit ? '—' : fmt(Number(row.amount) || 0)}
+                                  </td>
                                 </tr>
                               ))}
                               {/* Group subtotal */}
                               <tr style={{ background: '#1e1e1e', borderTop: '1px solid #333' }}>
-                                <td colSpan={6} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontWeight: 600, fontSize: 11 }}>Subtotal ({refDisplay}):</td>
+                                <td colSpan={5} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontWeight: 600, fontSize: 11 }}>Subtotal ({refDisplay}):</td>
                                 <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(groupTotal)}</td>
                                 <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(groupTotal)}</td>
                               </tr>
@@ -3178,7 +3198,7 @@ export default function AdminPage() {
                         })}
                         {/* Grand total */}
                         <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
-                          <td colSpan={6} style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>GRAND TOTAL:</td>
+                          <td colSpan={5} style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>GRAND TOTAL:</td>
                           <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandTotal)}</td>
                           <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(grandTotal)}</td>
                         </tr>

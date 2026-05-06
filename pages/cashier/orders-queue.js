@@ -128,6 +128,7 @@ export default function OrdersQueue() {
       const pointsUsed = Number(order.points_used) || 0;
       const paymentMethod = (order.payment_method || 'cash').toLowerCase();
       const orderRef = order.order_number || order.id;
+      const customerName = order.customer_name || 'Walk-in';
       const entries = [];
 
       // Loyalty-points portion → reduce Accounts Payable
@@ -140,6 +141,7 @@ export default function OrdersQueue() {
           amount: Math.round(pointsUsed * 100) / 100,
           reference_type: 'order',
           reference: orderRef,
+          name: customerName,
         });
       }
 
@@ -154,6 +156,7 @@ export default function OrdersQueue() {
           amount: cashAmount,
           reference_type: 'order',
           reference: orderRef,
+          name: customerName,
         });
       }
 

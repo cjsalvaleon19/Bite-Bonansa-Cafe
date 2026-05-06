@@ -52,7 +52,7 @@ CREATE POLICY "journal_entries_cashier_insert"
 --   points_used > 0 and the payment_method contains 'points'.
 
 -- Cash / GCash portion (one row per completed order)
-INSERT INTO journal_entries (date, description, debit_account, credit_account, amount, reference_type, reference)
+INSERT INTO journal_entries (date, description, debit_account, credit_account, amount, reference_type, reference, name)
 SELECT
   (o.created_at AT TIME ZONE 'UTC')::date                                    AS date,
   'Sale: ' || COALESCE(o.order_number, o.id::text)                           AS description,
@@ -72,7 +72,8 @@ SELECT
     ) * 100
   ) / 100                                                                     AS amount,
   'order'                                                                     AS reference_type,
-  COALESCE(o.order_number, o.id::text)                                       AS reference
+  COALESCE(o.order_number, o.id::text)                                       AS reference,
+  COALESCE(NULLIF(o.customer_name, ''), 'Walk-in')                           AS name
 FROM orders o
 WHERE o.status = 'order_delivered'
   AND COALESCE(o.total_amount::numeric, 0) > 0
@@ -84,7 +85,7 @@ WHERE o.status = 'order_delivered'
   );
 
 -- Points portion (one row per order that used loyalty points)
-INSERT INTO journal_entries (date, description, debit_account, credit_account, amount, reference_type, reference)
+INSERT INTO journal_entries (date, description, debit_account, credit_account, amount, reference_type, reference, name)
 SELECT
   (o.created_at AT TIME ZONE 'UTC')::date                                    AS date,
   'Sale: ' || COALESCE(o.order_number, o.id::text)                           AS description,
@@ -92,7 +93,8 @@ SELECT
   'Sales Revenue'                                                             AS credit_account,
   ROUND(COALESCE(o.points_used::numeric, 0) * 100) / 100                    AS amount,
   'order'                                                                     AS reference_type,
-  COALESCE(o.order_number, o.id::text)                                       AS reference
+  COALESCE(o.order_number, o.id::text)                                       AS reference,
+  COALESCE(NULLIF(o.customer_name, ''), 'Walk-in')                           AS name
 FROM orders o
 WHERE o.status = 'order_delivered'
   AND LOWER(COALESCE(o.payment_method, '')) LIKE '%points%'
@@ -107,7 +109,7 @@ WHERE o.status = 'order_delivered'
 -- ── 4. Back-fill RR Approval journal entries ──────────────────────────────────
 --   Logic mirrors approveRR() in pages/admin/index.js:
 --     Debit "Inventory" / Credit "Accounts Payable"
-INSERT INTO journal_entries (date, description, debit_account, credit_account, amount, reference_id, reference_type)
+INSERT INTO journal_entries (date, description, debit_account, credit_account, amount, reference_id, reference_type, name)
 SELECT
   rr.date::date                                                               AS date,
   'RR Approval: ' || rr.rr_number                                            AS description,
@@ -115,8 +117,10 @@ SELECT
   'Accounts Payable'                                                          AS credit_account,
   ROUND(COALESCE(rr.total_landed_cost::numeric, 0) * 100) / 100              AS amount,
   rr.id                                                                       AS reference_id,
-  'receiving_report'                                                          AS reference_type
+  'receiving_report'                                                          AS reference_type,
+  COALESCE(v.name, '')                                                        AS name
 FROM receiving_reports rr
+LEFT JOIN vendors v ON v.id = rr.vendor_id
 WHERE rr.status IN ('approved', 'paid')
   AND COALESCE(rr.total_landed_cost::numeric, 0) > 0
   AND NOT EXISTS (
@@ -128,7 +132,7 @@ WHERE rr.status IN ('approved', 'paid')
 -- ── 5. Back-fill RR Payment journal entries ───────────────────────────────────
 --   Logic mirrors payRR() in pages/admin/index.js:
 --     Debit "Accounts Payable" / Credit "Cash on Hand" | "Cash in Bank" | "Owner's Draw"
-INSERT INTO journal_entries (date, description, debit_account, credit_account, amount, reference_id, reference_type)
+INSERT INTO journal_entries (date, description, debit_account, credit_account, amount, reference_id, reference_type, name)
 SELECT
   p.payment_date::date                                                                                AS date,
   'RR Payment: ' || rr.rr_number || ' (' || REPLACE(p.payment_mode, '_', ' ') || ')'               AS description,
@@ -140,9 +144,11 @@ SELECT
   END                                                                                                 AS credit_account,
   ROUND(p.amount::numeric * 100) / 100                                                               AS amount,
   p.receiving_report_id                                                                               AS reference_id,
-  'rr_payment'                                                                                        AS reference_type
+  'rr_payment'                                                                                        AS reference_type,
+  COALESCE(v.name, '')                                                                                AS name
 FROM rr_payments p
 JOIN receiving_reports rr ON rr.id = p.receiving_report_id
+LEFT JOIN vendors v ON v.id = rr.vendor_id
 WHERE NOT EXISTS (
   SELECT 1 FROM journal_entries je
   WHERE je.reference_type = 'rr_payment'
