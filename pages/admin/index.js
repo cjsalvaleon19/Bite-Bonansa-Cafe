@@ -2029,16 +2029,13 @@ export default function AdminPage() {
 
                       return (
                         <div style={styles.formGrid}>
-                          {/* Selling Price (locked to menu) */}
-                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (₱) — from Menu</label>
-                          <div>
-                            <input
-                              style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
-                              readOnly
-                              value={fmt(sellingPrice)}
-                            />
-                            <span style={styles.helperText}>Auto-filled from cashier menu price. Use 🔍 search to change.</span>
-                          </div>
+                          {/* Total Raw Materials (sum of inventory line totals) */}
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>Total Raw Materials (₱)</label>
+                          <input
+                            style={{ ...styles.input, background: '#111', color: '#4caf50', fontWeight: 700 }}
+                            readOnly
+                            value={fmt(lineSubtotal)}
+                          />
 
                           <label style={styles.label}>Labor Cost (₱)</label>
                           <input style={styles.input} type="number" value={costingForm.labor_cost}
@@ -2110,14 +2107,6 @@ export default function AdminPage() {
                             </div>
                           </div>
 
-                          {/* Total Raw Materials (sum of inventory line totals) */}
-                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>Total Raw Materials (₱)</label>
-                          <input
-                            style={{ ...styles.input, background: '#111', color: '#4caf50', fontWeight: 700 }}
-                            readOnly
-                            value={fmt(lineSubtotal)}
-                          />
-
                           {/* Total Estimated COGS (auto) */}
                           <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Total Estimated COGS (auto)</label>
                           <input
@@ -2145,6 +2134,17 @@ export default function AdminPage() {
                               readOnly
                               value={`${cmPct.toFixed(2)}%`}
                             />
+                          </div>
+
+                          {/* Selling Price (locked to menu) */}
+                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (₱) — from Menu</label>
+                          <div>
+                            <input
+                              style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
+                              readOnly
+                              value={fmt(sellingPrice)}
+                            />
+                            <span style={styles.helperText}>Auto-filled from cashier menu price. Use 🔍 search to change.</span>
                           </div>
                         </div>
                       );
