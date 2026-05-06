@@ -32,6 +32,7 @@ export default function AdminPage() {
   const [error, setError] = useState(null);
 
   // ── Dashboard state ───────────────────────────────────────────────────────
+  const [dashSubTab, setDashSubTab] = useState('overview');
   const [salesTrend, setSalesTrend] = useState([]);
   const [cashFlowData, setCashFlowData] = useState([]);
   const [cashFlowSummary, setCashFlowSummary] = useState({ inflow: 0, outflow: 0 });
@@ -39,6 +40,8 @@ export default function AdminPage() {
   const [saleableItemsThisMonth, setSaleableItemsThisMonth] = useState([]);
   const [saleableItemsLastMonth, setSaleableItemsLastMonth] = useState([]);
   const [expensesBreakdown, setExpensesBreakdown] = useState([]);
+  const [lowStockItems, setLowStockItems] = useState([]);
+  const [stockAlertLoading, setStockAlertLoading] = useState(false);
 
   // ── Inventory state ───────────────────────────────────────────────────────
   const [inventoryItems, setInventoryItems] = useState([]);
@@ -194,6 +197,11 @@ export default function AdminPage() {
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [contactPickerQuery, setContactPickerQuery] = useState('');
   const [contactList, setContactList] = useState([]);
+  // New Contact enrollment form (inside contact picker)
+  const [newContactMode, setNewContactMode] = useState(false);
+  const [newContactForm, setNewContactForm] = useState({ name: '', address: '', contact: '', tin: '' });
+  const [newContactSaving, setNewContactSaving] = useState(false);
+  const [newContactError, setNewContactError] = useState('');
 
   // ── Financial Reports state ───────────────────────────────────────────────
   const [finSubTab, setFinSubTab] = useState('cashflow');
@@ -206,6 +214,39 @@ export default function AdminPage() {
   const [finDateFrom, setFinDateFrom] = useState(thirtyAgoStr);
   const [finDateTo, setFinDateTo] = useState(todayStr);
   const [finData, setFinData] = useState(null);
+  // Editable budget values (persisted in localStorage)
+  const [budgetValues, setBudgetValues] = useState(() => {
+    try {
+      const stored = typeof window !== 'undefined' && localStorage.getItem('bbc_budget_values');
+      return stored ? JSON.parse(stored) : {};
+    } catch { return {}; }
+  });
+
+  // ── Bills state ───────────────────────────────────────────────────────────
+  const [billsList, setBillsList] = useState([]);
+  const [billDialogOpen, setBillDialogOpen] = useState(false);
+  const [billEditItem, setBillEditItem] = useState(null);
+  const [billNumber, setBillNumber] = useState('');
+  const [billForm, setBillForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    contact: '',
+    description: '',
+  });
+  const [billLines, setBillLines] = useState([
+    { description: '', account_title: '', debit_amount: '', credit_amount: '' },
+  ]);
+  const [billSaving, setBillSaving] = useState(false);
+  const [billError, setBillError] = useState('');
+  const [billSuccess, setBillSuccess] = useState('');
+  const [billSearch, setBillSearch] = useState('');
+  const [billDeleteConfirm, setBillDeleteConfirm] = useState(null);
+  const [billContactPickerOpen, setBillContactPickerOpen] = useState(false);
+  const [billContactQuery, setBillContactQuery] = useState('');
+  const [billContactList, setBillContactList] = useState([]);
+  const [billAcctPickerIdx, setBillAcctPickerIdx] = useState(null);
+  const [billAcctQuery, setBillAcctQuery] = useState('');
+  const [billViewItem, setBillViewItem] = useState(null);
+  const [billViewLines, setBillViewLines] = useState([]);
 
   // ── My Profile state ──────────────────────────────────────────────────────
   const [profileData, setProfileData] = useState(null);
@@ -221,71 +262,80 @@ export default function AdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const since = new Date();
-      since.setDate(since.getDate() - 28);
-      const sinceMs = since.getTime();
+      // ── Compute 4 Mon–Sun weeks ending with current week ──────────────────
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0=Sun … 6=Sat
+      const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const thisMonday = new Date(now);
+      thisMonday.setDate(now.getDate() + diffToMon);
+      thisMonday.setHours(0, 0, 0, 0);
 
+      // weekStarts[0] = oldest (3 weeks back), weekStarts[3] = current week
+      const weekStarts = Array.from({ length: 4 }, (_, i) => {
+        const d = new Date(thisMonday);
+        d.setDate(thisMonday.getDate() - (3 - i) * 7);
+        return d;
+      });
+      const sinceISO = weekStarts[0].toISOString();
+      const sinceDateStr = weekStarts[0].toISOString().split('T')[0];
+
+      const fmtWeekLabel = (start) => {
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+        return `${fmt(start)}–${fmt(end)}`;
+      };
+
+      const getWeekIdx = (dateVal) => {
+        const d = typeof dateVal === 'string' ? new Date(dateVal.includes('T') ? dateVal : dateVal + 'T00:00:00') : new Date(dateVal);
+        for (let i = 3; i >= 0; i--) {
+          if (d >= weekStarts[i]) return i;
+        }
+        return -1;
+      };
+
+      // ── Sales Trend (from orders) ─────────────────────────────────────────
       const { data: orders } = await supabase
         .from('orders')
         .select('total, created_at')
-        .gte('created_at', since.toISOString());
+        .gte('created_at', sinceISO);
 
       if (orders) {
         const weeks = [0, 0, 0, 0];
         orders.forEach((o) => {
-          const diffDays = Math.floor((new Date(o.created_at).getTime() - sinceMs) / 86400000);
-          const weekIdx = Math.min(Math.floor(diffDays / 7), 3);
-          weeks[weekIdx] += Number(o.total) || 0;
+          const idx = getWeekIdx(o.created_at);
+          if (idx >= 0) weeks[idx] += Number(o.total) || 0;
         });
-        const fmtRange = (idx) => {
-          const start = new Date(sinceMs + idx * 7 * 86400000);
-          const end = new Date(sinceMs + (idx + 1) * 7 * 86400000 - 86400000);
-          const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
-          return `${fmt(start)}–${fmt(end)}`;
-        };
-        setSalesTrend([
-          { week: fmtRange(0), sales: weeks[0] },
-          { week: fmtRange(1), sales: weeks[1] },
-          { week: fmtRange(2), sales: weeks[2] },
-          { week: fmtRange(3), sales: weeks[3] },
-        ]);
+        setSalesTrend(weekStarts.map((start, i) => ({ week: fmtWeekLabel(start), sales: weeks[i] })));
       }
 
-      const { data: cashTx } = await supabase
-        .from('cash_drawer_transactions')
-        .select('amount, transaction_type, created_at')
-        .gte('created_at', since.toISOString());
+      // ── Cash Flow (from Journal Entries – Cash on Hand + Cash in Bank) ─────
+      const CASH_ACCOUNTS = ['Cash on Hand', 'Cash in Bank'];
+      const { data: cashJE } = await supabase
+        .from('journal_entries')
+        .select('amount, debit_account, credit_account, date')
+        .gte('date', sinceDateStr);
 
-      if (cashTx) {
-        const weeks = [
-          { week: 'Week 1', inflow: 0, outflow: 0 },
-          { week: 'Week 2', inflow: 0, outflow: 0 },
-          { week: 'Week 3', inflow: 0, outflow: 0 },
-          { week: 'Week 4', inflow: 0, outflow: 0 },
-        ];
-        let totalIn = 0;
-        let totalOut = 0;
-        cashTx.forEach((tx) => {
-          const diffDays = Math.floor((new Date(tx.created_at).getTime() - sinceMs) / 86400000);
-          const weekIdx = Math.min(Math.floor(diffDays / 7), 3);
-          const amt = Number(tx.amount) || 0;
-          if (tx.transaction_type === 'cash-in') {
-            weeks[weekIdx].inflow += amt;
-            totalIn += amt;
-          } else if (['cash-out', 'pay-bill', 'pay-expense'].includes(tx.transaction_type)) {
-            weeks[weekIdx].outflow += amt;
-            totalOut += amt;
-          }
+      if (cashJE) {
+        const weeks = weekStarts.map((start, i) => ({ week: fmtWeekLabel(start), inflow: 0, outflow: 0 }));
+        cashJE.forEach((je) => {
+          const idx = getWeekIdx(je.date);
+          if (idx < 0) return;
+          const amt = Number(je.amount) || 0;
+          if (CASH_ACCOUNTS.includes(je.debit_account)) weeks[idx].inflow += amt;
+          if (CASH_ACCOUNTS.includes(je.credit_account)) weeks[idx].outflow += amt;
         });
         setCashFlowData(weeks);
+        const totalIn = weeks.reduce((s, w) => s + w.inflow, 0);
+        const totalOut = weeks.reduce((s, w) => s + w.outflow, 0);
         setCashFlowSummary({ inflow: totalIn, outflow: totalOut });
       }
 
-      // Saleable items: ranked by quantity sold this month vs last month
-      const now = new Date();
-      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      // ── Saleable items: ranked by quantity sold this month vs last month ──
+      const now2 = new Date();
+      const thisMonthStart = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString();
+      const lastMonthStart = new Date(now2.getFullYear(), now2.getMonth() - 1, 1).toISOString();
+      const lastMonthEnd = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString();
 
       const [{ data: tmItems }, { data: lmItems }] = await Promise.all([
         supabase
@@ -523,6 +573,230 @@ export default function AdminPage() {
     }
   }, [invDateFrom, invDateTo]);
 
+  // ── Fetch: Low & Out of Stock Items ──────────────────────────────────────
+  const fetchLowStockItems = useCallback(async () => {
+    if (!supabase) return;
+    setStockAlertLoading(true);
+    try {
+      const { data: items, error: err } = await supabase
+        .from('admin_inventory_items')
+        .select('*')
+        .eq('is_archived', false)
+        .order('code');
+      if (err) throw err;
+      const alerts = (items || []).filter((item) => {
+        const stock = Number(item.current_stock) || 0;
+        const minStock = Number(item.min_stock) || 0;
+        return stock <= minStock;
+      });
+      // For each alert item, try to find the last vendor that supplied it
+      if (alerts.length > 0) {
+        const itemIds = alerts.map((i) => i.id);
+        // Two-step: get RR IDs that have these items, then join with vendor
+        const { data: rrItemsData } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, receiving_report_id')
+          .in('inventory_item_id', itemIds);
+        const rrIds = [...new Set((rrItemsData || []).map((r) => r.receiving_report_id))];
+        let vendorMap = {};
+        if (rrIds.length > 0) {
+          const { data: rrs } = await supabase
+            .from('receiving_reports')
+            .select('id, vendor_id, vendor:vendors(id, name)')
+            .in('id', rrIds)
+            .order('date', { ascending: false });
+          // Build inventory_item_id -> last vendor
+          (rrItemsData || []).forEach((ri) => {
+            if (vendorMap[ri.inventory_item_id]) return; // already set (most recent first)
+            const rr = (rrs || []).find((r) => r.id === ri.receiving_report_id);
+            if (rr?.vendor) {
+              vendorMap[ri.inventory_item_id] = { id: rr.vendor_id, name: rr.vendor.name };
+            }
+          });
+        }
+        setLowStockItems(alerts.map((item) => ({
+          ...item,
+          lastVendor: vendorMap[item.id] || null,
+          status: Number(item.current_stock) <= 0 ? 'Out of Stock' : 'Low Stock',
+        })));
+      } else {
+        setLowStockItems([]);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setStockAlertLoading(false);
+    }
+  }, []);
+
+  // ── Fetch: Bills ──────────────────────────────────────────────────────────
+  const fetchBills = useCallback(async () => {
+    if (!supabase) return;
+    setLoading(true);
+    try {
+      const { data, error: err } = await supabase
+        .from('bills')
+        .select('*')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (err) throw err;
+      setBillsList(data || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // ── Bills: Generate Bill Number ───────────────────────────────────────────
+  const generateBillNumber = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.rpc('generate_bill_number');
+      if (!error && data) {
+        setBillNumber(data);
+        return;
+      }
+      // Fallback: manual generation
+      const yy = new Date().getFullYear().toString().slice(-2);
+      const prefix = `Bill#-${yy}`;
+      const { data: last } = await supabase
+        .from('bills')
+        .select('bill_number')
+        .like('bill_number', `${prefix}%`)
+        .order('bill_number', { ascending: false })
+        .limit(1);
+      let seq = 1;
+      if (last && last.length > 0 && last[0].bill_number) {
+        const n = parseInt(last[0].bill_number.slice(prefix.length), 10);
+        if (!isNaN(n)) seq = n + 1;
+      }
+      setBillNumber(`${prefix}${String(seq).padStart(6, '0')}`);
+    } catch {
+      setBillNumber('');
+    }
+  }, []);
+
+  // ── Bills: Save Bill ──────────────────────────────────────────────────────
+  const saveBill = useCallback(async () => {
+    if (!supabase) return;
+    setBillSaving(true);
+    setBillError('');
+    setBillSuccess('');
+    try {
+      if (!billForm.date) throw new Error('Please enter a date.');
+      const validLines = billLines.filter((l) => l.account_title || l.debit_amount || l.credit_amount);
+      if (validLines.length === 0) throw new Error('Please add at least one line item.');
+      const totalDebit = validLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
+      const totalCredit = validLines.reduce((s, l) => s + (Number(l.credit_amount) || 0), 0);
+
+      const payload = {
+        bill_number: billNumber,
+        contact: billForm.contact || null,
+        date: billForm.date,
+        description: billForm.description || null,
+        total_debit: totalDebit,
+        total_credit: totalCredit,
+        status: 'draft',
+        updated_at: new Date().toISOString(),
+      };
+
+      let billId = billEditItem?.id;
+      if (billId) {
+        await supabase.from('bills').update(payload).eq('id', billId);
+        await supabase.from('bill_items').delete().eq('bill_id', billId);
+      } else {
+        const { data: inserted, error: insErr } = await supabase
+          .from('bills')
+          .insert({ ...payload, created_at: new Date().toISOString() })
+          .select()
+          .single();
+        if (insErr) throw insErr;
+        billId = inserted.id;
+      }
+
+      if (validLines.length > 0) {
+        const lineRows = validLines.map((l) => ({
+          bill_id: billId,
+          description: l.description || null,
+          account_title: l.account_title || null,
+          debit_amount: Number(l.debit_amount) || 0,
+          credit_amount: Number(l.credit_amount) || 0,
+        }));
+        const { error: lineErr } = await supabase.from('bill_items').insert(lineRows);
+        if (lineErr) throw lineErr;
+      }
+
+      setBillSuccess(`Bill ${billNumber} saved successfully.`);
+      setBillDialogOpen(false);
+      await fetchBills();
+      await generateBillNumber();
+    } catch (err) {
+      setBillError(err.message);
+    } finally {
+      setBillSaving(false);
+    }
+  }, [supabase, billForm, billLines, billNumber, billEditItem, fetchBills, generateBillNumber]);
+
+  // ── Bills: Open dialog ────────────────────────────────────────────────────
+  const openBillDialog = async (item = null) => {
+    setBillEditItem(item);
+    setBillError('');
+    setBillSuccess('');
+    if (item) {
+      setBillForm({
+        date: item.date || new Date().toISOString().split('T')[0],
+        contact: item.contact || '',
+        description: item.description || '',
+      });
+      setBillNumber(item.bill_number || '');
+      if (supabase) {
+        const { data: lines } = await supabase
+          .from('bill_items')
+          .select('*')
+          .eq('bill_id', item.id);
+        setBillLines((lines || []).map((l) => ({
+          description: l.description || '',
+          account_title: l.account_title || '',
+          debit_amount: String(l.debit_amount || ''),
+          credit_amount: String(l.credit_amount || ''),
+        })));
+      }
+    } else {
+      setBillForm({ date: new Date().toISOString().split('T')[0], contact: '', description: '' });
+      setBillLines([{ description: '', account_title: '', debit_amount: '', credit_amount: '' }]);
+      await generateBillNumber();
+    }
+    setBillDialogOpen(true);
+  };
+
+  // ── Bills: View bill ──────────────────────────────────────────────────────
+  const viewBill = async (item) => {
+    setBillViewItem(item);
+    if (supabase) {
+      const { data: lines } = await supabase.from('bill_items').select('*').eq('bill_id', item.id);
+      setBillViewLines(lines || []);
+    }
+  };
+
+  // ── Bills: Fetch contacts for bills ──────────────────────────────────────
+  const fetchBillContacts = useCallback(async (q) => {
+    if (!supabase) return;
+    try {
+      const [{ data: vends }, { data: usrs }] = await Promise.all([
+        supabase.from('vendors').select('id, name').ilike('name', `%${q}%`).limit(10),
+        supabase.from('users').select('id, full_name, role').ilike('full_name', `%${q}%`).limit(10),
+      ]);
+      const combined = [
+        ...(vends || []).map((v) => ({ id: v.id, name: v.name, type: 'Vendor' })),
+        ...(usrs || []).map((u) => ({ id: u.id, name: u.full_name, type: u.role })),
+      ];
+      setBillContactList(combined);
+    } catch {
+      setBillContactList([]);
+    }
+  }, []);
+
   // ── Fetch: Price Costing ──────────────────────────────────────────────────
   const fetchCosting = useCallback(async () => {
     if (!supabase) return;
@@ -634,6 +908,7 @@ export default function AdminPage() {
           { data: allCash }, { data: invList }, { data: rrApproved },
           { data: kitEquipDebit }, { data: kitEquipCredit }, { data: accumDeprData },
           { data: ownCapCredit }, { data: ownCapDebit }, { data: retEarnCredit }, { data: retEarnDebit },
+          { data: ownDrawDebit }, { data: ownDrawCredit },
         ] = await Promise.all([
           supabase.from('cash_drawer_transactions').select('amount, transaction_type'),
           supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
@@ -645,6 +920,8 @@ export default function AdminPage() {
           supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Capital"),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Retained Earnings'),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Retained Earnings'),
+          supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Draw"),
+          supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Draw"),
         ]);
         let cashOnHand = 0;
         (allCash || []).forEach((tx) => {
@@ -661,8 +938,10 @@ export default function AdminPage() {
           - (ownCapDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
         const retainedEarnings = (retEarnCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
           - (retEarnDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const ownersDraw = (ownDrawDebit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+          - (ownDrawCredit || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
         const totalAssets = cashOnHand + invValue + kitchenEquipment - accumDepreciation;
-        const totalEquity = ownersCapital + retainedEarnings;
+        const totalEquity = ownersCapital - ownersDraw + retainedEarnings;
         setFinData({
           type: 'balance',
           cashOnHand,
@@ -673,27 +952,37 @@ export default function AdminPage() {
           ap,
           totalLiabilities: ap,
           ownersCapital,
+          ownersDraw,
           retainedEarnings,
           totalEquity,
           equity: totalAssets - ap,
         });
       } else if (finSubTab === 'budget') {
-        const { data: expData } = await supabase
-          .from('cash_drawer_transactions')
-          .select('amount, bill_type, category, description')
-          .in('transaction_type', ['pay-expense', 'pay-bill'])
-          .gte('created_at', fromISO)
-          .lte('created_at', toISO);
-        const cats = { Payroll: 0, Utilities: 0, Rent: 0, Cost: 0, Others: 0 };
-        (expData || []).forEach((e) => {
-          const amt = Number(e.amount) || 0;
-          if (e.bill_type === 'payroll' || e.category === '5100') cats.Payroll += amt;
-          else if (e.bill_type === 'utilities' || e.category === '5200') cats.Utilities += amt;
-          else if (e.category === 'rent' || (e.description || '').toLowerCase().includes('rent')) cats.Rent += amt;
-          else if (e.category === '5900') cats.Cost += amt;
-          else cats.Others += amt;
+        const dateFrom = fromISO.split('T')[0];
+        const dateTo = toISO.split('T')[0];
+        const OPEX_ACCOUNTS = [
+          'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+          'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+          'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+          'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+        ];
+        const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
+          supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', OPEX_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+        ]);
+        const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
+        const expByAccount = {};
+        OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        (expAllData || []).forEach((e) => {
+          if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
         });
-        setFinData({ type: 'budget', cats });
+        const opExp = Object.values(expByAccount).reduce((s, v) => s + v, 0);
+        const totalRevenue = revenue + deliveryIncome;
+        setFinData({ type: 'budget', revenue, deliveryIncome, totalRevenue, cogs, grossProfit: totalRevenue - cogs, expByAccount, opExp, netProfit: totalRevenue - cogs - opExp });
       } else if (finSubTab === 'tax') {
         const { data: ordersData } = await supabase
           .from('orders')
@@ -834,6 +1123,35 @@ export default function AdminPage() {
     }
   }, []);
 
+  // ── Save New Contact (vendor) from picker ──────────────────────────────────
+  const saveNewContact = useCallback(async () => {
+    if (!supabase) return;
+    setNewContactSaving(true);
+    setNewContactError('');
+    try {
+      if (!newContactForm.name.trim()) throw new Error('Contact name is required.');
+      const { data: inserted, error: err } = await supabase
+        .from('vendors')
+        .insert({
+          name: newContactForm.name.trim(),
+          address: newContactForm.address || null,
+          contact_number: newContactForm.contact || null,
+          tin: newContactForm.tin || null,
+        })
+        .select()
+        .single();
+      if (err) throw err;
+      setManualEntryForm((p) => ({ ...p, name: inserted.name }));
+      setNewContactMode(false);
+      setNewContactForm({ name: '', address: '', contact: '', tin: '' });
+      setContactPickerOpen(false);
+    } catch (err) {
+      setNewContactError(err.message);
+    } finally {
+      setNewContactSaving(false);
+    }
+  }, [supabase, newContactForm]);
+
   // ── Save Manual Entry ─────────────────────────────────────────────────────
   const saveManualEntry = useCallback(async () => {
     if (!supabase) return;
@@ -882,7 +1200,12 @@ export default function AdminPage() {
     else if (activeTab === 'profile') fetchProfile();
     else if (activeTab === 'journal') fetchJournal();
     else if (activeTab === 'manual') { setManualSpecialNote(''); generateManualEntryNumber(); }
-  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber]);
+    else if (activeTab === 'bills') { fetchBills(); generateBillNumber(); }
+  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber, fetchBills, generateBillNumber]);
+
+  useEffect(() => {
+    if (activeTab === 'dashboard' && dashSubTab === 'stock-alerts') fetchLowStockItems();
+  }, [activeTab, dashSubTab, fetchLowStockItems]);
 
   useEffect(() => {
     if (activeTab === 'financial') fetchFinancial();
@@ -919,6 +1242,7 @@ export default function AdminPage() {
       { key: 'financial', label: '📈 Financial Reports' },
       { key: 'journal', label: '📒 Journal Entries' },
       { key: 'manual', label: '✏️ Manual Entry' },
+      { key: 'bills', label: '🧾 Bills' },
       { key: 'profile', label: '👤 My Profile' },
     ],
     [],
@@ -1621,136 +1945,267 @@ export default function AdminPage() {
           {/* ──────────────── DASHBOARD ──────────────── */}
           {activeTab === 'dashboard' && (
             <div>
-              <h1 style={styles.pageTitle}>Dashboard</h1>
-              {loading && <p style={styles.loadingText}>Loading…</p>}
-              <div style={styles.dashGrid}>
-                {/* Widget 1.1 – Sales Trend */}
-                <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Monthly Sales Trend (4 Weeks)</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={salesTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                      <XAxis dataKey="week" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 12 }} />
-                      <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 12 }} />
-                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} />
-                      <Bar dataKey="sales" fill="#ffc107" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Widget 1.2 – Cash Flow */}
-                <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Cash Flow Report (Weekly)</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={cashFlowData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                      <XAxis dataKey="week" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 12 }} />
-                      <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 12 }} />
-                      <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} />
-                      <Legend wrapperStyle={{ color: '#ccc' }} />
-                      <Bar dataKey="inflow" fill="#4caf50" name="Inflow" />
-                      <Bar dataKey="outflow" fill="#f44336" name="Outflow" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                  {(() => {
-                    const total = cashFlowSummary.inflow + cashFlowSummary.outflow;
-                    const inPct = total > 0 ? ((cashFlowSummary.inflow / total) * 100).toFixed(1) : 0;
-                    const outPct = total > 0 ? ((cashFlowSummary.outflow / total) * 100).toFixed(1) : 0;
-                    return (
-                      <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 13 }}>
-                        <span style={{ color: '#4caf50' }}>Inflow: {inPct}%</span>
-                        <span style={{ color: '#f44336' }}>Outflow: {outPct}%</span>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Widget 1.3 – Top Selling Items */}
-                <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Top Selling Items</h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <div>
-                      <p style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>This Month</p>
-                      <table style={styles.table}>
-                        <thead>
-                          <tr>
-                            <th style={styles.th}>#</th>
-                            <th style={styles.th}>Item</th>
-                            <th style={styles.th}>Qty</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {saleableItemsThisMonth.map((item, idx) => (
-                            <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                              <td style={styles.td}>{idx + 1}</td>
-                              <td style={styles.td}>{item.name}</td>
-                              <td style={styles.td}>{item.qty}</td>
-                            </tr>
-                          ))}
-                          {saleableItemsThisMonth.length === 0 && (
-                            <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No data</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div>
-                      <p style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>Last Month</p>
-                      <table style={styles.table}>
-                        <thead>
-                          <tr>
-                            <th style={styles.th}>#</th>
-                            <th style={styles.th}>Item</th>
-                            <th style={styles.th}>Qty</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {saleableItemsLastMonth.map((item, idx) => (
-                            <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                              <td style={styles.td}>{idx + 1}</td>
-                              <td style={styles.td}>{item.name}</td>
-                              <td style={styles.td}>{item.qty}</td>
-                            </tr>
-                          ))}
-                          {saleableItemsLastMonth.length === 0 && (
-                            <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No data</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Widget 1.4 – Expenses Breakdown */}
-                <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Monthly Expenses Breakdown</h3>
-                  {expensesBreakdown.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie
-                          data={expensesBreakdown}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          label={({ name, pct }) => `${name} ${pct}%`}
-                          labelLine={{ stroke: '#555' }}
-                        >
-                          {expensesBreakdown.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={PIE_COLORS[entry.name] || '#999'} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }}
-                          formatter={(val) => fmt(val)}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <p style={{ color: '#666', textAlign: 'center', marginTop: 40 }}>No expense data</p>
-                  )}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <h1 style={styles.pageTitle}>Dashboard</h1>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[{ key: 'overview', label: '📊 Overview' }, { key: 'stock-alerts', label: '⚠️ Stock Alerts' }].map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => setDashSubTab(t.key)}
+                      style={{
+                        padding: '7px 16px', borderRadius: 20, cursor: 'pointer', fontSize: 12,
+                        fontFamily: 'Poppins, sans-serif',
+                        border: `1px solid ${dashSubTab === t.key ? '#ffc107' : '#444'}`,
+                        background: dashSubTab === t.key ? '#ffc107' : 'transparent',
+                        color: dashSubTab === t.key ? '#000' : '#ccc',
+                        fontWeight: dashSubTab === t.key ? 700 : 400,
+                      }}
+                    >{t.label}</button>
+                  ))}
                 </div>
               </div>
+
+              {/* ── Overview sub-tab ── */}
+              {dashSubTab === 'overview' && (
+                <>
+                  {loading && <p style={styles.loadingText}>Loading…</p>}
+                  <div style={styles.dashGrid}>
+                    {/* Widget 1.1 – Sales Trend (Mon–Sun weekly dates) */}
+                    <div style={styles.card}>
+                      <h3 style={styles.cardTitle}>Monthly Sales Trend (Mon–Sun Weekly)</h3>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={salesTrend}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                          <XAxis dataKey="week" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                          <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                          <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} formatter={(v) => fmt(v)} />
+                          <Bar dataKey="sales" fill="#ffc107" name="Sales" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      <p style={{ fontSize: 11, color: '#666', marginTop: 4 }}>Week labels = Mon–Sun date range</p>
+                    </div>
+
+                    {/* Widget 1.2 – Cash Flow (from Journal Entries, Mon–Sun weekly) */}
+                    <div style={styles.card}>
+                      <h3 style={styles.cardTitle}>Cash Flow Report (Mon–Sun Weekly)</h3>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={cashFlowData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                          <XAxis dataKey="week" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                          <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                          <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} formatter={(v) => fmt(v)} />
+                          <Legend wrapperStyle={{ color: '#ccc' }} />
+                          <Bar dataKey="inflow" fill="#4caf50" name="Inflow (Cash on Hand + Bank)" />
+                          <Bar dataKey="outflow" fill="#f44336" name="Outflow (Cash on Hand + Bank)" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      {(() => {
+                        const total = cashFlowSummary.inflow + cashFlowSummary.outflow;
+                        const inPct = total > 0 ? ((cashFlowSummary.inflow / total) * 100).toFixed(1) : 0;
+                        const outPct = total > 0 ? ((cashFlowSummary.outflow / total) * 100).toFixed(1) : 0;
+                        return (
+                          <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 13 }}>
+                            <span style={{ color: '#4caf50' }}>Inflow: {inPct}%</span>
+                            <span style={{ color: '#f44336' }}>Outflow: {outPct}%</span>
+                          </div>
+                        );
+                      })()}
+                      <p style={{ fontSize: 11, color: '#666', marginTop: 4 }}>Source: Journal Entries (Cash on Hand &amp; Cash in Bank)</p>
+                    </div>
+
+                    {/* Widget 1.3 – Top Selling Items */}
+                    <div style={styles.card}>
+                      <h3 style={styles.cardTitle}>Top Selling Items</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          <p style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>This Month</p>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr>
+                                <th style={styles.th}>#</th>
+                                <th style={styles.th}>Item</th>
+                                <th style={styles.th}>Qty</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {saleableItemsThisMonth.map((item, idx) => (
+                                <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{idx + 1}</td>
+                                  <td style={styles.td}>{item.name}</td>
+                                  <td style={styles.td}>{item.qty}</td>
+                                </tr>
+                              ))}
+                              {saleableItemsThisMonth.length === 0 && (
+                                <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No data</td></tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div>
+                          <p style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>Last Month</p>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr>
+                                <th style={styles.th}>#</th>
+                                <th style={styles.th}>Item</th>
+                                <th style={styles.th}>Qty</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {saleableItemsLastMonth.map((item, idx) => (
+                                <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{idx + 1}</td>
+                                  <td style={styles.td}>{item.name}</td>
+                                  <td style={styles.td}>{item.qty}</td>
+                                </tr>
+                              ))}
+                              {saleableItemsLastMonth.length === 0 && (
+                                <tr><td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No data</td></tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Widget 1.4 – Expenses Breakdown */}
+                    <div style={styles.card}>
+                      <h3 style={styles.cardTitle}>Monthly Expenses Breakdown</h3>
+                      {expensesBreakdown.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={250}>
+                          <PieChart>
+                            <Pie
+                              data={expensesBreakdown}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              label={({ name, pct }) => `${name} ${pct}%`}
+                              labelLine={{ stroke: '#555' }}
+                            >
+                              {expensesBreakdown.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={PIE_COLORS[entry.name] || '#999'} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }}
+                              formatter={(val) => fmt(val)}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <p style={{ color: '#666', textAlign: 'center', marginTop: 40 }}>No expense data</p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ── Stock Alerts sub-tab ── */}
+              {dashSubTab === 'stock-alerts' && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h2 style={{ color: '#ffc107', fontSize: 17, margin: 0, fontFamily: 'Playfair Display, serif' }}>
+                      ⚠️ Low &amp; Out of Stock Items
+                    </h2>
+                    <button onClick={fetchLowStockItems} style={styles.primaryBtn}>🔄 Refresh</button>
+                  </div>
+                  {stockAlertLoading && <p style={styles.loadingText}>Loading…</p>}
+                  {!stockAlertLoading && lowStockItems.length === 0 && (
+                    <div style={{ ...styles.card, textAlign: 'center', color: '#4caf50', padding: 32 }}>
+                      ✅ All inventory items are sufficiently stocked.
+                    </div>
+                  )}
+                  {!stockAlertLoading && lowStockItems.length > 0 && (() => {
+                    // Group by last vendor
+                    const byVendor = {};
+                    lowStockItems.forEach((item) => {
+                      const vKey = item.lastVendor?.name || '— No Vendor —';
+                      if (!byVendor[vKey]) byVendor[vKey] = { vendor: item.lastVendor, items: [] };
+                      byVendor[vKey].items.push(item);
+                    });
+                    return Object.entries(byVendor).map(([vName, group]) => (
+                      <div key={vName} style={{ ...styles.card, marginBottom: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <h3 style={{ ...styles.cardTitle, marginBottom: 0 }}>
+                            🏭 {vName}
+                          </h3>
+                          <button
+                            style={{ ...styles.primaryBtn, fontSize: 12, padding: '6px 14px' }}
+                            onClick={() => {
+                              // Pre-fill RR and switch to RR tab
+                              const rrItems = group.items.map((item) => ({
+                                id: 'tmp-' + item.id,
+                                inventory_item_id: item.id,
+                                inventory_name: item.name,
+                                inventory_code: item.code || '',
+                                uom: item.uom || '',
+                                qty: String(Math.max(1, (Number(item.min_stock) || 0) - (Number(item.current_stock) || 0) + 1)),
+                                cost: String(item.cost_per_unit || 0),
+                                total_cost: 0,
+                                freight_allocated: 0,
+                                total_landed_cost: 0,
+                              }));
+                              const yy = new Date().getFullYear().toString().slice(-2);
+                              setRrForm({
+                                rr_number: 'RR-' + yy + String(Date.now()).slice(-7),
+                                vendor_id: group.vendor?.id || '',
+                                vendor_name: vName === '— No Vendor —' ? '' : vName,
+                                vendor_address: '',
+                                vendor_contact: '',
+                                vendor_tin: '',
+                                date: new Date().toISOString().split('T')[0],
+                                terms: '',
+                                freight_in: '0',
+                              });
+                              setRrLineItems(rrItems);
+                              setRrEditItem(null);
+                              setRrSaveError('');
+                              setRrDialogOpen(true);
+                              setActiveTab('rr');
+                            }}
+                          >
+                            📋 Convert to Receiving Report
+                          </button>
+                        </div>
+                        <div style={styles.tableWrap}>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr>
+                                {['Code', 'Item Name', 'UoM', 'Current Stock', 'Min Stock', 'Status'].map((h) => (
+                                  <th key={h} style={styles.th}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.items.map((item, idx) => (
+                                <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{item.code}</td>
+                                  <td style={styles.td}>{item.name}</td>
+                                  <td style={styles.td}>{item.uom}</td>
+                                  <td style={{ ...styles.td, color: Number(item.current_stock) <= 0 ? '#f44336' : '#ffc107', fontWeight: 600 }}>
+                                    {Number(item.current_stock) || 0}
+                                  </td>
+                                  <td style={styles.td}>{Number(item.min_stock) || 0}</td>
+                                  <td style={styles.td}>
+                                    <span style={{
+                                      ...styles.badge,
+                                      background: item.status === 'Out of Stock' ? '#3a1a1a' : '#3a2a00',
+                                      color: item.status === 'Out of Stock' ? '#f44336' : '#ffc107',
+                                      border: `1px solid ${item.status === 'Out of Stock' ? '#f44336' : '#ffc107'}`,
+                                    }}>{item.status}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
             </div>
           )}
 
@@ -2969,6 +3424,7 @@ export default function AdminPage() {
                   { key: 'balance', label: 'Balance Sheet' },
                   { key: 'budget', label: 'Budget Variance' },
                   { key: 'tax', label: 'Tax Report' },
+                  { key: 'coa', label: 'Chart of Accounts' },
                 ].map((st) => (
                   <button
                     key={st.key}
@@ -2990,14 +3446,16 @@ export default function AdminPage() {
                 ))}
               </div>
 
-              {/* Date range */}
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
-                <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
-                <input type="date" style={{ ...styles.input, width: 160 }} value={finDateFrom} onChange={(e) => setFinDateFrom(e.target.value)} />
-                <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
-                <input type="date" style={{ ...styles.input, width: 160 }} value={finDateTo} onChange={(e) => setFinDateTo(e.target.value)} />
-                <button onClick={fetchFinancial} style={styles.primaryBtn}>Refresh</button>
-              </div>
+              {/* Date range (not shown for CoA) */}
+              {finSubTab !== 'coa' && (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+                  <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
+                  <input type="date" style={{ ...styles.input, width: 160 }} value={finDateFrom} onChange={(e) => setFinDateFrom(e.target.value)} />
+                  <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
+                  <input type="date" style={{ ...styles.input, width: 160 }} value={finDateTo} onChange={(e) => setFinDateTo(e.target.value)} />
+                  <button onClick={fetchFinancial} style={styles.primaryBtn}>Refresh</button>
+                </div>
+              )}
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
 
@@ -3156,6 +3614,12 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ownersCapital)}</td>
                       </tr>
                       <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, paddingLeft: 24, color: '#f44336' }}>Less: Owner&apos;s Draw</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: finData.ownersDraw > 0 ? '#f44336' : '#888' }}>
+                          {finData.ownersDraw > 0 ? `(${fmt(finData.ownersDraw)})` : fmt(0)}
+                        </td>
+                      </tr>
+                      <tr style={styles.trOdd}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Retained Earnings</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.retainedEarnings)}</td>
                       </tr>
@@ -3172,40 +3636,122 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* Budget Variance */}
+              {/* Budget Variance — follows P&L structure with editable budget rows */}
               {finSubTab === 'budget' && finData?.type === 'budget' && (
-                <div style={styles.card}>
-                  <h3 style={styles.cardTitle}>Budget Variance</h3>
-                  <p style={{ color: '#888', fontSize: 12, marginBottom: 12 }}>
-                    Note: Budget values are not yet configurable. Set budgets in a future update.
+                <div style={{ ...styles.card, maxWidth: 680 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h3 style={styles.cardTitle}>Budget Variance Report</h3>
+                    <button
+                      style={{ ...styles.actionBtn, fontSize: 11 }}
+                      onClick={() => {
+                        try { localStorage.setItem('bbc_budget_values', JSON.stringify(budgetValues)); } catch { /* noop */ }
+                        alert('Budget values saved to browser storage.');
+                      }}
+                    >💾 Save Budget</button>
+                  </div>
+                  <p style={{ color: '#888', fontSize: 11, marginBottom: 12 }}>
+                    Budget column is editable. Actual values are pulled from Journal Entries (same formula as P&amp;L). Click a Budget cell to edit.
                   </p>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr>
-                        {['Category', 'Budget (₱)', 'Actual (₱)', 'Variance (₱)', 'Variance %'].map((h) => (
-                          <th key={h} style={styles.th}>{h}</th>
-                        ))}
+                  {(() => {
+                    const bv = budgetValues;
+                    const setBv = (key, val) => {
+                      const next = { ...bv, [key]: val };
+                      setBudgetValues(next);
+                      try { localStorage.setItem('bbc_budget_values', JSON.stringify(next)); } catch { /* noop */ }
+                    };
+                    const bdgInput = (key, actual) => (
+                      <input
+                        type="number"
+                        style={{ ...styles.input, width: 110, padding: '4px 8px', fontSize: 12, textAlign: 'right' }}
+                        value={bv[key] !== undefined ? bv[key] : ''}
+                        placeholder="0.00"
+                        onChange={(e) => setBv(key, e.target.value)}
+                      />
+                    );
+                    const varRow = (label, actualVal, bKey, isExpense = false, indent = false) => {
+                      const budget = Number(bv[bKey]) || 0;
+                      const actual = Number(actualVal) || 0;
+                      const variance = isExpense ? budget - actual : actual - budget;
+                      const varPct = budget !== 0 ? ((variance / Math.abs(budget)) * 100).toFixed(1) : '—';
+                      const varColor = variance >= 0 ? '#4caf50' : '#f44336';
+                      return (
+                        <tr key={bKey} style={{ background: '#161616' }}>
+                          <td style={{ ...styles.td, paddingLeft: indent ? 28 : 12 }}>{label}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', padding: '6px 8px' }}>{bdgInput(bKey, actual)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: isExpense ? '#f44336' : '#4caf50' }}>
+                            {isExpense && actual > 0 ? `(${fmt(actual)})` : fmt(actual)}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: varColor, fontWeight: 600 }}>
+                            {variance !== 0 ? (variance > 0 ? '+' : '') + fmt(variance) : fmt(0)}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: varColor }}>
+                            {varPct !== '—' ? `${varPct}%` : '—'}
+                          </td>
+                        </tr>
+                      );
+                    };
+                    const OPEX_ACCOUNTS = [
+                      'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+                      'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+                      'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+                      'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+                    ];
+                    const headerRow = (label, bg = '#1e1e1e') => (
+                      <tr key={label} style={{ background: bg }}>
+                        <td colSpan={5} style={{ ...styles.td, fontWeight: 700, color: '#ffc107', fontSize: 13 }}>{label}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(finData.cats).map(([cat, actual], idx) => {
-                        const budget = 0;
-                        const variance = actual - budget;
-                        const variancePct = budget > 0 ? ((variance / budget) * 100).toFixed(1) : '—';
-                        return (
-                          <tr key={cat} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                            <td style={styles.td}>{cat}</td>
-                            <td style={styles.td}>{fmt(budget)}</td>
-                            <td style={styles.td}>{fmt(actual)}</td>
-                            <td style={{ ...styles.td, color: variance > 0 ? '#f44336' : '#4caf50' }}>{fmt(variance)}</td>
-                            <td style={{ ...styles.td, color: variance > 0 ? '#f44336' : '#4caf50' }}>
-                              {variancePct}{variancePct !== '—' ? '%' : ''}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                    );
+                    const totalRow = (label, actual, budget, isExpense = false, bg = '#2a2a1a') => {
+                      const variance = isExpense ? Number(budget) - Number(actual) : Number(actual) - Number(budget);
+                      const varPct = budget !== 0 ? ((variance / Math.abs(Number(budget))) * 100).toFixed(1) : '—';
+                      const varColor = variance >= 0 ? '#4caf50' : '#f44336';
+                      return (
+                        <tr key={label} style={{ background: bg, fontWeight: 700 }}>
+                          <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>{label}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>{fmt(Number(budget) || 0)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: isExpense ? '#f44336' : '#4caf50' }}>
+                            {isExpense && actual > 0 ? `(${fmt(actual)})` : fmt(actual)}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: varColor, fontWeight: 700 }}>
+                            {variance !== 0 ? (variance > 0 ? '+' : '') + fmt(variance) : fmt(0)}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: varColor }}>
+                            {varPct !== '—' ? `${varPct}%` : '—'}
+                          </td>
+                        </tr>
+                      );
+                    };
+                    const totalRevenueBudget = (Number(bv['Revenue']) || 0) + (Number(bv['Delivery Income']) || 0);
+                    const grossProfitBudget = totalRevenueBudget - (Number(bv['Cost of Goods Sold']) || 0);
+                    const opExpBudget = OPEX_ACCOUNTS.reduce((s, a) => s + (Number(bv[a]) || 0), 0);
+                    const netProfitBudget = grossProfitBudget - opExpBudget;
+                    return (
+                      <div style={styles.tableWrap}>
+                        <table style={styles.table}>
+                          <thead>
+                            <tr>
+                              {['Account', 'Budget (₱)', 'Actual (₱)', 'Variance (₱)', 'Variance %'].map((h) => (
+                                <th key={h} style={{ ...styles.th, textAlign: h !== 'Account' ? 'right' : 'left' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {headerRow('Revenue')}
+                            {varRow('Revenue', finData.revenue, 'Revenue')}
+                            {varRow('Delivery Income', finData.deliveryIncome, 'Delivery Income', false, true)}
+                            {totalRow('Total Revenue', finData.totalRevenue, totalRevenueBudget)}
+                            {headerRow('Cost of Goods Sold')}
+                            {varRow('Cost of Goods Sold', finData.cogs, 'Cost of Goods Sold', true, true)}
+                            {totalRow('Gross Profit', finData.grossProfit, grossProfitBudget, false, '#1a3a1a')}
+                            {headerRow('Operating Expenses')}
+                            {OPEX_ACCOUNTS.filter((a) => (finData.expByAccount?.[a] || 0) > 0 || (Number(bv[a]) || 0) > 0).map((a) => varRow(a, finData.expByAccount?.[a] || 0, a, true, true))}
+                            {totalRow('Total Operating Expenses', finData.opExp, opExpBudget, true, '#2a1a1a')}
+                            {totalRow('Net Profit', finData.netProfit, netProfitBudget, false, '#2a2a00')}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -3235,6 +3781,60 @@ export default function AdminPage() {
                       )}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {/* Chart of Accounts */}
+              {finSubTab === 'coa' && (
+                <div style={{ ...styles.card, maxWidth: 600 }}>
+                  <h3 style={styles.cardTitle}>Chart of Accounts</h3>
+                  <p style={{ color: '#888', fontSize: 12, marginBottom: 16 }}>
+                    Summary of all account names used in P&amp;L and Balance Sheet, ordered by category.
+                  </p>
+                  {[
+                    {
+                      category: 'Assets',
+                      color: '#4caf50',
+                      accounts: ['Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory', 'Kitchen Equipment', 'Accumulated Depreciation'],
+                    },
+                    {
+                      category: 'Liabilities',
+                      color: '#f44336',
+                      accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities'],
+                    },
+                    {
+                      category: 'Equity',
+                      color: '#2196f3',
+                      accounts: ["Owner's Capital", "Owner's Draw", 'Retained Earnings'],
+                    },
+                    {
+                      category: 'Revenue',
+                      color: '#ffc107',
+                      accounts: ['Revenue', 'Delivery Income', 'Other Income'],
+                    },
+                    {
+                      category: 'Expenses',
+                      color: '#ff9800',
+                      accounts: [
+                        'Cost of Goods Sold', "Rider's Fee",
+                        'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+                        'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+                        'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+                        'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense',
+                      ],
+                    },
+                  ].map(({ category, color, accounts }) => (
+                    <div key={category} style={{ marginBottom: 20 }}>
+                      <div style={{ padding: '6px 12px', background: '#222', borderLeft: `4px solid ${color}`, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 700, color, fontSize: 13 }}>{category}</span>
+                      </div>
+                      {accounts.map((acct, i) => (
+                        <div key={acct} style={{ padding: '6px 12px 6px 24px', background: i % 2 === 0 ? '#161616' : '#1a1a1a', fontSize: 13, color: '#ccc', borderBottom: '1px solid #222' }}>
+                          {acct}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -3496,7 +4096,7 @@ export default function AdminPage() {
                     <table style={{ ...styles.table, fontSize: 12 }}>
                       <thead>
                         <tr>
-                          {['Date', 'Reference No.', 'Name', 'Particular', 'Account Title', 'Debit (₱)', 'Credit (₱)'].map((h) => (
+                          {['Date', 'Reference No.', 'Contact', 'Particular', 'Account Title', 'Debit (₱)', 'Credit (₱)'].map((h) => (
                             <th key={h} style={styles.th}>{h}</th>
                           ))}
                         </tr>
@@ -3594,13 +4194,13 @@ export default function AdminPage() {
 
                   <label style={styles.label}>Description / Memo</label>
                   <textarea
-                    style={{ ...styles.input, minHeight: 72, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
+                    style={{ ...styles.input, minHeight: 72, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, width: '100%', boxSizing: 'border-box' }}
                     placeholder="Brief description of this entry…"
                     value={manualEntryForm.description}
                     onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
                   />
 
-                  <label style={styles.label}>Contact (Vendor / Customer)</label>
+                  <label style={styles.label}>Contact</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input
                       style={{ ...styles.input, flex: 1 }}
@@ -3612,7 +4212,7 @@ export default function AdminPage() {
                       type="button"
                       title="Search contacts"
                       style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '6px 10px', fontSize: 13 }}
-                      onClick={() => { setContactPickerOpen(true); setContactPickerQuery(''); fetchContacts(''); }}
+                      onClick={() => { setContactPickerOpen(true); setContactPickerQuery(''); setNewContactMode(false); setNewContactError(''); fetchContacts(''); }}
                     >🔍</button>
                     {manualEntryForm.name && (
                       <button
@@ -3745,37 +4345,401 @@ export default function AdminPage() {
               </div>
 
               {/* Contact Picker Dialog */}
-              <Dialog.Root open={contactPickerOpen} onOpenChange={(open) => { if (!open) setContactPickerOpen(false); }}>
+              <Dialog.Root open={contactPickerOpen} onOpenChange={(open) => { if (!open) { setContactPickerOpen(false); setNewContactMode(false); setNewContactError(''); } }}>
                 <Dialog.Portal>
                   <Dialog.Overlay style={styles.dialogOverlay} />
                   <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 480 }} aria-describedby={undefined}>
                     <Dialog.Title style={styles.dialogTitle}>Select Contact</Dialog.Title>
-                    <div style={{ marginBottom: 12 }}>
-                      <input
-                        style={styles.input}
-                        placeholder="Search vendors or customers…"
-                        value={contactPickerQuery}
-                        onChange={(e) => { setContactPickerQuery(e.target.value); fetchContacts(e.target.value); }}
-                        autoFocus
+                    {!newContactMode ? (
+                      <>
+                        <div style={{ marginBottom: 12 }}>
+                          <input
+                            style={styles.input}
+                            placeholder="Search vendors or customers…"
+                            value={contactPickerQuery}
+                            onChange={(e) => { setContactPickerQuery(e.target.value); fetchContacts(e.target.value); }}
+                            autoFocus
+                          />
+                        </div>
+                        <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
+                          {contactList.map((c) => (
+                            <div
+                              key={c.id}
+                              onClick={() => {
+                                setManualEntryForm((p) => ({ ...p, name: c.name }));
+                                setContactPickerOpen(false);
+                              }}
+                              style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
+                            >
+                              <strong>{c.name}</strong>
+                              <span style={{ color: '#888', fontSize: 12 }}> · {c.type}</span>
+                            </div>
+                          ))}
+                          {contactList.length === 0 && (
+                            <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No contacts found.</p>
+                          )}
+                        </div>
+                        <div style={{ ...styles.dialogFooter, justifyContent: 'space-between' }}>
+                          <button
+                            style={{ ...styles.primaryBtn, fontSize: 12, padding: '7px 14px' }}
+                            onClick={() => { setNewContactMode(true); setNewContactForm({ name: '', address: '', contact: '', tin: '' }); setNewContactError(''); }}
+                          >+ New Contact</button>
+                          <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p style={{ color: '#aaa', fontSize: 13, marginBottom: 12 }}>Enroll a new vendor / contact:</p>
+                        <div style={styles.formGrid}>
+                          <label style={styles.label}>Name *</label>
+                          <input style={styles.input} value={newContactForm.name} onChange={(e) => setNewContactForm((p) => ({ ...p, name: e.target.value }))} placeholder="Contact name" autoFocus />
+                          <label style={styles.label}>Address</label>
+                          <input style={styles.input} value={newContactForm.address} onChange={(e) => setNewContactForm((p) => ({ ...p, address: e.target.value }))} placeholder="Address" />
+                          <label style={styles.label}>Contact #</label>
+                          <input style={styles.input} value={newContactForm.contact} onChange={(e) => setNewContactForm((p) => ({ ...p, contact: e.target.value }))} placeholder="Phone / mobile" />
+                          <label style={styles.label}>TIN</label>
+                          <input style={styles.input} value={newContactForm.tin} onChange={(e) => setNewContactForm((p) => ({ ...p, tin: e.target.value }))} placeholder="TIN (optional)" />
+                        </div>
+                        {newContactError && <p style={{ color: '#f44336', fontSize: 12, marginTop: 8 }}>{newContactError}</p>}
+                        <div style={styles.dialogFooter}>
+                          <button style={styles.cancelBtn} onClick={() => setNewContactMode(false)}>← Back</button>
+                          <button style={styles.primaryBtn} onClick={saveNewContact} disabled={newContactSaving}>
+                            {newContactSaving ? 'Saving…' : 'Save Contact'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+            </div>
+          )}
+
+          {/* ──────────────── BILLS ──────────────── */}
+          {activeTab === 'bills' && (
+            <div>
+              <div style={styles.tabHeader}>
+                <h1 style={styles.pageTitle}>Bills</h1>
+                <button onClick={() => openBillDialog()} style={styles.primaryBtn}>+ New Bill</button>
+              </div>
+
+              {billSuccess && <p style={{ color: '#4caf50', marginBottom: 12 }}>{billSuccess}</p>}
+
+              {/* Search */}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16 }}>
+                <label style={{ color: '#ccc', fontSize: 13 }}>Search:</label>
+                <input
+                  type="text"
+                  placeholder="Filter by bill number, contact, description…"
+                  style={{ ...styles.input, width: 300 }}
+                  value={billSearch}
+                  onChange={(e) => setBillSearch(e.target.value)}
+                />
+                {billSearch && (
+                  <button onClick={() => setBillSearch('')} style={{ background: 'transparent', border: '1px solid #555', color: '#aaa', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontFamily: 'Poppins, sans-serif' }}>✕ Clear</button>
+                )}
+              </div>
+
+              {loading && <p style={styles.loadingText}>Loading…</p>}
+
+              {/* Bills list */}
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      {['Bill #', 'Date', 'Contact', 'Description', 'Total Debit (₱)', 'Total Credit (₱)', 'Status', 'Actions'].map((h) => (
+                        <th key={h} style={styles.th}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(billsList || []).filter((b) => {
+                      if (!billSearch) return true;
+                      const q = billSearch.toLowerCase();
+                      return (b.bill_number || '').toLowerCase().includes(q) ||
+                        (b.contact || '').toLowerCase().includes(q) ||
+                        (b.description || '').toLowerCase().includes(q);
+                    }).map((bill, idx) => (
+                      <tr key={bill.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                        <td style={{ ...styles.td, color: '#ffc107', fontWeight: 600 }}>{bill.bill_number}</td>
+                        <td style={styles.td}>{bill.date}</td>
+                        <td style={styles.td}>{bill.contact || '—'}</td>
+                        <td style={styles.td}>{bill.description || '—'}</td>
+                        <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(bill.total_debit || 0)}</td>
+                        <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(bill.total_credit || 0)}</td>
+                        <td style={styles.td}>
+                          <span style={{
+                            ...styles.badge,
+                            background: bill.status === 'paid' ? '#1a3a1a' : '#2a2a00',
+                            color: bill.status === 'paid' ? '#4caf50' : '#ffc107',
+                            border: `1px solid ${bill.status === 'paid' ? '#4caf50' : '#ffc107'}`,
+                          }}>{bill.status || 'draft'}</span>
+                        </td>
+                        <td style={styles.td}>
+                          <button onClick={() => viewBill(bill)} style={styles.actionBtn}>View</button>
+                          <button onClick={() => openBillDialog(bill)} style={styles.actionBtn}>Edit</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {billsList.length === 0 && !loading && (
+                      <tr><td colSpan={8} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No bills yet. Create a new bill!</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Bill Create/Edit Dialog */}
+              <Dialog.Root open={billDialogOpen} onOpenChange={(open) => { if (!open) setBillDialogOpen(false); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 720 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>
+                      {billEditItem ? `Edit Bill – ${billNumber}` : 'New Bill'}
+                    </Dialog.Title>
+                    {billError && <p style={{ color: '#f44336', fontSize: 13, marginBottom: 10 }}>{billError}</p>}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 120px 1fr', gap: 10, marginBottom: 16 }}>
+                      <label style={styles.label}>Bill #</label>
+                      <input style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }} readOnly value={billNumber} />
+                      <label style={styles.label}>Date</label>
+                      <input type="date" style={styles.input} value={billForm.date} onChange={(e) => setBillForm((p) => ({ ...p, date: e.target.value }))} />
+
+                      <label style={styles.label}>Contact</label>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input style={{ ...styles.input, flex: 1 }} readOnly placeholder="Click 🔍 to search…" value={billForm.contact} />
+                        <button
+                          type="button"
+                          style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '6px 10px', fontSize: 13 }}
+                          onClick={() => { setBillContactPickerOpen(true); setBillContactQuery(''); fetchBillContacts(''); }}
+                        >🔍</button>
+                        {billForm.contact && (
+                          <button type="button" style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 14 }} onClick={() => setBillForm((p) => ({ ...p, contact: '' }))}>✕</button>
+                        )}
+                      </div>
+
+                      <label style={styles.label}>Description</label>
+                      <textarea
+                        style={{ ...styles.input, minHeight: 56, resize: 'vertical', gridColumn: '2 / 5', width: '100%', boxSizing: 'border-box' }}
+                        placeholder="Brief description or memo…"
+                        value={billForm.description}
+                        onChange={(e) => setBillForm((p) => ({ ...p, description: e.target.value }))}
                       />
                     </div>
-                    <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 12 }}>
-                      {contactList.map((c) => (
+
+                    {/* Line Items */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <h4 style={{ color: '#ffc107', margin: 0, fontSize: 14 }}>Line Items</h4>
+                      <button
+                        type="button"
+                        style={{ ...styles.actionBtn, fontSize: 12 }}
+                        onClick={() => setBillLines((p) => [...p, { description: '', account_title: '', debit_amount: '', credit_amount: '' }])}
+                      >+ Add Line</button>
+                    </div>
+                    <div style={styles.tableWrap}>
+                      <table style={{ ...styles.table, fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            {['Description', 'Account Title', 'Debit (₱)', 'Credit (₱)', ''].map((h) => (
+                              <th key={h} style={styles.th}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {billLines.map((line, li) => (
+                            <tr key={li}>
+                              <td style={styles.td}>
+                                <input
+                                  style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 160 }}
+                                  placeholder="Line description…"
+                                  value={line.description}
+                                  onChange={(e) => setBillLines((p) => p.map((l, i) => i === li ? { ...l, description: e.target.value } : l))}
+                                />
+                              </td>
+                              <td style={styles.td}>
+                                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                  <input
+                                    style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 150 }}
+                                    placeholder="e.g. Accounts Payable"
+                                    list="bill-accounts-list"
+                                    value={line.account_title}
+                                    onChange={(e) => setBillLines((p) => p.map((l, i) => i === li ? { ...l, account_title: e.target.value } : l))}
+                                  />
+                                  <button
+                                    type="button"
+                                    style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '3px 7px', fontSize: 11 }}
+                                    onClick={() => { setBillAcctPickerIdx(li); setBillAcctQuery(''); }}
+                                    title="Search account"
+                                  >🔍</button>
+                                </div>
+                              </td>
+                              <td style={styles.td}>
+                                <input
+                                  type="number"
+                                  style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100, color: '#4caf50' }}
+                                  value={line.debit_amount}
+                                  onChange={(e) => setBillLines((p) => p.map((l, i) => i === li ? { ...l, debit_amount: e.target.value } : l))}
+                                />
+                              </td>
+                              <td style={styles.td}>
+                                <input
+                                  type="number"
+                                  style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100, color: '#f44336' }}
+                                  value={line.credit_amount}
+                                  onChange={(e) => setBillLines((p) => p.map((l, i) => i === li ? { ...l, credit_amount: e.target.value } : l))}
+                                />
+                              </td>
+                              <td style={styles.td}>
+                                <button
+                                  type="button"
+                                  style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                                  onClick={() => setBillLines((p) => p.filter((_, i) => i !== li))}
+                                >✕</button>
+                              </td>
+                            </tr>
+                          ))}
+                          {billLines.length > 0 && (() => {
+                            const totalDebit = billLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
+                            const totalCredit = billLines.reduce((s, l) => s + (Number(l.credit_amount) || 0), 0);
+                            return (
+                              <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
+                                <td colSpan={2} style={{ ...styles.td, textAlign: 'right', color: '#ffc107' }}>TOTAL:</td>
+                                <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{fmt(totalDebit)}</td>
+                                <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{fmt(totalCredit)}</td>
+                                <td style={styles.td} />
+                              </tr>
+                            );
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                    <datalist id="bill-accounts-list">
+                      {journalKnownAccounts.map((a) => <option key={a} value={a} />)}
+                    </datalist>
+
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
+                      <button onClick={saveBill} style={styles.primaryBtn} disabled={billSaving}>
+                        {billSaving ? 'Saving…' : 'Save Bill'}
+                      </button>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* Bill View Dialog */}
+              <Dialog.Root open={!!billViewItem} onOpenChange={(open) => { if (!open) setBillViewItem(null); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 620 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>{billViewItem?.bill_number}</Dialog.Title>
+                    {billViewItem && (
+                      <div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+                          {[
+                            ['Date', billViewItem.date],
+                            ['Contact', billViewItem.contact || '—'],
+                            ['Status', billViewItem.status || 'draft'],
+                            ['Description', billViewItem.description || '—'],
+                          ].map(([label, value]) => (
+                            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <span style={{ color: '#888', fontSize: 11 }}>{label}</span>
+                              <span style={{ color: '#fff', fontSize: 13 }}>{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={styles.tableWrap}>
+                          <table style={{ ...styles.table, fontSize: 12 }}>
+                            <thead>
+                              <tr>
+                                {['Description', 'Account Title', 'Debit (₱)', 'Credit (₱)'].map((h) => (
+                                  <th key={h} style={styles.th}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(billViewLines || []).map((l, idx) => (
+                                <tr key={l.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                  <td style={styles.td}>{l.description || '—'}</td>
+                                  <td style={styles.td}>{l.account_title || '—'}</td>
+                                  <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>{l.debit_amount > 0 ? fmt(l.debit_amount) : '—'}</td>
+                                  <td style={{ ...styles.td, color: '#f44336', textAlign: 'right' }}>{l.credit_amount > 0 ? fmt(l.credit_amount) : '—'}</td>
+                                </tr>
+                              ))}
+                              {billViewLines.length === 0 && (
+                                <tr><td colSpan={4} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No line items</td></tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* Bill Contact Picker */}
+              <Dialog.Root open={billContactPickerOpen} onOpenChange={(open) => { if (!open) setBillContactPickerOpen(false); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 440 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Select Contact</Dialog.Title>
+                    <input
+                      style={{ ...styles.input, marginBottom: 12 }}
+                      placeholder="Search contacts…"
+                      value={billContactQuery}
+                      onChange={(e) => { setBillContactQuery(e.target.value); fetchBillContacts(e.target.value); }}
+                      autoFocus
+                    />
+                    <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
+                      {(billContactList || []).map((c) => (
                         <div
                           key={c.id}
-                          onClick={() => {
-                            setManualEntryForm((p) => ({ ...p, name: c.name }));
-                            setContactPickerOpen(false);
-                          }}
+                          onClick={() => { setBillForm((p) => ({ ...p, contact: c.name })); setBillContactPickerOpen(false); }}
                           style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 4, color: '#fff', background: '#2a2a2a', marginBottom: 4, border: '1px solid #333' }}
                         >
                           <strong>{c.name}</strong>
                           <span style={{ color: '#888', fontSize: 12 }}> · {c.type}</span>
                         </div>
                       ))}
-                      {contactList.length === 0 && (
-                        <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No contacts found.</p>
-                      )}
+                      {billContactList.length === 0 && <p style={{ color: '#666', textAlign: 'center', padding: 16 }}>No contacts found.</p>}
+                    </div>
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              {/* Bill Account Title Picker */}
+              <Dialog.Root open={billAcctPickerIdx !== null} onOpenChange={(open) => { if (!open) setBillAcctPickerIdx(null); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 380 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Select Account Title</Dialog.Title>
+                    <input
+                      style={{ ...styles.input, marginBottom: 10 }}
+                      placeholder="Search accounts…"
+                      value={billAcctQuery}
+                      onChange={(e) => setBillAcctQuery(e.target.value)}
+                      autoFocus
+                    />
+                    <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
+                      {journalKnownAccounts.filter((a) => !billAcctQuery || a.toLowerCase().includes(billAcctQuery.toLowerCase())).map((a) => (
+                        <div
+                          key={a}
+                          onClick={() => {
+                            if (billAcctPickerIdx !== null) {
+                              setBillLines((p) => p.map((l, i) => i === billAcctPickerIdx ? { ...l, account_title: a } : l));
+                              setBillAcctPickerIdx(null);
+                              setBillAcctQuery('');
+                            }
+                          }}
+                          style={{ padding: '7px 12px', cursor: 'pointer', borderRadius: 4, color: '#ccc', background: '#2a2a2a', marginBottom: 3, fontSize: 13 }}
+                        >{a}</div>
+                      ))}
                     </div>
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
