@@ -564,9 +564,11 @@ export default function AdminPage() {
         });
         setFinData({ type: 'cashflow', rows });
       } else if (finSubTab === 'pl') {
+        const dateFrom = fromISO.split('T')[0];
+        const dateTo = toISO.split('T')[0];
         const [{ data: revenueData }, { data: cogsData }, { data: expData }] = await Promise.all([
-          supabase.from('journal_entries').select('credit_amount').eq('credit_account', 'Revenue').gte('created_at', fromISO).lte('created_at', toISO),
-          supabase.from('journal_entries').select('debit_amount').eq('debit_account', 'Cost of Goods Sold').gte('created_at', fromISO).lte('created_at', toISO),
+          supabase.from('journal_entries').select('credit_amount').eq('credit_account', 'Revenue').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('debit_amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('cash_drawer_transactions').select('amount').in('transaction_type', ['pay-expense', 'pay-bill']).gte('created_at', fromISO).lte('created_at', toISO),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.credit_amount) || 0), 0);
@@ -763,6 +765,9 @@ export default function AdminPage() {
       if (!manualEntryForm.date) throw new Error('Please enter a date.');
       const validLines = manualEntryLines.filter((l) => l.account && l.amount);
       if (validLines.length === 0) throw new Error('Please add at least one line item.');
+      const totalDebit = validLines.filter((l) => l.type === 'debit').reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const totalCredit = validLines.filter((l) => l.type === 'credit').reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      if (Math.abs(totalDebit - totalCredit) > 0.01) throw new Error(`Entry is unbalanced: Debit ₱${totalDebit.toFixed(2)} ≠ Credit ₱${totalCredit.toFixed(2)}.`);
       const rows = validLines.map((l) => ({
         date: manualEntryForm.date,
         description: l.description || manualSpecialNote || '',
