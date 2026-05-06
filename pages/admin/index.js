@@ -287,6 +287,8 @@ export default function AdminPage() {
       };
 
       const getWeekIdx = (dateVal) => {
+        // For date-only strings (YYYY-MM-DD) append T00:00:00 so JS parses them in local time,
+        // consistent with weekStarts which are also computed in local time.
         const d = typeof dateVal === 'string' ? new Date(dateVal.includes('T') ? dateVal : dateVal + 'T00:00:00') : new Date(dateVal);
         for (let i = 3; i >= 0; i--) {
           if (d >= weekStarts[i]) return i;
