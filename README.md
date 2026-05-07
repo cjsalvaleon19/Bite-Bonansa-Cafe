@@ -9,6 +9,7 @@ Bite Bonansa Cafe is a comprehensive online ordering system designed to streamli
 - **Sales Processing**: Handle customer transactions efficiently.
 - **Refund Processing**: Manage refunds and returns seamlessly.
 - **Sales Reports**: Generate daily, weekly, and monthly sales reports for analysis.
+- **Bluetooth Printing**: Supports Goojprt Z80C thermal printer via cashier POS/Dashboard actions and BT Print fallback.
 
 ### 2. Customer Portal
 - **User Registration/Login**: Secure account creation and access.
@@ -30,6 +31,12 @@ Bite Bonansa Cafe is a comprehensive online ordering system designed to streamli
 - **Financial Tracking**: Keep track of profits, losses, and other financial metrics.
 - **Expense Management**: Document and review business expenses.
 - **Comprehensive Reports**: Generate detailed accounting reports for auditing and analysis.
+
+## Bluetooth Printer Setup (Android Tablet)
+
+For step-by-step cashier setup and troubleshooting for connecting a Bluetooth printer on Android Chrome, see:
+
+- [`CASHIER_INTERFACE_GUIDE.md`](./CASHIER_INTERFACE_GUIDE.md) → **Bluetooth Printer Setup (Android Tablet + bitebonansacafe.com)**
 
 ## Getting Started
 

@@ -5,7 +5,6 @@ import { useRouter } from 'next/router';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-  PieChart, Pie, Cell,
 } from 'recharts';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
@@ -39,7 +38,8 @@ export default function AdminPage() {
   const [saleableItems, setSaleableItems] = useState([]);
   const [saleableItemsThisMonth, setSaleableItemsThisMonth] = useState([]);
   const [saleableItemsLastMonth, setSaleableItemsLastMonth] = useState([]);
-  const [expensesBreakdown, setExpensesBreakdown] = useState([]);
+  const [monthlyPnLData, setMonthlyPnLData] = useState([]);
+  const [budgetForecastData, setBudgetForecastData] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
   const [stockAlertLoading, setStockAlertLoading] = useState(false);
 
@@ -52,6 +52,8 @@ export default function AdminPage() {
   });
   const [invDeleteConfirm, setInvDeleteConfirm] = useState(null);
   const [invStatusFilter, setInvStatusFilter] = useState('');
+  const [invSearch, setInvSearch] = useState('');
+  const [invCoverageMonth, setInvCoverageMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   // ── Price Costing state ───────────────────────────────────────────────────
   const [costingHeaders, setCostingHeaders] = useState([]);
@@ -159,7 +161,7 @@ export default function AdminPage() {
     const defaults = [
       'Cash on Hand', 'Cash in Bank',
       'Accounts Payable', 'Accounts Payable - Rewards',
-      'Revenue', 'Inventory', "Owner's Draw", "Owner's Capital", 'Retained Earnings',
+      'Revenue', 'Inventory', "Owner's Capital", 'Retained Earnings',
       'Rewards', 'Cost of Goods Sold',
       // Income
       'Delivery Income',
@@ -169,9 +171,10 @@ export default function AdminPage() {
       'Software Subscriptions', 'Professional Fees', 'Transportation',
       'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
       "Rider's Fee", 'Kitchen Tools', 'Miscellaneous Expense',
-      'Depreciation Expense',
+      'Depreciation Expense', 'Interest Expense', 'Income Tax Expense',
       // Balance Sheet
       'Kitchen Equipment', 'Accumulated Depreciation',
+      'Income Tax Payable', 'Loans Payable',
     ];
     const fromData = (journalData || []).flatMap((r) => [r.debit_account, r.credit_account].filter(Boolean));
     const all = Array.from(new Set([...defaults, ...fromData])).sort();
@@ -205,27 +208,47 @@ export default function AdminPage() {
 
   // ── Financial Reports state ───────────────────────────────────────────────
   const [finSubTab, setFinSubTab] = useState('cashflow');
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const thirtyAgoStr = useMemo(() => {
+  const monthStartStr = useMemo(() => {
     const d = new Date();
-    d.setDate(d.getDate() - 30);
+    d.setDate(1);
     return d.toISOString().split('T')[0];
   }, []);
-  const [finDateFrom, setFinDateFrom] = useState(thirtyAgoStr);
-  const [finDateTo, setFinDateTo] = useState(todayStr);
+  const monthEndStr = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1, 0);
+    return d.toISOString().split('T')[0];
+  }, []);
+  const [finDateFrom, setFinDateFrom] = useState(monthStartStr);
+  const [finDateTo, setFinDateTo] = useState(monthEndStr);
   const [finData, setFinData] = useState(null);
+  const [finCompareMode, setFinCompareMode] = useState('previous_periods');
+  const [finCompareCount, setFinCompareCount] = useState(0);
+  const [finComparePeriod, setFinComparePeriod] = useState('monthly');
+  const [finCompareCustomOpen, setFinCompareCustomOpen] = useState(false);
+  const [finCompareData, setFinCompareData] = useState([]);
+  const [finCompareFull, setFinCompareFull] = useState([]);
+  const [salesSubView, setSalesSubView] = useState('general');
+  const [salesData, setSalesData] = useState(null);
+  const [navGroupOpen, setNavGroupOpen] = useState({ transactions: false, inventory: false, financial: false });
   // Chart of Accounts state (separate date coverage from finDateFrom/To)
   const [coaDateFrom, setCoaDateFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
-  const [coaDateTo, setCoaDateTo] = useState(todayStr);
+  const [coaDateTo, setCoaDateTo] = useState(monthEndStr);
   const [coaData, setCoaData] = useState(null);
   const [coaLoading, setCoaLoading] = useState(false);
-  // Editable budget values (persisted in localStorage)
+  // Editable budget values (persisted in localStorage, keyed by YYYY-MM month)
   const [budgetValues, setBudgetValues] = useState(() => {
     try {
-      const stored = typeof window !== 'undefined' && localStorage.getItem('bbc_budget_values');
-      return stored ? JSON.parse(stored) : {};
+      if (typeof window === 'undefined') return {};
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const stored = localStorage.getItem(`bbc_budget_${currentMonth}`);
+      if (stored) return JSON.parse(stored);
+      // Migrate from old un-keyed storage
+      const legacy = localStorage.getItem('bbc_budget_values');
+      return legacy ? JSON.parse(legacy) : {};
     } catch { return {}; }
   });
+  // Track which budget cell is being edited (for formatted display)
+  const [budgetEditKey, setBudgetEditKey] = useState(null);
 
   // ── Bills state ───────────────────────────────────────────────────────────
   const [billsList, setBillsList] = useState([]);
@@ -287,9 +310,9 @@ export default function AdminPage() {
       thisMonday.setHours(0, 0, 0, 0);
 
       // weekStarts[0] = oldest (3 weeks back), weekStarts[3] = current week
-      const weekStarts = Array.from({ length: 4 }, (_, i) => {
+      const weekStarts = Array.from({ length: 12 }, (_, i) => {
         const d = new Date(thisMonday);
-        d.setDate(thisMonday.getDate() - (3 - i) * 7);
+        d.setDate(thisMonday.getDate() - (11 - i) * 7);
         return d;
       });
       const sinceISO = weekStarts[0].toISOString();
@@ -306,7 +329,7 @@ export default function AdminPage() {
         // For date-only strings (YYYY-MM-DD) append T00:00:00 so JS parses them in local time,
         // consistent with weekStarts which are also computed in local time.
         const d = typeof dateVal === 'string' ? new Date(dateVal.includes('T') ? dateVal : dateVal + 'T00:00:00') : new Date(dateVal);
-        for (let i = 3; i >= 0; i--) {
+        for (let i = 11; i >= 0; i--) {
           if (d >= weekStarts[i]) return i;
         }
         return -1;
@@ -319,7 +342,7 @@ export default function AdminPage() {
         .gte('created_at', sinceISO);
 
       if (orders) {
-        const weeks = [0, 0, 0, 0];
+        const weeks = Array(12).fill(0);
         orders.forEach((o) => {
           const idx = getWeekIdx(o.created_at);
           if (idx >= 0) weeks[idx] += Number(o.total) || 0;
@@ -340,8 +363,10 @@ export default function AdminPage() {
           const idx = getWeekIdx(je.date);
           if (idx < 0) return;
           const amt = Number(je.amount) || 0;
-          if (CASH_ACCOUNTS.includes(je.debit_account)) weeks[idx].inflow += amt;
-          if (CASH_ACCOUNTS.includes(je.credit_account)) weeks[idx].outflow += amt;
+          const debitAcct = String(je.debit_account || '').trim();
+          const creditAcct = String(je.credit_account || '').trim();
+          if (CASH_ACCOUNTS.includes(debitAcct)) weeks[idx].inflow += amt;
+          if (CASH_ACCOUNTS.includes(creditAcct)) weeks[idx].outflow += amt;
         });
         setCashFlowData(weeks);
         const totalIn = weeks.reduce((s, w) => s + w.inflow, 0);
@@ -378,35 +403,104 @@ export default function AdminPage() {
       setSaleableItemsThisMonth(aggregate(tmItems));
       setSaleableItemsLastMonth(aggregate(lmItems));
 
-      const since30 = new Date();
-      since30.setDate(since30.getDate() - 30);
-      const { data: expenses } = await supabase
-        .from('cash_drawer_transactions')
-        .select('amount, transaction_type, bill_type, category, description')
-        .in('transaction_type', ['pay-expense', 'pay-bill'])
-        .gte('created_at', since30.toISOString());
+      // ── Monthly Profit & Loss + Budget Forecast (last 6 months) ───────────
+      const OPEX_ACCOUNTS = [
+        'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+        'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+        'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+        'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+        'Research and Development Expense',
+      ];
+      const now3 = new Date();
+      const monthStarts = Array.from({ length: 6 }, (_, i) => new Date(now3.getFullYear(), now3.getMonth() - (5 - i), 1));
+      const firstMonthStart = monthStarts[0];
+      const firstMonthDateStr = firstMonthStart.toISOString().split('T')[0];
+      const firstMonthISO = firstMonthStart.toISOString();
+      const monthLabel = (d) => d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+      const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-      if (expenses) {
-        const cats = { Payroll: 0, Utilities: 0, Rent: 0, Cost: 0, Others: 0 };
-        expenses.forEach((e) => {
-          const amt = Number(e.amount) || 0;
-          if (e.bill_type === 'payroll' || e.category === '5100') cats.Payroll += amt;
-          else if (e.bill_type === 'utilities' || e.category === '5200') cats.Utilities += amt;
-          else if (e.category === 'rent' || (e.description || '').toLowerCase().includes('rent')) cats.Rent += amt;
-          else if (e.category === '5900') cats.Cost += amt;
-          else cats.Others += amt;
-        });
-        const total = Object.values(cats).reduce((s, v) => s + v, 0);
-        setExpensesBreakdown(
-          Object.entries(cats)
-            .filter(([, v]) => v > 0)
-            .map(([name, value]) => ({
-              name,
-              value,
-              pct: total > 0 ? ((value / total) * 100).toFixed(1) : '0',
-            })),
-        );
+      const [{ data: plJe }, { data: deliveryFees }] = await Promise.all([
+        supabase
+          .from('journal_entries')
+          .select('amount, date, debit_account, credit_account')
+          .gte('date', firstMonthDateStr),
+        supabase
+          .from('orders')
+          .select('delivery_fee, created_at')
+          .in('status', ['order_delivered', 'completed'])
+          .gte('created_at', firstMonthISO)
+          .gt('delivery_fee', 0),
+      ]);
+
+      const monthMap = {};
+      monthStarts.forEach((d) => {
+        monthMap[monthKey(d)] = { month: monthLabel(d), revenue: 0, deliveryIncome: 0, cogs: 0, opExp: 0, totalRevenue: 0, netProfit: 0 };
+      });
+
+      (plJe || []).forEach((je) => {
+        const key = (je.date || '').slice(0, 7);
+        if (!monthMap[key]) return;
+        const amt = Number(je.amount) || 0;
+        if (['Revenue', 'Sales Revenue'].includes(je.credit_account)) monthMap[key].revenue += amt;
+        if (je.debit_account === 'Cost of Goods Sold') monthMap[key].cogs += amt;
+        if (OPEX_ACCOUNTS.includes(je.debit_account)) monthMap[key].opExp += amt;
+      });
+      (deliveryFees || []).forEach((o) => {
+        const key = (o.created_at || '').slice(0, 7);
+        if (!monthMap[key]) return;
+        monthMap[key].deliveryIncome += Number(o.delivery_fee) || 0;
+      });
+
+      const pnlRows = monthStarts.map((d) => {
+        const key = monthKey(d);
+        const row = monthMap[key];
+        row.totalRevenue = row.revenue + row.deliveryIncome;
+        row.netProfit = row.totalRevenue - row.cogs - row.opExp;
+        return row;
+      });
+      setMonthlyPnLData(pnlRows);
+
+      const getBudgetTotals = (raw) => {
+        const obj = raw || {};
+        const totalRevenue = (Number(obj['Revenue']) || 0) + (Number(obj['Delivery Income']) || 0);
+        const cogs = Number(obj['Cost of Goods Sold']) || 0;
+        const opExp = OPEX_ACCOUNTS.reduce((s, a) => s + (Number(obj[a]) || 0), 0);
+        return { totalRevenue, cogs, opExp, netProfit: totalRevenue - cogs - opExp };
+      };
+
+      let carryBudget = {};
+      if (typeof window !== 'undefined') {
+        const firstKey = monthKey(monthStarts[0]);
+        const [yr, mo] = firstKey.split('-').map(Number);
+        const prevYear = mo === 1 ? yr - 1 : yr;
+        const prevMonthNum = mo === 1 ? 12 : mo - 1;
+        const prevMonth = `${prevYear}-${String(prevMonthNum).padStart(2, '0')}`;
+        const prevStored = localStorage.getItem(`bbc_budget_${prevMonth}`);
+        carryBudget = prevStored ? JSON.parse(prevStored) : {};
       }
+
+      const forecastRows = monthStarts.map((d, idx) => {
+        const key = monthKey(d);
+        let budgetObj = carryBudget;
+        if (typeof window !== 'undefined') {
+          const stored = localStorage.getItem(`bbc_budget_${key}`);
+          if (stored) budgetObj = JSON.parse(stored);
+          carryBudget = budgetObj;
+        }
+        const totals = getBudgetTotals(budgetObj);
+        return {
+          month: monthLabel(d),
+          budgetRevenue: totals.totalRevenue,
+          actualRevenue: pnlRows[idx]?.totalRevenue || 0,
+          budgetCogs: totals.cogs,
+          actualCogs: pnlRows[idx]?.cogs || 0,
+          budgetOpExp: totals.opExp,
+          actualOpExp: pnlRows[idx]?.opExp || 0,
+          budgetNetProfit: totals.netProfit,
+          actualNetProfit: pnlRows[idx]?.netProfit || 0,
+        };
+      });
+      setBudgetForecastData(forecastRows);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -703,6 +797,7 @@ export default function AdminPage() {
     setBillSuccess('');
     try {
       if (!billForm.date) throw new Error('Please enter a date.');
+      if (!billForm.contact || !String(billForm.contact).trim()) throw new Error('Contact name is required.');
       const validLines = billLines.filter((l) => l.account_title || l.debit_amount);
       if (validLines.length === 0) throw new Error('Please add at least one line item.');
       const totalDebit = validLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
@@ -833,7 +928,7 @@ export default function AdminPage() {
     try {
       const creditAccount = billPayMethod === 'cash_on_hand' ? 'Cash on Hand'
         : billPayMethod === 'cash_in_bank' ? 'Cash in Bank'
-        : "Owner's Draw"; // credit card
+        : "Owner's Capital"; // credit card
       const today = new Date().toISOString().split('T')[0];
       const jeRow = {
         date: today,
@@ -970,6 +1065,16 @@ export default function AdminPage() {
     }
   }, []);
 
+  const FIN_CASH_ACCOUNTS = useMemo(() => ['Cash on Hand', 'Cash in Bank'], []);
+  const FIN_PPE_ACCOUNTS = useMemo(() => ['Kitchen Equipment', 'Furniture & Fixture', 'Machinery & Equipment'], []);
+  const FIN_OPEX_ACCOUNTS = useMemo(() => ([
+    'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+    'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+    'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+    'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+    'Interest Expense', 'Research and Development Expense',
+  ]), []);
+
   // ── Fetch: Financial Reports ──────────────────────────────────────────────
   const fetchFinancial = useCallback(async () => {
     if (!supabase) return;
@@ -979,52 +1084,180 @@ export default function AdminPage() {
       const toDate = new Date(finDateTo);
       toDate.setHours(23, 59, 59, 999);
       const toISO = toDate.toISOString();
+      const dateFrom = fromISO.split('T')[0];
+      const dateTo = toISO.split('T')[0];
+      const sumAmt = (arr) => (arr || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
       if (finSubTab === 'cashflow') {
-        const { data, error: err } = await supabase
-          .from('cash_drawer_transactions')
-          .select('*')
-          .gte('created_at', fromISO)
-          .lte('created_at', toISO)
-          .order('created_at');
-        if (err) throw err;
-        let running = 0;
-        const rows = (data || []).map((tx) => {
-          const amt = Number(tx.amount) || 0;
-          const isIn = tx.transaction_type === 'cash-in';
-          running += isIn ? amt : -amt;
-          return { ...tx, inflow: isIn ? amt : 0, outflow: isIn ? 0 : amt, running };
+        const prevDate = new Date(finDateFrom);
+        prevDate.setDate(prevDate.getDate() - 1);
+        const openingDate = prevDate.toISOString().split('T')[0];
+
+        const [
+          { data: cashOpeningDebits }, { data: cashOpeningCredits },
+          { data: revenueCashJE }, { data: deliveryIncomeData },
+          { data: inventoryPurchasesJE }, { data: salariesJE }, { data: incomeTaxJE },
+          { data: cashCreditJE },
+          { data: salePpeJE }, { data: collectionLoanJE }, { data: purchasePpeJE }, { data: makeLoanJE },
+          { data: loanProceedsJE }, { data: capitalInfusionJE }, { data: loanPaymentJE }, { data: ownerDrawingJE },
+          { data: interestExpenseJE },
+        ] = await Promise.all([
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).lte('date', openingDate),
+          supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).lte('date', openingDate),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
+          supabase.from('journal_entries').select('amount').eq('reference_type', 'rr_payment').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Salaries & Wages').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Income Tax Expense').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount, debit_account').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).in('credit_account', FIN_PPE_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).eq('credit_account', 'Loans Receivable').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).in('debit_account', FIN_PPE_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).eq('debit_account', 'Loans Receivable').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).eq('credit_account', 'Loans Payable').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).eq('credit_account', "Owner's Capital").gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).eq('debit_account', 'Loans Payable').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).eq('debit_account', "Owner's Capital").gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Interest Expense').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+        ]);
+
+        const cashBeginningBalance = sumAmt(cashOpeningDebits) - sumAmt(cashOpeningCredits);
+        const receiptsRevenue = sumAmt(revenueCashJE);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+        const inventoryPurchases = sumAmt(inventoryPurchasesJE);
+        const salariesWages = sumAmt(salariesJE);
+        const incomeTaxes = sumAmt(incomeTaxJE);
+        const genOpAdminExpenses = (cashCreditJE || []).reduce((s, row) => {
+          const acct = row.debit_account || '';
+          if (
+            acct === 'Salaries & Wages'
+            || acct === 'Income Tax Expense'
+            || acct === 'Loans Payable'
+            || acct === "Owner's Capital"
+            || acct === 'Loans Receivable'
+            || acct === 'Cost of Goods Sold'
+            || acct === 'Interest Expense'
+            || FIN_PPE_ACCOUNTS.includes(acct)
+            || FIN_CASH_ACCOUNTS.includes(acct)
+          ) return s;
+          return s + (Number(row.amount) || 0);
+        }, 0);
+
+        const netCashFlowOperations = receiptsRevenue + deliveryIncome - inventoryPurchases - genOpAdminExpenses - salariesWages - incomeTaxes;
+
+        const saleOfPropertyEquipment = sumAmt(salePpeJE);
+        const collectionPrincipalOnLoans = sumAmt(collectionLoanJE);
+        const purchaseOfPropertyEquipment = sumAmt(purchasePpeJE);
+        const makingLoansToOthers = sumAmt(makeLoanJE);
+        const netCashFlowInvesting = saleOfPropertyEquipment + collectionPrincipalOnLoans - purchaseOfPropertyEquipment - makingLoansToOthers;
+
+        const proceedsFromLoans = sumAmt(loanProceedsJE);
+        const ownersCapitalInfusion = sumAmt(capitalInfusionJE);
+        const repaymentOfLoans = sumAmt(loanPaymentJE);
+        const ownersDrawings = sumAmt(ownerDrawingJE);
+        const interestExpensePaid = sumAmt(interestExpenseJE);
+        const netCashFlowFinancing = proceedsFromLoans + ownersCapitalInfusion - repaymentOfLoans - ownersDrawings - interestExpensePaid;
+
+        const netChange = netCashFlowOperations + netCashFlowInvesting + netCashFlowFinancing;
+        const cashEndingBalance = cashBeginningBalance + netChange;
+
+        setFinData({
+          type: 'cashflow',
+          cashBeginningBalance,
+          receiptsRevenue,
+          deliveryIncome,
+          inventoryPurchases,
+          genOpAdminExpenses,
+          salariesWages,
+          incomeTaxes,
+          netCashFlowOperations,
+          saleOfPropertyEquipment,
+          collectionPrincipalOnLoans,
+          purchaseOfPropertyEquipment,
+          makingLoansToOthers,
+          netCashFlowInvesting,
+          proceedsFromLoans,
+          ownersCapitalInfusion,
+          repaymentOfLoans,
+          ownersDrawings,
+          interestExpensePaid,
+          netCashFlowFinancing,
+          netChange,
+          cashEndingBalance,
         });
-        setFinData({ type: 'cashflow', rows });
       } else if (finSubTab === 'pl') {
-        const dateFrom = fromISO.split('T')[0];
-        const dateTo = toISO.split('T')[0];
-        const OPEX_ACCOUNTS = [
-          'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
-          'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
-          'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-          'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
-        ];
         const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', OPEX_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const expByAccount = {};
-        OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        let incomeTaxExpense = 0;
         (expAllData || []).forEach((e) => {
-          if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
+          if (e.debit_account === 'Income Tax Expense') incomeTaxExpense += Number(e.amount) || 0;
+          else if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
         });
         const opExp = Object.values(expByAccount).reduce((s, v) => s + v, 0);
         const totalRevenue = revenue + deliveryIncome;
-        setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit: totalRevenue - cogs, expByAccount, opExp, netProfit: totalRevenue - cogs - opExp });
+        const grossProfit = totalRevenue - cogs;
+        const incomeBeforeTax = grossProfit - opExp;
+        const netIncome = incomeBeforeTax - incomeTaxExpense;
+        setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netIncome });
+      } else if (finSubTab === 'sales') {
+        const { data: deliveredOrderIds } = await supabase
+          .from('orders')
+          .select('id')
+          .in('status', ['order_delivered', 'completed'])
+          .gte('created_at', fromISO)
+          .lte('created_at', toISO);
+        const oIds = (deliveredOrderIds || []).map((o) => o.id);
+        let salesItems = [];
+        if (oIds.length > 0) {
+          const { data: oi } = await supabase
+            .from('order_items')
+            .select('name, price, quantity, subtotal, menu_item_id')
+            .in('order_id', oIds);
+          salesItems = oi || [];
+        }
+        const { data: menuItemsForCat } = await supabase
+          .from('menu_items')
+          .select('id, name, category');
+        const menuCatMap = {};
+        (menuItemsForCat || []).forEach((m) => { menuCatMap[m.id] = m.category || 'Other'; menuCatMap[m.name] = m.category || 'Other'; });
+        const { data: costingHdrs } = await supabase
+          .from('price_costing_headers')
+          .select('menu_item_name, total_estimated_cogs, selling_price');
+        const cogsMap = {};
+        (costingHdrs || []).forEach((h) => { cogsMap[h.menu_item_name] = Number(h.total_estimated_cogs) || 0; });
+
+        const itemMap = {};
+        salesItems.forEach((si) => {
+          const baseName = (si.name || '').split(' - ')[0].trim();
+          const qty = Number(si.quantity) || 1;
+          const rev = Number(si.subtotal) || (Number(si.price) || 0) * qty;
+          const category = (si.menu_item_id && menuCatMap[si.menu_item_id]) || menuCatMap[baseName] || menuCatMap[si.name] || 'Other';
+          const unitCogs = cogsMap[si.name] || cogsMap[baseName] || 0;
+          const totalCogs = unitCogs * qty;
+          const key = baseName;
+          if (!itemMap[key]) {
+            itemMap[key] = { name: key, category, revenue: 0, cogs: 0, quantity: 0 };
+          }
+          itemMap[key].revenue += rev;
+          itemMap[key].cogs += totalCogs;
+          itemMap[key].quantity += qty;
+        });
+        const salesRows = Object.values(itemMap).map((r) => {
+          const cm = r.revenue - r.cogs;
+          const cmPct = r.revenue > 0 ? (cm / r.revenue) * 100 : 0;
+          return { ...r, cm, cmPct };
+        });
+        setFinData({ type: 'sales', rows: salesRows });
       } else if (finSubTab === 'balance') {
-        // Balance Sheet: Balance as of Jan 1, 2026 (opening) + total JE transactions up to finDateTo.
-        // All amounts are derived purely from Journal Entries (Dr - Cr per account).
         const bsDateTo = toISO.split('T')[0];
         const [
           { data: invList },
@@ -1032,8 +1265,9 @@ export default function AdminPage() {
           { data: cashInBankDebit }, { data: cashInBankCredit },
           { data: kitEquipDebit }, { data: kitEquipCredit }, { data: accumDeprData },
           { data: ownCapCredit }, { data: ownCapDebit }, { data: retEarnCredit }, { data: retEarnDebit },
-          { data: ownDrawDebit }, { data: ownDrawCredit },
           { data: apCredit }, { data: apDebit },
+          { data: incomeTaxPayableCredit }, { data: incomeTaxPayableDebit },
+          { data: loansPayableCredit }, { data: loansPayableDebit },
         ] = await Promise.all([
           supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cash on Hand').lte('date', bsDateTo),
@@ -1047,24 +1281,26 @@ export default function AdminPage() {
           supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Capital").lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Retained Earnings').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Retained Earnings').lte('date', bsDateTo),
-          supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Draw").lte('date', bsDateTo),
-          supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Draw").lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Accounts Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Accounts Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Income Tax Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Income Tax Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Loans Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Loans Payable').lte('date', bsDateTo),
         ]);
-        const sumAmt = (arr) => (arr || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
         const cashOnHand = sumAmt(cashOnHandDebit) - sumAmt(cashOnHandCredit);
         const cashInBank = sumAmt(cashInBankDebit) - sumAmt(cashInBankCredit);
         const invValue = (invList || []).reduce((s, i) => s + (Number(i.current_stock) || 0) * (Number(i.cost_per_unit) || 0), 0);
-        // Accounts Payable: credit (increases liability) - debit (decreases liability)
         const ap = sumAmt(apCredit) - sumAmt(apDebit);
+        const incomeTaxPayable = sumAmt(incomeTaxPayableCredit) - sumAmt(incomeTaxPayableDebit);
+        const loansPayable = sumAmt(loansPayableCredit) - sumAmt(loansPayableDebit);
         const kitchenEquipment = sumAmt(kitEquipDebit) - sumAmt(kitEquipCredit);
         const accumDepreciation = sumAmt(accumDeprData);
         const ownersCapital = sumAmt(ownCapCredit) - sumAmt(ownCapDebit);
         const retainedEarnings = sumAmt(retEarnCredit) - sumAmt(retEarnDebit);
-        const ownersDraw = sumAmt(ownDrawDebit) - sumAmt(ownDrawCredit);
         const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
-        const totalEquity = ownersCapital - ownersDraw + retainedEarnings;
+        const totalLiabilities = ap + incomeTaxPayable + loansPayable;
+        const totalEquity = ownersCapital + retainedEarnings;
         setFinData({
           type: 'balance',
           cashOnHand,
@@ -1074,39 +1310,37 @@ export default function AdminPage() {
           accumDepreciation,
           totalAssets,
           ap,
-          totalLiabilities: ap,
+          incomeTaxPayable,
+          loansPayable,
+          totalLiabilities,
           ownersCapital,
-          ownersDraw,
           retainedEarnings,
           totalEquity,
-          equity: totalAssets - ap,
+          equity: totalAssets - totalLiabilities,
         });
       } else if (finSubTab === 'budget') {
-        const dateFrom = fromISO.split('T')[0];
-        const dateTo = toISO.split('T')[0];
-        const OPEX_ACCOUNTS = [
-          'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
-          'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
-          'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-          'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
-        ];
         const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', OPEX_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const expByAccount = {};
-        OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        let incomeTaxExpense = 0;
         (expAllData || []).forEach((e) => {
-          if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
+          if (e.debit_account === 'Income Tax Expense') incomeTaxExpense += Number(e.amount) || 0;
+          else if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
         });
         const opExp = Object.values(expByAccount).reduce((s, v) => s + v, 0);
         const totalRevenue = revenue + deliveryIncome;
-        setFinData({ type: 'budget', revenue, deliveryIncome, totalRevenue, cogs, grossProfit: totalRevenue - cogs, expByAccount, opExp, netProfit: totalRevenue - cogs - opExp });
+        const grossProfit = totalRevenue - cogs;
+        const incomeBeforeTax = grossProfit - opExp;
+        const netIncome = incomeBeforeTax - incomeTaxExpense;
+        setFinData({ type: 'budget', revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netIncome });
       } else if (finSubTab === 'tax') {
         const { data: ordersData } = await supabase
           .from('orders')
@@ -1128,12 +1362,112 @@ export default function AdminPage() {
           }));
         setFinData({ type: 'tax', rows });
       }
+
+      // ── Comparative Periods ────────────────────────────────────────────────
+      if (['cashflow', 'pl', 'balance', 'sales'].includes(finSubTab)) {
+        const periods = Math.max(0, Math.min(12, Number(finCompareCount) || 0));
+        const unit = finComparePeriod;
+        const shiftedRange = (index) => {
+          const from = new Date(finDateFrom);
+          const to = new Date(finDateTo);
+          if (finCompareMode === 'same_period_last_year') {
+            from.setFullYear(from.getFullYear() - index);
+            to.setFullYear(to.getFullYear() - index);
+          } else if (unit === 'quarterly') {
+            from.setMonth(from.getMonth() - index * 3);
+            to.setMonth(to.getMonth() - index * 3);
+          } else if (unit === 'annual') {
+            from.setFullYear(from.getFullYear() - index);
+            to.setFullYear(to.getFullYear() - index);
+          } else {
+            from.setMonth(from.getMonth() - index);
+            to.setMonth(to.getMonth() - index);
+          }
+          return { from, to };
+        };
+        const makeLabel = (to) => unit === 'annual' ? to.slice(0, 4) : (unit === 'monthly' || unit === 'quarterly') ? to.slice(0, 7) : to;
+
+        const computePLPeriod = async (cFrom, cTo, cFromISO, cToISO) => {
+          const [{ data: rev }, { data: del }, { data: cg }, { data: exps }] = await Promise.all([
+            supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', cFrom).lte('date', cTo),
+            supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', cFromISO).lte('created_at', cToISO).gt('delivery_fee', 0),
+            supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', cFrom).lte('date', cTo),
+            supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', cFrom).lte('date', cTo),
+          ]);
+          const revenue = (rev || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+          const deliveryIncome = (del || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+          const cogs = (cg || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+          const expByAccount = {};
+          FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+          let incomeTaxExpense = 0;
+          (exps || []).forEach((e) => {
+            if (e.debit_account === 'Income Tax Expense') incomeTaxExpense += Number(e.amount) || 0;
+            else if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
+          });
+          const totalRevenue = revenue + deliveryIncome;
+          const grossProfit = totalRevenue - cogs;
+          const opExp = Object.values(expByAccount).reduce((s, v) => s + v, 0);
+          const incomeBeforeTax = grossProfit - opExp;
+          const netIncome = incomeBeforeTax - incomeTaxExpense;
+          return { revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netIncome };
+        };
+
+        const compareFull = [];
+        if (periods > 0) for (let i = periods; i >= 1; i--) {
+          const { from: f, to: t } = shiftedRange(i);
+          const cFrom = f.toISOString().split('T')[0];
+          const cTo = t.toISOString().split('T')[0];
+          const cFromISO = `${cFrom}T00:00:00.000Z`;
+          const cToISO = `${cTo}T23:59:59.999Z`;
+          const label = makeLabel(cTo);
+          let periodData = { label };
+          if (finSubTab === 'pl' || finSubTab === 'sales' || finSubTab === 'budget') {
+            const pl = await computePLPeriod(cFrom, cTo, cFromISO, cToISO);
+            periodData = { ...periodData, ...pl };
+          } else if (finSubTab === 'cashflow') {
+            const [{ data: cd }, { data: cc }] = await Promise.all([
+              supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).gte('date', cFrom).lte('date', cTo),
+              supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', cFrom).lte('date', cTo),
+            ]);
+            periodData.netCashChange = (cd || []).reduce((s, e) => s + (Number(e.amount) || 0), 0) - (cc || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+          } else if (finSubTab === 'balance') {
+            const [{ data: aD }, { data: aC }] = await Promise.all([
+              supabase.from('journal_entries').select('amount, debit_account').lte('date', cTo),
+              supabase.from('journal_entries').select('amount, credit_account').lte('date', cTo),
+            ]);
+            const nets = {};
+            (aD || []).forEach((e) => { if (e.debit_account) nets[e.debit_account] = (nets[e.debit_account] || 0) + (Number(e.amount) || 0); });
+            (aC || []).forEach((e) => { if (e.credit_account) nets[e.credit_account] = (nets[e.credit_account] || 0) - (Number(e.amount) || 0); });
+            const cashOnHand = nets['Cash on Hand'] || 0;
+            const cashInBank = nets['Cash in Bank'] || 0;
+            const invValue = nets['Inventory'] || 0;
+            const kitchenEquipment = nets['Kitchen Equipment'] || 0;
+            const accumDepreciation = Math.abs(nets['Accumulated Depreciation'] || 0);
+            const ap = Math.abs(nets['Accounts Payable'] || 0);
+            const incomeTaxPayable = Math.abs(nets['Income Tax Payable'] || 0);
+            const loansPayable = Math.abs(nets['Loans Payable'] || 0);
+            const ownersCapital = nets["Owner's Capital"] || 0;
+            const retainedEarnings = Math.abs(nets['Retained Earnings'] || 0);
+            const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
+            const totalLiabilities = ap + incomeTaxPayable + loansPayable;
+            const totalEquity = ownersCapital + retainedEarnings;
+            Object.assign(periodData, { cashOnHand, cashInBank, invValue, kitchenEquipment, accumDepreciation, ap, incomeTaxPayable, loansPayable, ownersCapital, retainedEarnings, totalAssets, totalLiabilities, totalEquity });
+          }
+          compareFull.push(periodData);
+        }
+        setFinCompareFull(compareFull);
+        // Keep backward-compat scalar array
+        setFinCompareData(compareFull.map((p) => ({ label: p.label, amount: p.netIncome ?? p.netCashChange ?? p.totalAssets ?? 0 })));
+      } else {
+        setFinCompareFull([]);
+        setFinCompareData([]);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [finSubTab, finDateFrom, finDateTo]);
+  }, [supabase, finSubTab, finDateFrom, finDateTo, finCompareMode, finCompareCount, finComparePeriod, FIN_CASH_ACCOUNTS, FIN_PPE_ACCOUNTS, FIN_OPEX_ACCOUNTS]);
 
   // ── Fetch: Chart of Accounts ──────────────────────────────────────────────
   const fetchCOA = useCallback(async () => {
@@ -1166,8 +1500,8 @@ export default function AdminPage() {
       const BS_ACCOUNTS = [
         'Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory',
         'Kitchen Equipment', 'Accumulated Depreciation',
-        'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities',
-        "Owner's Capital", "Owner's Draw", 'Retained Earnings',
+        'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable',
+        "Owner's Capital", 'Retained Earnings',
       ];
       // Income Statement accounts use period activity only
       const IS_ACCOUNTS = [
@@ -1176,7 +1510,7 @@ export default function AdminPage() {
         'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
         'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
         'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-        'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense',
+        'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense', 'Interest Expense', 'Income Tax Expense',
       ];
 
       const amounts = {};
@@ -1233,7 +1567,7 @@ export default function AdminPage() {
       if (journalSubTab === 'sales') {
         q = q.eq('reference_type', 'order');
       } else if (journalSubTab === 'purchases') {
-        q = q.in('reference_type', ['receiving_report', 'rr_payment']);
+        q = q.in('reference_type', ['receiving_report', 'rr_payment', 'bill']);
       } else if (journalSubTab === 'others') {
         q = q.in('reference_type', ['cash_adjustment', 'manual_entry']);
       }
@@ -1247,7 +1581,10 @@ export default function AdminPage() {
         if (journalSubFilter === 'approved_rr') q = q.eq('reference_type', 'receiving_report');
         else if (journalSubFilter === 'rr_cash_on_hand') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash on Hand');
         else if (journalSubFilter === 'rr_cash_in_bank') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash in Bank');
-        else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', "Owner's Draw");
+        else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', "Owner's Capital");
+        else if (journalSubFilter === 'bill_all') q = q.eq('reference_type', 'bill');
+        else if (journalSubFilter === 'bill_approved') q = q.eq('reference_type', 'bill').eq('credit_account', 'Accounts Payable');
+        else if (journalSubFilter === 'bill_paid') q = q.eq('reference_type', 'bill').eq('debit_account', 'Accounts Payable');
       } else if (journalSubTab === 'others' && journalSubFilter !== 'all') {
         if (journalSubFilter === 'adjustments') q = q.eq('reference_type', 'cash_adjustment');
         else if (journalSubFilter === 'manual_entry') q = q.eq('reference_type', 'manual_entry');
@@ -1391,12 +1728,58 @@ export default function AdminPage() {
   }, [activeTab, dashSubTab, fetchLowStockItems]);
 
   useEffect(() => {
+    if (activeTab === 'inventory') fetchInventory();
+  }, [activeTab, invDateFrom, invDateTo, fetchInventory]);
+
+  useEffect(() => {
     if (activeTab === 'financial') fetchFinancial();
   }, [activeTab, finSubTab, finDateFrom, finDateTo, fetchFinancial]);
 
   useEffect(() => {
+    const [yr, mo] = (invCoverageMonth || '').split('-').map(Number);
+    if (!yr || !mo) return;
+    const from = `${yr}-${String(mo).padStart(2, '0')}-01`;
+    const lastDay = new Date(yr, mo, 0).getDate();
+    const to = `${yr}-${String(mo).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    setInvDateFrom(from);
+    setInvDateTo(to);
+  }, [invCoverageMonth]);
+
+  useEffect(() => {
     if (activeTab === 'financial' && finSubTab === 'coa') fetchCOA();
   }, [activeTab, finSubTab, coaDateFrom, coaDateTo, fetchCOA]);
+
+  // ── Reload budget values when date range changes on Budget Variance tab ───
+  useEffect(() => {
+    if (finSubTab !== 'budget') return;
+    try {
+      if (typeof window === 'undefined') return;
+      const month = (finDateFrom || '').slice(0, 7);
+      const stored = localStorage.getItem(`bbc_budget_${month}`);
+      if (stored) {
+        setBudgetValues(JSON.parse(stored));
+      } else {
+        // Fall back to previous month's budget as default (timezone-safe string parsing)
+        const [yr, mo] = (finDateFrom || '').split('-').map(Number);
+        if (!yr || !mo) { setBudgetValues({}); return; }
+        const prevYear = mo === 1 ? yr - 1 : yr;
+        const prevMonthNum = mo === 1 ? 12 : mo - 1;
+        const prevMonth = `${prevYear}-${String(prevMonthNum).padStart(2, '0')}`;
+        const prevStored = localStorage.getItem(`bbc_budget_${prevMonth}`);
+        setBudgetValues(prevStored ? JSON.parse(prevStored) : {});
+      }
+    } catch { /* noop */ }
+  }, [finDateFrom, finSubTab]);
+
+  useEffect(() => {
+    if (finSubTab !== 'budget') return;
+    try {
+      if (typeof window === 'undefined') return;
+      const month = (finDateFrom || '').slice(0, 7);
+      if (!month) return;
+      localStorage.setItem(`bbc_budget_${month}`, JSON.stringify(budgetValues));
+    } catch { /* noop */ }
+  }, [budgetValues, finDateFrom, finSubTab]);
 
   useEffect(() => {
     if (activeTab === 'journal') fetchJournal();
@@ -1420,17 +1803,38 @@ export default function AdminPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Nav items (memoised) — must be declared before any early return ──────
-  const navItems = useMemo(
+  const navGroups = useMemo(
     () => [
-      { key: 'dashboard', label: '📊 Dashboard' },
-      { key: 'inventory', label: '📦 Inventory' },
-      { key: 'costing', label: '💰 Price Costing' },
-      { key: 'rr', label: '📋 Receiving Report' },
-      { key: 'financial', label: '📈 Financial Reports' },
-      { key: 'journal', label: '📒 Journal Entries' },
-      { key: 'manual', label: '✏️ Manual Entry' },
-      { key: 'bills', label: '🧾 Bills' },
-      { key: 'profile', label: '👤 My Profile' },
+      { type: 'item', key: 'dashboard', label: '📊 Dashboard' },
+      {
+        type: 'group', key: 'transactions', label: '💳 Transactions',
+        children: [
+          { key: 'bills', label: '🧾 Bills' },
+          { key: 'manual', label: '✏️ Manual Entry' },
+        ],
+      },
+      {
+        type: 'group', key: 'inventory', label: '📦 Inventory',
+        children: [
+          { key: 'costing', label: '💰 Price Costing' },
+          { key: 'rr', label: '📋 Receiving Report' },
+          { key: 'inventory', label: '📊 Inventory Report' },
+        ],
+      },
+      {
+        type: 'group', key: 'financial', label: '📈 Financial Reports',
+        children: [
+          { key: 'cashflow', finTab: true, label: '💵 Cash Flow' },
+          { key: 'pl', finTab: true, label: '📊 Profit & Loss' },
+          { key: 'balance', finTab: true, label: '⚖️ Balance Sheet' },
+          { key: 'sales', finTab: true, label: '🛒 Sales Report' },
+          { key: 'budget', finTab: true, label: '📋 Budget Variance' },
+          { key: 'tax', finTab: true, label: '🏦 Tax Report' },
+          { key: 'journal', finTab: false, label: '📒 Journal Entries' },
+          { key: 'coa', finTab: true, label: '📑 Chart of Accounts' },
+        ],
+      },
+      { type: 'item', key: 'profile', label: '👤 My Profile' },
     ],
     [],
   );
@@ -1446,8 +1850,6 @@ export default function AdminPage() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const fmt = (val) => `₱${Number(val).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
-
-  const PIE_COLORS = { Cost: '#ffc107', Payroll: '#4caf50', Utilities: '#2196f3', Rent: '#9c27b0', Others: '#ff5722' };
 
   const suggestCode = (dept, items) => {
     const count = items.filter((i) => i.code && i.code.startsWith(dept)).length;
@@ -1799,6 +2201,7 @@ export default function AdminPage() {
     setRrSaveError('');
     setSavingRR(true);
     try {
+      if (!rrForm.vendor_id) { setRrSaveError('Please select a vendor (Contact) before saving.'); return; }
       const emptyName = rrLineItems.find((li) => !li.inventory_name);
       if (emptyName) { setRrSaveError('Please select an inventory item for every line before saving.'); return; }
       const totalLC = rrLineItems.reduce((s, i) => s + (i.total_landed_cost || 0), 0);
@@ -1987,10 +2390,10 @@ export default function AdminPage() {
       // Journal Entry based on payment mode
       // Cash on Hand: Debit Accounts Payable, Credit Cash on Hand
       // Cash in Bank: Debit Accounts Payable, Credit Cash in Bank
-      // Credit Card:  Debit Accounts Payable, Credit Owner's Draw
+      // Credit Card:  Debit Accounts Payable, Credit Owner's Capital
       const creditAccount =
         rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
-        rrPayForm.payment_mode === 'credit_card'  ? "Owner's Draw" :
+        rrPayForm.payment_mode === 'credit_card'  ? "Owner's Capital" :
         'Cash on Hand';
       const { error: jeErr } = await supabase.from('journal_entries').insert({
         date: rrPayForm.payment_date,
@@ -2100,18 +2503,66 @@ export default function AdminPage() {
           </div>
 
           <nav style={styles.nav}>
-            {navItems.map((item) => (
-              <button
-                key={item.key}
-                onClick={() => setActiveTab(item.key)}
-                style={{
-                  ...styles.navBtn,
-                  ...(activeTab === item.key ? styles.navBtnActive : styles.navBtnInactive),
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
+            {navGroups.map((item) => {
+              if (item.type === 'item') {
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => setActiveTab(item.key)}
+                    style={{ ...styles.navBtn, ...(activeTab === item.key ? styles.navBtnActive : styles.navBtnInactive) }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              }
+              // group
+              const isChildActive = (item.children || []).some((c) =>
+                c.finTab ? (activeTab === 'financial' && finSubTab === c.key) : (activeTab === c.key),
+              );
+              const isOpen = navGroupOpen[item.key] || isChildActive;
+              return (
+                <div key={item.key}>
+                  <button
+                    onClick={() => setNavGroupOpen((p) => ({ ...p, [item.key]: !p[item.key] }))}
+                    style={{
+                      ...styles.navBtn, ...styles.navBtnInactive,
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      fontWeight: isChildActive ? 600 : 400,
+                      color: isChildActive ? '#ffc107' : '#ccc',
+                    }}
+                  >
+                    <span>{item.label}</span>
+                    <span style={{ fontSize: 10 }}>{isOpen ? '▾' : '▸'}</span>
+                  </button>
+                  {isOpen && (item.children || []).map((child) => {
+                    const childActive = child.finTab
+                      ? (activeTab === 'financial' && finSubTab === child.key)
+                      : (activeTab === child.key);
+                    return (
+                      <button
+                        key={child.key}
+                        onClick={() => {
+                          if (child.finTab) {
+                            setActiveTab('financial');
+                            setFinSubTab(child.key);
+                          } else {
+                            setActiveTab(child.key);
+                          }
+                        }}
+                        style={{
+                          ...styles.navBtn,
+                          ...(childActive ? styles.navBtnActive : styles.navBtnInactive),
+                          paddingLeft: 24,
+                          fontSize: 12,
+                        }}
+                      >
+                        {child.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </nav>
 
           <div style={styles.sidebarFooter}>
@@ -2159,7 +2610,7 @@ export default function AdminPage() {
                   <div style={styles.dashGrid}>
                     {/* Widget 1.1 – Sales Trend (Mon–Sun weekly dates) */}
                     <div style={styles.card}>
-                      <h3 style={styles.cardTitle}>Monthly Sales Trend (Mon–Sun Weekly)</h3>
+                      <h3 style={styles.cardTitle}>Sales Trend (12 Weeks)</h3>
                       <ResponsiveContainer width="100%" height={220}>
                         <BarChart data={salesTrend}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#333" />
@@ -2169,7 +2620,7 @@ export default function AdminPage() {
                           <Bar dataKey="sales" fill="#ffc107" name="Sales" />
                         </BarChart>
                       </ResponsiveContainer>
-                      <p style={{ fontSize: 11, color: '#666', marginTop: 4 }}>Week labels = Mon–Sun date range</p>
+                      <p style={{ fontSize: 11, color: '#666', marginTop: 4 }}>12-week rolling window; each bar = Mon–Sun</p>
                     </div>
 
                     {/* Widget 1.2 – Cash Flow (from Journal Entries, Mon–Sun weekly) */}
@@ -2255,35 +2706,59 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    {/* Widget 1.4 – Expenses Breakdown */}
+                    {/* Widget 1.4 – Monthly Profit & Loss + Budget Forecast */}
                     <div style={styles.card}>
-                      <h3 style={styles.cardTitle}>Monthly Expenses Breakdown</h3>
-                      {expensesBreakdown.length > 0 ? (
+                      <h3 style={styles.cardTitle}>Monthly Profit &amp; Loss</h3>
+                      {monthlyPnLData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={250}>
-                          <PieChart>
-                            <Pie
-                              data={expensesBreakdown}
-                              dataKey="value"
-                              nameKey="name"
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={80}
-                              label={({ name, pct }) => `${name} ${pct}%`}
-                              labelLine={{ stroke: '#555' }}
-                            >
-                              {expensesBreakdown.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={PIE_COLORS[entry.name] || '#999'} />
-                              ))}
-                            </Pie>
+                          <BarChart data={monthlyPnLData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                            <XAxis dataKey="month" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                            <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
                             <Tooltip
                               contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }}
                               formatter={(val) => fmt(val)}
                             />
-                          </PieChart>
+                            <Legend wrapperStyle={{ color: '#ccc' }} />
+                            <Bar dataKey="totalRevenue" fill="#ffc107" name="Total Revenue" />
+                            <Bar dataKey="cogs" fill="#ff9800" name="COGS" />
+                            <Bar dataKey="opExp" fill="#f44336" name="Operating Expenses" />
+                            <Bar dataKey="netProfit" fill="#4caf50" name="Net Profit" />
+                          </BarChart>
                         </ResponsiveContainer>
                       ) : (
-                        <p style={{ color: '#666', textAlign: 'center', marginTop: 40 }}>No expense data</p>
+                        <p style={{ color: '#666', textAlign: 'center', marginTop: 40 }}>No P&amp;L data</p>
                       )}
+                      <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #333' }}>
+                        <h4 style={{ margin: 0, marginBottom: 8, color: '#ccc', fontSize: 13 }}>Budget Forecast</h4>
+                        {budgetForecastData.length > 0 ? (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+                            {[
+                              { title: 'Total Revenue', budgetKey: 'budgetRevenue', actualKey: 'actualRevenue', color: '#ffc107' },
+                              { title: 'COGS', budgetKey: 'budgetCogs', actualKey: 'actualCogs', color: '#ff9800' },
+                              { title: 'Operating Expense', budgetKey: 'budgetOpExp', actualKey: 'actualOpExp', color: '#f44336' },
+                              { title: 'Net Profit', budgetKey: 'budgetNetProfit', actualKey: 'actualNetProfit', color: '#4caf50' },
+                            ].map(({ title, budgetKey, actualKey, color }) => (
+                              <div key={title} style={{ background: '#1a1a1a', borderRadius: 6, padding: 8, border: '1px solid #333' }}>
+                                <div style={{ color: '#aaa', fontSize: 11, marginBottom: 4 }}>{title}</div>
+                                <ResponsiveContainer width="100%" height={140}>
+                                  <BarChart data={budgetForecastData} margin={{ top: 2, right: 4, left: 0, bottom: 2 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+                                    <XAxis dataKey="month" stroke="#555" tick={{ fill: '#888', fontSize: 9 }} />
+                                    <YAxis stroke="#555" tick={{ fill: '#888', fontSize: 9 }} width={48} tickFormatter={(v) => `₱${Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                                    <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff', fontSize: 11 }} formatter={(val) => fmt(val)} />
+                                    <Legend wrapperStyle={{ color: '#888', fontSize: 10 }} iconSize={8} />
+                                    <Bar dataKey={budgetKey} fill="#2196f3" name="Budget" />
+                                    <Bar dataKey={actualKey} fill={color} name="Actual" />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>No budget forecast data</p>
+                        )}
+                  </div>
                     </div>
                   </div>
                 </>
@@ -2402,6 +2877,12 @@ export default function AdminPage() {
               <div style={styles.tabHeader}>
                 <h1 style={styles.pageTitle}>Inventory</h1>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    style={{ ...styles.input, width: 220 }}
+                    placeholder="Search by code, name, dept…"
+                    value={invSearch}
+                    onChange={(e) => setInvSearch(e.target.value)}
+                  />
                   <select style={{ ...styles.input, width: 160 }} value={invStatusFilter} onChange={(e) => setInvStatusFilter(e.target.value)}>
                     <option value="">All Status</option>
                     <option value="in-stock">In Stock</option>
@@ -2415,10 +2896,12 @@ export default function AdminPage() {
               {/* Date Coverage */}
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', background: '#1a1a1a', border: '1px solid #333', borderRadius: 8, padding: '12px 16px' }}>
                 <span style={{ color: '#ffc107', fontWeight: 600, fontSize: 13 }}>📅 Date Coverage:</span>
+                <label style={{ color: '#ccc', fontSize: 13 }}>Month:</label>
+                <input type="month" style={{ ...styles.input, width: 160 }} value={invCoverageMonth} onChange={(e) => setInvCoverageMonth(e.target.value)} />
                 <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
-                <input type="date" style={{ ...styles.input, width: 160 }} value={invDateFrom} onChange={(e) => setInvDateFrom(e.target.value)} />
+                <input type="date" style={{ ...styles.input, width: 160, background: '#111', color: '#aaa' }} value={invDateFrom} readOnly />
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
-                <input type="date" style={{ ...styles.input, width: 160 }} value={invDateTo} onChange={(e) => setInvDateTo(e.target.value)} />
+                <input type="date" style={{ ...styles.input, width: 160, background: '#111', color: '#aaa' }} value={invDateTo} readOnly />
                 <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
                 <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = All Draft RRs (all dates). Sold = Delivered/Completed orders. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
               </div>
@@ -2435,15 +2918,23 @@ export default function AdminPage() {
                   </thead>
                   <tbody>
                     {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, inTransit: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).filter((item) => {
-                       if (!invStatusFilter) return true;
-                       const stock = Number(item.current_stock ?? item.ending) || 0;
-                       const minStock = Number(item.min_stock) || 0;
-                       if (invStatusFilter === 'out-of-stock') return stock <= 0;
-                       if (invStatusFilter === 'low-stock') return stock > 0 && stock <= minStock;
-                       if (invStatusFilter === 'in-stock') return stock > minStock;
-                       return true;
-                     }).map((item, idx) => (
-                      <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                      const q = invSearch.trim().toLowerCase();
+                      if (q) {
+                        const code = (item.code || '').toLowerCase();
+                        const name = (item.name || '').toLowerCase();
+                        const dept = (item.department || '').toLowerCase();
+                        const uom = (item.uom || '').toLowerCase();
+                        if (!(code.includes(q) || name.includes(q) || dept.includes(q) || uom.includes(q))) return false;
+                      }
+                      if (!invStatusFilter) return true;
+                      const stock = Number(item.current_stock ?? item.ending) || 0;
+                      const minStock = Number(item.min_stock) || 0;
+                      if (invStatusFilter === 'out-of-stock') return stock <= 0;
+                      if (invStatusFilter === 'low-stock') return stock > 0 && stock <= minStock;
+                      if (invStatusFilter === 'in-stock') return stock > minStock;
+                      return true;
+                    }).map((item, idx) => (
+                       <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{item.code}</td>
                         <td style={styles.td}>{item.name}</td>
                         <td style={styles.td}>{item.department}</td>
@@ -2616,7 +3107,7 @@ export default function AdminPage() {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      {['Menu Item', 'Menu Category', 'Total Est. COGS (₱)', 'Selling Price (₱)', 'CM Ratio', 'Actions'].map((h) => (
+                      {['Menu Item', 'Menu Category', 'Total Est. COGS (₱)', 'Selling Price (₱)', 'CM Amount (₱)', 'CM Ratio', 'Actions'].map((h) => (
                         <th key={h} style={styles.th}>{h}</th>
                       ))}
                     </tr>
@@ -2636,6 +3127,7 @@ export default function AdminPage() {
                           <td style={styles.td}>{item.menu_category || '—'}</td>
                           <td style={styles.td}>{fmt(tec)}</td>
                           <td style={{ ...styles.td, color: '#ffc107' }}>{fmt(sp)}</td>
+                          <td style={{ ...styles.td, color: sp - tec >= 0 ? '#4caf50' : '#f44336', fontWeight: 600 }}>{fmt(sp - tec)}</td>
                           <td style={{ ...styles.td, color: isBelowTarget ? '#f44336' : '#4caf50', fontWeight: 600 }}>
                             {isBelowTarget && <span title={`Below target ${(target * 100).toFixed(0)}%`}>⚠️ </span>}
                             {(cmRatio * 100).toFixed(1)}%
@@ -2657,7 +3149,7 @@ export default function AdminPage() {
                       );
                     })}
                     {costingHeaders.length === 0 && !loading && (
-                      <tr><td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
+                      <tr><td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -2724,7 +3216,8 @@ export default function AdminPage() {
                                         : basePrice + Number(opt.price_modifier || 0);
                                       expanded.push({
                                         key: `${m.id || m.name}-${vt.id}-${opt.id}`,
-                                        displayName: `${m.name} - ${opt.option_name}${isAddOn ? ' (Add On)' : ''}`,
+                                        displayName: isAddOn ? `${opt.option_name}` : `${m.name} - ${opt.option_name}`,
+                                        parentName: isAddOn ? m.name : '',
                                         category: m.category || '',
                                         price: variantPrice,
                                       });
@@ -2732,8 +3225,13 @@ export default function AdminPage() {
                                   }
                                 }
                               }
+                              const existingNames = new Set(costingHeaders.map((h) => (h.menu_item_name || '').toLowerCase()));
                               const q = menuSearchQuery.toLowerCase();
-                              const filtered = expanded.filter((e) => e.displayName.toLowerCase().includes(q));
+                              const filtered = expanded.filter((e) =>
+                                e.displayName.toLowerCase().includes(q) &&
+                                (!costingEditItem || (costingEditItem.menu_item_name || '').toLowerCase() !== e.displayName.toLowerCase()) &&
+                                (costingEditItem ? true : !existingNames.has(e.displayName.toLowerCase())),
+                              );
                               if (filtered.length === 0) {
                                 return <div style={{ color: '#666', fontSize: 13, padding: '6px 8px' }}>No menu items found.</div>;
                               }
@@ -2753,7 +3251,7 @@ export default function AdminPage() {
                                     setMenuSearchOpen(false);
                                   }}
                                 >
-                                  {entry.displayName} <span style={{ color: '#888', fontSize: 11 }}>({entry.category}) — {fmt(entry.price)}</span>
+                                  {entry.displayName} <span style={{ color: '#888', fontSize: 11 }}>({entry.category}) — {fmt(entry.price)}{entry.parentName ? ` • Add-on to ${entry.parentName}` : ''}</span>
                                 </div>
                               ));
                             })()}
@@ -3515,7 +4013,7 @@ export default function AdminPage() {
                         <div style={{ paddingLeft: 24 }}>
                           Cr &nbsp;<strong>
                             {rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
-                             rrPayForm.payment_mode === 'credit_card'  ? "Owner's Draw" :
+                             rrPayForm.payment_mode === 'credit_card'  ? "Owner's Capital" :
                              'Cash on Hand'}
                           </strong> &nbsp;₱{Number(rrPayForm.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                         </div>
@@ -3603,34 +4101,11 @@ export default function AdminPage() {
             <div>
               <h1 style={styles.pageTitle}>Financial Reports</h1>
 
-              {/* Sub-tab pills */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-                {[
-                  { key: 'cashflow', label: 'Cash Flow' },
-                  { key: 'pl', label: 'P&L' },
-                  { key: 'balance', label: 'Balance Sheet' },
-                  { key: 'budget', label: 'Budget Variance' },
-                  { key: 'tax', label: 'Tax Report' },
-                  { key: 'coa', label: 'Chart of Accounts' },
-                ].map((st) => (
-                  <button
-                    key={st.key}
-                    onClick={() => setFinSubTab(st.key)}
-                    style={{
-                      padding: '8px 18px',
-                      borderRadius: 20,
-                      border: `1px solid ${finSubTab === st.key ? '#ffc107' : '#333'}`,
-                      background: finSubTab === st.key ? '#ffc107' : 'transparent',
-                      color: finSubTab === st.key ? '#000' : '#ccc',
-                      cursor: 'pointer',
-                      fontFamily: 'Poppins, sans-serif',
-                      fontWeight: finSubTab === st.key ? 700 : 400,
-                      fontSize: 13,
-                    }}
-                  >
-                    {st.label}
-                  </button>
-                ))}
+              {/* Sub-tab label (navigation is now in sidebar) */}
+              <div style={{ marginBottom: 16 }}>
+                <span style={{ color: '#888', fontSize: 12 }}>
+                  {({ cashflow: 'Cash Flow Statement', pl: 'Profit & Loss', balance: 'Balance Sheet', sales: 'Sales Report', budget: 'Budget Variance', tax: 'Tax Report', coa: 'Chart of Accounts' })[finSubTab] || finSubTab}
+                </span>
               </div>
 
               {/* Date range (not shown for CoA) */}
@@ -3640,51 +4115,98 @@ export default function AdminPage() {
                   <input type="date" style={{ ...styles.input, width: 160 }} value={finDateFrom} onChange={(e) => setFinDateFrom(e.target.value)} />
                   <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                   <input type="date" style={{ ...styles.input, width: 160 }} value={finDateTo} onChange={(e) => setFinDateTo(e.target.value)} />
-                  <button onClick={fetchFinancial} style={styles.primaryBtn}>Refresh</button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ color: '#ccc', fontSize: 12 }}>Compare with</label>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <select
+                        style={{ ...styles.input, width: 160 }}
+                        value={finCompareCount === 0 ? 'none' : finCompareCustomOpen ? 'custom' : String(finCompareCount)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === 'none') { setFinCompareCount(0); setFinCompareCustomOpen(false); }
+                          else if (v === 'custom') { setFinCompareCustomOpen(true); }
+                          else { setFinCompareCount(Number(v)); setFinCompareCustomOpen(false); }
+                        }}
+                      >
+                        <option value="none">None</option>
+                        <option value="1">1 month</option>
+                        <option value="2">2 months</option>
+                        <option value="3">3 months</option>
+                        <option value="4">4 months</option>
+                        <option value="custom">Enter a different number</option>
+                      </select>
+                      {finCompareCustomOpen && (
+                        <input
+                          type="number"
+                          min={1}
+                          max={12}
+                          placeholder="# periods"
+                          style={{ ...styles.input, width: 90 }}
+                          value={finCompareCount || ''}
+                          onChange={(e) => setFinCompareCount(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                        />
+                      )}
+                    </div>
+                    {finCompareCount > 0 && (
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, color: '#ccc' }}>
+                        <span>Previous</span>
+                        {[{ val: 'monthly', label: 'Month' }, { val: 'quarterly', label: 'Quarter' }, { val: 'annual', label: 'Year' }].map((opt) => (
+                          <label key={opt.val} style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+                            <input type="radio" name="finComparePeriod" value={opt.val} checked={finComparePeriod === opt.val} onChange={() => setFinComparePeriod(opt.val)} />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={fetchFinancial} style={styles.primaryBtn}>Update</button>
                 </div>
               )}
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
 
+
+
+
               {/* Cash Flow */}
               {finSubTab === 'cashflow' && finData?.type === 'cashflow' && (
-                <div style={styles.card}>
+                <div style={{ ...styles.card, maxWidth: 860 }}>
                   <h3 style={styles.cardTitle}>Cash Flow Statement</h3>
+                  <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>From {finDateFrom} to {finDateTo}</p>
                   <div style={styles.tableWrap}>
                     <table style={styles.table}>
-                      <thead>
-                        <tr>
-                          {['Date', 'Description', 'Type', 'Inflow (₱)', 'Outflow (₱)', 'Running Balance'].map((h) => (
-                            <th key={h} style={styles.th}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
                       <tbody>
-                        {finData.rows.map((row, idx) => (
-                          <tr key={row.id || idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                            <td style={styles.td}>{new Date(row.created_at).toLocaleDateString('en-PH')}</td>
-                            <td style={styles.td}>{row.description || row.transaction_type}</td>
-                            <td style={styles.td}>{row.transaction_type}</td>
-                            <td style={{ ...styles.td, color: '#4caf50' }}>{row.inflow > 0 ? fmt(row.inflow) : '—'}</td>
-                            <td style={{ ...styles.td, color: '#f44336' }}>{row.outflow > 0 ? fmt(row.outflow) : '—'}</td>
-                            <td style={{ ...styles.td, color: row.running >= 0 ? '#4caf50' : '#f44336' }}>{fmt(row.running)}</td>
-                          </tr>
-                        ))}
-                        {finData.rows.length > 0 && (() => {
-                          const totalIn = finData.rows.reduce((s, r) => s + r.inflow, 0);
-                          const totalOut = finData.rows.reduce((s, r) => s + r.outflow, 0);
-                          return (
-                            <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
-                              <td colSpan={3} style={{ ...styles.td, color: '#ffc107' }}>TOTAL</td>
-                              <td style={{ ...styles.td, color: '#4caf50' }}>{fmt(totalIn)}</td>
-                              <td style={{ ...styles.td, color: '#f44336' }}>{fmt(totalOut)}</td>
-                              <td style={{ ...styles.td, color: '#ffc107' }}>{fmt(totalIn - totalOut)}</td>
-                            </tr>
-                          );
-                        })()}
-                        {finData.rows.length === 0 && (
-                          <tr><td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No transactions in range</td></tr>
-                        )}
+                        <tr style={{ background: '#1e1e1e' }}>
+                          <td style={{ ...styles.td, fontWeight: 700 }}>Cash Beginning Balance</td>
+                          <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700 }}>{fmt(finData.cashBeginningBalance)}</td>
+                        </tr>
+
+                        <tr><td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Operations</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Cash receipts from Revenue (Cash + GCash)</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.receiptsRevenue)}</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Delivery Income</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.deliveryIncome)}</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Inventory purchases</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.inventoryPurchases)})</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>General operating &amp; administrative expenses</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.genOpAdminExpenses)})</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Salaries &amp; Wages</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.salariesWages)})</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Income taxes</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.incomeTaxes)})</td></tr>
+                        <tr style={{ background: '#1a2a1a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#4caf50' }}>Net Cash Flow from Operations</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netCashFlowOperations >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netCashFlowOperations)}</td></tr>
+
+                        <tr><td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Investing Activities</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Sale of property and equipment</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.saleOfPropertyEquipment)}</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Collection of principal on loans</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.collectionPrincipalOnLoans)}</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Purchase of property and equipment</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.purchaseOfPropertyEquipment)})</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Making loans to other entities</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.makingLoansToOthers)})</td></tr>
+                        <tr style={{ background: '#1a1a2a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#2196f3' }}>Net Cash Flow from Investing Activities</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netCashFlowInvesting >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netCashFlowInvesting)}</td></tr>
+
+                        <tr><td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Financing Activities</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Proceeds from loans payable</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.proceedsFromLoans)}</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s capital infusion</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.ownersCapitalInfusion)}</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Repayment of loans payable</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.repaymentOfLoans)})</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s drawings</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.ownersDrawings)})</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Interest Expense</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.interestExpensePaid || 0)})</td></tr>
+                        <tr style={{ background: '#2a1a2a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#e1bee7' }}>Net Cash Flow from Financing Activities</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netCashFlowFinancing >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netCashFlowFinancing)}</td></tr>
+
+                        <tr style={{ background: '#2a2a1a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Net Increase / (Decrease) in Cash</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netChange >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netChange)}</td></tr>
+                        <tr style={{ background: '#3a2a0a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Cash Ending Balance</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.cashEndingBalance)}</td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -3692,139 +4214,277 @@ export default function AdminPage() {
               )}
 
               {/* P&L */}
-              {finSubTab === 'pl' && finData?.type === 'pl' && (
-                <div style={{ ...styles.card, maxWidth: 560 }}>
-                  <h3 style={styles.cardTitle}>Profit &amp; Loss Statement</h3>
-                  <table style={styles.table}>
-                    <tbody>
-                      <tr style={styles.trEven}>
-                        <td style={styles.td}>Revenue</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.revenue)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Delivery Income</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.deliveryIncome)}</td>
-                      </tr>
-                      <tr style={{ background: '#2a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Revenue</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalRevenue)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={styles.td}>Cost of Goods Sold (COGS)</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.cogs)})</td>
-                      </tr>
-                      <tr style={{ background: '#2a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Gross Profit</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.grossProfit >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.grossProfit)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, fontWeight: 600 }}>Operating Expenses</td>
-                        <td style={styles.td}></td>
-                      </tr>
-                      {finData.expByAccount && Object.entries(finData.expByAccount).map(([acct, amt], idx) => (
-                        <tr key={acct} style={idx % 2 === 0 ? styles.trOdd : styles.trEven}>
-                          <td style={{ ...styles.td, paddingLeft: 24 }}>{acct}</td>
-                          <td style={{ ...styles.td, textAlign: 'right', color: amt > 0 ? '#f44336' : '#888' }}>
-                            {amt > 0 ? `(${fmt(amt)})` : fmt(0)}
-                          </td>
-                        </tr>
-                      ))}
-                      <tr style={{ background: '#2a1a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#f44336' }}>Total Operating Expenses</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#f44336' }}>({fmt(finData.opExp)})</td>
-                      </tr>
-                      <tr style={{ background: '#3a2a0a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Net Profit</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netProfit >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netProfit)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {finSubTab === 'pl' && finData?.type === 'pl' && (() => {
+                const currentLabel = `${finDateFrom} – ${finDateTo}`;
+                const hasCmp = finCompareFull.length > 0;
+                const colCount = 1 + finCompareFull.length;
+                const cmpVal = (p, key, opexKey) => opexKey ? (p.expByAccount?.[opexKey] || 0) : (p[key] || 0);
+                const amtCell = (val, color, neg = false, bold = false) => (
+                  <td style={{ ...styles.td, textAlign: 'right', color: color || styles.td.color, fontWeight: bold ? 700 : 400 }}>
+                    {neg && val > 0 ? `(${fmt(val)})` : fmt(val)}
+                  </td>
+                );
+                const plRows = [
+                  { key: 'revenue', label: 'Revenue', color: '#4caf50', indent: false },
+                  { key: 'deliveryIncome', label: 'Delivery Income', color: '#4caf50', indent: true },
+                  { key: 'totalRevenue', label: 'Total Revenue', bold: true },
+                  { key: 'cogs', label: 'Cost of Goods Sold (COGS)', color: '#f44336', neg: true },
+                  { key: 'grossProfit', label: 'Gross Profit', bold: true },
+                  { label: 'Operating Expenses', header: true },
+                  ...FIN_OPEX_ACCOUNTS.map((a) => ({ key: a, label: a, color: '#f44336', indent: true, opexKey: a, neg: true })),
+                  { key: 'opExp', label: 'Total Operating Expenses', color: '#f44336', neg: true, bold: true },
+                  { key: 'incomeBeforeTax', label: 'Income Before Tax', bold: true },
+                  { key: 'incomeTaxExpense', label: 'Income Tax Expense', color: '#f44336', neg: true, indent: true },
+                  { key: 'netIncome', label: 'Net Income', bold: true, color: '#ffc107' },
+                ];
+                return (
+                  <div style={{ ...styles.card, overflowX: 'auto' }}>
+                    <h3 style={styles.cardTitle}>Profit &amp; Loss Statement</h3>
+                    <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>For the period {finDateFrom} to {finDateTo}</p>
+                    <table style={{ ...styles.table, minWidth: hasCmp ? 400 + colCount * 140 : 480 }}>
+                      {hasCmp && (
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>Account</th>
+                            <th style={{ ...styles.th, textAlign: 'right', color: '#ffc107' }}>{currentLabel}</th>
+                            {finCompareFull.map((p) => <th key={p.label} style={{ ...styles.th, textAlign: 'right' }}>{p.label}</th>)}
+                          </tr>
+                        </thead>
+                      )}
+                      <tbody>
+                        {plRows.map((row, ri) => {
+                          if (row.header) {
+                            return (
+                              <tr key={row.label} style={styles.trEven}>
+                                <td style={{ ...styles.td, fontWeight: 600 }}>{row.label}</td>
+                                {hasCmp && Array.from({ length: colCount }).map((_, ci) => <td key={ci} style={styles.td}></td>)}
+                              </tr>
+                            );
+                          }
+                          const curVal = row.opexKey ? (finData.expByAccount?.[row.opexKey] || 0) : (finData[row.key] || 0);
+                          const rowBg = row.bold ? (row.key === 'netIncome' ? '#3a2a0a' : row.key === 'incomeBeforeTax' ? '#1a2a1a' : row.key === 'grossProfit' ? '#2a2a1a' : row.color === '#f44336' ? '#2a1a1a' : '#2a2a1a') : (ri % 2 === 0 ? styles.trEven.background : styles.trOdd.background);
+                          return (
+                            <tr key={row.label} style={{ background: rowBg }}>
+                              <td style={{ ...styles.td, paddingLeft: row.indent ? 28 : 12, fontWeight: row.bold ? 700 : 400, color: row.bold ? '#ffc107' : styles.td.color }}>{row.label}</td>
+                              {amtCell(curVal, row.color, row.neg, row.bold)}
+                              {hasCmp && finCompareFull.map((p) => amtCell(cmpVal(p, row.key, row.opexKey), row.color, row.neg, row.bold))}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
 
               {/* Balance Sheet */}
-              {finSubTab === 'balance' && finData?.type === 'balance' && (
-                <div style={{ ...styles.card, maxWidth: 560 }}>
-                  <h3 style={styles.cardTitle}>Balance Sheet</h3>
-                  <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>As of {finDateTo} — cumulative from all transactions up to this date.</p>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr>
-                        <th style={styles.th}>Item</th>
-                        <th style={{ ...styles.th, textAlign: 'right' }}>Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, fontWeight: 600 }}>Assets</td>
-                        <td style={styles.td}></td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Cash on Hand</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.cashOnHand)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Cash in Bank</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.cashInBank)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Inventory Value</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.invValue)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Kitchen Equipment</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.kitchenEquipment)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Less: Accumulated Depreciation</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: finData.accumDepreciation > 0 ? '#f44336' : '#888' }}>
-                          {finData.accumDepreciation > 0 ? `(${fmt(finData.accumDepreciation)})` : fmt(0)}
-                        </td>
-                      </tr>
-                      <tr style={{ background: '#2a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Assets</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalAssets)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, fontWeight: 600 }}>Liabilities</td>
-                        <td style={styles.td}></td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Accounts Payable</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ap)}</td>
-                      </tr>
-                      <tr style={{ background: '#2a1a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#f44336' }}>Total Liabilities</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#f44336' }}>{fmt(finData.totalLiabilities)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, fontWeight: 600 }}>Equity</td>
-                        <td style={styles.td}></td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s Capital</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ownersCapital)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, paddingLeft: 24, color: '#f44336' }}>Less: Owner&apos;s Draw</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: finData.ownersDraw > 0 ? '#f44336' : '#888' }}>
-                          {finData.ownersDraw > 0 ? `(${fmt(finData.ownersDraw)})` : fmt(0)}
-                        </td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Retained Earnings</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.retainedEarnings)}</td>
-                      </tr>
-                      <tr style={{ background: '#1a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#4caf50' }}>Total Equity</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#4caf50' }}>{fmt(finData.totalEquity)}</td>
-                      </tr>
-                      <tr style={{ background: '#1a1a2a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Liabilities &amp; Equity</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalLiabilities + finData.totalEquity)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
+              {finSubTab === 'balance' && finData?.type === 'balance' && (() => {
+                const hasCmp = finCompareFull.length > 0;
+                const colCount = 1 + finCompareFull.length;
+                const cmpGet = (p, key) => p[key] ?? 0;
+                const hdrCell = (label, colSpan = 1) => (
+                  <td colSpan={colSpan} style={{ ...styles.td, fontWeight: 600 }}>{label}</td>
+                );
+                const dataRow = (label, curVal, keyForCmp, indent = false, neg = false, bold = false, boldColor = '#ffc107') => (
+                  <tr style={{ background: bold ? '#2a2a1a' : styles.trOdd.background }}>
+                    <td style={{ ...styles.td, paddingLeft: indent ? 28 : 12, fontWeight: bold ? 700 : 400, color: bold ? boldColor : styles.td.color }}>{label}</td>
+                    <td style={{ ...styles.td, textAlign: 'right', fontWeight: bold ? 700 : 400, color: bold ? boldColor : (neg && curVal > 0 ? '#f44336' : styles.td.color) }}>
+                      {neg && curVal > 0 ? `(${fmt(curVal)})` : fmt(curVal)}
+                    </td>
+                    {hasCmp && finCompareFull.map((p) => {
+                      const v = cmpGet(p, keyForCmp);
+                      return <td key={p.label} style={{ ...styles.td, textAlign: 'right', fontWeight: bold ? 700 : 400, color: bold ? boldColor : (neg && v > 0 ? '#f44336' : styles.td.color) }}>{neg && v > 0 ? `(${fmt(v)})` : fmt(v)}</td>;
+                    })}
+                  </tr>
+                );
+                const sectionRow = (label) => (
+                  <tr style={styles.trEven}>
+                    {hdrCell(label)}
+                    {Array.from({ length: colCount }).map((_, i) => <td key={i} style={styles.td}></td>)}
+                  </tr>
+                );
+                return (
+                  <div style={{ ...styles.card, overflowX: 'auto' }}>
+                    <h3 style={styles.cardTitle}>Balance Sheet</h3>
+                    <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>Cumulative from all transactions up to the selected end date.</p>
+                    <table style={{ ...styles.table, minWidth: hasCmp ? 400 + colCount * 140 : 480 }}>
+                      {hasCmp && (
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>Item</th>
+                            <th style={{ ...styles.th, textAlign: 'right', color: '#ffc107' }}>As of {finDateTo}</th>
+                            {finCompareFull.map((p) => <th key={p.label} style={{ ...styles.th, textAlign: 'right' }}>As of {p.label}</th>)}
+                          </tr>
+                        </thead>
+                      )}
+                      <tbody>
+                        {sectionRow('Assets')}
+                        {dataRow('Cash on Hand', finData.cashOnHand, 'cashOnHand', true)}
+                        {dataRow('Cash in Bank', finData.cashInBank, 'cashInBank', true)}
+                        {dataRow('Inventory Value', finData.invValue, 'invValue', true)}
+                        {dataRow('Kitchen Equipment', finData.kitchenEquipment, 'kitchenEquipment', true)}
+                        {dataRow('Less: Accumulated Depreciation', finData.accumDepreciation, 'accumDepreciation', true, true)}
+                        {dataRow('Total Assets', finData.totalAssets, 'totalAssets', false, false, true, '#ffc107')}
+                        {sectionRow('Liabilities')}
+                        {dataRow('Accounts Payable', finData.ap, 'ap', true)}
+                        {dataRow('Income Tax Payable', finData.incomeTaxPayable || 0, 'incomeTaxPayable', true)}
+                        {dataRow('Loans Payable', finData.loansPayable || 0, 'loansPayable', true)}
+                        {dataRow('Total Liabilities', finData.totalLiabilities, 'totalLiabilities', false, false, true, '#f44336')}
+                        {sectionRow('Equity')}
+                        {dataRow("Owner's Capital", finData.ownersCapital, 'ownersCapital', true)}
+                        {dataRow('Retained Earnings', finData.retainedEarnings, 'retainedEarnings', true)}
+                        {dataRow('Total Equity', finData.totalEquity, 'totalEquity', false, false, true, '#4caf50')}
+                        <tr style={{ background: '#1a1a2a' }}>
+                          <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Liabilities &amp; Equity</td>
+                          <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalLiabilities + finData.totalEquity)}</td>
+                          {hasCmp && finCompareFull.map((p) => (
+                            <td key={p.label} style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt((p.totalLiabilities || 0) + (p.totalEquity || 0))}</td>
+                          ))}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+
+              {/* Sales Report */}
+              {finSubTab === 'sales' && finData?.type === 'sales' && (
+                <div style={styles.card}>
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center' }}>
+                    <h3 style={styles.cardTitle}>Sales Report</h3>
+                    {['general', 'itemized'].map((v) => (
+                      <button
+                        key={v}
+                        onClick={() => setSalesSubView(v)}
+                        style={{
+                          padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+                          fontFamily: 'Poppins, sans-serif',
+                          border: `1px solid ${salesSubView === v ? '#ffc107' : '#444'}`,
+                          background: salesSubView === v ? '#ffc107' : 'transparent',
+                          color: salesSubView === v ? '#000' : '#ccc',
+                          fontWeight: salesSubView === v ? 700 : 400,
+                        }}
+                      >
+                        {v === 'general' ? 'General' : 'Itemized'}
+                      </button>
+                    ))}
+                  </div>
+                  {(() => {
+                    const rows = finData.rows || [];
+                    const fmtPct = (v) => `${Number(v).toFixed(1)}%`;
+
+                    if (salesSubView === 'general') {
+                      // Group by category
+                      const catMap = {};
+                      rows.forEach((r) => {
+                        const cat = r.category || 'Other';
+                        if (!catMap[cat]) catMap[cat] = { revenue: 0, cogs: 0, cm: 0 };
+                        catMap[cat].revenue += r.revenue;
+                        catMap[cat].cogs += r.cogs;
+                        catMap[cat].cm += r.cm;
+                      });
+                      const cats = Object.entries(catMap);
+                      const grandRev = cats.reduce((s, [, v]) => s + v.revenue, 0);
+                      const grandCogs = cats.reduce((s, [, v]) => s + v.cogs, 0);
+                      const grandCm = cats.reduce((s, [, v]) => s + v.cm, 0);
+                      const grandCmPct = grandRev > 0 ? (grandCm / grandRev) * 100 : 0;
+                      return (
+                        <div style={styles.tableWrap}>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr>
+                                {['Category', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
+                                  <th key={h} style={{ ...styles.th, textAlign: h !== 'Category' ? 'right' : 'left' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cats.map(([cat, v], i) => {
+                                const cmPct = v.revenue > 0 ? (v.cm / v.revenue) * 100 : 0;
+                                return (
+                                  <tr key={cat} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                    <td style={styles.td}>{cat}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(v.revenue)}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(v.cogs)})</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: v.cm >= 0 ? '#4caf50' : '#f44336' }}>{fmt(v.cm)}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: cmPct >= 50 ? '#4caf50' : '#ffc107' }}>{fmtPct(cmPct)}</td>
+                                  </tr>
+                                );
+                              })}
+                              <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
+                                <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Grand Total</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandRev)}</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(grandCogs)})</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: grandCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(grandCm)}</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{fmtPct(grandCmPct)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    }
+
+                    // Itemized: group by category then show items
+                    const catGroups = {};
+                    rows.forEach((r) => {
+                      const cat = r.category || 'Other';
+                      if (!catGroups[cat]) catGroups[cat] = [];
+                      catGroups[cat].push(r);
+                    });
+                    const grandRev = rows.reduce((s, r) => s + r.revenue, 0);
+                    const grandCogs = rows.reduce((s, r) => s + r.cogs, 0);
+                    const grandCm = rows.reduce((s, r) => s + r.cm, 0);
+                    const grandCmPct = grandRev > 0 ? (grandCm / grandRev) * 100 : 0;
+                    return (
+                      <div style={styles.tableWrap}>
+                        <table style={styles.table}>
+                          <thead>
+                            <tr>
+                              {['Item', 'Category', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
+                                <th key={h} style={{ ...styles.th, textAlign: h !== 'Item' && h !== 'Category' ? 'right' : 'left' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(catGroups).map(([cat, items]) => {
+                              const catRev = items.reduce((s, r) => s + r.revenue, 0);
+                              const catCogs = items.reduce((s, r) => s + r.cogs, 0);
+                              const catCm = items.reduce((s, r) => s + r.cm, 0);
+                              const catCmPct = catRev > 0 ? (catCm / catRev) * 100 : 0;
+                              return (
+                                <React.Fragment key={cat}>
+                                  {items.map((r, i) => (
+                                    <tr key={r.name} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                      <td style={styles.td}>{r.name}</td>
+                                      <td style={styles.td}>{r.category}</td>
+                                      <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(r.revenue)}</td>
+                                      <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(r.cogs)})</td>
+                                      <td style={{ ...styles.td, textAlign: 'right', color: r.cm >= 0 ? '#4caf50' : '#f44336' }}>{fmt(r.cm)}</td>
+                                      <td style={{ ...styles.td, textAlign: 'right', color: r.cmPct >= 50 ? '#4caf50' : '#ffc107' }}>{fmtPct(r.cmPct)}</td>
+                                    </tr>
+                                  ))}
+                                  <tr style={{ background: '#222' }}>
+                                    <td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107', paddingLeft: 24 }}>Subtotal — {cat}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(catRev)}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(catCogs)})</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: catCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(catCm)}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{fmtPct(catCmPct)}</td>
+                                  </tr>
+                                </React.Fragment>
+                              );
+                            })}
+                            <tr style={{ background: '#2a2a1a' }}>
+                              <td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Grand Total</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandRev)}</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(grandCogs)})</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: grandCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(grandCm)}</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{fmtPct(grandCmPct)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -3833,33 +4493,38 @@ export default function AdminPage() {
                 <div style={{ ...styles.card, maxWidth: 680 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                     <h3 style={styles.cardTitle}>Budget Variance Report</h3>
-                    <button
-                      style={{ ...styles.actionBtn, fontSize: 11 }}
-                      onClick={() => {
-                        try { localStorage.setItem('bbc_budget_values', JSON.stringify(budgetValues)); } catch { /* noop */ }
-                        alert('Budget values saved to browser storage.');
-                      }}
-                    >💾 Save Budget</button>
+                    <span style={{ color: '#4caf50', fontSize: 11, border: '1px solid #2e7d32', borderRadius: 12, padding: '4px 10px' }}>Auto-saved</span>
                   </div>
                   <p style={{ color: '#888', fontSize: 11, marginBottom: 12 }}>
-                    Budget column is editable. Actual values are pulled from Journal Entries (same formula as P&amp;L). Click a Budget cell to edit.
+                    Budget column is editable and auto-saved monthly. If a month has no saved budget yet, it automatically carries over the previous month as the starting forecast.
                   </p>
                   {(() => {
                     const bv = budgetValues;
                     const setBv = (key, val) => {
                       const next = { ...bv, [key]: val };
                       setBudgetValues(next);
-                      try { localStorage.setItem('bbc_budget_values', JSON.stringify(next)); } catch { /* noop */ }
                     };
-                    const bdgInput = (key, actual) => (
-                      <input
-                        type="number"
-                        style={{ ...styles.input, width: 110, padding: '4px 8px', fontSize: 12, textAlign: 'right' }}
-                        value={bv[key] !== undefined ? bv[key] : ''}
-                        placeholder="0.00"
-                        onChange={(e) => setBv(key, e.target.value)}
-                      />
-                    );
+                    const bdgInput = (key) => {
+                      const rawVal = bv[key] !== undefined ? String(bv[key]) : '';
+                      const isEditing = budgetEditKey === key;
+                      const numVal = parseFloat(rawVal.replace(/,/g, '')) || 0;
+                      const formattedVal = rawVal !== '' ? numVal.toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '';
+                      return (
+                        <input
+                          type="text"
+                          style={{ ...styles.input, width: 110, padding: '4px 8px', fontSize: 12, textAlign: 'right' }}
+                          value={isEditing ? rawVal : formattedVal}
+                          placeholder="0.00"
+                          onFocus={() => setBudgetEditKey(key)}
+                          onBlur={(e) => {
+                            setBudgetEditKey(null);
+                            const parsed = parseFloat(e.target.value.replace(/,/g, ''));
+                            setBv(key, !isNaN(parsed) ? String(parsed) : '');
+                          }}
+                          onChange={(e) => setBv(key, e.target.value)}
+                        />
+                      );
+                    };
                     const varRow = (label, actualVal, bKey, isExpense = false, indent = false) => {
                       const budget = Number(bv[bKey]) || 0;
                       const actual = Number(actualVal) || 0;
@@ -3874,7 +4539,7 @@ export default function AdminPage() {
                           <td style={{ ...styles.td, padding: '6px 8px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
                               <span style={{ color: '#888', fontSize: 11 }}>₱</span>
-                              {bdgInput(bKey, actual)}
+                              {bdgInput(bKey)}
                             </div>
                           </td>
                           <td style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontSize: 11 }}>
@@ -3899,7 +4564,8 @@ export default function AdminPage() {
                       'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
                       'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
                       'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-                      'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+                      'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense', 'Interest Expense',
+                      'Research and Development Expense',
                     ];
                     const headerRow = (label, bg = '#1e1e1e') => (
                       <tr key={label} style={{ background: bg }}>
@@ -3937,7 +4603,9 @@ export default function AdminPage() {
                     const totalRevenueBudget = (Number(bv['Revenue']) || 0) + (Number(bv['Delivery Income']) || 0);
                     const grossProfitBudget = totalRevenueBudget - (Number(bv['Cost of Goods Sold']) || 0);
                     const opExpBudget = OPEX_ACCOUNTS.reduce((s, a) => s + (Number(bv[a]) || 0), 0);
-                    const netProfitBudget = grossProfitBudget - opExpBudget;
+                    const incomeBeforeTaxBudget = grossProfitBudget - opExpBudget;
+                    const incomeTaxBudget = Number(bv['Income Tax Expense']) || 0;
+                    const netProfitBudget = incomeBeforeTaxBudget - incomeTaxBudget;
                     return (
                       <div style={styles.tableWrap}>
                         <table style={styles.table}>
@@ -3959,7 +4627,9 @@ export default function AdminPage() {
                             {headerRow('Operating Expenses')}
                             {OPEX_ACCOUNTS.map((a) => varRow(a, finData.expByAccount?.[a] || 0, a, true, true))}
                             {totalRow('Total Operating Expenses', finData.opExp, opExpBudget, true, '#2a1a1a')}
-                            {totalRow('Net Profit', finData.netProfit, netProfitBudget, false, '#2a2a00')}
+                            {totalRow('Income Before Tax', finData.incomeBeforeTax, incomeBeforeTaxBudget, false, '#1a2a1a')}
+                            {varRow('Income Tax Expense', finData.incomeTaxExpense || 0, 'Income Tax Expense', true, true)}
+                            {totalRow('Net Income', finData.netIncome, netProfitBudget, false, '#2a2a00')}
                           </tbody>
                         </table>
                       </div>
@@ -4036,13 +4706,13 @@ export default function AdminPage() {
                         category: 'Liabilities',
                         color: '#f44336',
                         type: 'bs',
-                        accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities'],
+                        accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable'],
                       },
                       {
                         category: 'Equity',
                         color: '#2196f3',
                         type: 'bs',
-                        accounts: ["Owner's Capital", "Owner's Draw", 'Retained Earnings'],
+                        accounts: ["Owner's Capital", 'Retained Earnings'],
                       },
                       {
                         category: 'Revenue',
@@ -4059,7 +4729,7 @@ export default function AdminPage() {
                           'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
                           'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
                           'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-                          'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense',
+                          'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense', 'Interest Expense', 'Income Tax Expense',
                         ],
                       },
                     ];
@@ -4225,6 +4895,9 @@ export default function AdminPage() {
                   { key: 'rr_cash_on_hand', label: 'Paid: Cash on Hand' },
                   { key: 'rr_cash_in_bank', label: 'Paid: Cash in Bank' },
                   { key: 'rr_credit_card', label: 'Paid: Credit Card' },
+                  { key: 'bill_all', label: 'All Bills' },
+                  { key: 'bill_approved', label: 'Bill Approved' },
+                  { key: 'bill_paid', label: 'Bill Paid' },
                 ].map((sf) => (
                   <button key={sf.key} onClick={() => setJournalSubFilter(sf.key)}
                     style={{ padding: '5px 14px', borderRadius: 14, cursor: 'pointer', fontFamily: 'Poppins, sans-serif', fontSize: 12,
@@ -5097,7 +5770,7 @@ export default function AdminPage() {
                         <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 6, padding: '10px 14px', marginTop: 16, fontSize: 12, color: '#aaa' }}>
                           <p style={{ margin: '0 0 6px' }}><strong style={{ color: '#ffc107' }}>Journal Entry:</strong></p>
                           <p style={{ margin: '2px 0' }}>Dr Accounts Payable: {fmt(billPayItem.total_debit || 0)}</p>
-                          <p style={{ margin: '2px 0' }}>Cr {billPayMethod === 'cash_on_hand' ? 'Cash on Hand' : billPayMethod === 'cash_in_bank' ? 'Cash in Bank' : "Owner's Draw"}: {fmt(billPayItem.total_debit || 0)}</p>
+                          <p style={{ margin: '2px 0' }}>Cr {billPayMethod === 'cash_on_hand' ? 'Cash on Hand' : billPayMethod === 'cash_in_bank' ? 'Cash in Bank' : "Owner's Capital"}: {fmt(billPayItem.total_debit || 0)}</p>
                         </div>
                       </div>
                     )}

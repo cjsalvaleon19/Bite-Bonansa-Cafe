@@ -9,6 +9,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
 import NotificationBell from '../../components/NotificationBell';
 import { getDistanceBetweenCoordinates, calculateDeliveryFee, STORE_LOCATION } from '../../utils/deliveryCalculator';
+import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 
 // Dynamically import OpenStreetMapPicker with SSR disabled
 const OpenStreetMapPicker = dynamic(
@@ -55,6 +56,7 @@ export default function CashierPOS() {
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [combinedPayment, setCombinedPayment] = useState(false); // For points + cash/gcash
+  const [lastPrintedOrder, setLastPrintedOrder] = useState(null); // For BT re-print
 
   const { items, addItem, removeItem, updateQuantity, clearCart, getTotalPrice } =
     useCartStore();
@@ -371,6 +373,11 @@ export default function CashierPOS() {
       }
     }
 
+    const printerWarmup = connectPrinter().catch((err) => {
+      console.warn('[POS] Bluetooth pre-connect skipped:', err?.message ?? err);
+      return null;
+    });
+
     setCheckoutLoading(true);
     setOrderStatus(null);
 
@@ -459,6 +466,13 @@ export default function CashierPOS() {
 
       // Generate receipt (simple print)
       printReceipt(order, remainingAmount);
+
+      // Auto Bluetooth print on checkout click (non-blocking on failure)
+      await printerWarmup;
+      await printPOSReceiptBluetooth(order, { silent: true });
+
+      // Save for optional BT re-print
+      setLastPrintedOrder(order);
 
       // Clear form
       clearCart();
@@ -666,6 +680,42 @@ export default function CashierPOS() {
     setTimeout(() => {
       receiptWindow.print();
     }, 250);
+  };
+
+  const printPOSReceiptBluetooth = async (order, options = {}) => {
+    const { silent = false } = options;
+    if (!order) {
+      if (!silent) {
+        alert('No completed order available to print.');
+      }
+      return;
+    }
+    let displayPaymentMethod = order.payment_method || 'N/A';
+    const ptsClaimed = order.points_used || 0;
+    const total = (order.subtotal || 0) + (order.delivery_fee || 0);
+    if (ptsClaimed > 0) {
+      if (ptsClaimed >= total) {
+        displayPaymentMethod = 'Points';
+      } else if (order.payment_method && order.payment_method.includes('points+')) {
+        displayPaymentMethod = order.payment_method.split('points+')[1];
+      } else if (order.payment_method && order.payment_method.includes('+')) {
+        const parts = order.payment_method.split('+');
+        displayPaymentMethod = parts.find(p => p !== 'points') || order.payment_method;
+      }
+    }
+    try {
+      await printToBluetoothPrinter(order, 'sales', {
+        cashierName: user?.full_name || user?.email || 'Cashier',
+        customerLoyaltyId: customerInfo?.customerId || null,
+        displayPaymentMethod,
+      });
+    } catch (err) {
+      if (!silent) {
+        alert('Bluetooth print failed: ' + (err.message || 'Unknown error'));
+      } else {
+        console.warn('[POS] Auto Bluetooth print failed:', err?.message ?? err);
+      }
+    }
   };
 
   if (authLoading) {
@@ -1064,7 +1114,19 @@ export default function CashierPOS() {
               </div>
             )}
 
-            {orderStatus === 'success' && <p style={styles.successMsg}>✅ Order placed successfully!</p>}
+            {orderStatus === 'success' && (
+              <div style={{ marginTop: '12px' }}>
+                <p style={styles.successMsg}>✅ Order placed successfully!</p>
+                {lastPrintedOrder && (
+                  <button
+                    style={styles.btPrintBtn}
+                    onClick={() => printPOSReceiptBluetooth(lastPrintedOrder)}
+                  >
+                    📶 BT Print Receipt
+                  </button>
+                )}
+              </div>
+            )}
             {orderStatus === 'error' && <p style={styles.errorMsg}>❌ Failed to place order</p>}
 
             <div style={styles.cartActions}>
@@ -1140,6 +1202,7 @@ const styles = {
   errorText: { color: '#f44336' },
   successMsg: { color: '#4caf50', fontSize: '13px', marginTop: '12px' },
   errorMsg: { color: '#f44336', fontSize: '13px', marginTop: '12px' },
+  btPrintBtn: { marginTop: '8px', width: '100%', padding: '8px', backgroundColor: 'transparent', color: '#4fc3f7', border: '1px solid #4fc3f7', borderRadius: '6px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' },
   cartActions: { display: 'flex', gap: '10px', marginTop: '16px' },
   clearBtn: { flex: 1, padding: '10px', backgroundColor: 'transparent', color: '#ccc', border: '1px solid #555', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' },
   checkoutBtn: { flex: 2, padding: '10px', backgroundColor: '#ffc107', color: '#0a0a0a', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' },

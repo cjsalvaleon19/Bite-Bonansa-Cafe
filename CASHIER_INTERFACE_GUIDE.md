@@ -113,7 +113,41 @@ Click on the "Total Receipts" card to view breakdown by order mode:
 - Auto-print on successful checkout
 - Displays order number
 - Customer copy with complete details
-- Kitchen order slips (to be implemented)
+- Kitchen order slips
+- Bluetooth printing supported for Goojprt Z80C via **BT Print** buttons
+
+#### Bluetooth Printer Setup (Android Tablet + bitebonansacafe.com)
+1. Use the right browser on the tablet:
+   - Open **Google Chrome** (latest version) on Android.
+   - Do not use in-app browsers or unsupported browsers.
+2. Prepare the printer:
+   - Turn on the Bluetooth printer (Goojprt Z80C).
+   - Make sure it is in discoverable/pairing mode.
+3. Enable tablet Bluetooth:
+   - Android Settings → Bluetooth → turn **ON**.
+   - Keep the printer near the tablet.
+4. Open the website securely:
+   - Go to **https://bitebonansacafe.com**.
+   - Log in as **Cashier**.
+5. Go to cashier screen:
+   - POS: **Cashier → POS**
+   - Online orders: **Cashier → Dashboard**
+6. Trigger connection from cashier action:
+   - Click **Checkout** (POS) or **Accept Order** (Dashboard).
+   - The system auto-attempts printer connection on these actions.
+7. Approve Bluetooth permission:
+   - When Chrome shows the Bluetooth device picker, select your printer.
+   - Tap **Pair/Connect** and allow prompts.
+8. Verify printing:
+   - Receipt printing should continue automatically after connection.
+   - Use manual **BT Print** button for fallback/reprint.
+9. Daily usage:
+   - Keep Bluetooth ON and printer powered on.
+   - Reconnection is usually faster after first pairing.
+10. If connection fails:
+   - Refresh page, keep one cashier tab open, retry action.
+   - Ensure HTTPS + updated Chrome and that printer is not connected elsewhere.
+   - Forget/re-pair printer in Android Bluetooth settings, then retry.
 
 ### 3. Cash Drawer Management (`/cashier/cash-drawer`)
 
@@ -410,6 +444,12 @@ Added field:
 
 **Issue**: Cannot access cashier portal
 - **Solution**: Verify email is arclitacj@gmail.com or bantecj@bitebonansacafe.com and role is set correctly in utils/roleMapping.js
+
+**Issue**: Bluetooth printer picker does not appear
+- **Solution**: Use Google Chrome on Android, ensure page is loaded over HTTPS, and start print using Checkout/Accept Order/BT Print button.
+
+**Issue**: Bluetooth printer does not print after connection
+- **Solution**: Keep printer within range, ensure it is not paired to another device, then forget/re-pair and retry.
 
 ### Database Migration
 

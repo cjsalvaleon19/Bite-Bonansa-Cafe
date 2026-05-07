@@ -128,7 +128,7 @@ export default function OrdersQueue() {
       const pointsUsed = Number(order.points_used) || 0;
       const paymentMethod = (order.payment_method || 'cash').toLowerCase();
       const orderRef = order.order_number || order.id;
-      const customerName = order.customer_name || 'Walk-in';
+      const customerName = (order.customer_name || '').trim() || 'Walk-in';
       const entries = [];
 
       // Loyalty-points portion → reduce Accounts Payable
@@ -148,10 +148,15 @@ export default function OrdersQueue() {
       // Cash / GCash portion
       const cashAmount = Math.round((totalAmount - (paymentMethod.includes('points') ? pointsUsed : 0)) * 100) / 100;
       if (cashAmount > 0) {
+        const debitAccount = paymentMethod.includes('credit') || paymentMethod.includes('card')
+          ? "Owner's Capital"
+          : paymentMethod.includes('gcash')
+            ? 'Cash in Bank'
+            : 'Cash on Hand';
         entries.push({
           date,
           description: `Sale: ${orderRef}`,
-          debit_account: paymentMethod.includes('gcash') ? 'Cash in Bank' : 'Cash on Hand',
+          debit_account: debitAccount,
           credit_account: 'Revenue',
           amount: cashAmount,
           reference_type: 'order',
@@ -167,7 +172,7 @@ export default function OrdersQueue() {
 
       // Loyalty points earned: Debit Rewards (Expense), Credit Accounts Payable
       const pointsEarned = Number(order.earnings_amount) || 0;
-      if (pointsEarned > 0) {
+      if (order.customer_id && pointsEarned > 0) {
         const { error: loyaltyErr } = await supabase.from('journal_entries').insert({
           date,
           description: `Loyalty Points Earned: ${orderRef}`,
@@ -191,9 +196,11 @@ export default function OrdersQueue() {
             const names = [item.name];
             const vd = item.variant_details;
             if (vd && typeof vd === 'object') {
+              const sizeVal = vd.Size || vd.size;
+              if (sizeVal) names.push(`${item.name} - ${sizeVal}`);
               Object.entries(vd).forEach(([type, value]) => {
                 const typeL = type.toLowerCase().replace(/[^a-z]/g, '');
-                if (typeL !== 'addon' && typeL !== 'addons' && value) {
+                if (typeL !== 'addon' && typeL !== 'addons' && typeL !== 'size' && value) {
                   names.push(`${item.name} - ${value}`);
                 }
               });

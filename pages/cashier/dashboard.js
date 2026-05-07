@@ -6,6 +6,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount } from '../../utils/salesCalculations';
+import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
@@ -602,6 +603,36 @@ export default function CashierDashboard() {
     }, 250);
   };
 
+  const printReceiptBluetooth = async (order, receiptType = 'sales', options = {}) => {
+    const { silent = false } = options;
+    let displayPaymentMethod = order.payment_method || 'N/A';
+    const ptsClaimed = order.points_used || 0;
+    const total = (order.subtotal || 0) + (order.delivery_fee || 0);
+    if (ptsClaimed > 0) {
+      if (ptsClaimed >= total) {
+        displayPaymentMethod = 'Points';
+      } else if (order.payment_method && order.payment_method.includes('points+')) {
+        displayPaymentMethod = order.payment_method.split('points+')[1];
+      } else if (order.payment_method && order.payment_method.includes('+')) {
+        const parts = order.payment_method.split('+');
+        displayPaymentMethod = parts.find(p => p !== 'points') || order.payment_method;
+      }
+    }
+    try {
+      await printToBluetoothPrinter(order, receiptType, {
+        cashierName: user?.full_name || user?.email || 'Cashier',
+        customerLoyaltyId: order.users?.customer_id || null,
+        displayPaymentMethod,
+      });
+    } catch (err) {
+      if (!silent) {
+        alert('Bluetooth print failed: ' + (err.message || 'Unknown error'));
+      } else {
+        console.warn('[CashierDashboard] Auto Bluetooth print failed:', err?.message ?? err);
+      }
+    }
+  };
+
   const handleViewOrder = (order) => {
     setSelectedOrderToView(order);
     setEditableCashTendered(order.cash_amount || '');
@@ -636,6 +667,10 @@ export default function CashierDashboard() {
 
   const handleAcceptOrderFromView = async () => {
     if (!supabase || !selectedOrderToView) return;
+    const printerWarmup = connectPrinter().catch((err) => {
+      console.warn('[CashierDashboard] Bluetooth pre-connect skipped:', err?.message ?? err);
+      return null;
+    });
 
     try {
       // Determine the appropriate status based on order mode
@@ -671,6 +706,11 @@ export default function CashierDashboard() {
       setTimeout(() => {
         printReceipt(selectedOrderToView, 'kitchen');
       }, 500);
+
+      // Auto Bluetooth print on accept click (non-blocking on failure)
+      await printerWarmup;
+      await printReceiptBluetooth(selectedOrderToView, 'sales', { silent: true });
+      await printReceiptBluetooth(selectedOrderToView, 'kitchen', { silent: true });
 
       fetchPendingOnlineOrders();
     } catch (err) {
@@ -709,6 +749,10 @@ export default function CashierDashboard() {
   const handleAcceptOrder = async (orderId) => {
     if (!supabase) return;
     if (!confirm('Accept this order and start processing?')) return;
+    const printerWarmup = connectPrinter().catch((err) => {
+      console.warn('[CashierDashboard] Bluetooth pre-connect skipped:', err?.message ?? err);
+      return null;
+    });
 
     try {
       // Get the order to determine its mode
@@ -746,6 +790,11 @@ export default function CashierDashboard() {
         setTimeout(() => {
           printReceipt(order, 'kitchen');
         }, 500);
+
+        // Auto Bluetooth print on accept click (non-blocking on failure)
+        await printerWarmup;
+        await printReceiptBluetooth(order, 'sales', { silent: true });
+        await printReceiptBluetooth(order, 'kitchen', { silent: true });
       }
 
       fetchPendingOnlineOrders();
@@ -1394,6 +1443,15 @@ export default function CashierDashboard() {
                   🖨️ Reprint Receipts
                 </button>
                 <button
+                  style={styles.modalBtPrintBtn}
+                  onClick={async () => {
+                    await printReceiptBluetooth(acceptedOrder, 'sales');
+                    await printReceiptBluetooth(acceptedOrder, 'kitchen');
+                  }}
+                >
+                  📶 BT Print
+                </button>
+                <button
                   style={styles.modalCloseBtn}
                   onClick={() => setShowPrintReceiptModal(false)}
                 >
@@ -1739,6 +1797,17 @@ const styles = {
     backgroundColor: 'transparent',
     color: '#ffc107',
     border: '1px solid #ffc107',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '700',
+    cursor: 'pointer',
+  },
+  modalBtPrintBtn: {
+    flex: 1,
+    padding: '12px',
+    backgroundColor: 'transparent',
+    color: '#4fc3f7',
+    border: '1px solid #4fc3f7',
     borderRadius: '6px',
     fontSize: '14px',
     fontWeight: '700',
