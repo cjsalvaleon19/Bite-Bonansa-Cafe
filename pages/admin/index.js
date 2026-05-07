@@ -349,8 +349,10 @@ export default function AdminPage() {
           const idx = getWeekIdx(je.date);
           if (idx < 0) return;
           const amt = Number(je.amount) || 0;
-          if (CASH_ACCOUNTS.includes(je.debit_account)) weeks[idx].inflow += amt;
-          if (CASH_ACCOUNTS.includes(je.credit_account)) weeks[idx].outflow += amt;
+          const debitAcct = String(je.debit_account || '').trim();
+          const creditAcct = String(je.credit_account || '').trim();
+          if (CASH_ACCOUNTS.includes(debitAcct)) weeks[idx].inflow += amt;
+          if (CASH_ACCOUNTS.includes(creditAcct)) weeks[idx].outflow += amt;
         });
         setCashFlowData(weeks);
         const totalIn = weeks.reduce((s, w) => s + w.inflow, 0);
@@ -2869,7 +2871,7 @@ export default function AdminPage() {
                                         : basePrice + Number(opt.price_modifier || 0);
                                       expanded.push({
                                         key: `${m.id || m.name}-${vt.id}-${opt.id}`,
-                                        displayName: `${m.name} - ${opt.option_name}${isAddOn ? ' (Add On)' : ''}`,
+                                        displayName: isAddOn ? `${opt.option_name}` : `${m.name} - ${opt.option_name}`,
                                         category: m.category || '',
                                         price: variantPrice,
                                       });
