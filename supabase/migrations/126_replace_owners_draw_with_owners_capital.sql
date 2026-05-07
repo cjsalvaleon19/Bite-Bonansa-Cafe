@@ -1,4 +1,4 @@
--- ─── Migration 126: Replace Owner's Draw with Owner's Capital in journal entries ───
+-- Migration 126: Replace Owner's Draw with Owner's Capital in journal entries
 -- PURPOSE:
 --   Normalize all existing journal entry account titles so "Owner's Draw"
 --   is replaced by "Owner's Capital" in both debit and credit sides.
