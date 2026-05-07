@@ -225,6 +225,10 @@ export default function AdminPage() {
   const [finCompareCount, setFinCompareCount] = useState(3);
   const [finComparePeriod, setFinComparePeriod] = useState('monthly');
   const [finCompareData, setFinCompareData] = useState([]);
+  const [finCompareFull, setFinCompareFull] = useState([]);
+  const [salesSubView, setSalesSubView] = useState('general');
+  const [salesData, setSalesData] = useState(null);
+  const [navGroupOpen, setNavGroupOpen] = useState({ transactions: false, inventory: false, financial: false });
   // Chart of Accounts state (separate date coverage from finDateFrom/To)
   const [coaDateFrom, setCoaDateFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
   const [coaDateTo, setCoaDateTo] = useState(monthEndStr);
@@ -305,9 +309,9 @@ export default function AdminPage() {
       thisMonday.setHours(0, 0, 0, 0);
 
       // weekStarts[0] = oldest (3 weeks back), weekStarts[3] = current week
-      const weekStarts = Array.from({ length: 4 }, (_, i) => {
+      const weekStarts = Array.from({ length: 12 }, (_, i) => {
         const d = new Date(thisMonday);
-        d.setDate(thisMonday.getDate() - (3 - i) * 7);
+        d.setDate(thisMonday.getDate() - (11 - i) * 7);
         return d;
       });
       const sinceISO = weekStarts[0].toISOString();
@@ -324,7 +328,7 @@ export default function AdminPage() {
         // For date-only strings (YYYY-MM-DD) append T00:00:00 so JS parses them in local time,
         // consistent with weekStarts which are also computed in local time.
         const d = typeof dateVal === 'string' ? new Date(dateVal.includes('T') ? dateVal : dateVal + 'T00:00:00') : new Date(dateVal);
-        for (let i = 3; i >= 0; i--) {
+        for (let i = 11; i >= 0; i--) {
           if (d >= weekStarts[i]) return i;
         }
         return -1;
@@ -337,7 +341,7 @@ export default function AdminPage() {
         .gte('created_at', sinceISO);
 
       if (orders) {
-        const weeks = [0, 0, 0, 0];
+        const weeks = Array(12).fill(0);
         orders.forEach((o) => {
           const idx = getWeekIdx(o.created_at);
           if (idx >= 0) weeks[idx] += Number(o.total) || 0;
@@ -785,6 +789,7 @@ export default function AdminPage() {
     setBillSuccess('');
     try {
       if (!billForm.date) throw new Error('Please enter a date.');
+      if (!billForm.contact || !String(billForm.contact).trim()) throw new Error('Contact name is required.');
       const validLines = billLines.filter((l) => l.account_title || l.debit_amount);
       if (validLines.length === 0) throw new Error('Please add at least one line item.');
       const totalDebit = validLines.reduce((s, l) => s + (Number(l.debit_amount) || 0), 0);
@@ -1087,6 +1092,7 @@ export default function AdminPage() {
           { data: cashCreditJE },
           { data: salePpeJE }, { data: collectionLoanJE }, { data: purchasePpeJE }, { data: makeLoanJE },
           { data: loanProceedsJE }, { data: capitalInfusionJE }, { data: loanPaymentJE }, { data: ownerDrawingJE },
+          { data: interestExpenseJE },
         ] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).lte('date', openingDate),
           supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).lte('date', openingDate),
@@ -1104,6 +1110,7 @@ export default function AdminPage() {
           supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).eq('credit_account', "Owner's Capital").gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).eq('debit_account', 'Loans Payable').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).eq('debit_account', "Owner's Capital").gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Interest Expense').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
         ]);
 
         const cashBeginningBalance = sumAmt(cashOpeningDebits) - sumAmt(cashOpeningCredits);
@@ -1120,6 +1127,8 @@ export default function AdminPage() {
             || acct === 'Loans Payable'
             || acct === "Owner's Capital"
             || acct === 'Loans Receivable'
+            || acct === 'Cost of Goods Sold'
+            || acct === 'Interest Expense'
             || FIN_PPE_ACCOUNTS.includes(acct)
             || FIN_CASH_ACCOUNTS.includes(acct)
           ) return s;
@@ -1138,7 +1147,8 @@ export default function AdminPage() {
         const ownersCapitalInfusion = sumAmt(capitalInfusionJE);
         const repaymentOfLoans = sumAmt(loanPaymentJE);
         const ownersDrawings = sumAmt(ownerDrawingJE);
-        const netCashFlowFinancing = proceedsFromLoans + ownersCapitalInfusion - repaymentOfLoans - ownersDrawings;
+        const interestExpensePaid = sumAmt(interestExpenseJE);
+        const netCashFlowFinancing = proceedsFromLoans + ownersCapitalInfusion - repaymentOfLoans - ownersDrawings - interestExpensePaid;
 
         const netChange = netCashFlowOperations + netCashFlowInvesting + netCashFlowFinancing;
         const cashEndingBalance = cashBeginningBalance + netChange;
@@ -1162,6 +1172,7 @@ export default function AdminPage() {
           ownersCapitalInfusion,
           repaymentOfLoans,
           ownersDrawings,
+          interestExpensePaid,
           netCashFlowFinancing,
           netChange,
           cashEndingBalance,
@@ -1189,6 +1200,55 @@ export default function AdminPage() {
         const incomeBeforeTax = grossProfit - opExp;
         const netIncome = incomeBeforeTax - incomeTaxExpense;
         setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netIncome });
+      } else if (finSubTab === 'sales') {
+        const { data: deliveredOrderIds } = await supabase
+          .from('orders')
+          .select('id')
+          .in('status', ['order_delivered', 'completed'])
+          .gte('created_at', fromISO)
+          .lte('created_at', toISO);
+        const oIds = (deliveredOrderIds || []).map((o) => o.id);
+        let salesItems = [];
+        if (oIds.length > 0) {
+          const { data: oi } = await supabase
+            .from('order_items')
+            .select('name, price, quantity, subtotal, menu_item_id')
+            .in('order_id', oIds);
+          salesItems = oi || [];
+        }
+        const { data: menuItemsForCat } = await supabase
+          .from('menu_items')
+          .select('id, name, category');
+        const menuCatMap = {};
+        (menuItemsForCat || []).forEach((m) => { menuCatMap[m.id] = m.category || 'Other'; menuCatMap[m.name] = m.category || 'Other'; });
+        const { data: costingHdrs } = await supabase
+          .from('price_costing_headers')
+          .select('menu_item_name, total_estimated_cogs, selling_price');
+        const cogsMap = {};
+        (costingHdrs || []).forEach((h) => { cogsMap[h.menu_item_name] = Number(h.total_estimated_cogs) || 0; });
+
+        const itemMap = {};
+        salesItems.forEach((si) => {
+          const baseName = (si.name || '').split(' - ')[0].trim();
+          const qty = Number(si.quantity) || 1;
+          const rev = Number(si.subtotal) || (Number(si.price) || 0) * qty;
+          const category = (si.menu_item_id && menuCatMap[si.menu_item_id]) || menuCatMap[baseName] || menuCatMap[si.name] || 'Other';
+          const unitCogs = cogsMap[si.name] || cogsMap[baseName] || 0;
+          const totalCogs = unitCogs * qty;
+          const key = baseName;
+          if (!itemMap[key]) {
+            itemMap[key] = { name: key, category, revenue: 0, cogs: 0, quantity: 0 };
+          }
+          itemMap[key].revenue += rev;
+          itemMap[key].cogs += totalCogs;
+          itemMap[key].quantity += qty;
+        });
+        const salesRows = Object.values(itemMap).map((r) => {
+          const cm = r.revenue - r.cogs;
+          const cmPct = r.revenue > 0 ? (cm / r.revenue) * 100 : 0;
+          return { ...r, cm, cmPct };
+        });
+        setFinData({ type: 'sales', rows: salesRows });
       } else if (finSubTab === 'balance') {
         const bsDateTo = toISO.split('T')[0];
         const [
@@ -1295,21 +1355,17 @@ export default function AdminPage() {
         setFinData({ type: 'tax', rows });
       }
 
-      if (['cashflow', 'pl'].includes(finSubTab)) {
+      // ── Comparative Periods ────────────────────────────────────────────────
+      if (['cashflow', 'pl', 'balance', 'sales'].includes(finSubTab)) {
         const periods = Math.max(1, Math.min(12, Number(finCompareCount) || 1));
         const unit = finComparePeriod;
-        const sameDayTime = (base, yearOffset = 0) => {
-          const d = new Date(base);
-          d.setFullYear(d.getFullYear() - yearOffset);
-          return d;
-        };
         const shiftedRange = (index) => {
           const from = new Date(finDateFrom);
           const to = new Date(finDateTo);
           if (finCompareMode === 'same_period_last_year') {
-            return { from: sameDayTime(from, index), to: sameDayTime(to, index) };
-          }
-          if (unit === 'daily') {
+            from.setFullYear(from.getFullYear() - index);
+            to.setFullYear(to.getFullYear() - index);
+          } else if (unit === 'daily') {
             from.setDate(from.getDate() - index);
             to.setDate(to.getDate() - index);
           } else if (unit === 'annual') {
@@ -1321,43 +1377,74 @@ export default function AdminPage() {
           }
           return { from, to };
         };
+        const makeLabel = (to) => unit === 'annual' ? to.slice(0, 4) : unit === 'monthly' ? to.slice(0, 7) : to;
 
-        const compareSeries = [];
-        for (let i = periods - 1; i >= 0; i--) {
-          const { from, to } = shiftedRange(i);
-          const cFrom = from.toISOString().split('T')[0];
-          const cTo = to.toISOString().split('T')[0];
+        const computePLPeriod = async (cFrom, cTo, cFromISO, cToISO) => {
+          const [{ data: rev }, { data: del }, { data: cg }, { data: exps }] = await Promise.all([
+            supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', cFrom).lte('date', cTo),
+            supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', cFromISO).lte('created_at', cToISO).gt('delivery_fee', 0),
+            supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', cFrom).lte('date', cTo),
+            supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', cFrom).lte('date', cTo),
+          ]);
+          const revenue = (rev || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+          const deliveryIncome = (del || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+          const cogs = (cg || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+          const expByAccount = {};
+          FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+          let incomeTaxExpense = 0;
+          (exps || []).forEach((e) => {
+            if (e.debit_account === 'Income Tax Expense') incomeTaxExpense += Number(e.amount) || 0;
+            else if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
+          });
+          const totalRevenue = revenue + deliveryIncome;
+          const grossProfit = totalRevenue - cogs;
+          const opExp = Object.values(expByAccount).reduce((s, v) => s + v, 0);
+          const incomeBeforeTax = grossProfit - opExp;
+          const netIncome = incomeBeforeTax - incomeTaxExpense;
+          return { revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netIncome };
+        };
+
+        const compareFull = [];
+        for (let i = periods; i >= 1; i--) {
+          const { from: f, to: t } = shiftedRange(i);
+          const cFrom = f.toISOString().split('T')[0];
+          const cTo = t.toISOString().split('T')[0];
           const cFromISO = `${cFrom}T00:00:00.000Z`;
           const cToISO = `${cTo}T23:59:59.999Z`;
-          let amount = 0;
-          if (finSubTab === 'cashflow') {
-            const [{ data: cDebits }, { data: cCredits }] = await Promise.all([
+          const label = makeLabel(cTo);
+          let periodData = { label };
+          if (finSubTab === 'pl' || finSubTab === 'sales' || finSubTab === 'budget') {
+            const pl = await computePLPeriod(cFrom, cTo, cFromISO, cToISO);
+            periodData = { ...periodData, ...pl };
+          } else if (finSubTab === 'cashflow') {
+            const [{ data: cd }, { data: cc }] = await Promise.all([
               supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).gte('date', cFrom).lte('date', cTo),
               supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', cFrom).lte('date', cTo),
             ]);
-            amount = sumAmt(cDebits) - sumAmt(cCredits);
-          } else if (finSubTab === 'pl') {
-            const [{ data: rev }, { data: del }, { data: cogs }, { data: exps }] = await Promise.all([
-              supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', cFrom).lte('date', cTo),
-              supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', cFromISO).lte('created_at', cToISO).gt('delivery_fee', 0),
-              supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', cFrom).lte('date', cTo),
-              supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', cFrom).lte('date', cTo),
+            periodData.netCashChange = (cd || []).reduce((s, e) => s + (Number(e.amount) || 0), 0) - (cc || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+          } else if (finSubTab === 'balance') {
+            const [{ data: aD }, { data: aC }] = await Promise.all([
+              supabase.from('journal_entries').select('amount, debit_account').lte('date', cTo),
+              supabase.from('journal_entries').select('amount, credit_account').lte('date', cTo),
             ]);
-            const totalRevenue = sumAmt(rev) + (del || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
-            const totalCogs = sumAmt(cogs);
-            const totalOpExp = (exps || []).filter((e) => e.debit_account !== 'Income Tax Expense').reduce((s, e) => s + (Number(e.amount) || 0), 0);
-            const taxExp = (exps || []).filter((e) => e.debit_account === 'Income Tax Expense').reduce((s, e) => s + (Number(e.amount) || 0), 0);
-            amount = totalRevenue - totalCogs - totalOpExp - taxExp;
+            const nets = {};
+            (aD || []).forEach((e) => { if (e.debit_account) nets[e.debit_account] = (nets[e.debit_account] || 0) + (Number(e.amount) || 0); });
+            (aC || []).forEach((e) => { if (e.credit_account) nets[e.credit_account] = (nets[e.credit_account] || 0) - (Number(e.amount) || 0); });
+            const cashAssets = (nets['Cash on Hand'] || 0) + (nets['Cash in Bank'] || 0);
+            const arAssets = nets['Accounts Receivable'] || 0;
+            const invAssets = nets['Inventory'] || 0;
+            const ppeNet = (nets['Kitchen Equipment'] || 0) - Math.abs(nets['Accumulated Depreciation'] || 0);
+            periodData.totalAssets = cashAssets + arAssets + invAssets + ppeNet;
+            periodData.totalLiabilities = Math.abs(nets['Accounts Payable'] || 0) + Math.abs(nets['Income Tax Payable'] || 0) + Math.abs(nets['Loans Payable'] || 0);
+            periodData.totalEquity = (nets["Owner's Capital"] || 0) + Math.abs(nets['Retained Earnings'] || 0);
           }
-          const label = unit === 'annual'
-            ? cTo.slice(0, 4)
-            : unit === 'monthly'
-              ? cTo.slice(0, 7)
-              : cTo;
-          compareSeries.push({ label, amount });
+          compareFull.push(periodData);
         }
-        setFinCompareData(compareSeries);
+        setFinCompareFull(compareFull);
+        // Keep backward-compat scalar array
+        setFinCompareData(compareFull.map((p) => ({ label: p.label, amount: p.netIncome ?? p.netCashChange ?? p.totalAssets ?? 0 })));
       } else {
+        setFinCompareFull([]);
         setFinCompareData([]);
       }
     } catch (err) {
@@ -1701,17 +1788,38 @@ export default function AdminPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Nav items (memoised) — must be declared before any early return ──────
-  const navItems = useMemo(
+  const navGroups = useMemo(
     () => [
-      { key: 'dashboard', label: '📊 Dashboard' },
-      { key: 'inventory', label: '📦 Inventory' },
-      { key: 'costing', label: '💰 Price Costing' },
-      { key: 'rr', label: '📋 Receiving Report' },
-      { key: 'financial', label: '📈 Financial Reports' },
-      { key: 'journal', label: '📒 Journal Entries' },
-      { key: 'manual', label: '✏️ Manual Entry' },
-      { key: 'bills', label: '🧾 Bills' },
-      { key: 'profile', label: '👤 My Profile' },
+      { type: 'item', key: 'dashboard', label: '📊 Dashboard' },
+      {
+        type: 'group', key: 'transactions', label: '💳 Transactions',
+        children: [
+          { key: 'bills', label: '🧾 Bills' },
+          { key: 'manual', label: '✏️ Manual Entry' },
+        ],
+      },
+      {
+        type: 'group', key: 'inventory', label: '📦 Inventory',
+        children: [
+          { key: 'costing', label: '💰 Price Costing' },
+          { key: 'rr', label: '📋 Receiving Report' },
+          { key: 'inventory', label: '📊 Inventory Report' },
+        ],
+      },
+      {
+        type: 'group', key: 'financial', label: '📈 Financial Reports',
+        children: [
+          { key: 'cashflow', finTab: true, label: '💵 Cash Flow' },
+          { key: 'pl', finTab: true, label: '📊 Profit & Loss' },
+          { key: 'balance', finTab: true, label: '⚖️ Balance Sheet' },
+          { key: 'sales', finTab: true, label: '🛒 Sales Report' },
+          { key: 'budget', finTab: true, label: '📋 Budget Variance' },
+          { key: 'tax', finTab: true, label: '🏦 Tax Report' },
+          { key: 'journal', finTab: false, label: '📒 Journal Entries' },
+          { key: 'coa', finTab: true, label: '📑 Chart of Accounts' },
+        ],
+      },
+      { type: 'item', key: 'profile', label: '👤 My Profile' },
     ],
     [],
   );
@@ -2078,6 +2186,7 @@ export default function AdminPage() {
     setRrSaveError('');
     setSavingRR(true);
     try {
+      if (!rrForm.vendor_id) { setRrSaveError('Please select a vendor (Contact) before saving.'); return; }
       const emptyName = rrLineItems.find((li) => !li.inventory_name);
       if (emptyName) { setRrSaveError('Please select an inventory item for every line before saving.'); return; }
       const totalLC = rrLineItems.reduce((s, i) => s + (i.total_landed_cost || 0), 0);
@@ -2379,18 +2488,66 @@ export default function AdminPage() {
           </div>
 
           <nav style={styles.nav}>
-            {navItems.map((item) => (
-              <button
-                key={item.key}
-                onClick={() => setActiveTab(item.key)}
-                style={{
-                  ...styles.navBtn,
-                  ...(activeTab === item.key ? styles.navBtnActive : styles.navBtnInactive),
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
+            {navGroups.map((item) => {
+              if (item.type === 'item') {
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => setActiveTab(item.key)}
+                    style={{ ...styles.navBtn, ...(activeTab === item.key ? styles.navBtnActive : styles.navBtnInactive) }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              }
+              // group
+              const isChildActive = (item.children || []).some((c) =>
+                c.finTab ? (activeTab === 'financial' && finSubTab === c.key) : (activeTab === c.key),
+              );
+              const isOpen = navGroupOpen[item.key] || isChildActive;
+              return (
+                <div key={item.key}>
+                  <button
+                    onClick={() => setNavGroupOpen((p) => ({ ...p, [item.key]: !p[item.key] }))}
+                    style={{
+                      ...styles.navBtn, ...styles.navBtnInactive,
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      fontWeight: isChildActive ? 600 : 400,
+                      color: isChildActive ? '#ffc107' : '#ccc',
+                    }}
+                  >
+                    <span>{item.label}</span>
+                    <span style={{ fontSize: 10 }}>{isOpen ? '▾' : '▸'}</span>
+                  </button>
+                  {isOpen && (item.children || []).map((child) => {
+                    const childActive = child.finTab
+                      ? (activeTab === 'financial' && finSubTab === child.key)
+                      : (activeTab === child.key);
+                    return (
+                      <button
+                        key={child.key}
+                        onClick={() => {
+                          if (child.finTab) {
+                            setActiveTab('financial');
+                            setFinSubTab(child.key);
+                          } else {
+                            setActiveTab(child.key);
+                          }
+                        }}
+                        style={{
+                          ...styles.navBtn,
+                          ...(childActive ? styles.navBtnActive : styles.navBtnInactive),
+                          paddingLeft: 24,
+                          fontSize: 12,
+                        }}
+                      >
+                        {child.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </nav>
 
           <div style={styles.sidebarFooter}>
@@ -2438,7 +2595,7 @@ export default function AdminPage() {
                   <div style={styles.dashGrid}>
                     {/* Widget 1.1 – Sales Trend (Mon–Sun weekly dates) */}
                     <div style={styles.card}>
-                      <h3 style={styles.cardTitle}>Monthly Sales Trend (Mon–Sun Weekly)</h3>
+                      <h3 style={styles.cardTitle}>Sales Trend (12 Weeks)</h3>
                       <ResponsiveContainer width="100%" height={220}>
                         <BarChart data={salesTrend}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#333" />
@@ -2448,7 +2605,7 @@ export default function AdminPage() {
                           <Bar dataKey="sales" fill="#ffc107" name="Sales" />
                         </BarChart>
                       </ResponsiveContainer>
-                      <p style={{ fontSize: 11, color: '#666', marginTop: 4 }}>Week labels = Mon–Sun date range</p>
+                      <p style={{ fontSize: 11, color: '#666', marginTop: 4 }}>12-week rolling window; each bar = Mon–Sun</p>
                     </div>
 
                     {/* Widget 1.2 – Cash Flow (from Journal Entries, Mon–Sun weekly) */}
@@ -3044,8 +3201,13 @@ export default function AdminPage() {
                                   }
                                 }
                               }
+                              const existingNames = new Set(costingHeaders.map((h) => (h.menu_item_name || '').toLowerCase()));
                               const q = menuSearchQuery.toLowerCase();
-                              const filtered = expanded.filter((e) => e.displayName.toLowerCase().includes(q));
+                              const filtered = expanded.filter((e) =>
+                                e.displayName.toLowerCase().includes(q) &&
+                                (!costingEditItem || (costingEditItem.menu_item_name || '').toLowerCase() !== e.displayName.toLowerCase()) &&
+                                (costingEditItem ? true : !existingNames.has(e.displayName.toLowerCase())),
+                              );
                               if (filtered.length === 0) {
                                 return <div style={{ color: '#666', fontSize: 13, padding: '6px 8px' }}>No menu items found.</div>;
                               }
@@ -3915,34 +4077,11 @@ export default function AdminPage() {
             <div>
               <h1 style={styles.pageTitle}>Financial Reports</h1>
 
-              {/* Sub-tab pills */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-                {[
-                  { key: 'cashflow', label: 'Cash Flow' },
-                  { key: 'pl', label: 'P&L' },
-                  { key: 'balance', label: 'Balance Sheet' },
-                  { key: 'budget', label: 'Budget Variance' },
-                  { key: 'tax', label: 'Tax Report' },
-                  { key: 'coa', label: 'Chart of Accounts' },
-                ].map((st) => (
-                  <button
-                    key={st.key}
-                    onClick={() => setFinSubTab(st.key)}
-                    style={{
-                      padding: '8px 18px',
-                      borderRadius: 20,
-                      border: `1px solid ${finSubTab === st.key ? '#ffc107' : '#333'}`,
-                      background: finSubTab === st.key ? '#ffc107' : 'transparent',
-                      color: finSubTab === st.key ? '#000' : '#ccc',
-                      cursor: 'pointer',
-                      fontFamily: 'Poppins, sans-serif',
-                      fontWeight: finSubTab === st.key ? 700 : 400,
-                      fontSize: 13,
-                    }}
-                  >
-                    {st.label}
-                  </button>
-                ))}
+              {/* Sub-tab label (navigation is now in sidebar) */}
+              <div style={{ marginBottom: 16 }}>
+                <span style={{ color: '#888', fontSize: 12 }}>
+                  {({ cashflow: 'Cash Flow Statement', pl: 'Profit & Loss', balance: 'Balance Sheet', sales: 'Sales Report', budget: 'Budget Variance', tax: 'Tax Report', coa: 'Chart of Accounts' })[finSubTab] || finSubTab}
+                </span>
               </div>
 
               {/* Date range (not shown for CoA) */}
@@ -3978,21 +4117,67 @@ export default function AdminPage() {
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
 
-              {finSubTab !== 'coa' && finCompareData.length > 0 && (
-                <div style={{ ...styles.card, marginBottom: 14 }}>
-                  <h3 style={styles.cardTitle}>Comparative Period</h3>
-                  <div style={{ width: '100%', height: 260 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={finCompareData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis dataKey="label" stroke="#ccc" />
-                        <YAxis stroke="#ccc" />
-                        <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} formatter={(v) => fmt(v)} />
-                        <Legend />
-                        <Bar dataKey="amount" fill="#ffc107" name={finSubTab === 'pl' ? 'Net Income' : 'Net Cash Flow'} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+              {finSubTab !== 'coa' && finCompareFull.length > 0 && finSubTab === 'pl' && (
+                <div style={{ ...styles.card, marginBottom: 14, overflowX: 'auto' }}>
+                  <h3 style={styles.cardTitle}>Comparative P&L — {finCompareFull.length} Prior Period{finCompareFull.length > 1 ? 's' : ''}</h3>
+                  <table style={{ ...styles.table, minWidth: 600 }}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Account</th>
+                        {finCompareFull.map((p) => <th key={p.label} style={{ ...styles.th, textAlign: 'right' }}>{p.label}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { key: 'revenue', label: 'Revenue', color: '#4caf50' },
+                        { key: 'deliveryIncome', label: 'Delivery Income', color: '#4caf50', indent: true },
+                        { key: 'totalRevenue', label: 'Total Revenue', bold: true },
+                        { key: 'cogs', label: 'Cost of Goods Sold', color: '#f44336', neg: true },
+                        { key: 'grossProfit', label: 'Gross Profit', bold: true },
+                        ...FIN_OPEX_ACCOUNTS.map((a) => ({ key: `opex_${a}`, label: a, color: '#f44336', indent: true, opexKey: a })),
+                        { key: 'opExp', label: 'Total Operating Expenses', color: '#f44336', neg: true, bold: true },
+                        { key: 'incomeBeforeTax', label: 'Income Before Tax', bold: true },
+                        { key: 'incomeTaxExpense', label: 'Income Tax Expense', color: '#f44336', neg: true, indent: true },
+                        { key: 'netIncome', label: 'Net Income', bold: true, color: '#ffc107' },
+                      ].map((row, ri) => (
+                        <tr key={row.key} style={ri % 2 === 0 ? styles.trEven : styles.trOdd}>
+                          <td style={{ ...styles.td, paddingLeft: row.indent ? 28 : 12, fontWeight: row.bold ? 700 : 400, color: row.bold ? '#ffc107' : styles.td.color }}>{row.label}</td>
+                          {finCompareFull.map((p) => {
+                            const val = row.opexKey ? (p.expByAccount?.[row.opexKey] || 0) : (p[row.key] || 0);
+                            return (
+                              <td key={p.label} style={{ ...styles.td, textAlign: 'right', color: row.color || styles.td.color, fontWeight: row.bold ? 700 : 400 }}>
+                                {row.neg && val > 0 ? `(${fmt(val)})` : fmt(val)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {finSubTab !== 'coa' && finSubTab !== 'pl' && finCompareFull.length > 0 && (
+                <div style={{ ...styles.card, marginBottom: 14, overflowX: 'auto' }}>
+                  <h3 style={styles.cardTitle}>Comparative Summary — {finCompareFull.length} Prior Period{finCompareFull.length > 1 ? 's' : ''}</h3>
+                  <table style={{ ...styles.table, minWidth: 400 }}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Period</th>
+                        <th style={{ ...styles.th, textAlign: 'right' }}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {finCompareFull.map((p, i) => {
+                        const val = p.netIncome ?? p.netCashChange ?? p.totalAssets ?? 0;
+                        return (
+                          <tr key={p.label} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
+                            <td style={styles.td}>{p.label}</td>
+                            <td style={{ ...styles.td, textAlign: 'right', color: val >= 0 ? '#4caf50' : '#f44336' }}>{fmt(val)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
 
@@ -4030,6 +4215,7 @@ export default function AdminPage() {
                         <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s capital infusion</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.ownersCapitalInfusion)}</td></tr>
                         <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Repayment of loans payable</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.repaymentOfLoans)})</td></tr>
                         <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s drawings</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.ownersDrawings)})</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Interest Expense</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.interestExpensePaid || 0)})</td></tr>
                         <tr style={{ background: '#2a1a2a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#e1bee7' }}>Net Cash Flow from Financing Activities</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netCashFlowFinancing >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netCashFlowFinancing)}</td></tr>
 
                         <tr style={{ background: '#2a2a1a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Net Increase / (Decrease) in Cash</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netChange >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netChange)}</td></tr>
@@ -4184,6 +4370,147 @@ export default function AdminPage() {
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {/* Sales Report */}
+              {finSubTab === 'sales' && finData?.type === 'sales' && (
+                <div style={styles.card}>
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center' }}>
+                    <h3 style={styles.cardTitle}>Sales Report</h3>
+                    {['general', 'itemized'].map((v) => (
+                      <button
+                        key={v}
+                        onClick={() => setSalesSubView(v)}
+                        style={{
+                          padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+                          fontFamily: 'Poppins, sans-serif',
+                          border: `1px solid ${salesSubView === v ? '#ffc107' : '#444'}`,
+                          background: salesSubView === v ? '#ffc107' : 'transparent',
+                          color: salesSubView === v ? '#000' : '#ccc',
+                          fontWeight: salesSubView === v ? 700 : 400,
+                        }}
+                      >
+                        {v === 'general' ? 'General' : 'Itemized'}
+                      </button>
+                    ))}
+                  </div>
+                  {(() => {
+                    const rows = finData.rows || [];
+                    const fmtPct = (v) => `${Number(v).toFixed(1)}%`;
+
+                    if (salesSubView === 'general') {
+                      // Group by category
+                      const catMap = {};
+                      rows.forEach((r) => {
+                        const cat = r.category || 'Other';
+                        if (!catMap[cat]) catMap[cat] = { revenue: 0, cogs: 0, cm: 0 };
+                        catMap[cat].revenue += r.revenue;
+                        catMap[cat].cogs += r.cogs;
+                        catMap[cat].cm += r.cm;
+                      });
+                      const cats = Object.entries(catMap);
+                      const grandRev = cats.reduce((s, [, v]) => s + v.revenue, 0);
+                      const grandCogs = cats.reduce((s, [, v]) => s + v.cogs, 0);
+                      const grandCm = cats.reduce((s, [, v]) => s + v.cm, 0);
+                      const grandCmPct = grandRev > 0 ? (grandCm / grandRev) * 100 : 0;
+                      return (
+                        <div style={styles.tableWrap}>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr>
+                                {['Category', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
+                                  <th key={h} style={{ ...styles.th, textAlign: h !== 'Category' ? 'right' : 'left' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cats.map(([cat, v], i) => {
+                                const cmPct = v.revenue > 0 ? (v.cm / v.revenue) * 100 : 0;
+                                return (
+                                  <tr key={cat} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                    <td style={styles.td}>{cat}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(v.revenue)}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(v.cogs)})</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: v.cm >= 0 ? '#4caf50' : '#f44336' }}>{fmt(v.cm)}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: cmPct >= 50 ? '#4caf50' : '#ffc107' }}>{fmtPct(cmPct)}</td>
+                                  </tr>
+                                );
+                              })}
+                              <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
+                                <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Grand Total</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandRev)}</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(grandCogs)})</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: grandCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(grandCm)}</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{fmtPct(grandCmPct)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    }
+
+                    // Itemized: group by category then show items
+                    const catGroups = {};
+                    rows.forEach((r) => {
+                      const cat = r.category || 'Other';
+                      if (!catGroups[cat]) catGroups[cat] = [];
+                      catGroups[cat].push(r);
+                    });
+                    const grandRev = rows.reduce((s, r) => s + r.revenue, 0);
+                    const grandCogs = rows.reduce((s, r) => s + r.cogs, 0);
+                    const grandCm = rows.reduce((s, r) => s + r.cm, 0);
+                    const grandCmPct = grandRev > 0 ? (grandCm / grandRev) * 100 : 0;
+                    return (
+                      <div style={styles.tableWrap}>
+                        <table style={styles.table}>
+                          <thead>
+                            <tr>
+                              {['Item', 'Category', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
+                                <th key={h} style={{ ...styles.th, textAlign: h !== 'Item' && h !== 'Category' ? 'right' : 'left' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(catGroups).map(([cat, items]) => {
+                              const catRev = items.reduce((s, r) => s + r.revenue, 0);
+                              const catCogs = items.reduce((s, r) => s + r.cogs, 0);
+                              const catCm = items.reduce((s, r) => s + r.cm, 0);
+                              const catCmPct = catRev > 0 ? (catCm / catRev) * 100 : 0;
+                              return (
+                                <React.Fragment key={cat}>
+                                  {items.map((r, i) => (
+                                    <tr key={r.name} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
+                                      <td style={styles.td}>{r.name}</td>
+                                      <td style={styles.td}>{r.category}</td>
+                                      <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(r.revenue)}</td>
+                                      <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(r.cogs)})</td>
+                                      <td style={{ ...styles.td, textAlign: 'right', color: r.cm >= 0 ? '#4caf50' : '#f44336' }}>{fmt(r.cm)}</td>
+                                      <td style={{ ...styles.td, textAlign: 'right', color: r.cmPct >= 50 ? '#4caf50' : '#ffc107' }}>{fmtPct(r.cmPct)}</td>
+                                    </tr>
+                                  ))}
+                                  <tr style={{ background: '#222' }}>
+                                    <td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107', paddingLeft: 24 }}>Subtotal — {cat}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(catRev)}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(catCogs)})</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: catCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(catCm)}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{fmtPct(catCmPct)}</td>
+                                  </tr>
+                                </React.Fragment>
+                              );
+                            })}
+                            <tr style={{ background: '#2a2a1a' }}>
+                              <td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Grand Total</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandRev)}</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(grandCogs)})</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: grandCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(grandCm)}</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{fmtPct(grandCmPct)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
