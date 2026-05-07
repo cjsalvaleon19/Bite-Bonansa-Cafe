@@ -58,7 +58,7 @@ export async function connectPrinter() {
   if (typeof navigator === 'undefined' || !navigator.bluetooth) {
     throw new Error(
       'Web Bluetooth is not supported in this browser.\n' +
-      'Please use Google Chrome or Microsoft Edge (desktop).'
+      'Please use Google Chrome or Microsoft Edge.'
     );
   }
 

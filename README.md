@@ -38,6 +38,30 @@ For step-by-step cashier setup and troubleshooting for connecting a Bluetooth pr
 
 - [`CASHIER_INTERFACE_GUIDE.md`](./CASHIER_INTERFACE_GUIDE.md) → **Bluetooth Printer Setup (Android Tablet + bitebonansacafe.com)**
 
+## Android Tablet APK Build (WiFi Server Mode)
+
+This project now includes Capacitor Android tooling so you can generate an APK for tablets and point it to your server over WiFi.
+
+1. Set your server URL in `.env.local`:
+   ```bash
+   ANDROID_SERVER_URL=http://<your-local-ip>:3000
+   ```
+2. Build and sync Android project:
+   ```bash
+   npm run android:init
+   npm run android:sync
+   ```
+3. Open Android Studio:
+   ```bash
+   npm run android:open
+   ```
+4. Build APK in Android Studio (**Build > Build Bundle(s) / APK(s) > Build APK(s)**), or run:
+   ```bash
+   npm run android:build:debug
+   ```
+
+> Note: The tablet and server must be on the same WiFi network for `ANDROID_SERVER_URL` to be reachable.
+
 ## Getting Started
 
 ### Prerequisites

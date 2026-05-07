@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
+import { connectPrinter, disconnectPrinter, isPrinterConnected } from '../../utils/bluetoothPrinter';
 
 export default function CashierSettings() {
   const router = useRouter();
@@ -15,11 +16,15 @@ export default function CashierSettings() {
   const [deliveryEnabled, setDeliveryEnabled] = useState(true);
   const [menuItems, setMenuItems] = useState([]);
   const [saveStatus, setSaveStatus] = useState(null);
+  const [pairing, setPairing] = useState(false);
+  const [printerConnected, setPrinterConnected] = useState(false);
+  const [pairStatus, setPairStatus] = useState(null);
 
   useEffect(() => {
     if (!authLoading) {
       fetchUser();
       initializePage();
+      setPrinterConnected(isPrinterConnected());
     }
   }, [authLoading]);
 
@@ -140,6 +145,28 @@ export default function CashierSettings() {
     }
   };
 
+  const handlePairPrinter = async () => {
+    setPairing(true);
+    setPairStatus(null);
+    try {
+      await connectPrinter();
+      setPrinterConnected(true);
+      setPairStatus('success');
+      setTimeout(() => setPairStatus(null), 3000);
+    } catch (err) {
+      console.error('[Settings] Bluetooth pairing failed:', err?.message ?? err);
+      setPairStatus('error');
+    } finally {
+      setPairing(false);
+    }
+  };
+
+  const handleForgetPrinter = () => {
+    disconnectPrinter();
+    setPrinterConnected(false);
+    setPairStatus(null);
+  };
+
   if (authLoading || loading) {
     return (
       <div style={styles.center}>
@@ -218,6 +245,48 @@ export default function CashierSettings() {
                 </span>
               </label>
             </div>
+          </div>
+
+          {/* Sold Out Items Management */}
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>
+              <h3 style={styles.sectionTitle}>🖨️ Bluetooth Pairing</h3>
+              <p style={styles.sectionDesc}>
+                Pair and reconnect your receipt printer from Settings
+              </p>
+            </div>
+            <div style={styles.btPairingRow}>
+              <span style={styles.btStatus(printerConnected)}>
+                {printerConnected ? 'Connected' : 'Not Connected'}
+              </span>
+              <div style={styles.btActions}>
+                <button
+                  onClick={handlePairPrinter}
+                  disabled={pairing}
+                  style={styles.btPrimaryBtn}
+                >
+                  {pairing ? 'Pairing…' : printerConnected ? 'Re-Pair Printer' : 'Pair Printer'}
+                </button>
+                {printerConnected && (
+                  <button
+                    onClick={handleForgetPrinter}
+                    style={styles.btSecondaryBtn}
+                  >
+                    Forget Connection
+                  </button>
+                )}
+              </div>
+            </div>
+            {pairStatus === 'success' && (
+              <p style={styles.btMessageSuccess}>
+                ✓ Bluetooth printer paired successfully.
+              </p>
+            )}
+            {pairStatus === 'error' && (
+              <p style={styles.btMessageError}>
+                Failed to pair printer. Make sure Bluetooth is on and printer is discoverable.
+              </p>
+            )}
           </div>
 
           {/* Sold Out Items Management */}
@@ -366,6 +435,57 @@ const styles = {
     fontSize: '14px',
     color: '#999',
     margin: 0,
+  },
+  btPairingRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '12px',
+    flexWrap: 'wrap',
+  },
+  btStatus: (isConnected) => ({
+    padding: '6px 12px',
+    borderRadius: '999px',
+    fontSize: '12px',
+    fontWeight: '600',
+    backgroundColor: isConnected ? 'rgba(76, 175, 80, 0.2)' : 'rgba(255,255,255,0.1)',
+    border: isConnected ? '1px solid #4caf50' : '1px solid #555',
+    color: isConnected ? '#4caf50' : '#ccc',
+  }),
+  btActions: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+  },
+  btPrimaryBtn: {
+    padding: '8px 14px',
+    backgroundColor: '#ffc107',
+    color: '#000',
+    border: 'none',
+    borderRadius: '6px',
+    fontWeight: '700',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  btSecondaryBtn: {
+    padding: '8px 14px',
+    backgroundColor: 'transparent',
+    color: '#ccc',
+    border: '1px solid #666',
+    borderRadius: '6px',
+    fontWeight: '600',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  btMessageSuccess: {
+    marginTop: '12px',
+    color: '#4caf50',
+    fontSize: '13px',
+  },
+  btMessageError: {
+    marginTop: '12px',
+    color: '#ff6b6b',
+    fontSize: '13px',
   },
   toggleContainer: {
     marginTop: '16px',
