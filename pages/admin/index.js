@@ -222,8 +222,9 @@ export default function AdminPage() {
   const [finDateTo, setFinDateTo] = useState(monthEndStr);
   const [finData, setFinData] = useState(null);
   const [finCompareMode, setFinCompareMode] = useState('previous_periods');
-  const [finCompareCount, setFinCompareCount] = useState(3);
+  const [finCompareCount, setFinCompareCount] = useState(0);
   const [finComparePeriod, setFinComparePeriod] = useState('monthly');
+  const [finCompareCustomOpen, setFinCompareCustomOpen] = useState(false);
   const [finCompareData, setFinCompareData] = useState([]);
   const [finCompareFull, setFinCompareFull] = useState([]);
   const [salesSubView, setSalesSubView] = useState('general');
@@ -408,6 +409,7 @@ export default function AdminPage() {
         'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
         'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
         'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+        'Research and Development Expense',
       ];
       const now3 = new Date();
       const monthStarts = Array.from({ length: 6 }, (_, i) => new Date(now3.getFullYear(), now3.getMonth() - (5 - i), 1));
@@ -488,6 +490,12 @@ export default function AdminPage() {
         const totals = getBudgetTotals(budgetObj);
         return {
           month: monthLabel(d),
+          budgetRevenue: totals.totalRevenue,
+          actualRevenue: pnlRows[idx]?.totalRevenue || 0,
+          budgetCogs: totals.cogs,
+          actualCogs: pnlRows[idx]?.cogs || 0,
+          budgetOpExp: totals.opExp,
+          actualOpExp: pnlRows[idx]?.opExp || 0,
           budgetNetProfit: totals.netProfit,
           actualNetProfit: pnlRows[idx]?.netProfit || 0,
         };
@@ -1064,7 +1072,7 @@ export default function AdminPage() {
     'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
     'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
     'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
-    'Interest Expense',
+    'Interest Expense', 'Research and Development Expense',
   ]), []);
 
   // ── Fetch: Financial Reports ──────────────────────────────────────────────
@@ -1357,7 +1365,7 @@ export default function AdminPage() {
 
       // ── Comparative Periods ────────────────────────────────────────────────
       if (['cashflow', 'pl', 'balance', 'sales'].includes(finSubTab)) {
-        const periods = Math.max(1, Math.min(12, Number(finCompareCount) || 1));
+        const periods = Math.max(0, Math.min(12, Number(finCompareCount) || 0));
         const unit = finComparePeriod;
         const shiftedRange = (index) => {
           const from = new Date(finDateFrom);
@@ -1365,9 +1373,9 @@ export default function AdminPage() {
           if (finCompareMode === 'same_period_last_year') {
             from.setFullYear(from.getFullYear() - index);
             to.setFullYear(to.getFullYear() - index);
-          } else if (unit === 'daily') {
-            from.setDate(from.getDate() - index);
-            to.setDate(to.getDate() - index);
+          } else if (unit === 'quarterly') {
+            from.setMonth(from.getMonth() - index * 3);
+            to.setMonth(to.getMonth() - index * 3);
           } else if (unit === 'annual') {
             from.setFullYear(from.getFullYear() - index);
             to.setFullYear(to.getFullYear() - index);
@@ -1377,7 +1385,7 @@ export default function AdminPage() {
           }
           return { from, to };
         };
-        const makeLabel = (to) => unit === 'annual' ? to.slice(0, 4) : unit === 'monthly' ? to.slice(0, 7) : to;
+        const makeLabel = (to) => unit === 'annual' ? to.slice(0, 4) : (unit === 'monthly' || unit === 'quarterly') ? to.slice(0, 7) : to;
 
         const computePLPeriod = async (cFrom, cTo, cFromISO, cToISO) => {
           const [{ data: rev }, { data: del }, { data: cg }, { data: exps }] = await Promise.all([
@@ -1405,7 +1413,7 @@ export default function AdminPage() {
         };
 
         const compareFull = [];
-        for (let i = periods; i >= 1; i--) {
+        if (periods > 0) for (let i = periods; i >= 1; i--) {
           const { from: f, to: t } = shiftedRange(i);
           const cFrom = f.toISOString().split('T')[0];
           const cTo = t.toISOString().split('T')[0];
@@ -1430,13 +1438,20 @@ export default function AdminPage() {
             const nets = {};
             (aD || []).forEach((e) => { if (e.debit_account) nets[e.debit_account] = (nets[e.debit_account] || 0) + (Number(e.amount) || 0); });
             (aC || []).forEach((e) => { if (e.credit_account) nets[e.credit_account] = (nets[e.credit_account] || 0) - (Number(e.amount) || 0); });
-            const cashAssets = (nets['Cash on Hand'] || 0) + (nets['Cash in Bank'] || 0);
-            const arAssets = nets['Accounts Receivable'] || 0;
-            const invAssets = nets['Inventory'] || 0;
-            const ppeNet = (nets['Kitchen Equipment'] || 0) - Math.abs(nets['Accumulated Depreciation'] || 0);
-            periodData.totalAssets = cashAssets + arAssets + invAssets + ppeNet;
-            periodData.totalLiabilities = Math.abs(nets['Accounts Payable'] || 0) + Math.abs(nets['Income Tax Payable'] || 0) + Math.abs(nets['Loans Payable'] || 0);
-            periodData.totalEquity = (nets["Owner's Capital"] || 0) + Math.abs(nets['Retained Earnings'] || 0);
+            const cashOnHand = nets['Cash on Hand'] || 0;
+            const cashInBank = nets['Cash in Bank'] || 0;
+            const invValue = nets['Inventory'] || 0;
+            const kitchenEquipment = nets['Kitchen Equipment'] || 0;
+            const accumDepreciation = Math.abs(nets['Accumulated Depreciation'] || 0);
+            const ap = Math.abs(nets['Accounts Payable'] || 0);
+            const incomeTaxPayable = Math.abs(nets['Income Tax Payable'] || 0);
+            const loansPayable = Math.abs(nets['Loans Payable'] || 0);
+            const ownersCapital = nets["Owner's Capital"] || 0;
+            const retainedEarnings = Math.abs(nets['Retained Earnings'] || 0);
+            const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
+            const totalLiabilities = ap + incomeTaxPayable + loansPayable;
+            const totalEquity = ownersCapital + retainedEarnings;
+            Object.assign(periodData, { cashOnHand, cashInBank, invValue, kitchenEquipment, accumDepreciation, ap, incomeTaxPayable, loansPayable, ownersCapital, retainedEarnings, totalAssets, totalLiabilities, totalEquity });
           }
           compareFull.push(periodData);
         }
@@ -2717,20 +2732,29 @@ export default function AdminPage() {
                       <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #333' }}>
                         <h4 style={{ margin: 0, marginBottom: 8, color: '#ccc', fontSize: 13 }}>Budget Forecast</h4>
                         {budgetForecastData.length > 0 ? (
-                          <ResponsiveContainer width="100%" height={220}>
-                            <BarChart data={budgetForecastData}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                              <XAxis dataKey="month" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
-                              <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
-                              <Tooltip
-                                contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }}
-                                formatter={(val) => fmt(val)}
-                              />
-                              <Legend wrapperStyle={{ color: '#ccc' }} />
-                              <Bar dataKey="budgetNetProfit" fill="#2196f3" name="Budget Net Profit" />
-                              <Bar dataKey="actualNetProfit" fill="#4caf50" name="Actual Net Profit" />
-                            </BarChart>
-                          </ResponsiveContainer>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+                            {[
+                              { title: 'Total Revenue', budgetKey: 'budgetRevenue', actualKey: 'actualRevenue', color: '#ffc107' },
+                              { title: 'COGS', budgetKey: 'budgetCogs', actualKey: 'actualCogs', color: '#ff9800' },
+                              { title: 'Operating Expense', budgetKey: 'budgetOpExp', actualKey: 'actualOpExp', color: '#f44336' },
+                              { title: 'Net Profit', budgetKey: 'budgetNetProfit', actualKey: 'actualNetProfit', color: '#4caf50' },
+                            ].map(({ title, budgetKey, actualKey, color }) => (
+                              <div key={title} style={{ background: '#1a1a1a', borderRadius: 6, padding: 8, border: '1px solid #333' }}>
+                                <div style={{ color: '#aaa', fontSize: 11, marginBottom: 4 }}>{title}</div>
+                                <ResponsiveContainer width="100%" height={140}>
+                                  <BarChart data={budgetForecastData} margin={{ top: 2, right: 4, left: 0, bottom: 2 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+                                    <XAxis dataKey="month" stroke="#555" tick={{ fill: '#888', fontSize: 9 }} />
+                                    <YAxis stroke="#555" tick={{ fill: '#888', fontSize: 9 }} width={48} tickFormatter={(v) => `₱${Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                                    <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff', fontSize: 11 }} formatter={(val) => fmt(val)} />
+                                    <Legend wrapperStyle={{ color: '#888', fontSize: 10 }} iconSize={8} />
+                                    <Bar dataKey={budgetKey} fill="#2196f3" name="Budget" />
+                                    <Bar dataKey={actualKey} fill={color} name="Actual" />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                            ))}
+                          </div>
                         ) : (
                           <p style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>No budget forecast data</p>
                         )}
@@ -4091,95 +4115,58 @@ export default function AdminPage() {
                   <input type="date" style={{ ...styles.input, width: 160 }} value={finDateFrom} onChange={(e) => setFinDateFrom(e.target.value)} />
                   <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                   <input type="date" style={{ ...styles.input, width: 160 }} value={finDateTo} onChange={(e) => setFinDateTo(e.target.value)} />
-                  <label style={{ color: '#ccc', fontSize: 13 }}>Comparative:</label>
-                  <select style={{ ...styles.input, width: 190 }} value={finCompareMode} onChange={(e) => setFinCompareMode(e.target.value)}>
-                    <option value="previous_periods">Previous Periods</option>
-                    <option value="same_period_last_year">Same Period Last Year</option>
-                  </select>
-                  <label style={{ color: '#ccc', fontSize: 13 }}>No. of Periods:</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={12}
-                    style={{ ...styles.input, width: 90 }}
-                    value={finCompareCount}
-                    onChange={(e) => setFinCompareCount(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
-                  />
-                  <label style={{ color: '#ccc', fontSize: 13 }}>Period:</label>
-                  <select style={{ ...styles.input, width: 120 }} value={finComparePeriod} onChange={(e) => setFinComparePeriod(e.target.value)}>
-                    <option value="daily">Daily</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="annual">Annual</option>
-                  </select>
-                  <button onClick={fetchFinancial} style={styles.primaryBtn}>Refresh</button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ color: '#ccc', fontSize: 12 }}>Compare with</label>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <select
+                        style={{ ...styles.input, width: 160 }}
+                        value={finCompareCount === 0 ? 'none' : finCompareCustomOpen ? 'custom' : String(finCompareCount)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === 'none') { setFinCompareCount(0); setFinCompareCustomOpen(false); }
+                          else if (v === 'custom') { setFinCompareCustomOpen(true); }
+                          else { setFinCompareCount(Number(v)); setFinCompareCustomOpen(false); }
+                        }}
+                      >
+                        <option value="none">None</option>
+                        <option value="1">1 month</option>
+                        <option value="2">2 months</option>
+                        <option value="3">3 months</option>
+                        <option value="4">4 months</option>
+                        <option value="custom">Enter a different number</option>
+                      </select>
+                      {finCompareCustomOpen && (
+                        <input
+                          type="number"
+                          min={1}
+                          max={12}
+                          placeholder="# periods"
+                          style={{ ...styles.input, width: 90 }}
+                          value={finCompareCount || ''}
+                          onChange={(e) => setFinCompareCount(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                        />
+                      )}
+                    </div>
+                    {finCompareCount > 0 && (
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, color: '#ccc' }}>
+                        <span>Previous</span>
+                        {[{ val: 'monthly', label: 'Month' }, { val: 'quarterly', label: 'Quarter' }, { val: 'annual', label: 'Year' }].map((opt) => (
+                          <label key={opt.val} style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+                            <input type="radio" name="finComparePeriod" value={opt.val} checked={finComparePeriod === opt.val} onChange={() => setFinComparePeriod(opt.val)} />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={fetchFinancial} style={styles.primaryBtn}>Update</button>
                 </div>
               )}
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
 
-              {finSubTab !== 'coa' && finCompareFull.length > 0 && finSubTab === 'pl' && (
-                <div style={{ ...styles.card, marginBottom: 14, overflowX: 'auto' }}>
-                  <h3 style={styles.cardTitle}>Comparative P&L — {finCompareFull.length} Prior Period{finCompareFull.length > 1 ? 's' : ''}</h3>
-                  <table style={{ ...styles.table, minWidth: 600 }}>
-                    <thead>
-                      <tr>
-                        <th style={styles.th}>Account</th>
-                        {finCompareFull.map((p) => <th key={p.label} style={{ ...styles.th, textAlign: 'right' }}>{p.label}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[
-                        { key: 'revenue', label: 'Revenue', color: '#4caf50' },
-                        { key: 'deliveryIncome', label: 'Delivery Income', color: '#4caf50', indent: true },
-                        { key: 'totalRevenue', label: 'Total Revenue', bold: true },
-                        { key: 'cogs', label: 'Cost of Goods Sold', color: '#f44336', neg: true },
-                        { key: 'grossProfit', label: 'Gross Profit', bold: true },
-                        ...FIN_OPEX_ACCOUNTS.map((a) => ({ key: `opex_${a}`, label: a, color: '#f44336', indent: true, opexKey: a })),
-                        { key: 'opExp', label: 'Total Operating Expenses', color: '#f44336', neg: true, bold: true },
-                        { key: 'incomeBeforeTax', label: 'Income Before Tax', bold: true },
-                        { key: 'incomeTaxExpense', label: 'Income Tax Expense', color: '#f44336', neg: true, indent: true },
-                        { key: 'netIncome', label: 'Net Income', bold: true, color: '#ffc107' },
-                      ].map((row, ri) => (
-                        <tr key={row.key} style={ri % 2 === 0 ? styles.trEven : styles.trOdd}>
-                          <td style={{ ...styles.td, paddingLeft: row.indent ? 28 : 12, fontWeight: row.bold ? 700 : 400, color: row.bold ? '#ffc107' : styles.td.color }}>{row.label}</td>
-                          {finCompareFull.map((p) => {
-                            const val = row.opexKey ? (p.expByAccount?.[row.opexKey] || 0) : (p[row.key] || 0);
-                            return (
-                              <td key={p.label} style={{ ...styles.td, textAlign: 'right', color: row.color || styles.td.color, fontWeight: row.bold ? 700 : 400 }}>
-                                {row.neg && val > 0 ? `(${fmt(val)})` : fmt(val)}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {finSubTab !== 'coa' && finSubTab !== 'pl' && finCompareFull.length > 0 && (
-                <div style={{ ...styles.card, marginBottom: 14, overflowX: 'auto' }}>
-                  <h3 style={styles.cardTitle}>Comparative Summary — {finCompareFull.length} Prior Period{finCompareFull.length > 1 ? 's' : ''}</h3>
-                  <table style={{ ...styles.table, minWidth: 400 }}>
-                    <thead>
-                      <tr>
-                        <th style={styles.th}>Period</th>
-                        <th style={{ ...styles.th, textAlign: 'right' }}>Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {finCompareFull.map((p, i) => {
-                        const val = p.netIncome ?? p.netCashChange ?? p.totalAssets ?? 0;
-                        return (
-                          <tr key={p.label} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
-                            <td style={styles.td}>{p.label}</td>
-                            <td style={{ ...styles.td, textAlign: 'right', color: val >= 0 ? '#4caf50' : '#f44336' }}>{fmt(val)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+
+
 
               {/* Cash Flow */}
               {finSubTab === 'cashflow' && finData?.type === 'cashflow' && (
@@ -4227,151 +4214,138 @@ export default function AdminPage() {
               )}
 
               {/* P&L */}
-              {finSubTab === 'pl' && finData?.type === 'pl' && (
-                <div style={{ ...styles.card, maxWidth: 560 }}>
-                  <h3 style={styles.cardTitle}>Profit &amp; Loss Statement</h3>
-                  <table style={styles.table}>
-                    <tbody>
-                      <tr style={styles.trEven}>
-                        <td style={styles.td}>Revenue</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.revenue)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Delivery Income</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.deliveryIncome)}</td>
-                      </tr>
-                      <tr style={{ background: '#2a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Revenue</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalRevenue)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={styles.td}>Cost of Goods Sold (COGS)</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.cogs)})</td>
-                      </tr>
-                      <tr style={{ background: '#2a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Gross Profit</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.grossProfit >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.grossProfit)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, fontWeight: 600 }}>Operating Expenses</td>
-                        <td style={styles.td}></td>
-                      </tr>
-                      {finData.expByAccount && Object.entries(finData.expByAccount).map(([acct, amt], idx) => (
-                        <tr key={acct} style={idx % 2 === 0 ? styles.trOdd : styles.trEven}>
-                          <td style={{ ...styles.td, paddingLeft: 24 }}>{acct}</td>
-                          <td style={{ ...styles.td, textAlign: 'right', color: amt > 0 ? '#f44336' : '#888' }}>
-                            {amt > 0 ? `(${fmt(amt)})` : fmt(0)}
-                          </td>
-                        </tr>
-                      ))}
-                      <tr style={{ background: '#2a1a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#f44336' }}>Total Operating Expenses</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#f44336' }}>({fmt(finData.opExp)})</td>
-                      </tr>
-                      <tr style={{ background: '#1a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#4caf50' }}>Income Before Tax</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.incomeBeforeTax >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.incomeBeforeTax)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Income Tax Expense</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.incomeTaxExpense || 0)})</td>
-                      </tr>
-                      <tr style={{ background: '#3a2a0a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Net Income</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netIncome >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netIncome)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {finSubTab === 'pl' && finData?.type === 'pl' && (() => {
+                const currentLabel = `${finDateFrom} – ${finDateTo}`;
+                const hasCmp = finCompareFull.length > 0;
+                const colCount = 1 + finCompareFull.length;
+                const cmpVal = (p, key, opexKey) => opexKey ? (p.expByAccount?.[opexKey] || 0) : (p[key] || 0);
+                const amtCell = (val, color, neg = false, bold = false) => (
+                  <td style={{ ...styles.td, textAlign: 'right', color: color || styles.td.color, fontWeight: bold ? 700 : 400 }}>
+                    {neg && val > 0 ? `(${fmt(val)})` : fmt(val)}
+                  </td>
+                );
+                const plRows = [
+                  { key: 'revenue', label: 'Revenue', color: '#4caf50', indent: false },
+                  { key: 'deliveryIncome', label: 'Delivery Income', color: '#4caf50', indent: true },
+                  { key: 'totalRevenue', label: 'Total Revenue', bold: true },
+                  { key: 'cogs', label: 'Cost of Goods Sold (COGS)', color: '#f44336', neg: true },
+                  { key: 'grossProfit', label: 'Gross Profit', bold: true },
+                  { label: 'Operating Expenses', header: true },
+                  ...FIN_OPEX_ACCOUNTS.map((a) => ({ key: a, label: a, color: '#f44336', indent: true, opexKey: a, neg: true })),
+                  { key: 'opExp', label: 'Total Operating Expenses', color: '#f44336', neg: true, bold: true },
+                  { key: 'incomeBeforeTax', label: 'Income Before Tax', bold: true },
+                  { key: 'incomeTaxExpense', label: 'Income Tax Expense', color: '#f44336', neg: true, indent: true },
+                  { key: 'netIncome', label: 'Net Income', bold: true, color: '#ffc107' },
+                ];
+                return (
+                  <div style={{ ...styles.card, overflowX: 'auto' }}>
+                    <h3 style={styles.cardTitle}>Profit &amp; Loss Statement</h3>
+                    <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>For the period {finDateFrom} to {finDateTo}</p>
+                    <table style={{ ...styles.table, minWidth: hasCmp ? 400 + colCount * 140 : 480 }}>
+                      {hasCmp && (
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>Account</th>
+                            <th style={{ ...styles.th, textAlign: 'right', color: '#ffc107' }}>{currentLabel}</th>
+                            {finCompareFull.map((p) => <th key={p.label} style={{ ...styles.th, textAlign: 'right' }}>{p.label}</th>)}
+                          </tr>
+                        </thead>
+                      )}
+                      <tbody>
+                        {plRows.map((row, ri) => {
+                          if (row.header) {
+                            return (
+                              <tr key={row.label} style={styles.trEven}>
+                                <td style={{ ...styles.td, fontWeight: 600 }}>{row.label}</td>
+                                {hasCmp && Array.from({ length: colCount }).map((_, ci) => <td key={ci} style={styles.td}></td>)}
+                              </tr>
+                            );
+                          }
+                          const curVal = row.opexKey ? (finData.expByAccount?.[row.opexKey] || 0) : (finData[row.key] || 0);
+                          const rowBg = row.bold ? (row.key === 'netIncome' ? '#3a2a0a' : row.key === 'incomeBeforeTax' ? '#1a2a1a' : row.key === 'grossProfit' ? '#2a2a1a' : row.color === '#f44336' ? '#2a1a1a' : '#2a2a1a') : (ri % 2 === 0 ? styles.trEven.background : styles.trOdd.background);
+                          return (
+                            <tr key={row.label} style={{ background: rowBg }}>
+                              <td style={{ ...styles.td, paddingLeft: row.indent ? 28 : 12, fontWeight: row.bold ? 700 : 400, color: row.bold ? '#ffc107' : styles.td.color }}>{row.label}</td>
+                              {amtCell(curVal, row.color, row.neg, row.bold)}
+                              {hasCmp && finCompareFull.map((p) => amtCell(cmpVal(p, row.key, row.opexKey), row.color, row.neg, row.bold))}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
 
               {/* Balance Sheet */}
-              {finSubTab === 'balance' && finData?.type === 'balance' && (
-                <div style={{ ...styles.card, maxWidth: 560 }}>
-                  <h3 style={styles.cardTitle}>Balance Sheet</h3>
-                  <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>As of {finDateTo} — cumulative from all transactions up to this date.</p>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr>
-                        <th style={styles.th}>Item</th>
-                        <th style={{ ...styles.th, textAlign: 'right' }}>Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, fontWeight: 600 }}>Assets</td>
-                        <td style={styles.td}></td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Cash on Hand</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.cashOnHand)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Cash in Bank</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.cashInBank)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Inventory Value</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.invValue)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Kitchen Equipment</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.kitchenEquipment)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Less: Accumulated Depreciation</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: finData.accumDepreciation > 0 ? '#f44336' : '#888' }}>
-                          {finData.accumDepreciation > 0 ? `(${fmt(finData.accumDepreciation)})` : fmt(0)}
-                        </td>
-                      </tr>
-                      <tr style={{ background: '#2a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Assets</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalAssets)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, fontWeight: 600 }}>Liabilities</td>
-                        <td style={styles.td}></td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Accounts Payable</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ap)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Income Tax Payable</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.incomeTaxPayable || 0)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Loans Payable</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.loansPayable || 0)}</td>
-                      </tr>
-                      <tr style={{ background: '#2a1a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#f44336' }}>Total Liabilities</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#f44336' }}>{fmt(finData.totalLiabilities)}</td>
-                      </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, fontWeight: 600 }}>Equity</td>
-                        <td style={styles.td}></td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s Capital</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ownersCapital)}</td>
-                      </tr>
-                      <tr style={styles.trOdd}>
-                        <td style={{ ...styles.td, paddingLeft: 24 }}>Retained Earnings</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.retainedEarnings)}</td>
-                      </tr>
-                      <tr style={{ background: '#1a2a1a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#4caf50' }}>Total Equity</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#4caf50' }}>{fmt(finData.totalEquity)}</td>
-                      </tr>
-                      <tr style={{ background: '#1a1a2a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Liabilities &amp; Equity</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalLiabilities + finData.totalEquity)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {finSubTab === 'balance' && finData?.type === 'balance' && (() => {
+                const hasCmp = finCompareFull.length > 0;
+                const colCount = 1 + finCompareFull.length;
+                const cmpGet = (p, key) => p[key] ?? 0;
+                const hdrCell = (label, colSpan = 1) => (
+                  <td colSpan={colSpan} style={{ ...styles.td, fontWeight: 600 }}>{label}</td>
+                );
+                const dataRow = (label, curVal, keyForCmp, indent = false, neg = false, bold = false, boldColor = '#ffc107') => (
+                  <tr style={{ background: bold ? '#2a2a1a' : styles.trOdd.background }}>
+                    <td style={{ ...styles.td, paddingLeft: indent ? 28 : 12, fontWeight: bold ? 700 : 400, color: bold ? boldColor : styles.td.color }}>{label}</td>
+                    <td style={{ ...styles.td, textAlign: 'right', fontWeight: bold ? 700 : 400, color: bold ? boldColor : (neg && curVal > 0 ? '#f44336' : styles.td.color) }}>
+                      {neg && curVal > 0 ? `(${fmt(curVal)})` : fmt(curVal)}
+                    </td>
+                    {hasCmp && finCompareFull.map((p) => {
+                      const v = cmpGet(p, keyForCmp);
+                      return <td key={p.label} style={{ ...styles.td, textAlign: 'right', fontWeight: bold ? 700 : 400, color: bold ? boldColor : (neg && v > 0 ? '#f44336' : styles.td.color) }}>{neg && v > 0 ? `(${fmt(v)})` : fmt(v)}</td>;
+                    })}
+                  </tr>
+                );
+                const sectionRow = (label) => (
+                  <tr style={styles.trEven}>
+                    {hdrCell(label)}
+                    {Array.from({ length: colCount }).map((_, i) => <td key={i} style={styles.td}></td>)}
+                  </tr>
+                );
+                return (
+                  <div style={{ ...styles.card, overflowX: 'auto' }}>
+                    <h3 style={styles.cardTitle}>Balance Sheet</h3>
+                    <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>Cumulative from all transactions up to the selected end date.</p>
+                    <table style={{ ...styles.table, minWidth: hasCmp ? 400 + colCount * 140 : 480 }}>
+                      {hasCmp && (
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>Item</th>
+                            <th style={{ ...styles.th, textAlign: 'right', color: '#ffc107' }}>As of {finDateTo}</th>
+                            {finCompareFull.map((p) => <th key={p.label} style={{ ...styles.th, textAlign: 'right' }}>As of {p.label}</th>)}
+                          </tr>
+                        </thead>
+                      )}
+                      <tbody>
+                        {sectionRow('Assets')}
+                        {dataRow('Cash on Hand', finData.cashOnHand, 'cashOnHand', true)}
+                        {dataRow('Cash in Bank', finData.cashInBank, 'cashInBank', true)}
+                        {dataRow('Inventory Value', finData.invValue, 'invValue', true)}
+                        {dataRow('Kitchen Equipment', finData.kitchenEquipment, 'kitchenEquipment', true)}
+                        {dataRow('Less: Accumulated Depreciation', finData.accumDepreciation, 'accumDepreciation', true, true)}
+                        {dataRow('Total Assets', finData.totalAssets, 'totalAssets', false, false, true, '#ffc107')}
+                        {sectionRow('Liabilities')}
+                        {dataRow('Accounts Payable', finData.ap, 'ap', true)}
+                        {dataRow('Income Tax Payable', finData.incomeTaxPayable || 0, 'incomeTaxPayable', true)}
+                        {dataRow('Loans Payable', finData.loansPayable || 0, 'loansPayable', true)}
+                        {dataRow('Total Liabilities', finData.totalLiabilities, 'totalLiabilities', false, false, true, '#f44336')}
+                        {sectionRow('Equity')}
+                        {dataRow("Owner's Capital", finData.ownersCapital, 'ownersCapital', true)}
+                        {dataRow('Retained Earnings', finData.retainedEarnings, 'retainedEarnings', true)}
+                        {dataRow('Total Equity', finData.totalEquity, 'totalEquity', false, false, true, '#4caf50')}
+                        <tr style={{ background: '#1a1a2a' }}>
+                          <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Total Liabilities &amp; Equity</td>
+                          <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.totalLiabilities + finData.totalEquity)}</td>
+                          {hasCmp && finCompareFull.map((p) => (
+                            <td key={p.label} style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt((p.totalLiabilities || 0) + (p.totalEquity || 0))}</td>
+                          ))}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
 
               {/* Sales Report */}
               {finSubTab === 'sales' && finData?.type === 'sales' && (
@@ -4591,6 +4565,7 @@ export default function AdminPage() {
                       'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
                       'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
                       'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense', 'Interest Expense',
+                      'Research and Development Expense',
                     ];
                     const headerRow = (label, bg = '#1e1e1e') => (
                       <tr key={label} style={{ background: bg }}>
