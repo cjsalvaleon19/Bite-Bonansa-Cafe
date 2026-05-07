@@ -6,6 +6,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions } from '../../utils/salesCalculations';
+import { printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 
 export default function EndOfDayReport() {
   const router = useRouter();
@@ -460,6 +461,30 @@ export default function EndOfDayReport() {
     }, 250);
   };
 
+  const handleBtPrintReceipt = async (order) => {
+    let displayPaymentMethod = order.payment_method || 'N/A';
+    const ptsClaimed = order.points_used || 0;
+    const total = (order.subtotal || 0) + (order.delivery_fee || 0);
+    if (ptsClaimed > 0) {
+      if (ptsClaimed >= total) {
+        displayPaymentMethod = 'Points';
+      } else if (order.payment_method && order.payment_method.includes('points+')) {
+        displayPaymentMethod = order.payment_method.split('points+')[1];
+      } else if (order.payment_method && order.payment_method.includes('+')) {
+        const parts = order.payment_method.split('+');
+        displayPaymentMethod = parts.find(p => p !== 'points') || order.payment_method;
+      }
+    }
+    try {
+      await printToBluetoothPrinter(order, 'sales', {
+        customerLoyaltyId: order.users?.customer_id || null,
+        displayPaymentMethod,
+      });
+    } catch (err) {
+      alert('Bluetooth print failed: ' + (err.message || 'Unknown error'));
+    }
+  };
+
   // Use utility function for sales calculations
   const { totalSales: baseTotalSales, cashSales: totalCash, gcashSales: totalGcash, pointsSales: totalPoints } = calculateSalesBreakdown(orders);
   const totalSales = baseTotalSales - calculateAdjustmentDeductions(salesAdjustments);
@@ -608,6 +633,13 @@ export default function EndOfDayReport() {
                             onClick={() => handlePrintReceipt(order)}
                           >
                             🖨️
+                          </button>
+                          <button
+                            style={styles.btPrintBtn}
+                            onClick={() => handleBtPrintReceipt(order)}
+                            title="Print to Goojprt Z80C via Bluetooth"
+                          >
+                            📶
                           </button>
                         </div>
                       </td>
@@ -821,6 +853,16 @@ const styles = {
     backgroundColor: '#2196f3',
     color: '#fff',
     border: 'none',
+    borderRadius: '4px',
+    fontSize: '12px',
+    cursor: 'pointer',
+    fontWeight: '600',
+  },
+  btPrintBtn: {
+    padding: '6px 10px',
+    backgroundColor: 'transparent',
+    color: '#4fc3f7',
+    border: '1px solid #4fc3f7',
     borderRadius: '4px',
     fontSize: '12px',
     cursor: 'pointer',
