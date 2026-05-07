@@ -159,7 +159,7 @@ export default function AdminPage() {
     const defaults = [
       'Cash on Hand', 'Cash in Bank',
       'Accounts Payable', 'Accounts Payable - Rewards',
-      'Revenue', 'Inventory', "Owner's Draw", "Owner's Capital", 'Retained Earnings',
+      'Revenue', 'Inventory', "Owner's Capital", 'Retained Earnings',
       'Rewards', 'Cost of Goods Sold',
       // Income
       'Delivery Income',
@@ -840,7 +840,7 @@ export default function AdminPage() {
     try {
       const creditAccount = billPayMethod === 'cash_on_hand' ? 'Cash on Hand'
         : billPayMethod === 'cash_in_bank' ? 'Cash in Bank'
-        : "Owner's Draw"; // credit card
+        : "Owner's Capital"; // credit card
       const today = new Date().toISOString().split('T')[0];
       const jeRow = {
         date: today,
@@ -1039,7 +1039,6 @@ export default function AdminPage() {
           { data: cashInBankDebit }, { data: cashInBankCredit },
           { data: kitEquipDebit }, { data: kitEquipCredit }, { data: accumDeprData },
           { data: ownCapCredit }, { data: ownCapDebit }, { data: retEarnCredit }, { data: retEarnDebit },
-          { data: ownDrawDebit }, { data: ownDrawCredit },
           { data: apCredit }, { data: apDebit },
         ] = await Promise.all([
           supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
@@ -1054,8 +1053,6 @@ export default function AdminPage() {
           supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Capital").lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Retained Earnings').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Retained Earnings').lte('date', bsDateTo),
-          supabase.from('journal_entries').select('amount').eq('debit_account', "Owner's Draw").lte('date', bsDateTo),
-          supabase.from('journal_entries').select('amount').eq('credit_account', "Owner's Draw").lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Accounts Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Accounts Payable').lte('date', bsDateTo),
         ]);
@@ -1069,9 +1066,8 @@ export default function AdminPage() {
         const accumDepreciation = sumAmt(accumDeprData);
         const ownersCapital = sumAmt(ownCapCredit) - sumAmt(ownCapDebit);
         const retainedEarnings = sumAmt(retEarnCredit) - sumAmt(retEarnDebit);
-        const ownersDraw = sumAmt(ownDrawDebit) - sumAmt(ownDrawCredit);
         const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
-        const totalEquity = ownersCapital - ownersDraw + retainedEarnings;
+        const totalEquity = ownersCapital + retainedEarnings;
         setFinData({
           type: 'balance',
           cashOnHand,
@@ -1083,7 +1079,6 @@ export default function AdminPage() {
           ap,
           totalLiabilities: ap,
           ownersCapital,
-          ownersDraw,
           retainedEarnings,
           totalEquity,
           equity: totalAssets - ap,
@@ -1174,7 +1169,7 @@ export default function AdminPage() {
         'Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory',
         'Kitchen Equipment', 'Accumulated Depreciation',
         'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities',
-        "Owner's Capital", "Owner's Draw", 'Retained Earnings',
+        "Owner's Capital", 'Retained Earnings',
       ];
       // Income Statement accounts use period activity only
       const IS_ACCOUNTS = [
@@ -1254,7 +1249,7 @@ export default function AdminPage() {
         if (journalSubFilter === 'approved_rr') q = q.eq('reference_type', 'receiving_report');
         else if (journalSubFilter === 'rr_cash_on_hand') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash on Hand');
         else if (journalSubFilter === 'rr_cash_in_bank') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash in Bank');
-        else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', "Owner's Draw");
+        else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', "Owner's Capital");
         else if (journalSubFilter === 'bill_all') q = q.eq('reference_type', 'bill');
         else if (journalSubFilter === 'bill_approved') q = q.eq('reference_type', 'bill').eq('credit_account', 'Accounts Payable');
         else if (journalSubFilter === 'bill_paid') q = q.eq('reference_type', 'bill').eq('debit_account', 'Accounts Payable');
@@ -2019,10 +2014,10 @@ export default function AdminPage() {
       // Journal Entry based on payment mode
       // Cash on Hand: Debit Accounts Payable, Credit Cash on Hand
       // Cash in Bank: Debit Accounts Payable, Credit Cash in Bank
-      // Credit Card:  Debit Accounts Payable, Credit Owner's Draw
+      // Credit Card:  Debit Accounts Payable, Credit Owner's Capital
       const creditAccount =
         rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
-        rrPayForm.payment_mode === 'credit_card'  ? "Owner's Draw" :
+        rrPayForm.payment_mode === 'credit_card'  ? "Owner's Capital" :
         'Cash on Hand';
       const { error: jeErr } = await supabase.from('journal_entries').insert({
         date: rrPayForm.payment_date,
@@ -3547,7 +3542,7 @@ export default function AdminPage() {
                         <div style={{ paddingLeft: 24 }}>
                           Cr &nbsp;<strong>
                             {rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
-                             rrPayForm.payment_mode === 'credit_card'  ? "Owner's Draw" :
+                             rrPayForm.payment_mode === 'credit_card'  ? "Owner's Capital" :
                              'Cash on Hand'}
                           </strong> &nbsp;₱{Number(rrPayForm.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                         </div>
@@ -3837,12 +3832,6 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s Capital</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ownersCapital)}</td>
                       </tr>
-                      <tr style={styles.trEven}>
-                        <td style={{ ...styles.td, paddingLeft: 24, color: '#f44336' }}>Less: Owner&apos;s Draw</td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: finData.ownersDraw > 0 ? '#f44336' : '#888' }}>
-                          {finData.ownersDraw > 0 ? `(${fmt(finData.ownersDraw)})` : fmt(0)}
-                        </td>
-                      </tr>
                       <tr style={styles.trOdd}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Retained Earnings</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.retainedEarnings)}</td>
@@ -4086,7 +4075,7 @@ export default function AdminPage() {
                         category: 'Equity',
                         color: '#2196f3',
                         type: 'bs',
-                        accounts: ["Owner's Capital", "Owner's Draw", 'Retained Earnings'],
+                        accounts: ["Owner's Capital", 'Retained Earnings'],
                       },
                       {
                         category: 'Revenue',
@@ -5144,7 +5133,7 @@ export default function AdminPage() {
                         <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 6, padding: '10px 14px', marginTop: 16, fontSize: 12, color: '#aaa' }}>
                           <p style={{ margin: '0 0 6px' }}><strong style={{ color: '#ffc107' }}>Journal Entry:</strong></p>
                           <p style={{ margin: '2px 0' }}>Dr Accounts Payable: {fmt(billPayItem.total_debit || 0)}</p>
-                          <p style={{ margin: '2px 0' }}>Cr {billPayMethod === 'cash_on_hand' ? 'Cash on Hand' : billPayMethod === 'cash_in_bank' ? 'Cash in Bank' : "Owner's Draw"}: {fmt(billPayItem.total_debit || 0)}</p>
+                          <p style={{ margin: '2px 0' }}>Cr {billPayMethod === 'cash_on_hand' ? 'Cash on Hand' : billPayMethod === 'cash_in_bank' ? 'Cash in Bank' : "Owner's Capital"}: {fmt(billPayItem.total_debit || 0)}</p>
                         </div>
                       </div>
                     )}
