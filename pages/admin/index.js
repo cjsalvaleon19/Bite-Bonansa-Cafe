@@ -5,7 +5,6 @@ import { useRouter } from 'next/router';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-  PieChart, Pie, Cell,
 } from 'recharts';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
@@ -39,7 +38,8 @@ export default function AdminPage() {
   const [saleableItems, setSaleableItems] = useState([]);
   const [saleableItemsThisMonth, setSaleableItemsThisMonth] = useState([]);
   const [saleableItemsLastMonth, setSaleableItemsLastMonth] = useState([]);
-  const [expensesBreakdown, setExpensesBreakdown] = useState([]);
+  const [monthlyPnLData, setMonthlyPnLData] = useState([]);
+  const [budgetForecastData, setBudgetForecastData] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
   const [stockAlertLoading, setStockAlertLoading] = useState(false);
 
@@ -52,6 +52,8 @@ export default function AdminPage() {
   });
   const [invDeleteConfirm, setInvDeleteConfirm] = useState(null);
   const [invStatusFilter, setInvStatusFilter] = useState('');
+  const [invSearch, setInvSearch] = useState('');
+  const [invCoverageMonth, setInvCoverageMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   // ── Price Costing state ───────────────────────────────────────────────────
   const [costingHeaders, setCostingHeaders] = useState([]);
@@ -385,35 +387,97 @@ export default function AdminPage() {
       setSaleableItemsThisMonth(aggregate(tmItems));
       setSaleableItemsLastMonth(aggregate(lmItems));
 
-      const since30 = new Date();
-      since30.setDate(since30.getDate() - 30);
-      const { data: expenses } = await supabase
-        .from('cash_drawer_transactions')
-        .select('amount, transaction_type, bill_type, category, description')
-        .in('transaction_type', ['pay-expense', 'pay-bill'])
-        .gte('created_at', since30.toISOString());
+      // ── Monthly Profit & Loss + Budget Forecast (last 6 months) ───────────
+      const OPEX_ACCOUNTS = [
+        'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+        'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+        'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+        'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+      ];
+      const now3 = new Date();
+      const monthStarts = Array.from({ length: 6 }, (_, i) => new Date(now3.getFullYear(), now3.getMonth() - (5 - i), 1));
+      const firstMonthStart = monthStarts[0];
+      const firstMonthDateStr = firstMonthStart.toISOString().split('T')[0];
+      const firstMonthISO = firstMonthStart.toISOString();
+      const monthLabel = (d) => d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+      const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-      if (expenses) {
-        const cats = { Payroll: 0, Utilities: 0, Rent: 0, Cost: 0, Others: 0 };
-        expenses.forEach((e) => {
-          const amt = Number(e.amount) || 0;
-          if (e.bill_type === 'payroll' || e.category === '5100') cats.Payroll += amt;
-          else if (e.bill_type === 'utilities' || e.category === '5200') cats.Utilities += amt;
-          else if (e.category === 'rent' || (e.description || '').toLowerCase().includes('rent')) cats.Rent += amt;
-          else if (e.category === '5900') cats.Cost += amt;
-          else cats.Others += amt;
-        });
-        const total = Object.values(cats).reduce((s, v) => s + v, 0);
-        setExpensesBreakdown(
-          Object.entries(cats)
-            .filter(([, v]) => v > 0)
-            .map(([name, value]) => ({
-              name,
-              value,
-              pct: total > 0 ? ((value / total) * 100).toFixed(1) : '0',
-            })),
-        );
+      const [{ data: plJe }, { data: deliveryFees }] = await Promise.all([
+        supabase
+          .from('journal_entries')
+          .select('amount, date, debit_account, credit_account')
+          .gte('date', firstMonthDateStr),
+        supabase
+          .from('orders')
+          .select('delivery_fee, created_at')
+          .in('status', ['order_delivered', 'completed'])
+          .gte('created_at', firstMonthISO)
+          .gt('delivery_fee', 0),
+      ]);
+
+      const monthMap = {};
+      monthStarts.forEach((d) => {
+        monthMap[monthKey(d)] = { month: monthLabel(d), revenue: 0, deliveryIncome: 0, cogs: 0, opExp: 0, totalRevenue: 0, netProfit: 0 };
+      });
+
+      (plJe || []).forEach((je) => {
+        const key = (je.date || '').slice(0, 7);
+        if (!monthMap[key]) return;
+        const amt = Number(je.amount) || 0;
+        if (['Revenue', 'Sales Revenue'].includes(je.credit_account)) monthMap[key].revenue += amt;
+        if (je.debit_account === 'Cost of Goods Sold') monthMap[key].cogs += amt;
+        if (OPEX_ACCOUNTS.includes(je.debit_account)) monthMap[key].opExp += amt;
+      });
+      (deliveryFees || []).forEach((o) => {
+        const key = (o.created_at || '').slice(0, 7);
+        if (!monthMap[key]) return;
+        monthMap[key].deliveryIncome += Number(o.delivery_fee) || 0;
+      });
+
+      const pnlRows = monthStarts.map((d) => {
+        const key = monthKey(d);
+        const row = monthMap[key];
+        row.totalRevenue = row.revenue + row.deliveryIncome;
+        row.netProfit = row.totalRevenue - row.cogs - row.opExp;
+        return row;
+      });
+      setMonthlyPnLData(pnlRows);
+
+      const getBudgetTotals = (raw) => {
+        const obj = raw || {};
+        const totalRevenue = (Number(obj['Revenue']) || 0) + (Number(obj['Delivery Income']) || 0);
+        const cogs = Number(obj['Cost of Goods Sold']) || 0;
+        const opExp = OPEX_ACCOUNTS.reduce((s, a) => s + (Number(obj[a]) || 0), 0);
+        return { totalRevenue, cogs, opExp, netProfit: totalRevenue - cogs - opExp };
+      };
+
+      let carryBudget = {};
+      if (typeof window !== 'undefined') {
+        const firstKey = monthKey(monthStarts[0]);
+        const [yr, mo] = firstKey.split('-').map(Number);
+        const prevYear = mo === 1 ? yr - 1 : yr;
+        const prevMonthNum = mo === 1 ? 12 : mo - 1;
+        const prevMonth = `${prevYear}-${String(prevMonthNum).padStart(2, '0')}`;
+        const prevStored = localStorage.getItem(`bbc_budget_${prevMonth}`);
+        carryBudget = prevStored ? JSON.parse(prevStored) : {};
       }
+
+      const forecastRows = monthStarts.map((d, idx) => {
+        const key = monthKey(d);
+        let budgetObj = carryBudget;
+        if (typeof window !== 'undefined') {
+          const stored = localStorage.getItem(`bbc_budget_${key}`);
+          if (stored) budgetObj = JSON.parse(stored);
+          carryBudget = budgetObj;
+        }
+        const totals = getBudgetTotals(budgetObj);
+        return {
+          month: monthLabel(d),
+          budgetNetProfit: totals.netProfit,
+          actualNetProfit: pnlRows[idx]?.netProfit || 0,
+        };
+      });
+      setBudgetForecastData(forecastRows);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1396,8 +1460,22 @@ export default function AdminPage() {
   }, [activeTab, dashSubTab, fetchLowStockItems]);
 
   useEffect(() => {
+    if (activeTab === 'inventory') fetchInventory();
+  }, [activeTab, invDateFrom, invDateTo, fetchInventory]);
+
+  useEffect(() => {
     if (activeTab === 'financial') fetchFinancial();
   }, [activeTab, finSubTab, finDateFrom, finDateTo, fetchFinancial]);
+
+  useEffect(() => {
+    const [yr, mo] = (invCoverageMonth || '').split('-').map(Number);
+    if (!yr || !mo) return;
+    const from = `${yr}-${String(mo).padStart(2, '0')}-01`;
+    const lastDay = new Date(yr, mo, 0).getDate();
+    const to = `${yr}-${String(mo).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    setInvDateFrom(from);
+    setInvDateTo(to);
+  }, [invCoverageMonth]);
 
   useEffect(() => {
     if (activeTab === 'financial' && finSubTab === 'coa') fetchCOA();
@@ -1424,6 +1502,16 @@ export default function AdminPage() {
       }
     } catch { /* noop */ }
   }, [finDateFrom, finSubTab]);
+
+  useEffect(() => {
+    if (finSubTab !== 'budget') return;
+    try {
+      if (typeof window === 'undefined') return;
+      const month = (finDateFrom || '').slice(0, 7);
+      if (!month) return;
+      localStorage.setItem(`bbc_budget_${month}`, JSON.stringify(budgetValues));
+    } catch { /* noop */ }
+  }, [budgetValues, finDateFrom, finSubTab]);
 
   useEffect(() => {
     if (activeTab === 'journal') fetchJournal();
@@ -1473,8 +1561,6 @@ export default function AdminPage() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const fmt = (val) => `₱${Number(val).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
-
-  const PIE_COLORS = { Cost: '#ffc107', Payroll: '#4caf50', Utilities: '#2196f3', Rent: '#9c27b0', Others: '#ff5722' };
 
   const suggestCode = (dept, items) => {
     const count = items.filter((i) => i.code && i.code.startsWith(dept)).length;
@@ -2282,35 +2368,50 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    {/* Widget 1.4 – Expenses Breakdown */}
+                    {/* Widget 1.4 – Monthly Profit & Loss + Budget Forecast */}
                     <div style={styles.card}>
-                      <h3 style={styles.cardTitle}>Monthly Expenses Breakdown</h3>
-                      {expensesBreakdown.length > 0 ? (
+                      <h3 style={styles.cardTitle}>Monthly Profit &amp; Loss</h3>
+                      {monthlyPnLData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={250}>
-                          <PieChart>
-                            <Pie
-                              data={expensesBreakdown}
-                              dataKey="value"
-                              nameKey="name"
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={80}
-                              label={({ name, pct }) => `${name} ${pct}%`}
-                              labelLine={{ stroke: '#555' }}
-                            >
-                              {expensesBreakdown.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={PIE_COLORS[entry.name] || '#999'} />
-                              ))}
-                            </Pie>
+                          <BarChart data={monthlyPnLData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                            <XAxis dataKey="month" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                            <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
                             <Tooltip
                               contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }}
                               formatter={(val) => fmt(val)}
                             />
-                          </PieChart>
+                            <Legend wrapperStyle={{ color: '#ccc' }} />
+                            <Bar dataKey="totalRevenue" fill="#ffc107" name="Total Revenue" />
+                            <Bar dataKey="cogs" fill="#ff9800" name="COGS" />
+                            <Bar dataKey="opExp" fill="#f44336" name="Operating Expenses" />
+                            <Bar dataKey="netProfit" fill="#4caf50" name="Net Profit" />
+                          </BarChart>
                         </ResponsiveContainer>
                       ) : (
-                        <p style={{ color: '#666', textAlign: 'center', marginTop: 40 }}>No expense data</p>
+                        <p style={{ color: '#666', textAlign: 'center', marginTop: 40 }}>No P&amp;L data</p>
                       )}
+                      <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #333' }}>
+                        <h4 style={{ margin: 0, marginBottom: 8, color: '#ccc', fontSize: 13 }}>Budget Forecast</h4>
+                        {budgetForecastData.length > 0 ? (
+                          <ResponsiveContainer width="100%" height={220}>
+                            <BarChart data={budgetForecastData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                              <XAxis dataKey="month" stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                              <YAxis stroke="#ccc" tick={{ fill: '#ccc', fontSize: 11 }} />
+                              <Tooltip
+                                contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }}
+                                formatter={(val) => fmt(val)}
+                              />
+                              <Legend wrapperStyle={{ color: '#ccc' }} />
+                              <Bar dataKey="budgetNetProfit" fill="#2196f3" name="Budget Net Profit" />
+                              <Bar dataKey="actualNetProfit" fill="#4caf50" name="Actual Net Profit" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <p style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>No budget forecast data</p>
+                        )}
+                  </div>
                     </div>
                   </div>
                 </>
@@ -2429,6 +2530,12 @@ export default function AdminPage() {
               <div style={styles.tabHeader}>
                 <h1 style={styles.pageTitle}>Inventory</h1>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    style={{ ...styles.input, width: 220 }}
+                    placeholder="Search by code, name, dept…"
+                    value={invSearch}
+                    onChange={(e) => setInvSearch(e.target.value)}
+                  />
                   <select style={{ ...styles.input, width: 160 }} value={invStatusFilter} onChange={(e) => setInvStatusFilter(e.target.value)}>
                     <option value="">All Status</option>
                     <option value="in-stock">In Stock</option>
@@ -2442,10 +2549,12 @@ export default function AdminPage() {
               {/* Date Coverage */}
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', background: '#1a1a1a', border: '1px solid #333', borderRadius: 8, padding: '12px 16px' }}>
                 <span style={{ color: '#ffc107', fontWeight: 600, fontSize: 13 }}>📅 Date Coverage:</span>
+                <label style={{ color: '#ccc', fontSize: 13 }}>Month:</label>
+                <input type="month" style={{ ...styles.input, width: 160 }} value={invCoverageMonth} onChange={(e) => setInvCoverageMonth(e.target.value)} />
                 <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
-                <input type="date" style={{ ...styles.input, width: 160 }} value={invDateFrom} onChange={(e) => setInvDateFrom(e.target.value)} />
+                <input type="date" style={{ ...styles.input, width: 160, background: '#111', color: '#aaa' }} value={invDateFrom} readOnly />
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
-                <input type="date" style={{ ...styles.input, width: 160 }} value={invDateTo} onChange={(e) => setInvDateTo(e.target.value)} />
+                <input type="date" style={{ ...styles.input, width: 160, background: '#111', color: '#aaa' }} value={invDateTo} readOnly />
                 <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
                 <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = All Draft RRs (all dates). Sold = Delivered/Completed orders. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
               </div>
@@ -2462,15 +2571,23 @@ export default function AdminPage() {
                   </thead>
                   <tbody>
                     {(invReport.length > 0 ? invReport : inventoryItems.map((item) => ({ ...item, beginning: 0, purchases: 0, inTransit: 0, sold: 0, ending: Number(item.current_stock) || 0 }))).filter((item) => {
-                       if (!invStatusFilter) return true;
-                       const stock = Number(item.current_stock ?? item.ending) || 0;
-                       const minStock = Number(item.min_stock) || 0;
-                       if (invStatusFilter === 'out-of-stock') return stock <= 0;
-                       if (invStatusFilter === 'low-stock') return stock > 0 && stock <= minStock;
-                       if (invStatusFilter === 'in-stock') return stock > minStock;
-                       return true;
-                     }).map((item, idx) => (
-                      <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                      const q = invSearch.trim().toLowerCase();
+                      if (q) {
+                        const code = (item.code || '').toLowerCase();
+                        const name = (item.name || '').toLowerCase();
+                        const dept = (item.department || '').toLowerCase();
+                        const uom = (item.uom || '').toLowerCase();
+                        if (!(code.includes(q) || name.includes(q) || dept.includes(q) || uom.includes(q))) return false;
+                      }
+                      if (!invStatusFilter) return true;
+                      const stock = Number(item.current_stock ?? item.ending) || 0;
+                      const minStock = Number(item.min_stock) || 0;
+                      if (invStatusFilter === 'out-of-stock') return stock <= 0;
+                      if (invStatusFilter === 'low-stock') return stock > 0 && stock <= minStock;
+                      if (invStatusFilter === 'in-stock') return stock > minStock;
+                      return true;
+                    }).map((item, idx) => (
+                       <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{item.code}</td>
                         <td style={styles.td}>{item.name}</td>
                         <td style={styles.td}>{item.department}</td>
@@ -2643,7 +2760,7 @@ export default function AdminPage() {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      {['Menu Item', 'Menu Category', 'Total Est. COGS (₱)', 'Selling Price (₱)', 'CM Ratio', 'Actions'].map((h) => (
+                      {['Menu Item', 'Menu Category', 'Total Est. COGS (₱)', 'Selling Price (₱)', 'CM Amount (₱)', 'CM Ratio', 'Actions'].map((h) => (
                         <th key={h} style={styles.th}>{h}</th>
                       ))}
                     </tr>
@@ -2663,6 +2780,7 @@ export default function AdminPage() {
                           <td style={styles.td}>{item.menu_category || '—'}</td>
                           <td style={styles.td}>{fmt(tec)}</td>
                           <td style={{ ...styles.td, color: '#ffc107' }}>{fmt(sp)}</td>
+                          <td style={{ ...styles.td, color: sp - tec >= 0 ? '#4caf50' : '#f44336', fontWeight: 600 }}>{fmt(sp - tec)}</td>
                           <td style={{ ...styles.td, color: isBelowTarget ? '#f44336' : '#4caf50', fontWeight: 600 }}>
                             {isBelowTarget && <span title={`Below target ${(target * 100).toFixed(0)}%`}>⚠️ </span>}
                             {(cmRatio * 100).toFixed(1)}%
@@ -2684,7 +2802,7 @@ export default function AdminPage() {
                       );
                     })}
                     {costingHeaders.length === 0 && !loading && (
-                      <tr><td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
+                      <tr><td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -3854,17 +3972,10 @@ export default function AdminPage() {
                 <div style={{ ...styles.card, maxWidth: 680 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                     <h3 style={styles.cardTitle}>Budget Variance Report</h3>
-                    <button
-                      style={{ ...styles.actionBtn, fontSize: 11 }}
-                      onClick={() => {
-                        const month = (finDateFrom || '').slice(0, 7);
-                        try { localStorage.setItem(`bbc_budget_${month}`, JSON.stringify(budgetValues)); } catch { /* noop */ }
-                        alert(`Budget for ${month} saved.`);
-                      }}
-                    >💾 Save Budget</button>
+                    <span style={{ color: '#4caf50', fontSize: 11, border: '1px solid #2e7d32', borderRadius: 12, padding: '4px 10px' }}>Auto-saved</span>
                   </div>
                   <p style={{ color: '#888', fontSize: 11, marginBottom: 12 }}>
-                    Budget column is editable. Actual values are pulled from orders/Journal Entries. Click a Budget cell to edit, then click &ldquo;Save Budget&rdquo; to persist for this month.
+                    Budget column is editable and auto-saved monthly. If a month has no saved budget yet, it automatically carries over the previous month as the starting forecast.
                   </p>
                   {(() => {
                     const bv = budgetValues;
