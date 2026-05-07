@@ -1187,8 +1187,8 @@ export default function AdminPage() {
         const totalRevenue = revenue + deliveryIncome;
         const grossProfit = totalRevenue - cogs;
         const incomeBeforeTax = grossProfit - opExp;
-        const netProfit = incomeBeforeTax - incomeTaxExpense;
-        setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netProfit });
+        const netIncome = incomeBeforeTax - incomeTaxExpense;
+        setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netIncome });
       } else if (finSubTab === 'balance') {
         const bsDateTo = toISO.split('T')[0];
         const [
@@ -1271,8 +1271,8 @@ export default function AdminPage() {
         const totalRevenue = revenue + deliveryIncome;
         const grossProfit = totalRevenue - cogs;
         const incomeBeforeTax = grossProfit - opExp;
-        const netProfit = incomeBeforeTax - incomeTaxExpense;
-        setFinData({ type: 'budget', revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netProfit });
+        const netIncome = incomeBeforeTax - incomeTaxExpense;
+        setFinData({ type: 'budget', revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netIncome });
       } else if (finSubTab === 'tax') {
         const { data: ordersData } = await supabase
           .from('orders')
@@ -1295,7 +1295,7 @@ export default function AdminPage() {
         setFinData({ type: 'tax', rows });
       }
 
-      if (['cashflow', 'pl', 'balance'].includes(finSubTab)) {
+      if (['cashflow', 'pl'].includes(finSubTab)) {
         const periods = Math.max(1, Math.min(12, Number(finCompareCount) || 1));
         const unit = finComparePeriod;
         const sameDayTime = (base, yearOffset = 0) => {
@@ -1348,12 +1348,6 @@ export default function AdminPage() {
             const totalOpExp = (exps || []).filter((e) => e.debit_account !== 'Income Tax Expense').reduce((s, e) => s + (Number(e.amount) || 0), 0);
             const taxExp = (exps || []).filter((e) => e.debit_account === 'Income Tax Expense').reduce((s, e) => s + (Number(e.amount) || 0), 0);
             amount = totalRevenue - totalCogs - totalOpExp - taxExp;
-          } else if (finSubTab === 'balance') {
-            const [{ data: dr }, { data: cr }] = await Promise.all([
-              supabase.from('journal_entries').select('amount').in('debit_account', ['Cash on Hand', 'Cash in Bank', 'Inventory', ...FIN_PPE_ACCOUNTS]).lte('date', cTo),
-              supabase.from('journal_entries').select('amount').in('credit_account', ['Cash on Hand', 'Cash in Bank', ...FIN_PPE_ACCOUNTS, 'Accumulated Depreciation']).lte('date', cTo),
-            ]);
-            amount = sumAmt(dr) - sumAmt(cr);
           }
           const label = unit === 'annual'
             ? cTo.slice(0, 4)
@@ -3995,7 +3989,7 @@ export default function AdminPage() {
                         <YAxis stroke="#ccc" />
                         <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} formatter={(v) => fmt(v)} />
                         <Legend />
-                        <Bar dataKey="amount" fill="#ffc107" name={finSubTab === 'pl' ? 'Net Profit' : finSubTab === 'balance' ? 'Total Assets' : 'Net Cash Flow'} />
+                        <Bar dataKey="amount" fill="#ffc107" name={finSubTab === 'pl' ? 'Net Income' : 'Net Cash Flow'} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -4098,7 +4092,7 @@ export default function AdminPage() {
                       </tr>
                       <tr style={{ background: '#3a2a0a' }}>
                         <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Net Income</td>
-                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netProfit >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netProfit)}</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netIncome >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netIncome)}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -4333,7 +4327,7 @@ export default function AdminPage() {
                             {totalRow('Total Operating Expenses', finData.opExp, opExpBudget, true, '#2a1a1a')}
                             {totalRow('Income Before Tax', finData.incomeBeforeTax, incomeBeforeTaxBudget, false, '#1a2a1a')}
                             {varRow('Income Tax Expense', finData.incomeTaxExpense || 0, 'Income Tax Expense', true, true)}
-                            {totalRow('Net Income', finData.netProfit, netProfitBudget, false, '#2a2a00')}
+                            {totalRow('Net Income', finData.netIncome, netProfitBudget, false, '#2a2a00')}
                           </tbody>
                         </table>
                       </div>
