@@ -9,7 +9,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
 import NotificationBell from '../../components/NotificationBell';
 import { getDistanceBetweenCoordinates, calculateDeliveryFee, STORE_LOCATION } from '../../utils/deliveryCalculator';
-import { printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
+import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 
 // Dynamically import OpenStreetMapPicker with SSR disabled
 const OpenStreetMapPicker = dynamic(
@@ -373,6 +373,11 @@ export default function CashierPOS() {
       }
     }
 
+    const printerWarmup = connectPrinter().catch((err) => {
+      console.warn('[POS] Bluetooth pre-connect skipped:', err?.message ?? err);
+      return null;
+    });
+
     setCheckoutLoading(true);
     setOrderStatus(null);
 
@@ -461,6 +466,10 @@ export default function CashierPOS() {
 
       // Generate receipt (simple print)
       printReceipt(order, remainingAmount);
+
+      // Auto Bluetooth print on checkout click (non-blocking on failure)
+      await printerWarmup;
+      await printPOSReceiptBluetooth(order, { silent: true });
 
       // Save for optional BT re-print
       setLastPrintedOrder(order);
@@ -673,9 +682,12 @@ export default function CashierPOS() {
     }, 250);
   };
 
-  const printPOSReceiptBluetooth = async (order) => {
+  const printPOSReceiptBluetooth = async (order, options = {}) => {
+    const { silent = false } = options;
     if (!order) {
-      alert('No completed order available to print.');
+      if (!silent) {
+        alert('No completed order available to print.');
+      }
       return;
     }
     let displayPaymentMethod = order.payment_method || 'N/A';
@@ -698,7 +710,11 @@ export default function CashierPOS() {
         displayPaymentMethod,
       });
     } catch (err) {
-      alert('Bluetooth print failed: ' + (err.message || 'Unknown error'));
+      if (!silent) {
+        alert('Bluetooth print failed: ' + (err.message || 'Unknown error'));
+      } else {
+        console.warn('[POS] Auto Bluetooth print failed:', err?.message ?? err);
+      }
     }
   };
 
