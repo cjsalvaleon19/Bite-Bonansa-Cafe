@@ -171,9 +171,10 @@ export default function AdminPage() {
       'Software Subscriptions', 'Professional Fees', 'Transportation',
       'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
       "Rider's Fee", 'Kitchen Tools', 'Miscellaneous Expense',
-      'Depreciation Expense',
+      'Depreciation Expense', 'Interest Expense', 'Income Tax Expense',
       // Balance Sheet
       'Kitchen Equipment', 'Accumulated Depreciation',
+      'Income Tax Payable', 'Loans Payable',
     ];
     const fromData = (journalData || []).flatMap((r) => [r.debit_account, r.credit_account].filter(Boolean));
     const all = Array.from(new Set([...defaults, ...fromData])).sort();
@@ -207,18 +208,26 @@ export default function AdminPage() {
 
   // ── Financial Reports state ───────────────────────────────────────────────
   const [finSubTab, setFinSubTab] = useState('cashflow');
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const thirtyAgoStr = useMemo(() => {
+  const monthStartStr = useMemo(() => {
     const d = new Date();
-    d.setDate(d.getDate() - 30);
+    d.setDate(1);
     return d.toISOString().split('T')[0];
   }, []);
-  const [finDateFrom, setFinDateFrom] = useState(thirtyAgoStr);
-  const [finDateTo, setFinDateTo] = useState(todayStr);
+  const monthEndStr = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1, 0);
+    return d.toISOString().split('T')[0];
+  }, []);
+  const [finDateFrom, setFinDateFrom] = useState(monthStartStr);
+  const [finDateTo, setFinDateTo] = useState(monthEndStr);
   const [finData, setFinData] = useState(null);
+  const [finCompareMode, setFinCompareMode] = useState('previous_periods');
+  const [finCompareCount, setFinCompareCount] = useState(3);
+  const [finComparePeriod, setFinComparePeriod] = useState('monthly');
+  const [finCompareData, setFinCompareData] = useState([]);
   // Chart of Accounts state (separate date coverage from finDateFrom/To)
   const [coaDateFrom, setCoaDateFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
-  const [coaDateTo, setCoaDateTo] = useState(todayStr);
+  const [coaDateTo, setCoaDateTo] = useState(monthEndStr);
   const [coaData, setCoaData] = useState(null);
   const [coaLoading, setCoaLoading] = useState(false);
   // Editable budget values (persisted in localStorage, keyed by YYYY-MM month)
@@ -1043,6 +1052,16 @@ export default function AdminPage() {
     }
   }, []);
 
+  const FIN_CASH_ACCOUNTS = useMemo(() => ['Cash on Hand', 'Cash in Bank'], []);
+  const FIN_PPE_ACCOUNTS = useMemo(() => ['Kitchen Equipment', 'Furniture & Fixture', 'Machinery & Equipment'], []);
+  const FIN_OPEX_ACCOUNTS = useMemo(() => ([
+    'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
+    'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
+    'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
+    'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+    'Interest Expense',
+  ]), []);
+
   // ── Fetch: Financial Reports ──────────────────────────────────────────────
   const fetchFinancial = useCallback(async () => {
     if (!supabase) return;
@@ -1052,52 +1071,125 @@ export default function AdminPage() {
       const toDate = new Date(finDateTo);
       toDate.setHours(23, 59, 59, 999);
       const toISO = toDate.toISOString();
+      const dateFrom = fromISO.split('T')[0];
+      const dateTo = toISO.split('T')[0];
+      const sumAmt = (arr) => (arr || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
       if (finSubTab === 'cashflow') {
-        const { data, error: err } = await supabase
-          .from('cash_drawer_transactions')
-          .select('*')
-          .gte('created_at', fromISO)
-          .lte('created_at', toISO)
-          .order('created_at');
-        if (err) throw err;
-        let running = 0;
-        const rows = (data || []).map((tx) => {
-          const amt = Number(tx.amount) || 0;
-          const isIn = tx.transaction_type === 'cash-in';
-          running += isIn ? amt : -amt;
-          return { ...tx, inflow: isIn ? amt : 0, outflow: isIn ? 0 : amt, running };
+        const prevDate = new Date(finDateFrom);
+        prevDate.setDate(prevDate.getDate() - 1);
+        const openingDate = prevDate.toISOString().split('T')[0];
+
+        const [
+          { data: cashOpeningDebits }, { data: cashOpeningCredits },
+          { data: revenueCashJE }, { data: deliveryIncomeData },
+          { data: inventoryPurchasesJE }, { data: salariesJE }, { data: incomeTaxJE },
+          { data: cashCreditJE },
+          { data: salePpeJE }, { data: collectionLoanJE }, { data: purchasePpeJE }, { data: makeLoanJE },
+          { data: loanProceedsJE }, { data: capitalInfusionJE }, { data: loanPaymentJE }, { data: ownerDrawingJE },
+        ] = await Promise.all([
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).lte('date', openingDate),
+          supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).lte('date', openingDate),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
+          supabase.from('journal_entries').select('amount').eq('reference_type', 'rr_payment').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Salaries & Wages').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Income Tax Expense').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount, debit_account').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).in('credit_account', FIN_PPE_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).eq('credit_account', 'Loans Receivable').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).in('debit_account', FIN_PPE_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).eq('debit_account', 'Loans Receivable').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).eq('credit_account', 'Loans Payable').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).eq('credit_account', "Owner's Capital").gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).eq('debit_account', 'Loans Payable').gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).eq('debit_account', "Owner's Capital").gte('date', dateFrom).lte('date', dateTo),
+        ]);
+
+        const cashBeginningBalance = sumAmt(cashOpeningDebits) - sumAmt(cashOpeningCredits);
+        const receiptsRevenue = sumAmt(revenueCashJE);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+        const inventoryPurchases = sumAmt(inventoryPurchasesJE);
+        const salariesWages = sumAmt(salariesJE);
+        const incomeTaxes = sumAmt(incomeTaxJE);
+        const genOpAdminExpenses = (cashCreditJE || []).reduce((s, row) => {
+          const acct = row.debit_account || '';
+          if (
+            acct === 'Salaries & Wages'
+            || acct === 'Income Tax Expense'
+            || acct === 'Loans Payable'
+            || acct === "Owner's Capital"
+            || acct === 'Loans Receivable'
+            || FIN_PPE_ACCOUNTS.includes(acct)
+            || FIN_CASH_ACCOUNTS.includes(acct)
+          ) return s;
+          return s + (Number(row.amount) || 0);
+        }, 0);
+
+        const netCashFlowOperations = receiptsRevenue + deliveryIncome - inventoryPurchases - genOpAdminExpenses - salariesWages - incomeTaxes;
+
+        const saleOfPropertyEquipment = sumAmt(salePpeJE);
+        const collectionPrincipalOnLoans = sumAmt(collectionLoanJE);
+        const purchaseOfPropertyEquipment = sumAmt(purchasePpeJE);
+        const makingLoansToOthers = sumAmt(makeLoanJE);
+        const netCashFlowInvesting = saleOfPropertyEquipment + collectionPrincipalOnLoans - purchaseOfPropertyEquipment - makingLoansToOthers;
+
+        const proceedsFromLoans = sumAmt(loanProceedsJE);
+        const ownersCapitalInfusion = sumAmt(capitalInfusionJE);
+        const repaymentOfLoans = sumAmt(loanPaymentJE);
+        const ownersDrawings = sumAmt(ownerDrawingJE);
+        const netCashFlowFinancing = proceedsFromLoans + ownersCapitalInfusion - repaymentOfLoans - ownersDrawings;
+
+        const netChange = netCashFlowOperations + netCashFlowInvesting + netCashFlowFinancing;
+        const cashEndingBalance = cashBeginningBalance + netChange;
+
+        setFinData({
+          type: 'cashflow',
+          cashBeginningBalance,
+          receiptsRevenue,
+          deliveryIncome,
+          inventoryPurchases,
+          genOpAdminExpenses,
+          salariesWages,
+          incomeTaxes,
+          netCashFlowOperations,
+          saleOfPropertyEquipment,
+          collectionPrincipalOnLoans,
+          purchaseOfPropertyEquipment,
+          makingLoansToOthers,
+          netCashFlowInvesting,
+          proceedsFromLoans,
+          ownersCapitalInfusion,
+          repaymentOfLoans,
+          ownersDrawings,
+          netCashFlowFinancing,
+          netChange,
+          cashEndingBalance,
         });
-        setFinData({ type: 'cashflow', rows });
       } else if (finSubTab === 'pl') {
-        const dateFrom = fromISO.split('T')[0];
-        const dateTo = toISO.split('T')[0];
-        const OPEX_ACCOUNTS = [
-          'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
-          'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
-          'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-          'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
-        ];
         const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
           supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', OPEX_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
         const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const expByAccount = {};
-        OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        let incomeTaxExpense = 0;
         (expAllData || []).forEach((e) => {
-          if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
+          if (e.debit_account === 'Income Tax Expense') incomeTaxExpense += Number(e.amount) || 0;
+          else if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
         });
         const opExp = Object.values(expByAccount).reduce((s, v) => s + v, 0);
         const totalRevenue = revenue + deliveryIncome;
-        setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit: totalRevenue - cogs, expByAccount, opExp, netProfit: totalRevenue - cogs - opExp });
+        const grossProfit = totalRevenue - cogs;
+        const incomeBeforeTax = grossProfit - opExp;
+        const netProfit = incomeBeforeTax - incomeTaxExpense;
+        setFinData({ type: 'pl', revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netProfit });
       } else if (finSubTab === 'balance') {
-        // Balance Sheet: Balance as of Jan 1, 2026 (opening) + total JE transactions up to finDateTo.
-        // All amounts are derived purely from Journal Entries (Dr - Cr per account).
         const bsDateTo = toISO.split('T')[0];
         const [
           { data: invList },
@@ -1106,6 +1198,8 @@ export default function AdminPage() {
           { data: kitEquipDebit }, { data: kitEquipCredit }, { data: accumDeprData },
           { data: ownCapCredit }, { data: ownCapDebit }, { data: retEarnCredit }, { data: retEarnDebit },
           { data: apCredit }, { data: apDebit },
+          { data: incomeTaxPayableCredit }, { data: incomeTaxPayableDebit },
+          { data: loansPayableCredit }, { data: loansPayableDebit },
         ] = await Promise.all([
           supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cash on Hand').lte('date', bsDateTo),
@@ -1121,18 +1215,23 @@ export default function AdminPage() {
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Retained Earnings').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Accounts Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Accounts Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Income Tax Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Income Tax Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Loans Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Loans Payable').lte('date', bsDateTo),
         ]);
-        const sumAmt = (arr) => (arr || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
         const cashOnHand = sumAmt(cashOnHandDebit) - sumAmt(cashOnHandCredit);
         const cashInBank = sumAmt(cashInBankDebit) - sumAmt(cashInBankCredit);
         const invValue = (invList || []).reduce((s, i) => s + (Number(i.current_stock) || 0) * (Number(i.cost_per_unit) || 0), 0);
-        // Accounts Payable: credit (increases liability) - debit (decreases liability)
         const ap = sumAmt(apCredit) - sumAmt(apDebit);
+        const incomeTaxPayable = sumAmt(incomeTaxPayableCredit) - sumAmt(incomeTaxPayableDebit);
+        const loansPayable = sumAmt(loansPayableCredit) - sumAmt(loansPayableDebit);
         const kitchenEquipment = sumAmt(kitEquipDebit) - sumAmt(kitEquipCredit);
         const accumDepreciation = sumAmt(accumDeprData);
         const ownersCapital = sumAmt(ownCapCredit) - sumAmt(ownCapDebit);
         const retainedEarnings = sumAmt(retEarnCredit) - sumAmt(retEarnDebit);
         const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
+        const totalLiabilities = ap + incomeTaxPayable + loansPayable;
         const totalEquity = ownersCapital + retainedEarnings;
         setFinData({
           type: 'balance',
@@ -1143,38 +1242,37 @@ export default function AdminPage() {
           accumDepreciation,
           totalAssets,
           ap,
-          totalLiabilities: ap,
+          incomeTaxPayable,
+          loansPayable,
+          totalLiabilities,
           ownersCapital,
           retainedEarnings,
           totalEquity,
-          equity: totalAssets - ap,
+          equity: totalAssets - totalLiabilities,
         });
       } else if (finSubTab === 'budget') {
-        const dateFrom = fromISO.split('T')[0];
-        const dateTo = toISO.split('T')[0];
-        const OPEX_ACCOUNTS = [
-          'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
-          'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
-          'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-          'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
-        ];
         const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
           supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', OPEX_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
+          supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
         const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const expByAccount = {};
-        OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
+        let incomeTaxExpense = 0;
         (expAllData || []).forEach((e) => {
-          if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
+          if (e.debit_account === 'Income Tax Expense') incomeTaxExpense += Number(e.amount) || 0;
+          else if (expByAccount[e.debit_account] !== undefined) expByAccount[e.debit_account] += Number(e.amount) || 0;
         });
         const opExp = Object.values(expByAccount).reduce((s, v) => s + v, 0);
         const totalRevenue = revenue + deliveryIncome;
-        setFinData({ type: 'budget', revenue, deliveryIncome, totalRevenue, cogs, grossProfit: totalRevenue - cogs, expByAccount, opExp, netProfit: totalRevenue - cogs - opExp });
+        const grossProfit = totalRevenue - cogs;
+        const incomeBeforeTax = grossProfit - opExp;
+        const netProfit = incomeBeforeTax - incomeTaxExpense;
+        setFinData({ type: 'budget', revenue, deliveryIncome, totalRevenue, cogs, grossProfit, expByAccount, opExp, incomeBeforeTax, incomeTaxExpense, netProfit });
       } else if (finSubTab === 'tax') {
         const { data: ordersData } = await supabase
           .from('orders')
@@ -1196,12 +1294,84 @@ export default function AdminPage() {
           }));
         setFinData({ type: 'tax', rows });
       }
+
+      if (['cashflow', 'pl', 'balance'].includes(finSubTab)) {
+        const periods = Math.max(1, Math.min(12, Number(finCompareCount) || 1));
+        const unit = finComparePeriod;
+        const sameDayTime = (base, yearOffset = 0) => {
+          const d = new Date(base);
+          d.setFullYear(d.getFullYear() - yearOffset);
+          return d;
+        };
+        const shiftedRange = (index) => {
+          const from = new Date(finDateFrom);
+          const to = new Date(finDateTo);
+          if (finCompareMode === 'same_period_last_year') {
+            return { from: sameDayTime(from, index), to: sameDayTime(to, index) };
+          }
+          if (unit === 'daily') {
+            from.setDate(from.getDate() - index);
+            to.setDate(to.getDate() - index);
+          } else if (unit === 'annual') {
+            from.setFullYear(from.getFullYear() - index);
+            to.setFullYear(to.getFullYear() - index);
+          } else {
+            from.setMonth(from.getMonth() - index);
+            to.setMonth(to.getMonth() - index);
+          }
+          return { from, to };
+        };
+
+        const compareSeries = [];
+        for (let i = periods - 1; i >= 0; i--) {
+          const { from, to } = shiftedRange(i);
+          const cFrom = from.toISOString().split('T')[0];
+          const cTo = to.toISOString().split('T')[0];
+          const cFromISO = `${cFrom}T00:00:00.000Z`;
+          const cToISO = `${cTo}T23:59:59.999Z`;
+          let amount = 0;
+          if (finSubTab === 'cashflow') {
+            const [{ data: cDebits }, { data: cCredits }] = await Promise.all([
+              supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).gte('date', cFrom).lte('date', cTo),
+              supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', cFrom).lte('date', cTo),
+            ]);
+            amount = sumAmt(cDebits) - sumAmt(cCredits);
+          } else if (finSubTab === 'pl') {
+            const [{ data: rev }, { data: del }, { data: cogs }, { data: exps }] = await Promise.all([
+              supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', cFrom).lte('date', cTo),
+              supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', cFromISO).lte('created_at', cToISO).gt('delivery_fee', 0),
+              supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', cFrom).lte('date', cTo),
+              supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', cFrom).lte('date', cTo),
+            ]);
+            const totalRevenue = sumAmt(rev) + (del || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+            const totalCogs = sumAmt(cogs);
+            const totalOpExp = (exps || []).filter((e) => e.debit_account !== 'Income Tax Expense').reduce((s, e) => s + (Number(e.amount) || 0), 0);
+            const taxExp = (exps || []).filter((e) => e.debit_account === 'Income Tax Expense').reduce((s, e) => s + (Number(e.amount) || 0), 0);
+            amount = totalRevenue - totalCogs - totalOpExp - taxExp;
+          } else if (finSubTab === 'balance') {
+            const [{ data: dr }, { data: cr }] = await Promise.all([
+              supabase.from('journal_entries').select('amount').in('debit_account', ['Cash on Hand', 'Cash in Bank', 'Inventory', ...FIN_PPE_ACCOUNTS]).lte('date', cTo),
+              supabase.from('journal_entries').select('amount').in('credit_account', ['Cash on Hand', 'Cash in Bank', ...FIN_PPE_ACCOUNTS, 'Accumulated Depreciation']).lte('date', cTo),
+            ]);
+            amount = sumAmt(dr) - sumAmt(cr);
+          }
+          const label = unit === 'annual'
+            ? cTo.slice(0, 4)
+            : unit === 'monthly'
+              ? cTo.slice(0, 7)
+              : cTo;
+          compareSeries.push({ label, amount });
+        }
+        setFinCompareData(compareSeries);
+      } else {
+        setFinCompareData([]);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [finSubTab, finDateFrom, finDateTo]);
+  }, [supabase, finSubTab, finDateFrom, finDateTo, finCompareMode, finCompareCount, finComparePeriod, FIN_CASH_ACCOUNTS, FIN_PPE_ACCOUNTS, FIN_OPEX_ACCOUNTS]);
 
   // ── Fetch: Chart of Accounts ──────────────────────────────────────────────
   const fetchCOA = useCallback(async () => {
@@ -1234,7 +1404,7 @@ export default function AdminPage() {
       const BS_ACCOUNTS = [
         'Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory',
         'Kitchen Equipment', 'Accumulated Depreciation',
-        'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities',
+        'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable',
         "Owner's Capital", 'Retained Earnings',
       ];
       // Income Statement accounts use period activity only
@@ -1244,7 +1414,7 @@ export default function AdminPage() {
         'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
         'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
         'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-        'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense',
+        'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense', 'Interest Expense', 'Income Tax Expense',
       ];
 
       const amounts = {};
@@ -3788,51 +3958,88 @@ export default function AdminPage() {
                   <input type="date" style={{ ...styles.input, width: 160 }} value={finDateFrom} onChange={(e) => setFinDateFrom(e.target.value)} />
                   <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
                   <input type="date" style={{ ...styles.input, width: 160 }} value={finDateTo} onChange={(e) => setFinDateTo(e.target.value)} />
+                  <label style={{ color: '#ccc', fontSize: 13 }}>Comparative:</label>
+                  <select style={{ ...styles.input, width: 190 }} value={finCompareMode} onChange={(e) => setFinCompareMode(e.target.value)}>
+                    <option value="previous_periods">Previous Periods</option>
+                    <option value="same_period_last_year">Same Period Last Year</option>
+                  </select>
+                  <label style={{ color: '#ccc', fontSize: 13 }}>No. of Periods:</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={12}
+                    style={{ ...styles.input, width: 90 }}
+                    value={finCompareCount}
+                    onChange={(e) => setFinCompareCount(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                  />
+                  <label style={{ color: '#ccc', fontSize: 13 }}>Period:</label>
+                  <select style={{ ...styles.input, width: 120 }} value={finComparePeriod} onChange={(e) => setFinComparePeriod(e.target.value)}>
+                    <option value="daily">Daily</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="annual">Annual</option>
+                  </select>
                   <button onClick={fetchFinancial} style={styles.primaryBtn}>Refresh</button>
                 </div>
               )}
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
 
+              {finSubTab !== 'coa' && finCompareData.length > 0 && (
+                <div style={{ ...styles.card, marginBottom: 14 }}>
+                  <h3 style={styles.cardTitle}>Comparative Period</h3>
+                  <div style={{ width: '100%', height: 260 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={finCompareData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                        <XAxis dataKey="label" stroke="#ccc" />
+                        <YAxis stroke="#ccc" />
+                        <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', color: '#fff' }} formatter={(v) => fmt(v)} />
+                        <Legend />
+                        <Bar dataKey="amount" fill="#ffc107" name={finSubTab === 'pl' ? 'Net Profit' : finSubTab === 'balance' ? 'Total Assets' : 'Net Cash Flow'} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
               {/* Cash Flow */}
               {finSubTab === 'cashflow' && finData?.type === 'cashflow' && (
-                <div style={styles.card}>
+                <div style={{ ...styles.card, maxWidth: 860 }}>
                   <h3 style={styles.cardTitle}>Cash Flow Statement</h3>
+                  <p style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>From {finDateFrom} to {finDateTo}</p>
                   <div style={styles.tableWrap}>
                     <table style={styles.table}>
-                      <thead>
-                        <tr>
-                          {['Date', 'Description', 'Type', 'Inflow (₱)', 'Outflow (₱)', 'Running Balance'].map((h) => (
-                            <th key={h} style={styles.th}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
                       <tbody>
-                        {finData.rows.map((row, idx) => (
-                          <tr key={row.id || idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                            <td style={styles.td}>{new Date(row.created_at).toLocaleDateString('en-PH')}</td>
-                            <td style={styles.td}>{row.description || row.transaction_type}</td>
-                            <td style={styles.td}>{row.transaction_type}</td>
-                            <td style={{ ...styles.td, color: '#4caf50' }}>{row.inflow > 0 ? fmt(row.inflow) : '—'}</td>
-                            <td style={{ ...styles.td, color: '#f44336' }}>{row.outflow > 0 ? fmt(row.outflow) : '—'}</td>
-                            <td style={{ ...styles.td, color: row.running >= 0 ? '#4caf50' : '#f44336' }}>{fmt(row.running)}</td>
-                          </tr>
-                        ))}
-                        {finData.rows.length > 0 && (() => {
-                          const totalIn = finData.rows.reduce((s, r) => s + r.inflow, 0);
-                          const totalOut = finData.rows.reduce((s, r) => s + r.outflow, 0);
-                          return (
-                            <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
-                              <td colSpan={3} style={{ ...styles.td, color: '#ffc107' }}>TOTAL</td>
-                              <td style={{ ...styles.td, color: '#4caf50' }}>{fmt(totalIn)}</td>
-                              <td style={{ ...styles.td, color: '#f44336' }}>{fmt(totalOut)}</td>
-                              <td style={{ ...styles.td, color: '#ffc107' }}>{fmt(totalIn - totalOut)}</td>
-                            </tr>
-                          );
-                        })()}
-                        {finData.rows.length === 0 && (
-                          <tr><td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#666' }}>No transactions in range</td></tr>
-                        )}
+                        <tr style={{ background: '#1e1e1e' }}>
+                          <td style={{ ...styles.td, fontWeight: 700 }}>Cash Beginning Balance</td>
+                          <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700 }}>{fmt(finData.cashBeginningBalance)}</td>
+                        </tr>
+
+                        <tr><td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Operations</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Cash receipts from Revenue (Cash + GCash)</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.receiptsRevenue)}</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Delivery Income</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.deliveryIncome)}</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Inventory purchases</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.inventoryPurchases)})</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>General operating &amp; administrative expenses</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.genOpAdminExpenses)})</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Salaries &amp; Wages</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.salariesWages)})</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Income taxes</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.incomeTaxes)})</td></tr>
+                        <tr style={{ background: '#1a2a1a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#4caf50' }}>Net Cash Flow from Operations</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netCashFlowOperations >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netCashFlowOperations)}</td></tr>
+
+                        <tr><td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Investing Activities</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Sale of property and equipment</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.saleOfPropertyEquipment)}</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Collection of principal on loans</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.collectionPrincipalOnLoans)}</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Purchase of property and equipment</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.purchaseOfPropertyEquipment)})</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Making loans to other entities</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.makingLoansToOthers)})</td></tr>
+                        <tr style={{ background: '#1a1a2a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#2196f3' }}>Net Cash Flow from Investing Activities</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netCashFlowInvesting >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netCashFlowInvesting)}</td></tr>
+
+                        <tr><td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Financing Activities</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Proceeds from loans payable</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.proceedsFromLoans)}</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s capital infusion</td><td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(finData.ownersCapitalInfusion)}</td></tr>
+                        <tr style={styles.trEven}><td style={{ ...styles.td, paddingLeft: 24 }}>Repayment of loans payable</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.repaymentOfLoans)})</td></tr>
+                        <tr style={styles.trOdd}><td style={{ ...styles.td, paddingLeft: 24 }}>Owner&apos;s drawings</td><td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.ownersDrawings)})</td></tr>
+                        <tr style={{ background: '#2a1a2a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#e1bee7' }}>Net Cash Flow from Financing Activities</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netCashFlowFinancing >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netCashFlowFinancing)}</td></tr>
+
+                        <tr style={{ background: '#2a2a1a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Net Increase / (Decrease) in Cash</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netChange >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netChange)}</td></tr>
+                        <tr style={{ background: '#3a2a0a' }}><td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Cash Ending Balance</td><td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#ffc107' }}>{fmt(finData.cashEndingBalance)}</td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -3881,8 +4088,16 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, fontWeight: 700, color: '#f44336' }}>Total Operating Expenses</td>
                         <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: '#f44336' }}>({fmt(finData.opExp)})</td>
                       </tr>
+                      <tr style={{ background: '#1a2a1a' }}>
+                        <td style={{ ...styles.td, fontWeight: 700, color: '#4caf50' }}>Income Before Tax</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.incomeBeforeTax >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.incomeBeforeTax)}</td>
+                      </tr>
+                      <tr style={styles.trOdd}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Income Tax Expense</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(finData.incomeTaxExpense || 0)})</td>
+                      </tr>
                       <tr style={{ background: '#3a2a0a' }}>
-                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Net Profit</td>
+                        <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Net Income</td>
                         <td style={{ ...styles.td, textAlign: 'right', fontWeight: 700, color: finData.netProfit >= 0 ? '#4caf50' : '#f44336' }}>{fmt(finData.netProfit)}</td>
                       </tr>
                     </tbody>
@@ -3940,6 +4155,14 @@ export default function AdminPage() {
                       <tr style={styles.trOdd}>
                         <td style={{ ...styles.td, paddingLeft: 24 }}>Accounts Payable</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.ap)}</td>
+                      </tr>
+                      <tr style={styles.trEven}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Income Tax Payable</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.incomeTaxPayable || 0)}</td>
+                      </tr>
+                      <tr style={styles.trOdd}>
+                        <td style={{ ...styles.td, paddingLeft: 24 }}>Loans Payable</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(finData.loansPayable || 0)}</td>
                       </tr>
                       <tr style={{ background: '#2a1a1a' }}>
                         <td style={{ ...styles.td, fontWeight: 700, color: '#f44336' }}>Total Liabilities</td>
@@ -4046,7 +4269,7 @@ export default function AdminPage() {
                       'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
                       'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
                       'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-                      'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense',
+                      'Kitchen Tools', 'Miscellaneous Expense', "Rider's Fee", 'Depreciation Expense', 'Interest Expense',
                     ];
                     const headerRow = (label, bg = '#1e1e1e') => (
                       <tr key={label} style={{ background: bg }}>
@@ -4084,7 +4307,9 @@ export default function AdminPage() {
                     const totalRevenueBudget = (Number(bv['Revenue']) || 0) + (Number(bv['Delivery Income']) || 0);
                     const grossProfitBudget = totalRevenueBudget - (Number(bv['Cost of Goods Sold']) || 0);
                     const opExpBudget = OPEX_ACCOUNTS.reduce((s, a) => s + (Number(bv[a]) || 0), 0);
-                    const netProfitBudget = grossProfitBudget - opExpBudget;
+                    const incomeBeforeTaxBudget = grossProfitBudget - opExpBudget;
+                    const incomeTaxBudget = Number(bv['Income Tax Expense']) || 0;
+                    const netProfitBudget = incomeBeforeTaxBudget - incomeTaxBudget;
                     return (
                       <div style={styles.tableWrap}>
                         <table style={styles.table}>
@@ -4106,7 +4331,9 @@ export default function AdminPage() {
                             {headerRow('Operating Expenses')}
                             {OPEX_ACCOUNTS.map((a) => varRow(a, finData.expByAccount?.[a] || 0, a, true, true))}
                             {totalRow('Total Operating Expenses', finData.opExp, opExpBudget, true, '#2a1a1a')}
-                            {totalRow('Net Profit', finData.netProfit, netProfitBudget, false, '#2a2a00')}
+                            {totalRow('Income Before Tax', finData.incomeBeforeTax, incomeBeforeTaxBudget, false, '#1a2a1a')}
+                            {varRow('Income Tax Expense', finData.incomeTaxExpense || 0, 'Income Tax Expense', true, true)}
+                            {totalRow('Net Income', finData.netProfit, netProfitBudget, false, '#2a2a00')}
                           </tbody>
                         </table>
                       </div>
@@ -4183,7 +4410,7 @@ export default function AdminPage() {
                         category: 'Liabilities',
                         color: '#f44336',
                         type: 'bs',
-                        accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities'],
+                        accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable'],
                       },
                       {
                         category: 'Equity',
@@ -4206,7 +4433,7 @@ export default function AdminPage() {
                           'Salaries & Wages', 'Utilities', 'Supplies', 'Repairs & Maintenance',
                           'Advertising & Marketing', 'Software Subscriptions', 'Professional Fees',
                           'Transportation', 'Meals & Entertainment', 'Auto Expense', 'Rent Expense',
-                          'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense',
+                          'Kitchen Tools', 'Miscellaneous Expense', 'Depreciation Expense', 'Interest Expense', 'Income Tax Expense',
                         ],
                       },
                     ];
