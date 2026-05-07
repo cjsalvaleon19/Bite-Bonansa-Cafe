@@ -147,15 +147,6 @@ CREATE TRIGGER trg_create_order_journal_entries
   FOR EACH ROW
   EXECUTE FUNCTION public.create_order_journal_entries();
 
--- Normalize any legacy Owner's Draw values
-UPDATE journal_entries
-SET debit_account = 'Owner''s Capital'
-WHERE debit_account = 'Owner''s Draw';
-
-UPDATE journal_entries
-SET credit_account = 'Owner''s Capital'
-WHERE credit_account = 'Owner''s Draw';
-
 -- Ensure credit-card order sales debit to Owner's Capital
 UPDATE journal_entries je
 SET debit_account = 'Owner''s Capital'

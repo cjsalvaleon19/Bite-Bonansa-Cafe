@@ -2872,6 +2872,7 @@ export default function AdminPage() {
                                       expanded.push({
                                         key: `${m.id || m.name}-${vt.id}-${opt.id}`,
                                         displayName: isAddOn ? `${opt.option_name}` : `${m.name} - ${opt.option_name}`,
+                                        parentName: isAddOn ? m.name : '',
                                         category: m.category || '',
                                         price: variantPrice,
                                       });
@@ -2900,7 +2901,7 @@ export default function AdminPage() {
                                     setMenuSearchOpen(false);
                                   }}
                                 >
-                                  {entry.displayName} <span style={{ color: '#888', fontSize: 11 }}>({entry.category}) — {fmt(entry.price)}</span>
+                                  {entry.displayName} <span style={{ color: '#888', fontSize: 11 }}>({entry.category}) — {fmt(entry.price)}{entry.parentName ? ` • Add-on to ${entry.parentName}` : ''}</span>
                                 </div>
                               ));
                             })()}
