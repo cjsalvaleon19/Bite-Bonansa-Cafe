@@ -674,7 +674,10 @@ export default function CashierPOS() {
   };
 
   const printPOSReceiptBluetooth = async (order) => {
-    if (!order) return;
+    if (!order) {
+      alert('No completed order available to print.');
+      return;
+    }
     let displayPaymentMethod = order.payment_method || 'N/A';
     const ptsClaimed = order.points_used || 0;
     const total = (order.subtotal || 0) + (order.delivery_fee || 0);

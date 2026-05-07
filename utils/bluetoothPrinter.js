@@ -19,8 +19,8 @@
 
 const PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb';
 const PRINTER_CHAR_UUID    = '00002af1-0000-1000-8000-00805f9b34fb';
-const CHUNK_SIZE            = 512;  // max bytes per writeValue call
-const PAPER_WIDTH           = 48;   // characters per line on 80 mm paper
+const CHUNK_SIZE           = 512;  // max bytes per writeValue call
+const PAPER_WIDTH          = 48;   // characters per line on 80 mm paper
 
 // ESC/POS command sequences
 const ESC = 0x1B;
