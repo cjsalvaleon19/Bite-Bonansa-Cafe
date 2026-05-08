@@ -21,6 +21,25 @@ export function getOrderItems(order) {
   return [];
 }
 
+export function getOrderSlipNumber(order = {}) {
+  const orderNumber = String(order.order_number || '').trim();
+  const match = orderNumber.match(/(\d{3})$/);
+  if (match && match[1]) return match[1];
+  const fallback = String(order.id || '').trim();
+  return fallback ? fallback.slice(-3) : '---';
+}
+
+export function formatItemNameWithSubvariant(item = {}) {
+  const rawName = String(item.name || '').trim();
+  const variants = item.variant_details || item.variantDetails;
+  if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
+    const subvariant = Object.values(variants).map((value) => String(value)).join(', ');
+    const baseName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    return `${baseName} (${subvariant})`;
+  }
+  return rawName;
+}
+
 function normalizeDepartment(item = {}) {
   const department =
     item.kitchen_department ||

@@ -7,7 +7,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount } from '../../utils/salesCalculations';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
-import { buildKitchenDepartmentOrders, getOrderItems } from '../../utils/receiptDepartments';
+import { buildKitchenDepartmentOrders, formatItemNameWithSubvariant, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
@@ -391,25 +391,6 @@ export default function CashierDashboard() {
       return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
     };
 
-    const getOrderSlipNumber = () => {
-      const orderNumber = String(order.order_number || '').trim();
-      const match = orderNumber.match(/(\d{3})$/);
-      if (match && match[1]) return match[1];
-      const fallback = String(order.id || '').trim();
-      return fallback ? fallback.slice(-3) : '---';
-    };
-
-    const formatItemNameWithSubvariant = (item) => {
-      const rawName = String(item.name || '').trim();
-      const variants = item.variant_details || item.variantDetails;
-      if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
-        const subvariant = Object.values(variants).map((value) => `${value}`).join(', ');
-        const baseName = stripVariantsFromName(rawName);
-        return `${baseName} (${subvariant})`;
-      }
-      return rawName;
-    };
-    
     // Build items HTML with variant details
     const itemsHtml = items.map(item => {
       const itemPrice = (item.price || 0) * (item.quantity || 0);
@@ -460,7 +441,7 @@ export default function CashierDashboard() {
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Order Slip #${getOrderSlipNumber()}</title>
+          <title>Order Slip #${getOrderSlipNumber(order)}</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             @page { margin: 0.5cm 0; }
@@ -483,7 +464,7 @@ export default function CashierDashboard() {
             <p style="font-size: 16px; font-weight: bold; text-align: center;">ORDER SLIP</p>
           </div>
           <div class="section">
-            <p><strong>Order Slip Number:</strong> ${getOrderSlipNumber()}</p>
+            <p><strong>Order Slip Number:</strong> ${getOrderSlipNumber(order)}</p>
           </div>
           <div class="section">
             <table>

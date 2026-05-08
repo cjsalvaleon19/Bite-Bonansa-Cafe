@@ -15,6 +15,8 @@
  *   Paper width     : 80 mm → 48 characters per line (normal font, 8 dots/char)
  */
 
+import { formatItemNameWithSubvariant, getOrderSlipNumber } from './receiptDepartments';
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb';
@@ -160,25 +162,6 @@ function twoCol(left, right, paperWidth = DEFAULT_PAPER_WIDTH) {
 /** Full-width divider line using the given character. */
 function divider(char = '-', paperWidth = DEFAULT_PAPER_WIDTH) {
   return char.repeat(paperWidth) + '\n';
-}
-
-function getOrderSlipNumber(order = {}) {
-  const orderNumber = String(order.order_number || '').trim();
-  const match = orderNumber.match(/(\d{3})$/);
-  if (match && match[1]) return match[1];
-  const fallback = String(order.id || '').trim();
-  return fallback ? fallback.slice(-3) : '---';
-}
-
-function formatItemNameWithSubvariant(item = {}) {
-  const rawName = String(item.name || '').trim();
-  const variants = item.variant_details || item.variantDetails;
-  if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
-    const subvariant = Object.values(variants).map((v) => String(v)).join(', ');
-    const baseName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
-    return `${baseName} (${subvariant})`;
-  }
-  return rawName;
 }
 
 /**

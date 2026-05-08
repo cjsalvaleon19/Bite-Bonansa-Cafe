@@ -7,7 +7,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions } from '../../utils/salesCalculations';
 import { printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
-import { buildKitchenDepartmentOrders } from '../../utils/receiptDepartments';
+import { buildKitchenDepartmentOrders, formatItemNameWithSubvariant, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 export default function EndOfDayReport() {
   const router = useRouter();
@@ -104,25 +104,6 @@ export default function EndOfDayReport() {
   // Helper function to get order items with fallback
   const getOrderItems = (order) => {
     return order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
-  };
-
-  const getOrderSlipNumber = (order) => {
-    const orderNumber = String(order.order_number || '').trim();
-    const match = orderNumber.match(/(\d{3})$/);
-    if (match && match[1]) return match[1];
-    const fallback = String(order.id || '').trim();
-    return fallback ? fallback.slice(-3) : '---';
-  };
-
-  const formatItemNameWithSubvariant = (item) => {
-    const rawName = String(item.name || '').trim();
-    const variants = item.variant_details || item.variantDetails;
-    if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
-      const subvariant = Object.values(variants).map((value) => `${value}`).join(', ');
-      const baseName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
-      return `${baseName} (${subvariant})`;
-    }
-    return rawName;
   };
 
   const handlePreviewReceipt = (order) => {
