@@ -4428,12 +4428,14 @@ export default function AdminPage() {
                       const catMap = {};
                       rows.forEach((r) => {
                         const cat = r.category || 'Other';
-                        if (!catMap[cat]) catMap[cat] = { revenue: 0, cogs: 0, cm: 0 };
+                        if (!catMap[cat]) catMap[cat] = { quantity: 0, revenue: 0, cogs: 0, cm: 0 };
+                        catMap[cat].quantity += Number(r.quantity) || 0;
                         catMap[cat].revenue += r.revenue;
                         catMap[cat].cogs += r.cogs;
                         catMap[cat].cm += r.cm;
                       });
                       const cats = Object.entries(catMap);
+                      const grandQty = cats.reduce((s, [, v]) => s + v.quantity, 0);
                       const grandRev = cats.reduce((s, [, v]) => s + v.revenue, 0);
                       const grandCogs = cats.reduce((s, [, v]) => s + v.cogs, 0);
                       const grandCm = cats.reduce((s, [, v]) => s + v.cm, 0);
@@ -4443,7 +4445,7 @@ export default function AdminPage() {
                           <table style={styles.table}>
                             <thead>
                               <tr>
-                                {['Category', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
+                                {['Category', 'Qty Sold', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
                                   <th key={h} style={{ ...styles.th, textAlign: h !== 'Category' ? 'right' : 'left' }}>{h}</th>
                                 ))}
                               </tr>
@@ -4454,6 +4456,7 @@ export default function AdminPage() {
                                 return (
                                   <tr key={cat} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
                                     <td style={styles.td}>{cat}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right' }}>{v.quantity}</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(v.revenue)}</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(v.cogs)})</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: v.cm >= 0 ? '#4caf50' : '#f44336' }}>{fmt(v.cm)}</td>
@@ -4463,6 +4466,7 @@ export default function AdminPage() {
                               })}
                               <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
                                 <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Grand Total</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{grandQty}</td>
                                 <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandRev)}</td>
                                 <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(grandCogs)})</td>
                                 <td style={{ ...styles.td, textAlign: 'right', color: grandCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(grandCm)}</td>
@@ -4481,6 +4485,7 @@ export default function AdminPage() {
                       if (!catGroups[cat]) catGroups[cat] = [];
                       catGroups[cat].push(r);
                     });
+                    const grandQty = rows.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
                     const grandRev = rows.reduce((s, r) => s + r.revenue, 0);
                     const grandCogs = rows.reduce((s, r) => s + r.cogs, 0);
                     const grandCm = rows.reduce((s, r) => s + r.cm, 0);
@@ -4490,13 +4495,14 @@ export default function AdminPage() {
                         <table style={styles.table}>
                           <thead>
                             <tr>
-                              {['Item', 'Category', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
+                              {['Item', 'Category', 'Qty Sold', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
                                 <th key={h} style={{ ...styles.th, textAlign: h !== 'Item' && h !== 'Category' ? 'right' : 'left' }}>{h}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
                             {Object.entries(catGroups).map(([cat, items]) => {
+                              const catQty = items.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
                               const catRev = items.reduce((s, r) => s + r.revenue, 0);
                               const catCogs = items.reduce((s, r) => s + r.cogs, 0);
                               const catCm = items.reduce((s, r) => s + r.cm, 0);
@@ -4507,6 +4513,7 @@ export default function AdminPage() {
                                     <tr key={r.name} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
                                       <td style={styles.td}>{r.name}</td>
                                       <td style={styles.td}>{r.category}</td>
+                                      <td style={{ ...styles.td, textAlign: 'right' }}>{r.quantity}</td>
                                       <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(r.revenue)}</td>
                                       <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(r.cogs)})</td>
                                       <td style={{ ...styles.td, textAlign: 'right', color: r.cm >= 0 ? '#4caf50' : '#f44336' }}>{fmt(r.cm)}</td>
@@ -4515,6 +4522,7 @@ export default function AdminPage() {
                                   ))}
                                   <tr style={{ background: '#222' }}>
                                     <td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107', paddingLeft: 24 }}>Subtotal — {cat}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{catQty}</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(catRev)}</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(catCogs)})</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: catCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(catCm)}</td>
@@ -4525,6 +4533,7 @@ export default function AdminPage() {
                             })}
                             <tr style={{ background: '#2a2a1a' }}>
                               <td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Grand Total</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{grandQty}</td>
                               <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandRev)}</td>
                               <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(grandCogs)})</td>
                               <td style={{ ...styles.td, textAlign: 'right', color: grandCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(grandCm)}</td>
@@ -4540,7 +4549,7 @@ export default function AdminPage() {
 
               {/* Budget Variance — follows P&L structure with editable budget rows */}
               {finSubTab === 'budget' && finData?.type === 'budget' && (
-                <div style={{ ...styles.card, maxWidth: 680 }}>
+                <div style={{ ...styles.card, width: '100%' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                     <h3 style={styles.cardTitle}>Budget Variance Report</h3>
                     <span style={{ color: '#4caf50', fontSize: 11, border: '1px solid #2e7d32', borderRadius: 12, padding: '4px 10px' }}>Auto-saved</span>
@@ -4658,7 +4667,7 @@ export default function AdminPage() {
                     const netProfitBudget = incomeBeforeTaxBudget - incomeTaxBudget;
                     return (
                       <div style={styles.tableWrap}>
-                        <table style={styles.table}>
+                        <table style={{ ...styles.table, minWidth: 1120 }}>
                           <thead>
                             <tr>
                               {['Account', 'Budget (₱)', 'Budget %', 'Actual (₱)', 'Actual %', 'Variance (₱)', 'Variance %'].map((h) => (
@@ -5177,7 +5186,7 @@ export default function AdminPage() {
 
               {/* Header fields */}
               <div style={{ ...styles.card, marginBottom: 16 }}>
-                <div style={styles.formGrid}>
+                <div style={{ display: 'grid', gridTemplateColumns: '110px minmax(180px, 1fr) 120px minmax(220px, 1fr)', gap: 12, alignItems: 'center' }}>
                   <label style={styles.label}>Date</label>
                   <input
                     type="date"
@@ -5187,8 +5196,8 @@ export default function AdminPage() {
                   />
 
                   <label style={styles.label}>Description / Memo</label>
-                  <textarea
-                    style={{ ...styles.input, minHeight: 72, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, width: '100%', boxSizing: 'border-box' }}
+                  <input
+                    style={styles.input}
                     placeholder="Brief description of this entry…"
                     value={manualEntryForm.description}
                     onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
@@ -5229,8 +5238,8 @@ export default function AdminPage() {
                   />
 
                   <label style={styles.label}>Special Note</label>
-                  <textarea
-                    style={{ ...styles.input, minHeight: 64, resize: 'vertical' }}
+                  <input
+                    style={styles.input}
                     placeholder="Optional note or explanation…"
                     value={manualSpecialNote}
                     onChange={(e) => setManualSpecialNote(e.target.value)}
@@ -5689,6 +5698,18 @@ export default function AdminPage() {
                       </div>
                     )}
                     <div style={styles.dialogFooter}>
+                      {billViewItem?.status === 'draft' && (
+                        <button
+                          style={styles.actionBtn}
+                          onClick={() => {
+                            const item = billViewItem;
+                            setBillViewItem(null);
+                            openBillDialog(item);
+                          }}
+                        >
+                          Edit
+                        </button>
+                      )}
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
                     </div>
                   </Dialog.Content>
