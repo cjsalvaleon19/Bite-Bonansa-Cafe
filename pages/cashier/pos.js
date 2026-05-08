@@ -531,7 +531,7 @@ export default function CashierPOS() {
   };
 
   const printReceipt = (order, paidAmount) => {
-    const receiptWindow = window.open('', '_blank', 'width=300,height=600');
+    const receiptWindow = window.open('', '_blank');
     if (!receiptWindow) return;
     const receiptItems = getOrderItems(order);
 
@@ -576,12 +576,17 @@ export default function CashierPOS() {
     }
 
     receiptWindow.document.write(`
+      <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Receipt - ${order.order_number || order.id.slice(0, 8)}</title>
+          <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
             body { font-family: monospace; font-size: 12px; padding: 0 12px; margin: 0 auto; }
+            @media print { button { display: none; } }
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
             .item { display: flex; justify-content: space-between; margin: 5px 0; }
@@ -701,14 +706,19 @@ export default function CashierPOS() {
               <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
             </div>
           </div>
+          <div style="text-align: center; margin-top: 20px;">
+            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #ffc107; border: none; border-radius: 4px;">
+              🖨️ Print Receipt
+            </button>
+            <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; margin-left: 10px; background: #666; color: white; border: none; border-radius: 4px;">
+              Close
+            </button>
+          </div>
         </body>
       </html>
     `);
 
     receiptWindow.document.close();
-    setTimeout(() => {
-      receiptWindow.print();
-    }, 250);
   };
 
   const printPOSReceiptBluetooth = async (order, options = {}) => {

@@ -103,7 +103,7 @@ export default function EndOfDayReport() {
 
   const handlePreviewReceipt = (order) => {
     // Create a modal-like preview window
-    const previewWindow = window.open('', '_blank', 'width=400,height=700');
+    const previewWindow = window.open('', '_blank');
     if (!previewWindow) return;
 
     const orderItems = getOrderItems(order);
@@ -140,8 +140,11 @@ export default function EndOfDayReport() {
     }
 
     previewWindow.document.write(`
+      <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Receipt Preview - #${order.order_number || order.id.slice(0, 8)}</title>
           <style>
             body { font-family: monospace; font-size: 12px; padding: 20px; background: #f5f5f5; }
@@ -284,20 +287,25 @@ export default function EndOfDayReport() {
   };
 
   const printOrderSlip = (order) => {
-    const slipWindow = window.open('', '_blank', 'width=300,height=600');
+    const slipWindow = window.open('', '_blank');
     if (!slipWindow) return;
 
     const orderItems = getOrderItems(order);
 
     slipWindow.document.write(`
+      <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Order Slip #${getOrderSlipNumber(order)}</title>
+          <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
             body { font-family: monospace; font-size: 14px; line-height: 1.35; padding: 20px 20px 0; margin: 0; }
             .section { margin: 12px 0; }
             table { width: 100%; border-collapse: collapse; }
+            @media print { button { display: none; } }
           </style>
         </head>
         <body>
@@ -328,14 +336,19 @@ export default function EndOfDayReport() {
               </tbody>
             </table>
           </div>
+          <div style="text-align: center; margin-top: 20px;">
+            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #ffc107; border: none; border-radius: 4px;">
+              🖨️ Print Slip
+            </button>
+            <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; margin-left: 10px; background: #666; color: white; border: none; border-radius: 4px;">
+              Close
+            </button>
+          </div>
         </body>
       </html>
     `);
 
     slipWindow.document.close();
-    setTimeout(() => {
-      slipWindow.print();
-    }, 250);
   };
 
   const printKitchenOrderSlips = async (order) => {
@@ -350,7 +363,7 @@ export default function EndOfDayReport() {
 
   const handlePrintReceipt = async (order) => {
     // Create a simple receipt print window
-    const receiptWindow = window.open('', '_blank', 'width=300,height=600');
+    const receiptWindow = window.open('', '_blank');
     if (!receiptWindow) return;
 
     const orderItems = getOrderItems(order);
@@ -387,9 +400,13 @@ export default function EndOfDayReport() {
     }
 
     receiptWindow.document.write(`
+      <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Receipt #${order.order_number || order.id.slice(0, 8)}</title>
+          <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
             body { font-family: monospace; font-size: 12px; padding: 20px 20px 0; margin: 0; }
@@ -518,9 +535,6 @@ export default function EndOfDayReport() {
     `);
 
     receiptWindow.document.close();
-    setTimeout(() => {
-      receiptWindow.print();
-    }, 250);
 
     await printKitchenOrderSlips(order);
   };

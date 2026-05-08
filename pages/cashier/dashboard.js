@@ -442,6 +442,9 @@ export default function CashierDashboard() {
         <html>
         <head>
           <title>Order Slip #${getOrderSlipNumber(order)}</title>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
@@ -498,9 +501,6 @@ export default function CashierDashboard() {
 
       printWindow.document.write(kitchenSlipHtml);
       printWindow.document.close();
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
       return;
     }
     
@@ -540,6 +540,9 @@ export default function CashierDashboard() {
       <html>
       <head>
         <title>${title} - Order #${order.order_number || order.id.slice(0, 8)}</title>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
@@ -683,11 +686,6 @@ export default function CashierDashboard() {
 
     printWindow.document.write(receiptHtml);
     printWindow.document.close();
-    
-    // Auto print after a short delay
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
   };
 
   const printKitchenReceipts = async (order) => {
