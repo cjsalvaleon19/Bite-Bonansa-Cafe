@@ -162,6 +162,25 @@ function divider(char = '-', paperWidth = DEFAULT_PAPER_WIDTH) {
   return char.repeat(paperWidth) + '\n';
 }
 
+function getOrderSlipNumber(order = {}) {
+  const orderNumber = String(order.order_number || '').trim();
+  const match = orderNumber.match(/(\d{3})$/);
+  if (match && match[1]) return match[1];
+  const fallback = String(order.id || '').trim();
+  return fallback ? fallback.slice(-3) : '---';
+}
+
+function formatItemNameWithSubvariant(item = {}) {
+  const rawName = String(item.name || '').trim();
+  const variants = item.variant_details || item.variantDetails;
+  if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
+    const subvariant = Object.values(variants).map((v) => String(v)).join(', ');
+    const baseName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    return `${baseName} (${subvariant})`;
+  }
+  return rawName;
+}
+
 /**
  * Build ESC/POS bytes for a QR code block (model 2, size 6, error level M).
  * The QR code is stored and then printed; alignment should be set to CENTER
@@ -206,7 +225,7 @@ function qrCodeBytes(url) {
  */
 export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   const isKitchen = receiptType === 'kitchen';
-  const title     = isKitchen ? 'KITCHEN ORDER SLIP' : 'SALES INVOICE';
+  const title     = isKitchen ? 'ORDER SLIP' : 'SALES INVOICE';
   const paperWidth = getPaperWidth(opts);
 
   // Support both order_items (DB joined) and items (JSONB / cart) shapes
@@ -241,6 +260,30 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   // ── Init ──────────────────────────────────────────────────────────────────
   b.push(...CMD.INIT);
 
+  if (isKitchen) {
+    b.push(...CMD.ALIGN_CENTER, ...CMD.BOLD_ON);
+    b.push(...encodeText(`${title}\n`));
+    b.push(...CMD.BOLD_OFF);
+    b.push(...encodeText(divider('=', paperWidth)));
+
+    b.push(...CMD.ALIGN_LEFT);
+    b.push(...encodeText(`Order Slip #: ${getOrderSlipNumber(order)}\n`));
+    b.push(...encodeText(divider('-', paperWidth)));
+    b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
+
+    for (const item of orderItems) {
+      const qty = item.quantity || 1;
+      const itemLabel = `${qty} x ${formatItemNameWithSubvariant(item)}`;
+      for (const line of wrapText(itemLabel, paperWidth)) {
+        b.push(...encodeText(line + '\n'));
+      }
+    }
+
+    b.push(...CMD.FEED_3);
+    b.push(...CMD.CUT);
+    return new Uint8Array(b);
+  }
+
   // ── Header ────────────────────────────────────────────────────────────────
   b.push(...CMD.ALIGN_CENTER, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
   b.push(...encodeText('Bite Bonansa Cafe\n'));
@@ -250,9 +293,6 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   b.push(...encodeText("Tel: 0907-200-8247\n"));
   b.push(...CMD.LF);
   b.push(...CMD.BOLD_ON, ...encodeText(title + '\n'), ...CMD.BOLD_OFF);
-  if (isKitchen && opts.departmentName) {
-    b.push(...CMD.BOLD_ON, ...encodeText(`${opts.departmentName}\n`), ...CMD.BOLD_OFF);
-  }
   b.push(...encodeText(divider('=', paperWidth)));
 
   // ── Order info ────────────────────────────────────────────────────────────
@@ -260,9 +300,6 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   b.push(...encodeText(`Order#: ${order.order_number || String(order.id || '').slice(0, 8)}\n`));
   b.push(...encodeText(`Date  : ${new Date(order.created_at || Date.now()).toLocaleString()}\n`));
   b.push(...encodeText(`Type  : ${order.order_mode || 'N/A'}\n`));
-  if (isKitchen && opts.departmentName) {
-    b.push(...encodeText(`Dept  : ${opts.departmentName}\n`));
-  }
   if (order.customer_name) {
     b.push(...encodeText(`Name  : ${order.customer_name}\n`));
   }

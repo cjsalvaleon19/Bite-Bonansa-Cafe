@@ -383,11 +383,31 @@ export default function CashierDashboard() {
     }
 
     const items = getOrderItems(order);
+    const isKitchenCopy = receiptType === 'kitchen';
     
     // Helper function to strip variant details from item name (for legacy data)
     const stripVariantsFromName = (name) => {
       // Remove anything in parentheses at the end of the name (e.g., "Americano (12oz Hot | Extra Shot)" -> "Americano")
       return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    };
+
+    const getOrderSlipNumber = () => {
+      const orderNumber = String(order.order_number || '').trim();
+      const match = orderNumber.match(/(\d{3})$/);
+      if (match && match[1]) return match[1];
+      const fallback = String(order.id || '').trim();
+      return fallback ? fallback.slice(-3) : '---';
+    };
+
+    const formatItemNameWithSubvariant = (item) => {
+      const rawName = String(item.name || '').trim();
+      const variants = item.variant_details || item.variantDetails;
+      if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
+        const subvariant = Object.values(variants).map((value) => `${value}`).join(', ');
+        const baseName = stripVariantsFromName(rawName);
+        return `${baseName} (${subvariant})`;
+      }
+      return rawName;
     };
     
     // Build items HTML with variant details
@@ -423,11 +443,80 @@ export default function CashierDashboard() {
       `;
     }).join('');
 
-    const isKitchenCopy = receiptType === 'kitchen';
     const departmentName = options.departmentName || '';
     const title = isKitchenCopy
       ? `KITCHEN ORDER SLIP${departmentName ? ` - ${departmentName}` : ''}`
       : 'SALES INVOICE';
+
+    if (isKitchenCopy) {
+      const kitchenItemsHtml = items.map((item) => `
+        <tr>
+          <td style="padding: 4px 0;">${formatItemNameWithSubvariant(item)}</td>
+          <td style="padding: 4px 0; text-align: right;">${item.quantity || 1}</td>
+        </tr>
+      `).join('');
+
+      const kitchenSlipHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Order Slip #${getOrderSlipNumber()}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            @page { margin: 0.5cm 0; }
+            body {
+              font-family: 'Courier New', monospace;
+              padding: 0 12px;
+              max-width: 350px;
+              margin: 0 auto;
+            }
+            .section { margin: 12px 0; }
+            table { width: 100%; border-collapse: collapse; }
+            @media print {
+              body { padding: 0 12px; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="section">
+            <p style="font-size: 16px; font-weight: bold; text-align: center;">ORDER SLIP</p>
+          </div>
+          <div class="section">
+            <p><strong>Order Slip Number:</strong> ${getOrderSlipNumber()}</p>
+          </div>
+          <div class="section">
+            <table>
+              <thead>
+                <tr>
+                  <th style="text-align: left; padding: 4px 0; border-bottom: 2px solid #000;">Item</th>
+                  <th style="text-align: right; padding: 4px 0; border-bottom: 2px solid #000;">Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${kitchenItemsHtml}
+              </tbody>
+            </table>
+          </div>
+          <div style="text-align: center; margin-top: 20px;">
+            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #ffc107; border: none; border-radius: 4px;">
+              Print Order Slip
+            </button>
+            <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; margin-left: 10px; background: #666; color: white; border: none; border-radius: 4px;">
+              Close
+            </button>
+          </div>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(kitchenSlipHtml);
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+      return;
+    }
     
     // Calculate values based on the new flow
     const subtotal = order.subtotal || 0;
