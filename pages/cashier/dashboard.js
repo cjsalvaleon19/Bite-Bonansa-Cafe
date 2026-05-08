@@ -444,7 +444,7 @@ export default function CashierDashboard() {
           <title>Order Slip #${getOrderSlipNumber(order)}</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            @page { margin: 0 0 1cm 0; }
+            @page { size: 80mm auto; margin: 0 0 1cm 0; }
             body {
               font-family: 'Courier New', monospace;
               font-size: 14px;
@@ -466,7 +466,10 @@ export default function CashierDashboard() {
             <p style="font-size: 20px; font-weight: bold; text-align: center;">ORDER SLIP</p>
           </div>
           <div class="section">
-            <p><strong>Order Slip Number:</strong> ${getOrderSlipNumber(order)}</p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span><strong>Order Slip #:</strong> ${getOrderSlipNumber(order)}</span>
+              <span><strong>${(order.order_mode || 'N/A').toUpperCase()}</strong></span>
+            </div>
           </div>
           <div class="section">
             <table>
@@ -539,7 +542,7 @@ export default function CashierDashboard() {
         <title>${title} - Order #${order.order_number || order.id.slice(0, 8)}</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            @page { margin: 0 0 1cm 0; }
+            @page { size: 80mm auto; margin: 0 0 1cm 0; }
             body { 
               font-family: 'Courier New', monospace; 
               padding: 0 12px; 
