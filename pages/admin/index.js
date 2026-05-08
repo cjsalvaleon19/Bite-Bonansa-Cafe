@@ -5199,6 +5199,7 @@ export default function AdminPage() {
                   <input
                     style={styles.input}
                     placeholder="Brief description of this entry…"
+                    maxLength={180}
                     value={manualEntryForm.description}
                     onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
                   />
@@ -5241,6 +5242,7 @@ export default function AdminPage() {
                   <input
                     style={styles.input}
                     placeholder="Optional note or explanation…"
+                    maxLength={180}
                     value={manualSpecialNote}
                     onChange={(e) => setManualSpecialNote(e.target.value)}
                   />
