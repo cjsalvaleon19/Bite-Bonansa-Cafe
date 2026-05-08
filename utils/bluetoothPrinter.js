@@ -109,7 +109,7 @@ export async function connectPrinter() {
         const service = await retryServer.getPrimaryService(PRINTER_SERVICE_UUID);
         _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
       } catch (retryErr) {
-        console.warn('[BluetoothPrinter] Reconnect retry failed:', retryErr?.message || 'Unknown error');
+        console.warn('[BluetoothPrinter] Reconnect retry failed:', retryErr);
         _characteristic = null;
         _device = null;
         throw new Error(
