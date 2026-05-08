@@ -180,6 +180,19 @@ function getPaperWidth(opts = {}) {
   return DEFAULT_PAPER_WIDTH;
 }
 
+function formatReceiptDate(value) {
+  const date = new Date(value || Date.now());
+  return new Intl.DateTimeFormat('en-PH', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(date);
+}
+
 function wrapText(text, width) {
   const safeWidth = Number.isFinite(width) && width > 0
     ? Math.floor(width)
@@ -187,8 +200,40 @@ function wrapText(text, width) {
   const src = String(text || '');
   if (!src) return [''];
   const lines = [];
-  for (let i = 0; i < src.length; i += safeWidth) {
-    lines.push(src.slice(i, i + safeWidth));
+  const sourceLines = src.split('\n');
+  for (const sourceLine of sourceLines) {
+    const words = sourceLine.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      lines.push('');
+      continue;
+    }
+    let current = '';
+    for (const word of words) {
+      if (!current) {
+        if (word.length <= safeWidth) {
+          current = word;
+        } else {
+          for (let i = 0; i < word.length; i += safeWidth) {
+            lines.push(word.slice(i, i + safeWidth));
+          }
+        }
+        continue;
+      }
+      if ((current.length + 1 + word.length) <= safeWidth) {
+        current += ` ${word}`;
+      } else {
+        lines.push(current);
+        if (word.length <= safeWidth) {
+          current = word;
+        } else {
+          current = '';
+          for (let i = 0; i < word.length; i += safeWidth) {
+            lines.push(word.slice(i, i + safeWidth));
+          }
+        }
+      }
+    }
+    if (current) lines.push(current);
   }
   return lines;
 }
@@ -254,6 +299,9 @@ function qrCodeBytes(url) {
 export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   const isKitchen = receiptType === 'kitchen';
   const title     = isKitchen ? 'ORDER SLIP' : 'SALES INVOICE';
+  const kitchenTitle = isKitchen && opts.departmentName
+    ? `${title} - ${opts.departmentName}`
+    : title;
   const paperWidth = getPaperWidth(opts);
 
   // Support both order_items (DB joined) and items (JSONB / cart) shapes
@@ -290,12 +338,14 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
 
   if (isKitchen) {
     b.push(...CMD.ALIGN_CENTER, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
-    b.push(...encodeText(`${title}\n`));
+    b.push(...encodeText(`${kitchenTitle}\n`));
     b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('=', paperWidth)));
 
-    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_2X);
-    b.push(...encodeText(twoCol(`Order Slip #: ${getOrderSlipNumber(order)}`, (order.order_mode || 'N/A').toUpperCase(), paperWidth)));
+    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_NORMAL, ...CMD.BOLD_ON);
+    b.push(...encodeText(`Order Slip #: ${getOrderSlipNumber(order)}\n`));
+    b.push(...encodeText(`Type: ${(order.order_mode || 'N/A').toUpperCase()}\n`));
+    b.push(...CMD.BOLD_OFF);
     b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
 
@@ -327,7 +377,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   // ── Order info ────────────────────────────────────────────────────────────
   b.push(...CMD.ALIGN_LEFT);
   b.push(...encodeText(`Order#: ${order.order_number || String(order.id || '').slice(0, 8)}\n`));
-  b.push(...encodeText(`Date  : ${new Date(order.created_at || Date.now()).toLocaleString()}\n`));
+  b.push(...encodeText(`Date  : ${formatReceiptDate(order.created_at)}\n`));
   b.push(...encodeText(`Type  : ${order.order_mode || 'N/A'}\n`));
   if (order.customer_name) {
     b.push(...encodeText(`Name  : ${order.customer_name}\n`));
@@ -435,7 +485,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   if (!opts.omitFooterMeta) {
     b.push(...CMD.LF, ...CMD.ALIGN_LEFT);
     b.push(...encodeText(`Accepted by: ${cashier}\n`));
-    b.push(...encodeText(`${new Date().toLocaleString()}\n`));
+    b.push(...encodeText(`${formatReceiptDate(Date.now())}\n`));
   }
 
   // ── Feed + cut ────────────────────────────────────────────────────────────
