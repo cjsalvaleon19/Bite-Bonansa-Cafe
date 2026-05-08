@@ -20,7 +20,8 @@
 const PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb';
 const PRINTER_CHAR_UUID    = '00002af1-0000-1000-8000-00805f9b34fb';
 const CHUNK_SIZE           = 512;  // max bytes per writeValue call
-const PAPER_WIDTH          = 48;   // characters per line on 80 mm paper
+const DEFAULT_PAPER_WIDTH  = 48;   // characters per line on 80 mm paper
+const PRINTER_WIDTH_KEY    = 'bbc_printer_paper_width';
 
 // ESC/POS command sequences
 const ESC = 0x1B;
@@ -119,19 +120,46 @@ function bytes(...parts) {
   return out;
 }
 
+export function sanitizePaperWidth(value) {
+  if (value === null || value === undefined) return DEFAULT_PAPER_WIDTH;
+  const n = Number.parseInt(value, 10);
+  return n === 32 || n === 48 ? n : DEFAULT_PAPER_WIDTH;
+}
+
+function getPaperWidth(opts = {}) {
+  if (opts.paperWidth !== undefined) return sanitizePaperWidth(opts.paperWidth);
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return sanitizePaperWidth(window.localStorage.getItem(PRINTER_WIDTH_KEY));
+  }
+  return DEFAULT_PAPER_WIDTH;
+}
+
+function wrapText(text, width) {
+  const safeWidth = Number.isFinite(width) && width > 0
+    ? Math.floor(width)
+    : DEFAULT_PAPER_WIDTH;
+  const src = String(text || '');
+  if (!src) return [''];
+  const lines = [];
+  for (let i = 0; i < src.length; i += safeWidth) {
+    lines.push(src.slice(i, i + safeWidth));
+  }
+  return lines;
+}
+
 /**
  * Two-column row: left text fills the remaining width after the right-aligned
  * value is placed at the right edge of PAPER_WIDTH.
  */
-function twoCol(left, right) {
+function twoCol(left, right, paperWidth = DEFAULT_PAPER_WIDTH) {
   const r = String(right);
-  const leftWidth = Math.max(0, PAPER_WIDTH - r.length);
+  const leftWidth = Math.max(0, paperWidth - r.length);
   return String(left).substring(0, leftWidth).padEnd(leftWidth) + r + '\n';
 }
 
 /** Full-width divider line using the given character. */
-function divider(char = '-') {
-  return char.repeat(PAPER_WIDTH) + '\n';
+function divider(char = '-', paperWidth = DEFAULT_PAPER_WIDTH) {
+  return char.repeat(paperWidth) + '\n';
 }
 
 // ─── Public: build ESC/POS receipt bytes ─────────────────────────────────────
@@ -151,6 +179,7 @@ function divider(char = '-') {
 export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   const isKitchen = receiptType === 'kitchen';
   const title     = isKitchen ? 'KITCHEN ORDER SLIP' : 'SALES INVOICE';
+  const paperWidth = getPaperWidth(opts);
 
   // Support both order_items (DB joined) and items (JSONB / cart) shapes
   const orderItems = (order.order_items && order.order_items.length > 0)
@@ -193,7 +222,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   b.push(...encodeText("Tel: 0907-200-8247\n"));
   b.push(...CMD.LF);
   b.push(...CMD.BOLD_ON, ...encodeText(title + '\n'), ...CMD.BOLD_OFF);
-  b.push(...encodeText(divider('=')));
+  b.push(...encodeText(divider('=', paperWidth)));
 
   // ── Order info ────────────────────────────────────────────────────────────
   b.push(...CMD.ALIGN_LEFT);
@@ -211,11 +240,11 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   }
   if (order.order_mode === 'delivery' && order.delivery_address) {
     const addr = `Addr  : ${order.delivery_address}`;
-    for (let i = 0; i < addr.length; i += PAPER_WIDTH) {
-      b.push(...encodeText(addr.slice(i, i + PAPER_WIDTH) + '\n'));
+    for (const line of wrapText(addr, paperWidth)) {
+      b.push(...encodeText(line + '\n'));
     }
   }
-  b.push(...encodeText(divider()));
+  b.push(...encodeText(divider('-', paperWidth)));
 
   // ── Items ─────────────────────────────────────────────────────────────────
   b.push(...CMD.BOLD_ON, ...encodeText('ITEMS ORDERED\n'), ...CMD.BOLD_OFF);
@@ -228,47 +257,63 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
 
     // e.g. "Americano                x2       P120.00"
     const priceTag  = `P${lineTotal}`;
-    const nameWidth = PAPER_WIDTH - priceTag.length;
-    const namePart  = `${displayName} x${qty}`.substring(0, nameWidth).padEnd(nameWidth);
-    b.push(...encodeText(namePart + priceTag + '\n'));
+    const itemLabel = `${displayName} x${qty}`;
+    const nameWidth = paperWidth - priceTag.length;
+    // If the space left for the item label is too small, print label and price
+    // on separate lines so details remain readable on narrow paper widths.
+    if (nameWidth < 8) {
+      for (const line of wrapText(itemLabel, paperWidth)) {
+        b.push(...encodeText(line + '\n'));
+      }
+      b.push(...encodeText(priceTag + '\n'));
+    } else {
+      const itemLines = wrapText(itemLabel, nameWidth);
+      const firstItemLine = itemLines.length > 0 ? itemLines[0] : '';
+      b.push(...encodeText(firstItemLine.padEnd(nameWidth) + priceTag + '\n'));
+      for (let i = 1; i < itemLines.length; i++) {
+        b.push(...encodeText(itemLines[i] + '\n'));
+      }
+    }
 
     // Variant add-ons (supports both key shapes)
     const variants = item.variant_details || item.variantDetails;
     if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
       const addons = Object.values(variants).join(', ');
-      b.push(...encodeText(`  (${addons})\n`));
+      for (const line of wrapText(`  (${addons})`, paperWidth)) {
+        b.push(...encodeText(line + '\n'));
+      }
     }
   }
 
-  b.push(...encodeText(divider()));
+  b.push(...encodeText(divider('-', paperWidth)));
 
   // ── Totals (sales copy only) ───────────────────────────────────────────────
   if (!isKitchen) {
-    b.push(...encodeText(twoCol('Subtotal:', `P${subtotal.toFixed(2)}`)));
+    b.push(...encodeText(twoCol('Subtotal:', `P${subtotal.toFixed(2)}`, paperWidth)));
     if (delivFee > 0) {
-      b.push(...encodeText(twoCol('Delivery Fee:', `P${delivFee.toFixed(2)}`)));
+      b.push(...encodeText(twoCol('Delivery Fee:', `P${delivFee.toFixed(2)}`, paperWidth)));
     }
     b.push(...CMD.BOLD_ON);
-    b.push(...encodeText(twoCol('TOTAL:', `P${total.toFixed(2)}`)));
+    b.push(...encodeText(twoCol('TOTAL:', `P${total.toFixed(2)}`, paperWidth)));
     b.push(...CMD.BOLD_OFF);
     if (ptsClaimed > 0) {
-      b.push(...encodeText(twoCol('Points Claimed:', `-P${ptsClaimed.toFixed(2)}`)));
+      b.push(...encodeText(twoCol('Points Claimed:', `-P${ptsClaimed.toFixed(2)}`, paperWidth)));
     }
-    b.push(...encodeText(twoCol('Net Amount:', `P${netAmount.toFixed(2)}`)));
-    b.push(...encodeText(twoCol('Cash Tendered:', `P${tendered.toFixed(2)}`)));
-    b.push(...encodeText(twoCol('Change:', `P${change.toFixed(2)}`)));
-    b.push(...encodeText(divider('.')));
-    b.push(...encodeText(twoCol('Payment:', payStr)));
+    b.push(...encodeText(twoCol('Net Amount:', `P${netAmount.toFixed(2)}`, paperWidth)));
+    b.push(...encodeText(twoCol('Cash Tendered:', `P${tendered.toFixed(2)}`, paperWidth)));
+    b.push(...encodeText(twoCol('Change:', `P${change.toFixed(2)}`, paperWidth)));
+    b.push(...encodeText(divider('.', paperWidth)));
+    b.push(...encodeText(twoCol('Payment:', payStr, paperWidth)));
   }
 
   // ── Special instructions ──────────────────────────────────────────────────
   let notes = order.special_request || order.special_instructions || '';
   if (notes) notes = notes.split('|')[0].trim();
   if (notes) {
-    b.push(...encodeText(divider()));
+    b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('SPECIAL INSTRUCTIONS\n'), ...CMD.BOLD_OFF);
-    for (let i = 0; i < notes.length; i += PAPER_WIDTH) {
-      b.push(...encodeText(notes.slice(i, i + PAPER_WIDTH) + '\n'));
+    for (const line of wrapText(notes, paperWidth)) {
+      b.push(...encodeText(line + '\n'));
     }
   }
 
