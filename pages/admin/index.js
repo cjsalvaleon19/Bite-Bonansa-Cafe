@@ -250,6 +250,47 @@ export default function AdminPage() {
   // Track which budget cell is being edited (for formatted display)
   const [budgetEditKey, setBudgetEditKey] = useState(null);
 
+  const shiftDateByMonthsClamped = (inputDate, deltaMonths) => {
+    const date = new Date(inputDate);
+    const originalDay = date.getDate();
+    date.setDate(1);
+    date.setMonth(date.getMonth() + deltaMonths);
+    const maxDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    date.setDate(Math.min(originalDay, maxDay));
+    return date;
+  };
+
+  const shiftDateByYearsClamped = (inputDate, deltaYears) => {
+    const date = new Date(inputDate);
+    const originalDay = date.getDate();
+    date.setDate(1);
+    date.setFullYear(date.getFullYear() + deltaYears);
+    const maxDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    date.setDate(Math.min(originalDay, maxDay));
+    return date;
+  };
+
+  const formatShortMonth = (dateVal) => (
+    new Date(dateVal).toLocaleString('en-US', { month: 'short' }).toUpperCase()
+  );
+
+  const formatFinancialCoverageLabel = (fromDate, toDate, unit) => {
+    const from = new Date(`${fromDate}T00:00:00`);
+    const to = new Date(`${toDate}T00:00:00`);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return String(toDate || '');
+
+    const isSingleDay = fromDate === toDate;
+    if (isSingleDay) {
+      const day = String(to.getDate()).padStart(2, '0');
+      return `${formatShortMonth(to)}${day}`;
+    }
+
+    if (unit === 'annual') return String(to.getFullYear());
+
+    const yy = String(to.getFullYear()).slice(-2);
+    return `${formatShortMonth(to)}${yy}`;
+  };
+
   // ── Bills state ───────────────────────────────────────────────────────────
   const [billsList, setBillsList] = useState([]);
   const [billDialogOpen, setBillDialogOpen] = useState(false);
@@ -1371,21 +1412,27 @@ export default function AdminPage() {
           const from = new Date(finDateFrom);
           const to = new Date(finDateTo);
           if (finCompareMode === 'same_period_last_year') {
-            from.setFullYear(from.getFullYear() - index);
-            to.setFullYear(to.getFullYear() - index);
+            return {
+              from: shiftDateByYearsClamped(from, -index),
+              to: shiftDateByYearsClamped(to, -index),
+            };
           } else if (unit === 'quarterly') {
-            from.setMonth(from.getMonth() - index * 3);
-            to.setMonth(to.getMonth() - index * 3);
+            return {
+              from: shiftDateByMonthsClamped(from, -(index * 3)),
+              to: shiftDateByMonthsClamped(to, -(index * 3)),
+            };
           } else if (unit === 'annual') {
-            from.setFullYear(from.getFullYear() - index);
-            to.setFullYear(to.getFullYear() - index);
+            return {
+              from: shiftDateByYearsClamped(from, -index),
+              to: shiftDateByYearsClamped(to, -index),
+            };
           } else {
-            from.setMonth(from.getMonth() - index);
-            to.setMonth(to.getMonth() - index);
+            return {
+              from: shiftDateByMonthsClamped(from, -index),
+              to: shiftDateByMonthsClamped(to, -index),
+            };
           }
-          return { from, to };
         };
-        const makeLabel = (to) => unit === 'annual' ? to.slice(0, 4) : (unit === 'monthly' || unit === 'quarterly') ? to.slice(0, 7) : to;
 
         const computePLPeriod = async (cFrom, cTo, cFromISO, cToISO) => {
           const [{ data: rev }, { data: del }, { data: cg }, { data: exps }] = await Promise.all([
@@ -1413,13 +1460,13 @@ export default function AdminPage() {
         };
 
         const compareFull = [];
-        if (periods > 0) for (let i = periods; i >= 1; i--) {
+        if (periods > 0) for (let i = 1; i <= periods; i++) {
           const { from: f, to: t } = shiftedRange(i);
           const cFrom = f.toISOString().split('T')[0];
           const cTo = t.toISOString().split('T')[0];
           const cFromISO = `${cFrom}T00:00:00.000Z`;
           const cToISO = `${cTo}T23:59:59.999Z`;
-          const label = makeLabel(cTo);
+          const label = formatFinancialCoverageLabel(cFrom, cTo, unit);
           let periodData = { label };
           if (finSubTab === 'pl' || finSubTab === 'sales' || finSubTab === 'budget') {
             const pl = await computePLPeriod(cFrom, cTo, cFromISO, cToISO);
@@ -1467,7 +1514,7 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, finSubTab, finDateFrom, finDateTo, finCompareMode, finCompareCount, finComparePeriod, FIN_CASH_ACCOUNTS, FIN_PPE_ACCOUNTS, FIN_OPEX_ACCOUNTS]);
+  }, [supabase, finSubTab, finDateFrom, finDateTo, finCompareMode, finCompareCount, finComparePeriod, FIN_CASH_ACCOUNTS, FIN_PPE_ACCOUNTS, FIN_OPEX_ACCOUNTS, shiftDateByMonthsClamped, shiftDateByYearsClamped, formatFinancialCoverageLabel]);
 
   // ── Fetch: Chart of Accounts ──────────────────────────────────────────────
   const fetchCOA = useCallback(async () => {
@@ -4215,7 +4262,7 @@ export default function AdminPage() {
 
               {/* P&L */}
               {finSubTab === 'pl' && finData?.type === 'pl' && (() => {
-                const currentLabel = `${finDateFrom} – ${finDateTo}`;
+                const currentLabel = formatFinancialCoverageLabel(finDateFrom, finDateTo, finComparePeriod);
                 const hasCmp = finCompareFull.length > 0;
                 const colCount = 1 + finCompareFull.length;
                 const cmpVal = (p, key, opexKey) => opexKey ? (p.expByAccount?.[opexKey] || 0) : (p[key] || 0);
@@ -4281,6 +4328,7 @@ export default function AdminPage() {
               {finSubTab === 'balance' && finData?.type === 'balance' && (() => {
                 const hasCmp = finCompareFull.length > 0;
                 const colCount = 1 + finCompareFull.length;
+                const currentLabel = formatFinancialCoverageLabel(finDateFrom, finDateTo, finComparePeriod);
                 const cmpGet = (p, key) => p[key] ?? 0;
                 const hdrCell = (label, colSpan = 1) => (
                   <td colSpan={colSpan} style={{ ...styles.td, fontWeight: 600 }}>{label}</td>
@@ -4312,8 +4360,8 @@ export default function AdminPage() {
                         <thead>
                           <tr>
                             <th style={styles.th}>Item</th>
-                            <th style={{ ...styles.th, textAlign: 'right', color: '#ffc107' }}>As of {finDateTo}</th>
-                            {finCompareFull.map((p) => <th key={p.label} style={{ ...styles.th, textAlign: 'right' }}>As of {p.label}</th>)}
+                            <th style={{ ...styles.th, textAlign: 'right', color: '#ffc107' }}>{currentLabel}</th>
+                            {finCompareFull.map((p) => <th key={p.label} style={{ ...styles.th, textAlign: 'right' }}>{p.label}</th>)}
                           </tr>
                         </thead>
                       )}
