@@ -40,8 +40,8 @@ function normalizeDepartment(item = {}) {
   const category = item.category || item.menu_items?.category || item.menuItem?.category || null;
 
   return {
-    code: (code || '').trim() || null,
-    name: (name || category || FALLBACK_KITCHEN_DEPARTMENT).trim(),
+    code: code ? String(code).trim() || null : null,
+    name: String(name || category || FALLBACK_KITCHEN_DEPARTMENT).trim(),
   };
 }
 

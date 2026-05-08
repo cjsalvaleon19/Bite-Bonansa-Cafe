@@ -621,7 +621,7 @@ export default function CashierDashboard() {
     for (let i = 0; i < kitchenOrders.length; i++) {
       if (i > 0) {
         // Stagger browser print windows slightly so each department slip queues reliably.
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 300));
       }
       const group = kitchenOrders[i];
       printReceipt(group.order, 'kitchen', { departmentName: group.name });
