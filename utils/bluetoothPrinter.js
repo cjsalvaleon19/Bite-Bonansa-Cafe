@@ -24,6 +24,15 @@ const PRINTER_CHAR_UUID    = '00002af1-0000-1000-8000-00805f9b34fb';
 const CHUNK_SIZE           = 512;  // max bytes per writeValue call
 const DEFAULT_PAPER_WIDTH  = 48;   // characters per line on 80 mm paper
 const PRINTER_WIDTH_KEY    = 'bbc_printer_paper_width';
+const RECEIPT_DATETIME_FORMATTER = new Intl.DateTimeFormat('en-PH', {
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: true,
+});
 
 // ESC/POS command sequences
 const ESC = 0x1B;
@@ -195,15 +204,7 @@ function getPaperWidth(opts = {}) {
  */
 function formatReceiptDate(value) {
   const date = new Date(value || Date.now());
-  return new Intl.DateTimeFormat('en-PH', {
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-  }).format(date);
+  return RECEIPT_DATETIME_FORMATTER.format(date);
 }
 
 /**
@@ -365,7 +366,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
 
     b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_NORMAL, ...CMD.BOLD_ON);
     b.push(...encodeText(`Order Slip #: ${getOrderSlipNumber(order)}\n`));
-    b.push(...encodeText(`Type: ${(order.order_mode || 'N/A').toUpperCase()}\n`));
+    b.push(...encodeText(`Type       : ${(order.order_mode || 'N/A').toUpperCase()}\n`));
     b.push(...CMD.BOLD_OFF);
     b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
