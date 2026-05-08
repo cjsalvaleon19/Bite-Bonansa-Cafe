@@ -9,6 +9,49 @@ import {
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 
+function shiftDateByMonthsClamped(inputDate, deltaMonths) {
+  const date = new Date(inputDate);
+  const originalDay = date.getDate();
+  date.setDate(1);
+  date.setMonth(date.getMonth() + deltaMonths);
+  const maxDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(originalDay, maxDay));
+  return date;
+}
+
+function shiftDateByYearsClamped(inputDate, deltaYears) {
+  const date = new Date(inputDate);
+  const originalDay = date.getDate();
+  date.setDate(1);
+  date.setFullYear(date.getFullYear() + deltaYears);
+  const maxDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(originalDay, maxDay));
+  return date;
+}
+
+function formatShortMonth(dateVal) {
+  const d = new Date(dateVal);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+}
+
+function formatFinancialCoverageLabel(fromDate, toDate, unit) {
+  const from = new Date(`${fromDate}T00:00:00`);
+  const to = new Date(`${toDate}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return String(toDate || '');
+
+  const isSingleDay = fromDate === toDate;
+  if (isSingleDay) {
+    const day = String(to.getDate()).padStart(2, '0');
+    return `${formatShortMonth(to)}${day}`;
+  }
+
+  if (unit === 'annual') return String(to.getFullYear());
+
+  const yy = String(to.getFullYear()).slice(-2);
+  return `${formatShortMonth(to)}${yy}`;
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('admin');
@@ -249,47 +292,6 @@ export default function AdminPage() {
   });
   // Track which budget cell is being edited (for formatted display)
   const [budgetEditKey, setBudgetEditKey] = useState(null);
-
-  const shiftDateByMonthsClamped = (inputDate, deltaMonths) => {
-    const date = new Date(inputDate);
-    const originalDay = date.getDate();
-    date.setDate(1);
-    date.setMonth(date.getMonth() + deltaMonths);
-    const maxDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-    date.setDate(Math.min(originalDay, maxDay));
-    return date;
-  };
-
-  const shiftDateByYearsClamped = (inputDate, deltaYears) => {
-    const date = new Date(inputDate);
-    const originalDay = date.getDate();
-    date.setDate(1);
-    date.setFullYear(date.getFullYear() + deltaYears);
-    const maxDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-    date.setDate(Math.min(originalDay, maxDay));
-    return date;
-  };
-
-  const formatShortMonth = (dateVal) => (
-    new Date(dateVal).toLocaleString('en-US', { month: 'short' }).toUpperCase()
-  );
-
-  const formatFinancialCoverageLabel = (fromDate, toDate, unit) => {
-    const from = new Date(`${fromDate}T00:00:00`);
-    const to = new Date(`${toDate}T00:00:00`);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return String(toDate || '');
-
-    const isSingleDay = fromDate === toDate;
-    if (isSingleDay) {
-      const day = String(to.getDate()).padStart(2, '0');
-      return `${formatShortMonth(to)}${day}`;
-    }
-
-    if (unit === 'annual') return String(to.getFullYear());
-
-    const yy = String(to.getFullYear()).slice(-2);
-    return `${formatShortMonth(to)}${yy}`;
-  };
 
   // ── Bills state ───────────────────────────────────────────────────────────
   const [billsList, setBillsList] = useState([]);
@@ -1514,7 +1516,7 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, finSubTab, finDateFrom, finDateTo, finCompareMode, finCompareCount, finComparePeriod, FIN_CASH_ACCOUNTS, FIN_PPE_ACCOUNTS, FIN_OPEX_ACCOUNTS, shiftDateByMonthsClamped, shiftDateByYearsClamped, formatFinancialCoverageLabel]);
+  }, [supabase, finSubTab, finDateFrom, finDateTo, finCompareMode, finCompareCount, finComparePeriod, FIN_CASH_ACCOUNTS, FIN_PPE_ACCOUNTS, FIN_OPEX_ACCOUNTS]);
 
   // ── Fetch: Chart of Accounts ──────────────────────────────────────────────
   const fetchCOA = useCallback(async () => {
