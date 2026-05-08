@@ -45,6 +45,11 @@ const CMD = {
 // ─── Connection state (module-level; reused within a browser session) ────────
 
 let _characteristic = null;
+let _device = null;
+
+function isGattConnected(device) {
+  return Boolean(device && device.gatt && device.gatt.connected);
+}
 
 // ─── Public: connect / disconnect / status ───────────────────────────────────
 
@@ -57,7 +62,12 @@ let _characteristic = null;
  * @throws {Error} if Web Bluetooth is unsupported or the connection fails
  */
 export async function connectPrinter() {
-  if (_characteristic) return _characteristic;
+  if (_characteristic && isGattConnected(_device)) {
+    return _characteristic;
+  }
+
+  // Cached characteristic is stale when GATT is no longer connected.
+  _characteristic = null;
 
   if (typeof navigator === 'undefined' || !navigator.bluetooth) {
     throw new Error(
@@ -66,19 +76,41 @@ export async function connectPrinter() {
     );
   }
 
-  const device = await navigator.bluetooth.requestDevice({
-    filters: [{ services: [PRINTER_SERVICE_UUID] }],
-    optionalServices: [PRINTER_SERVICE_UUID],
-  });
+  if (!_device) {
+    _device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [PRINTER_SERVICE_UUID] }],
+      optionalServices: [PRINTER_SERVICE_UUID],
+    });
 
-  // Clear cached characteristic when the device disconnects
-  device.addEventListener('gattserverdisconnected', () => {
-    _characteristic = null;
-  });
+    // Clear cached characteristic when the device disconnects
+    _device.addEventListener('gattserverdisconnected', () => {
+      _characteristic = null;
+    });
+  }
 
-  const server  = await device.gatt.connect();
-  const service = await server.getPrimaryService(PRINTER_SERVICE_UUID);
-  _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
+  // Reconnect without prompting again when we already have a paired device.
+  let server = _device.gatt;
+  if (!server) {
+    _device = null;
+    throw new Error('Bluetooth printer is unavailable. Please pair the printer again.');
+  }
+  if (!server.connected) {
+    server = await _device.gatt.connect();
+  }
+
+  try {
+    const service = await server.getPrimaryService(PRINTER_SERVICE_UUID);
+    _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
+  } catch (err) {
+    // Recover once from transient disconnects while discovering services.
+    if (!isGattConnected(_device)) {
+      const retryServer = await _device.gatt.connect();
+      const service = await retryServer.getPrimaryService(PRINTER_SERVICE_UUID);
+      _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
+    } else {
+      throw err;
+    }
+  }
 
   return _characteristic;
 }
@@ -90,7 +122,7 @@ export function disconnectPrinter() {
 
 /** Returns true if a printer characteristic is currently cached. */
 export function isPrinterConnected() {
-  return _characteristic !== null;
+  return _characteristic !== null && isGattConnected(_device);
 }
 
 // ─── Private: ESC/POS encoding helpers ───────────────────────────────────────
