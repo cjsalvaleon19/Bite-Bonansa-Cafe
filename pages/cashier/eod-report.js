@@ -7,6 +7,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions } from '../../utils/salesCalculations';
 import { printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
+import { buildKitchenDepartmentOrders, formatItemNameWithSubvariant, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 export default function EndOfDayReport() {
   const router = useRouter();
@@ -100,14 +101,9 @@ export default function EndOfDayReport() {
     }
   };
 
-  // Helper function to get order items with fallback
-  const getOrderItems = (order) => {
-    return order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
-  };
-
   const handlePreviewReceipt = (order) => {
     // Create a modal-like preview window
-    const previewWindow = window.open('', '_blank', 'width=400,height=700');
+    const previewWindow = window.open('', '_blank');
     if (!previewWindow) return;
 
     const orderItems = getOrderItems(order);
@@ -144,8 +140,11 @@ export default function EndOfDayReport() {
     }
 
     previewWindow.document.write(`
+      <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Receipt Preview - #${order.order_number || order.id.slice(0, 8)}</title>
           <style>
             body { font-family: monospace; font-size: 12px; padding: 20px; background: #f5f5f5; }
@@ -287,9 +286,84 @@ export default function EndOfDayReport() {
     previewWindow.document.close();
   };
 
-  const handlePrintReceipt = (order) => {
+  const printOrderSlip = (order) => {
+    const slipWindow = window.open('', '_blank');
+    if (!slipWindow) return;
+
+    const orderItems = getOrderItems(order);
+
+    slipWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Order Slip #${getOrderSlipNumber(order)}</title>
+          <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
+          <style>
+            @page { size: 80mm auto; margin: 0 0 1cm 0; }
+            body { font-family: monospace; font-size: 14px; line-height: 1.35; padding: 20px 20px 0; margin: 0; }
+            .section { margin: 12px 0; }
+            table { width: 100%; border-collapse: collapse; }
+            @media print { button { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="section" style="text-align: center;">
+            <p style="font-size: 20px; font-weight: bold;">ORDER SLIP</p>
+          </div>
+          <div class="section">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span><strong>Order Slip #:</strong> ${getOrderSlipNumber(order)}</span>
+              <span><strong>${(order.order_mode || 'N/A').toUpperCase()}</strong></span>
+            </div>
+          </div>
+          <div class="section">
+            <table>
+              <thead>
+                <tr>
+                  <th style="text-align: left; padding: 4px 0; border-bottom: 2px solid #000;">Item</th>
+                  <th style="text-align: right; padding: 4px 0; border-bottom: 2px solid #000;">Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${orderItems.map(item => `
+                  <tr>
+                    <td style="padding: 4px 0;">${formatItemNameWithSubvariant(item)}</td>
+                    <td style="padding: 4px 0; text-align: right;">${item.quantity || 1}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div style="text-align: center; margin-top: 20px;">
+            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #ffc107; border: none; border-radius: 4px;">
+              🖨️ Print Slip
+            </button>
+            <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; margin-left: 10px; background: #666; color: white; border: none; border-radius: 4px;">
+              Close
+            </button>
+          </div>
+        </body>
+      </html>
+    `);
+
+    slipWindow.document.close();
+  };
+
+  const printKitchenOrderSlips = async (order) => {
+    const kitchenOrders = buildKitchenDepartmentOrders(order);
+    for (let i = 0; i < kitchenOrders.length; i++) {
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      printOrderSlip(kitchenOrders[i].order);
+    }
+  };
+
+  const handlePrintReceipt = async (order) => {
     // Create a simple receipt print window
-    const receiptWindow = window.open('', '_blank', 'width=300,height=600');
+    const receiptWindow = window.open('', '_blank');
     if (!receiptWindow) return;
 
     const orderItems = getOrderItems(order);
@@ -326,11 +400,16 @@ export default function EndOfDayReport() {
     }
 
     receiptWindow.document.write(`
+      <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Receipt #${order.order_number || order.id.slice(0, 8)}</title>
+          <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
-            body { font-family: monospace; font-size: 12px; padding: 20px; }
+            @page { size: 80mm auto; margin: 0 0 1cm 0; }
+            body { font-family: monospace; font-size: 12px; padding: 20px 20px 0; margin: 0; }
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
             .item { display: flex; justify-content: space-between; margin: 5px 0; }
@@ -456,9 +535,8 @@ export default function EndOfDayReport() {
     `);
 
     receiptWindow.document.close();
-    setTimeout(() => {
-      receiptWindow.print();
-    }, 250);
+
+    await printKitchenOrderSlips(order);
   };
 
   const handleBtPrintReceipt = async (order) => {
@@ -479,7 +557,11 @@ export default function EndOfDayReport() {
       await printToBluetoothPrinter(order, 'sales', {
         customerLoyaltyId: order.users?.customer_id || null,
         displayPaymentMethod,
+        omitFooterMeta: true,
       });
+      for (const group of buildKitchenDepartmentOrders(order)) {
+        await printToBluetoothPrinter(group.order, 'kitchen');
+      }
     } catch (err) {
       alert('Bluetooth print failed: ' + (err.message || 'Unknown error'));
     }

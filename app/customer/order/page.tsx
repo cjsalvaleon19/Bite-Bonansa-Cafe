@@ -305,7 +305,7 @@ function CustomerOrderPage() {
           .from('menu_items')
           .select('*')
           .eq('available', true)
-          .eq('is_sold_out', false)
+          .or('is_sold_out.is.null,is_sold_out.eq.false')
           .order('name'),
         supabase.from('categories').select('*').order('sort_order'),
       ])

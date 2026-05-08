@@ -117,146 +117,6 @@ export default function OrdersQueue() {
   };
 
 
-
-  // Insert a double-entry sales journal record for a completed order.
-  // Errors are logged but never thrown so order completion is never blocked.
-  const insertSalesJournalEntry = async (order) => {
-    if (!supabase) return;
-    try {
-      const date = new Date().toISOString().split('T')[0];
-      const totalAmount = Number(order.total_amount) || 0;
-      const pointsUsed = Number(order.points_used) || 0;
-      const paymentMethod = (order.payment_method || 'cash').toLowerCase();
-      const orderRef = order.order_number || order.id;
-      const customerName = (order.customer_name || '').trim() || 'Walk-in';
-      const entries = [];
-
-      // Loyalty-points portion → reduce Accounts Payable
-      if (paymentMethod.includes('points') && pointsUsed > 0) {
-        entries.push({
-          date,
-          description: `Sale: ${orderRef}`,
-          debit_account: 'Accounts Payable',
-          credit_account: 'Revenue',
-          amount: Math.round(pointsUsed * 100) / 100,
-          reference_type: 'order',
-          reference: orderRef,
-          name: customerName,
-        });
-      }
-
-      // Cash / GCash portion
-      const cashAmount = Math.round((totalAmount - (paymentMethod.includes('points') ? pointsUsed : 0)) * 100) / 100;
-      if (cashAmount > 0) {
-        const debitAccount = paymentMethod.includes('credit') || paymentMethod.includes('card')
-          ? "Owner's Capital"
-          : paymentMethod.includes('gcash')
-            ? 'Cash in Bank'
-            : 'Cash on Hand';
-        entries.push({
-          date,
-          description: `Sale: ${orderRef}`,
-          debit_account: debitAccount,
-          credit_account: 'Revenue',
-          amount: cashAmount,
-          reference_type: 'order',
-          reference: orderRef,
-          name: customerName,
-        });
-      }
-
-      if (entries.length > 0) {
-        const { error } = await supabase.from('journal_entries').insert(entries);
-        if (error) console.error('[OrdersQueue] Journal entry insert failed:', error.message);
-      }
-
-      // Loyalty points earned: Debit Rewards (Expense), Credit Accounts Payable
-      const pointsEarned = Number(order.earnings_amount) || 0;
-      if (order.customer_id && pointsEarned > 0) {
-        const { error: loyaltyErr } = await supabase.from('journal_entries').insert({
-          date,
-          description: `Loyalty Points Earned: ${orderRef}`,
-          debit_account: 'Rewards',
-          credit_account: 'Accounts Payable - Rewards',
-          amount: Math.round(pointsEarned * 100) / 100,
-          reference_type: 'order',
-          reference: orderRef,
-          name: customerName,
-        });
-        if (loyaltyErr) console.error('[OrdersQueue] Loyalty points journal entry failed:', loyaltyErr.message);
-      }
-      // COGS entry: Debit COGS / Credit Inventory (based on price costing)
-      try {
-        const orderItems = order.order_items || order.items || [];
-        if (orderItems.length > 0) {
-          // Build candidate lookup names for each item: try 'Base Name - VariantValue'
-          // (e.g. 'Brown Sugar Milktea - 16oz') as well as the plain base name.
-          // This handles costing headers whose menu_item_name includes the size variant.
-          const buildCandidateNames = (item) => {
-            const names = [item.name];
-            const vd = item.variant_details;
-            if (vd && typeof vd === 'object') {
-              const sizeVal = vd.Size || vd.size;
-              if (sizeVal) names.push(`${item.name} - ${sizeVal}`);
-              Object.entries(vd).forEach(([type, value]) => {
-                const typeL = type.toLowerCase().replace(/[^a-z]/g, '');
-                if (typeL !== 'addon' && typeL !== 'addons' && typeL !== 'size' && value) {
-                  names.push(`${item.name} - ${value}`);
-                }
-              });
-            }
-            return names;
-          };
-
-          const allCandidateNames = [...new Set(orderItems.flatMap(buildCandidateNames).filter(Boolean))];
-          const { data: costingRows } = await supabase
-            .from('price_costing_headers')
-            .select('menu_item_name, lines:price_costing_items(qty, cost)')
-            .in('menu_item_name', allCandidateNames);
-          if (costingRows && costingRows.length > 0) {
-            // Build lookup: menu_item_name → raw materials total (sum of qty×cost)
-            const rawMaterialMap = {};
-            costingRows.forEach((h) => {
-              const total = (h.lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.cost) || 0), 0);
-              rawMaterialMap[h.menu_item_name] = total;
-            });
-            // For each item, prefer the variant-combined name over the base name
-            const getRawMaterialCost = (item) => {
-              const candidates = buildCandidateNames(item);
-              // Try variant-combined candidates first (skip index 0 which is the base name)
-              for (let i = 1; i < candidates.length; i++) {
-                if (rawMaterialMap[candidates[i]] !== undefined) return rawMaterialMap[candidates[i]];
-              }
-              return rawMaterialMap[item.name] || 0;
-            };
-            // Sum COGS across all ordered items
-            const totalCOGS = orderItems.reduce((s, item) => {
-              const rm = getRawMaterialCost(item);
-              return s + rm * (Number(item.quantity) || 1);
-            }, 0);
-            if (totalCOGS > 0) {
-              const { error: cogsErr } = await supabase.from('journal_entries').insert({
-                date,
-                description: `COGS: ${orderRef}`,
-                debit_account: 'Cost of Goods Sold',
-                credit_account: 'Inventory',
-                amount: Math.round(totalCOGS * 100) / 100,
-                reference_type: 'order',
-                reference: orderRef,
-                name: customerName,
-              });
-              if (cogsErr) console.error('[OrdersQueue] COGS journal entry failed:', cogsErr.message);
-            }
-          }
-        }
-      } catch (cogsLookupErr) {
-        console.error('[OrdersQueue] COGS lookup failed:', cogsLookupErr?.message ?? cogsLookupErr);
-      }
-    } catch (err) {
-      console.error('[OrdersQueue] Failed to create sales journal entry:', err?.message ?? err);
-    }
-  };
-
   const handleItemServed = async (orderId, itemId, order) => {
     if (!supabase) return;
 
@@ -288,9 +148,6 @@ export default function OrdersQueue() {
           .eq('id', orderId);
 
         if (updateOrderError) throw updateOrderError;
-
-        // Create sales journal entry for the completed order (non-blocking)
-        if (order) await insertSalesJournalEntry(order);
       }
 
       fetchOrders();
@@ -567,9 +424,6 @@ export default function OrdersQueue() {
         .eq('id', order.id);
 
       if (error) throw error;
-
-      // Create sales journal entry for the completed order (non-blocking)
-      await insertSalesJournalEntry(order);
 
       alert('Order marked as complete!');
       fetchOrders();

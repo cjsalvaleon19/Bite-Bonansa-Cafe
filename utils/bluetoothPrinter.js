@@ -15,12 +15,15 @@
  *   Paper width     : 80 mm → 48 characters per line (normal font, 8 dots/char)
  */
 
+import { formatItemNameWithSubvariant, getOrderSlipNumber } from './receiptDepartments';
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb';
 const PRINTER_CHAR_UUID    = '00002af1-0000-1000-8000-00805f9b34fb';
 const CHUNK_SIZE           = 512;  // max bytes per writeValue call
-const PAPER_WIDTH          = 48;   // characters per line on 80 mm paper
+const DEFAULT_PAPER_WIDTH  = 48;   // characters per line on 80 mm paper
+const PRINTER_WIDTH_KEY    = 'bbc_printer_paper_width';
 
 // ESC/POS command sequences
 const ESC = 0x1B;
@@ -32,8 +35,9 @@ const CMD = {
   BOLD_ON:      [ESC, 0x45, 0x01],       // bold on
   BOLD_OFF:     [ESC, 0x45, 0x00],       // bold off
   SIZE_2X:      [GS,  0x21, 0x11],       // double height + double width
+  SIZE_TALL:    [GS,  0x21, 0x01],       // double height
   SIZE_NORMAL:  [GS,  0x21, 0x00],       // normal character size
-  FEED_3:       [ESC, 0x64, 0x03],       // feed 3 lines before cut
+  FEED_1CM:     [ESC, 0x4A, 0x50],       // feed ~1 cm before cut (80 dots)
   CUT:          [GS,  0x56, 0x42, 0x00], // full paper cut
   LF:           [0x0A],                  // line feed (newline)
 };
@@ -119,19 +123,73 @@ function bytes(...parts) {
   return out;
 }
 
+export function sanitizePaperWidth(value) {
+  if (value === null || value === undefined) return DEFAULT_PAPER_WIDTH;
+  const n = Number.parseInt(value, 10);
+  return n === 32 || n === 48 ? n : DEFAULT_PAPER_WIDTH;
+}
+
+function getPaperWidth(opts = {}) {
+  if (opts.paperWidth !== undefined) return sanitizePaperWidth(opts.paperWidth);
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return sanitizePaperWidth(window.localStorage.getItem(PRINTER_WIDTH_KEY));
+  }
+  return DEFAULT_PAPER_WIDTH;
+}
+
+function wrapText(text, width) {
+  const safeWidth = Number.isFinite(width) && width > 0
+    ? Math.floor(width)
+    : DEFAULT_PAPER_WIDTH;
+  const src = String(text || '');
+  if (!src) return [''];
+  const lines = [];
+  for (let i = 0; i < src.length; i += safeWidth) {
+    lines.push(src.slice(i, i + safeWidth));
+  }
+  return lines;
+}
+
 /**
  * Two-column row: left text fills the remaining width after the right-aligned
  * value is placed at the right edge of PAPER_WIDTH.
  */
-function twoCol(left, right) {
+function twoCol(left, right, paperWidth = DEFAULT_PAPER_WIDTH) {
   const r = String(right);
-  const leftWidth = Math.max(0, PAPER_WIDTH - r.length);
+  const leftWidth = Math.max(0, paperWidth - r.length);
   return String(left).substring(0, leftWidth).padEnd(leftWidth) + r + '\n';
 }
 
 /** Full-width divider line using the given character. */
-function divider(char = '-') {
-  return char.repeat(PAPER_WIDTH) + '\n';
+function divider(char = '-', paperWidth = DEFAULT_PAPER_WIDTH) {
+  return char.repeat(paperWidth) + '\n';
+}
+
+/**
+ * Build ESC/POS bytes for a QR code block (model 2, size 6, error level M).
+ * The QR code is stored and then printed; alignment should be set to CENTER
+ * before calling this.
+ *
+ * @param {string} url - The URL/string to encode in the QR code
+ * @returns {number[]}
+ */
+function qrCodeBytes(url) {
+  const urlData = encodeText(url);
+  const storeLen = 3 + urlData.length; // cn(0x31) + fn(0x50) + m(0x30) + data
+  const pL = storeLen & 0xFF;
+  const pH = (storeLen >> 8) & 0xFF;
+  return [
+    // Select QR model 2
+    GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00,
+    // Module size 6 dots — large enough to scan on 80mm paper, readable on 58mm
+    GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06,
+    // Error correction level M
+    GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31,
+    // Store URL data
+    GS, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30, ...urlData,
+    // Print the QR code
+    GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30,
+  ];
 }
 
 // ─── Public: build ESC/POS receipt bytes ─────────────────────────────────────
@@ -146,11 +204,14 @@ function divider(char = '-') {
  * @param {string}  [opts.customerLoyaltyId]     - BBC-XXXXX loyalty card number
  * @param {number}  [opts.cashTendered]          - Overrides order.cash_amount
  * @param {string}  [opts.displayPaymentMethod]  - Overrides order.payment_method display
+ * @param {string}  [opts.departmentName]        - Kitchen department/station label
+ * @param {boolean} [opts.omitFooterMeta]        - Omits "Accepted by" and printed date lines
  * @returns {Uint8Array}
  */
 export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   const isKitchen = receiptType === 'kitchen';
-  const title     = isKitchen ? 'KITCHEN ORDER SLIP' : 'SALES INVOICE';
+  const title     = isKitchen ? 'ORDER SLIP' : 'SALES INVOICE';
+  const paperWidth = getPaperWidth(opts);
 
   // Support both order_items (DB joined) and items (JSONB / cart) shapes
   const orderItems = (order.order_items && order.order_items.length > 0)
@@ -184,6 +245,31 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   // ── Init ──────────────────────────────────────────────────────────────────
   b.push(...CMD.INIT);
 
+  if (isKitchen) {
+    b.push(...CMD.ALIGN_CENTER, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
+    b.push(...encodeText(`${title}\n`));
+    b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
+    b.push(...encodeText(divider('=', paperWidth)));
+
+    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_2X);
+    b.push(...encodeText(twoCol(`Order Slip #: ${getOrderSlipNumber(order)}`, (order.order_mode || 'N/A').toUpperCase(), paperWidth)));
+    b.push(...encodeText(divider('-', paperWidth)));
+    b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
+
+    for (const item of orderItems) {
+      const qty = item.quantity || 1;
+      const itemLabel = `${qty} x ${formatItemNameWithSubvariant(item)}`;
+      for (const line of wrapText(itemLabel, paperWidth)) {
+        b.push(...encodeText(line + '\n'));
+      }
+    }
+
+    b.push(...CMD.SIZE_NORMAL);
+    b.push(...CMD.FEED_1CM);
+    b.push(...CMD.CUT);
+    return new Uint8Array(b);
+  }
+
   // ── Header ────────────────────────────────────────────────────────────────
   b.push(...CMD.ALIGN_CENTER, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
   b.push(...encodeText('Bite Bonansa Cafe\n'));
@@ -193,7 +279,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   b.push(...encodeText("Tel: 0907-200-8247\n"));
   b.push(...CMD.LF);
   b.push(...CMD.BOLD_ON, ...encodeText(title + '\n'), ...CMD.BOLD_OFF);
-  b.push(...encodeText(divider('=')));
+  b.push(...encodeText(divider('=', paperWidth)));
 
   // ── Order info ────────────────────────────────────────────────────────────
   b.push(...CMD.ALIGN_LEFT);
@@ -211,11 +297,11 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   }
   if (order.order_mode === 'delivery' && order.delivery_address) {
     const addr = `Addr  : ${order.delivery_address}`;
-    for (let i = 0; i < addr.length; i += PAPER_WIDTH) {
-      b.push(...encodeText(addr.slice(i, i + PAPER_WIDTH) + '\n'));
+    for (const line of wrapText(addr, paperWidth)) {
+      b.push(...encodeText(line + '\n'));
     }
   }
-  b.push(...encodeText(divider()));
+  b.push(...encodeText(divider('-', paperWidth)));
 
   // ── Items ─────────────────────────────────────────────────────────────────
   b.push(...CMD.BOLD_ON, ...encodeText('ITEMS ORDERED\n'), ...CMD.BOLD_OFF);
@@ -228,47 +314,63 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
 
     // e.g. "Americano                x2       P120.00"
     const priceTag  = `P${lineTotal}`;
-    const nameWidth = PAPER_WIDTH - priceTag.length;
-    const namePart  = `${displayName} x${qty}`.substring(0, nameWidth).padEnd(nameWidth);
-    b.push(...encodeText(namePart + priceTag + '\n'));
+    const itemLabel = `${displayName} x${qty}`;
+    const nameWidth = paperWidth - priceTag.length;
+    // If the space left for the item label is too small, print label and price
+    // on separate lines so details remain readable on narrow paper widths.
+    if (nameWidth < 8) {
+      for (const line of wrapText(itemLabel, paperWidth)) {
+        b.push(...encodeText(line + '\n'));
+      }
+      b.push(...encodeText(priceTag + '\n'));
+    } else {
+      const itemLines = wrapText(itemLabel, nameWidth);
+      const firstItemLine = itemLines.length > 0 ? itemLines[0] : '';
+      b.push(...encodeText(firstItemLine.padEnd(nameWidth) + priceTag + '\n'));
+      for (let i = 1; i < itemLines.length; i++) {
+        b.push(...encodeText(itemLines[i] + '\n'));
+      }
+    }
 
     // Variant add-ons (supports both key shapes)
     const variants = item.variant_details || item.variantDetails;
     if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
       const addons = Object.values(variants).join(', ');
-      b.push(...encodeText(`  (${addons})\n`));
+      for (const line of wrapText(`  (${addons})`, paperWidth)) {
+        b.push(...encodeText(line + '\n'));
+      }
     }
   }
 
-  b.push(...encodeText(divider()));
+  b.push(...encodeText(divider('-', paperWidth)));
 
   // ── Totals (sales copy only) ───────────────────────────────────────────────
   if (!isKitchen) {
-    b.push(...encodeText(twoCol('Subtotal:', `P${subtotal.toFixed(2)}`)));
+    b.push(...encodeText(twoCol('Subtotal:', `P${subtotal.toFixed(2)}`, paperWidth)));
     if (delivFee > 0) {
-      b.push(...encodeText(twoCol('Delivery Fee:', `P${delivFee.toFixed(2)}`)));
+      b.push(...encodeText(twoCol('Delivery Fee:', `P${delivFee.toFixed(2)}`, paperWidth)));
     }
     b.push(...CMD.BOLD_ON);
-    b.push(...encodeText(twoCol('TOTAL:', `P${total.toFixed(2)}`)));
+    b.push(...encodeText(twoCol('TOTAL:', `P${total.toFixed(2)}`, paperWidth)));
     b.push(...CMD.BOLD_OFF);
     if (ptsClaimed > 0) {
-      b.push(...encodeText(twoCol('Points Claimed:', `-P${ptsClaimed.toFixed(2)}`)));
+      b.push(...encodeText(twoCol('Points Claimed:', `-P${ptsClaimed.toFixed(2)}`, paperWidth)));
     }
-    b.push(...encodeText(twoCol('Net Amount:', `P${netAmount.toFixed(2)}`)));
-    b.push(...encodeText(twoCol('Cash Tendered:', `P${tendered.toFixed(2)}`)));
-    b.push(...encodeText(twoCol('Change:', `P${change.toFixed(2)}`)));
-    b.push(...encodeText(divider('.')));
-    b.push(...encodeText(twoCol('Payment:', payStr)));
+    b.push(...encodeText(twoCol('Net Amount:', `P${netAmount.toFixed(2)}`, paperWidth)));
+    b.push(...encodeText(twoCol('Cash Tendered:', `P${tendered.toFixed(2)}`, paperWidth)));
+    b.push(...encodeText(twoCol('Change:', `P${change.toFixed(2)}`, paperWidth)));
+    b.push(...encodeText(divider('.', paperWidth)));
+    b.push(...encodeText(twoCol('Payment:', payStr, paperWidth)));
   }
 
   // ── Special instructions ──────────────────────────────────────────────────
   let notes = order.special_request || order.special_instructions || '';
   if (notes) notes = notes.split('|')[0].trim();
   if (notes) {
-    b.push(...encodeText(divider()));
+    b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('SPECIAL INSTRUCTIONS\n'), ...CMD.BOLD_OFF);
-    for (let i = 0; i < notes.length; i += PAPER_WIDTH) {
-      b.push(...encodeText(notes.slice(i, i + PAPER_WIDTH) + '\n'));
+    for (const line of wrapText(notes, paperWidth)) {
+      b.push(...encodeText(line + '\n'));
     }
   }
 
@@ -280,15 +382,21 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...encodeText('DO NOT GIVE TO CUSTOMER\n'));
     b.push(...CMD.BOLD_OFF);
   } else {
-    b.push(...encodeText('Thank you, Biter!\n'));
+    b.push(...encodeText('Thank you for your order, Biter!\n'));
+    b.push(...CMD.LF);
+    b.push(...qrCodeBytes('https://bitebonansacafe.com'));
+    b.push(...CMD.LF);
+    b.push(...CMD.BOLD_ON, ...encodeText('Scan to Order Online\n'), ...CMD.BOLD_OFF);
     b.push(...encodeText('bitebonansacafe.com\n'));
   }
-  b.push(...CMD.LF, ...CMD.ALIGN_LEFT);
-  b.push(...encodeText(`Accepted by: ${cashier}\n`));
-  b.push(...encodeText(`${new Date().toLocaleString()}\n`));
+  if (!opts.omitFooterMeta) {
+    b.push(...CMD.LF, ...CMD.ALIGN_LEFT);
+    b.push(...encodeText(`Accepted by: ${cashier}\n`));
+    b.push(...encodeText(`${new Date().toLocaleString()}\n`));
+  }
 
   // ── Feed + cut ────────────────────────────────────────────────────────────
-  b.push(...CMD.FEED_3);
+  b.push(...CMD.FEED_1CM);
   b.push(...CMD.CUT);
 
   return new Uint8Array(b);

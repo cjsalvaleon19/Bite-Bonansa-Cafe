@@ -5,7 +5,11 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
-import { connectPrinter, disconnectPrinter, isPrinterConnected } from '../../utils/bluetoothPrinter';
+import { connectPrinter, disconnectPrinter, isPrinterConnected, sanitizePaperWidth } from '../../utils/bluetoothPrinter';
+
+const PRINTER_WIDTH_KEY = 'bbc_printer_paper_width';
+const DEFAULT_PAPER_WIDTH = '48';
+const sanitizePrinterPaperWidth = (value) => String(sanitizePaperWidth(value));
 
 export default function CashierSettings() {
   const router = useRouter();
@@ -19,12 +23,17 @@ export default function CashierSettings() {
   const [pairing, setPairing] = useState(false);
   const [printerConnected, setPrinterConnected] = useState(false);
   const [pairStatus, setPairStatus] = useState(null);
+  const [printerPaperWidth, setPrinterPaperWidth] = useState(DEFAULT_PAPER_WIDTH);
 
   useEffect(() => {
     if (!authLoading) {
       fetchUser();
       initializePage();
       setPrinterConnected(isPrinterConnected());
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const saved = window.localStorage.getItem(PRINTER_WIDTH_KEY);
+        setPrinterPaperWidth(sanitizePrinterPaperWidth(saved || DEFAULT_PAPER_WIDTH));
+      }
     }
   }, [authLoading]);
 
@@ -167,6 +176,16 @@ export default function CashierSettings() {
     setPairStatus(null);
   };
 
+  const handlePrinterPaperWidthChange = (e) => {
+    const value = sanitizePrinterPaperWidth(e.target.value);
+    setPrinterPaperWidth(value);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(PRINTER_WIDTH_KEY, value);
+    }
+    setSaveStatus('success');
+    setTimeout(() => setSaveStatus(null), 2000);
+  };
+
   if (authLoading || loading) {
     return (
       <div style={styles.center}>
@@ -277,6 +296,23 @@ export default function CashierSettings() {
                 )}
               </div>
             </div>
+            <div style={styles.btSetupRow}>
+              <label htmlFor="printer-paper-width" style={styles.btSetupLabel}>
+                Paper Width
+              </label>
+              <select
+                id="printer-paper-width"
+                value={printerPaperWidth}
+                onChange={handlePrinterPaperWidthChange}
+                style={styles.btSetupSelect}
+              >
+                <option value="48">80mm (48 chars)</option>
+                <option value="32">58mm (32 chars)</option>
+              </select>
+            </div>
+            <p style={styles.btSetupHint}>
+              If receipt details are cut or incomplete, set paper width to match your printer roll.
+            </p>
             {pairStatus === 'success' && (
               <p style={styles.btMessageSuccess}>
                 ✓ Bluetooth printer paired successfully.
@@ -486,6 +522,34 @@ const styles = {
     marginTop: '12px',
     color: '#ff6b6b',
     fontSize: '13px',
+  },
+  btSetupRow: {
+    marginTop: '14px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    flexWrap: 'wrap',
+  },
+  btSetupLabel: {
+    fontSize: '13px',
+    color: '#ddd',
+    fontWeight: 600,
+  },
+  btSetupSelect: {
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    border: '1px solid #555',
+    borderRadius: '6px',
+    padding: '8px 10px',
+    fontSize: '13px',
+    fontFamily: "'Poppins', sans-serif",
+    cursor: 'pointer',
+  },
+  btSetupHint: {
+    marginTop: '10px',
+    marginBottom: 0,
+    color: '#999',
+    fontSize: '12px',
   },
   toggleContainer: {
     marginTop: '16px',

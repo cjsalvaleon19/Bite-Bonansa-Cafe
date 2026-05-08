@@ -7,6 +7,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount } from '../../utils/salesCalculations';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
+import { buildKitchenDepartmentOrders, formatItemNameWithSubvariant, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
@@ -282,7 +283,14 @@ export default function CashierDashboard() {
             quantity,
             subtotal,
             notes,
-            variant_details
+            variant_details,
+            menu_items:menu_item_id (
+              category,
+              kitchen_departments:kitchen_department_id (
+                department_name,
+                department_code
+              )
+            )
           ),
           users:customer_id (
             customer_id,
@@ -367,21 +375,22 @@ export default function CashierDashboard() {
     }
   };
 
-  const printReceipt = (order, receiptType = 'sales') => {
+  const printReceipt = (order, receiptType = 'sales', options = {}) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       alert('Please allow popups to print receipts');
       return;
     }
 
-    const items = order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
+    const items = getOrderItems(order);
+    const isKitchenCopy = receiptType === 'kitchen';
     
     // Helper function to strip variant details from item name (for legacy data)
     const stripVariantsFromName = (name) => {
       // Remove anything in parentheses at the end of the name (e.g., "Americano (12oz Hot | Extra Shot)" -> "Americano")
       return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
     };
-    
+
     // Build items HTML with variant details
     const itemsHtml = items.map(item => {
       const itemPrice = (item.price || 0) * (item.quantity || 0);
@@ -415,8 +424,85 @@ export default function CashierDashboard() {
       `;
     }).join('');
 
-    const isKitchenCopy = receiptType === 'kitchen';
-    const title = isKitchenCopy ? 'KITCHEN ORDER SLIP' : 'SALES INVOICE';
+    const departmentName = options.departmentName || '';
+    const title = isKitchenCopy
+      ? `ORDER SLIP${departmentName ? ` - ${departmentName}` : ''}`
+      : 'SALES INVOICE';
+
+    if (isKitchenCopy) {
+      const kitchenItemsHtml = items.map((item) => `
+        <tr>
+          <td style="padding: 4px 0;">${formatItemNameWithSubvariant(item)}</td>
+          <td style="padding: 4px 0; text-align: right;">${item.quantity || 1}</td>
+        </tr>
+      `).join('');
+
+      const kitchenSlipHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Order Slip #${getOrderSlipNumber(order)}</title>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            @page { size: 80mm auto; margin: 0 0 1cm 0; }
+            body {
+              font-family: 'Courier New', monospace;
+              font-size: 16px;
+              line-height: 1.45;
+              padding: 0 12px;
+              max-width: 350px;
+              margin: 0 auto;
+            }
+            .section { margin: 12px 0; }
+            table { width: 100%; border-collapse: collapse; }
+            @media print {
+              body { padding: 0 12px; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="section">
+            <p style="font-size: 24px; font-weight: bold; text-align: center;">ORDER SLIP</p>
+          </div>
+          <div class="section">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span><strong>Order Slip #:</strong> ${getOrderSlipNumber(order)}</span>
+              <span><strong>${(order.order_mode || 'N/A').toUpperCase()}</strong></span>
+            </div>
+          </div>
+          <div class="section">
+            <table>
+              <thead>
+                <tr>
+                  <th style="text-align: left; padding: 4px 0; border-bottom: 2px solid #000;">Item</th>
+                  <th style="text-align: right; padding: 4px 0; border-bottom: 2px solid #000;">Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${kitchenItemsHtml}
+              </tbody>
+            </table>
+          </div>
+          <div style="text-align: center; margin-top: 20px;">
+            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #ffc107; border: none; border-radius: 4px;">
+              Print Order Slip
+            </button>
+            <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; margin-left: 10px; background: #666; color: white; border: none; border-radius: 4px;">
+              Close
+            </button>
+          </div>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(kitchenSlipHtml);
+      printWindow.document.close();
+      return;
+    }
     
     // Calculate values based on the new flow
     const subtotal = order.subtotal || 0;
@@ -454,14 +540,18 @@ export default function CashierDashboard() {
       <html>
       <head>
         <title>${title} - Order #${order.order_number || order.id.slice(0, 8)}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { 
-            font-family: 'Courier New', monospace; 
-            padding: 20px; 
-            max-width: 350px;
-            margin: 0 auto;
-          }
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            @page { size: 80mm auto; margin: 0 0 1cm 0; }
+            body { 
+              font-family: 'Courier New', monospace; 
+              padding: 0 12px; 
+              max-width: 350px;
+              margin: 0 auto;
+            }
           .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
           .header h1 { font-size: 20px; margin-bottom: 5px; }
           .header p { font-size: 12px; }
@@ -469,12 +559,12 @@ export default function CashierDashboard() {
           .section-title { font-weight: bold; margin-bottom: 8px; font-size: 14px; text-decoration: underline; }
           table { width: 100%; border-collapse: collapse; }
           .total-row { font-weight: bold; font-size: 14px; }
-          .footer { text-align: center; margin-top: 20px; padding-top: 10px; border-top: 2px solid #000; font-size: 12px; }
-          @media print {
-            body { padding: 0; }
-            button { display: none; }
-          }
-        </style>
+            .footer { text-align: center; margin-top: 20px; padding-top: 10px; border-top: 2px solid #000; font-size: 12px; }
+            @media print {
+              body { padding: 0 12px; }
+              button { display: none; }
+            }
+          </style>
       </head>
       <body>
         <div class="header">
@@ -488,6 +578,7 @@ export default function CashierDashboard() {
           <p><strong>Order Number:</strong> ${order.order_number || order.id.slice(0, 8)}</p>
           <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
           <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
+          ${isKitchenCopy && departmentName ? `<p><strong>Kitchen Department:</strong> ${departmentName}</p>` : ''}
           ${order.customer_name ? `<p><strong>Customer:</strong> ${order.customer_name}</p>` : ''}
           <p><strong>Phone Number:</strong> ${(order.users && order.users.phone) || order.customer_phone || order.contact_number || 'N/A'}</p>
           ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
@@ -572,7 +663,6 @@ export default function CashierDashboard() {
 
         <div class="footer">
           <p>Thank you for your order, Biter!</p>
-          ${isKitchenCopy ? '<p style="margin-top: 10px; font-weight: bold;">⚠️ KITCHEN COPY - DO NOT GIVE TO CUSTOMER ⚠️</p>' : ''}
           ${!isKitchenCopy ? `<div style="margin-top: 12px; text-align: center;">
             <img src="/qr-code.png" alt="Scan to order online" style="width: 90px; height: 90px;" />
             <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
@@ -596,11 +686,18 @@ export default function CashierDashboard() {
 
     printWindow.document.write(receiptHtml);
     printWindow.document.close();
-    
-    // Auto print after a short delay
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+  };
+
+  const printKitchenReceipts = async (order) => {
+    const kitchenOrders = buildKitchenDepartmentOrders(order);
+    for (let i = 0; i < kitchenOrders.length; i++) {
+      if (i > 0) {
+        // Stagger browser print windows slightly so each department slip queues reliably.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      const group = kitchenOrders[i];
+      printReceipt(group.order, 'kitchen', { departmentName: group.name });
+    }
   };
 
   const printReceiptBluetooth = async (order, receiptType = 'sales', options = {}) => {
@@ -623,6 +720,7 @@ export default function CashierDashboard() {
         cashierName: user?.full_name || user?.email || 'Cashier',
         customerLoyaltyId: order.users?.customer_id || null,
         displayPaymentMethod,
+        departmentName: options.departmentName || null,
       });
     } catch (err) {
       if (!silent) {
@@ -630,6 +728,16 @@ export default function CashierDashboard() {
       } else {
         console.warn('[CashierDashboard] Auto Bluetooth print failed:', err?.message ?? err);
       }
+    }
+  };
+
+  const printKitchenReceiptsBluetooth = async (order, options = {}) => {
+    const kitchenOrders = buildKitchenDepartmentOrders(order);
+    for (const group of kitchenOrders) {
+      await printReceiptBluetooth(group.order, 'kitchen', {
+        ...options,
+        departmentName: group.name,
+      });
     }
   };
 
@@ -701,16 +809,12 @@ export default function CashierDashboard() {
       
       // Generate sales invoice receipt
       printReceipt(selectedOrderToView, 'sales');
-      
-      // Generate kitchen order slip after a short delay
-      setTimeout(() => {
-        printReceipt(selectedOrderToView, 'kitchen');
-      }, 500);
+      await printKitchenReceipts(selectedOrderToView);
 
       // Auto Bluetooth print on accept click (non-blocking on failure)
       await printerWarmup;
       await printReceiptBluetooth(selectedOrderToView, 'sales', { silent: true });
-      await printReceiptBluetooth(selectedOrderToView, 'kitchen', { silent: true });
+      await printKitchenReceiptsBluetooth(selectedOrderToView, { silent: true });
 
       fetchPendingOnlineOrders();
     } catch (err) {
@@ -785,16 +889,12 @@ export default function CashierDashboard() {
         
         // Generate sales invoice receipt
         printReceipt(order, 'sales');
-        
-        // Generate kitchen order slip after a short delay
-        setTimeout(() => {
-          printReceipt(order, 'kitchen');
-        }, 500);
+        await printKitchenReceipts(order);
 
         // Auto Bluetooth print on accept click (non-blocking on failure)
         await printerWarmup;
         await printReceiptBluetooth(order, 'sales', { silent: true });
-        await printReceiptBluetooth(order, 'kitchen', { silent: true });
+        await printKitchenReceiptsBluetooth(order, { silent: true });
       }
 
       fetchPendingOnlineOrders();
@@ -1430,14 +1530,14 @@ export default function CashierDashboard() {
               </p>
               <p style={styles.modalInfo}>
                 • Sales invoice (for records)<br />
-                • Kitchen order slip
+                • Kitchen order slips (per department)
               </p>
               <div style={styles.modalActions}>
                 <button
                   style={styles.modalReprintBtn}
-                  onClick={() => {
+                  onClick={async () => {
                     printReceipt(acceptedOrder, 'sales');
-                    setTimeout(() => printReceipt(acceptedOrder, 'kitchen'), 500);
+                    await printKitchenReceipts(acceptedOrder);
                   }}
                 >
                   🖨️ Reprint Receipts
@@ -1446,7 +1546,7 @@ export default function CashierDashboard() {
                   style={styles.modalBtPrintBtn}
                   onClick={async () => {
                     await printReceiptBluetooth(acceptedOrder, 'sales');
-                    await printReceiptBluetooth(acceptedOrder, 'kitchen');
+                    await printKitchenReceiptsBluetooth(acceptedOrder);
                   }}
                 >
                   📶 BT Print
