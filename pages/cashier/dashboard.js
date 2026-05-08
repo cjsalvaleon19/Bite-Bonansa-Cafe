@@ -620,6 +620,7 @@ export default function CashierDashboard() {
     const kitchenOrders = buildKitchenDepartmentOrders(order);
     for (let i = 0; i < kitchenOrders.length; i++) {
       if (i > 0) {
+        // Stagger browser print windows slightly so each department slip queues reliably.
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
       const group = kitchenOrders[i];
