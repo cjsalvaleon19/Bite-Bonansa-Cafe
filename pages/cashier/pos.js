@@ -114,7 +114,7 @@ export default function CashierPOS() {
     setMenuLoading(true);
     try {
       // Fetch menu items with variants
-      const { data: menuData, error: menuError } = await supabase
+      let { data: menuData, error: menuError } = await supabase
         .from('menu_items')
         .select(`
           id,
@@ -132,6 +132,19 @@ export default function CashierPOS() {
         `)
         .eq('available', true)
         .order('category');
+
+      // Fallback query for deployments where embedded kitchen_departments relation
+      // is unavailable/misconfigured in PostgREST.
+      if (menuError) {
+        console.warn('[POS] Embedded kitchen department fetch failed, retrying without embed:', menuError);
+        const fallback = await supabase
+          .from('menu_items')
+          .select('id, name, price, base_price, category, available, has_variants, is_sold_out')
+          .eq('available', true)
+          .order('category');
+        menuData = fallback.data;
+        menuError = fallback.error;
+      }
 
       if (menuError) {
         console.error('[POS] Error fetching menu:', menuError);
