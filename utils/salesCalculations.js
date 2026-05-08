@@ -20,7 +20,7 @@ export function calculateSalesBreakdown(orders) {
     // Cash Sales = subtotal (pre-VAT, pre-delivery) for cash orders
     if (order.payment_method === 'cash') {
       // Pure cash payment - use subtotal (matches "Subtotal" line on printed receipt)
-      cashSales += parseFloat(order.subtotal || 0);
+      cashSales += getOrderSubtotal(order);
     } else if (order.payment_method === 'points+cash') {
       // Combined payment - cash portion of the subtotal after points deduction
       cashSales += getPaymentPortion(order);
@@ -29,7 +29,7 @@ export function calculateSalesBreakdown(orders) {
     // GCash Sales = subtotal (pre-VAT, pre-delivery) for gcash orders
     if (order.payment_method === 'gcash') {
       // Pure gcash payment
-      gcashSales += parseFloat(order.subtotal || 0);
+      gcashSales += getOrderSubtotal(order);
     } else if (order.payment_method === 'points+gcash') {
       // Combined payment - gcash portion of the subtotal after points deduction
       gcashSales += getPaymentPortion(order);
@@ -76,9 +76,17 @@ export function calculateAdjustmentDeductions(adjustments) {
  * @returns {number} Payment portion amount after deducting points
  */
 export function getPaymentPortion(order) {
-  const subtotal = parseFloat(order.subtotal || 0);
+  const subtotal = getOrderSubtotal(order);
   const pointsUsed = parseFloat(order.points_used || 0);
   return Math.max(0, subtotal - pointsUsed);
+}
+
+function getOrderSubtotal(order) {
+  const subtotal = parseFloat(order?.subtotal);
+  if (Number.isFinite(subtotal)) return subtotal;
+  const totalAmount = parseFloat(order?.total_amount);
+  if (Number.isFinite(totalAmount)) return totalAmount;
+  return 0;
 }
 
 /**
@@ -90,7 +98,7 @@ export function getPaymentPortion(order) {
  */
 export function getGCashAmount(order) {
   if (order.payment_method === 'gcash') {
-    return parseFloat(order.subtotal || 0);
+    return getOrderSubtotal(order);
   } else if (order.payment_method === 'points+gcash') {
     return getPaymentPortion(order);
   }

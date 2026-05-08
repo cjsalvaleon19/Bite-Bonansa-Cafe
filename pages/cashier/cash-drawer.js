@@ -173,7 +173,7 @@ export default function CashDrawer() {
       // Also include cash sales from orders (same as Audit tab formula)
       const { data: ordersData } = await supabase
         .from('orders')
-        .select('total_amount, payment_method, points_used')
+        .select('subtotal, total_amount, payment_method, points_used')
         .gte('created_at', today.toISOString())
         .lt('created_at', tomorrow.toISOString());
 
@@ -273,7 +273,7 @@ export default function CashDrawer() {
       // Fetch cash sales from orders for the date
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select('total_amount, payment_method, points_used')
+        .select('subtotal, total_amount, payment_method, points_used')
         .gte('created_at', startDate.toISOString())
         .lte('created_at', endDate.toISOString());
 

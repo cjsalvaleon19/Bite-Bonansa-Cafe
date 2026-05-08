@@ -251,7 +251,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('=', paperWidth)));
 
-    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_TALL);
+    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_2X);
     b.push(...encodeText(twoCol(`Order Slip #: ${getOrderSlipNumber(order)}`, (order.order_mode || 'N/A').toUpperCase(), paperWidth)));
     b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);

@@ -447,8 +447,8 @@ export default function CashierDashboard() {
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
             body {
               font-family: 'Courier New', monospace;
-              font-size: 14px;
-              line-height: 1.35;
+              font-size: 16px;
+              line-height: 1.45;
               padding: 0 12px;
               max-width: 350px;
               margin: 0 auto;
@@ -463,7 +463,7 @@ export default function CashierDashboard() {
         </head>
         <body>
           <div class="section">
-            <p style="font-size: 20px; font-weight: bold; text-align: center;">ORDER SLIP</p>
+            <p style="font-size: 24px; font-weight: bold; text-align: center;">ORDER SLIP</p>
           </div>
           <div class="section">
             <div style="display: flex; justify-content: space-between; align-items: center;">
