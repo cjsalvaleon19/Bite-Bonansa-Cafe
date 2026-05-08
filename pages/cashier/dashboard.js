@@ -426,7 +426,7 @@ export default function CashierDashboard() {
 
     const departmentName = options.departmentName || '';
     const title = isKitchenCopy
-      ? `KITCHEN ORDER SLIP${departmentName ? ` - ${departmentName}` : ''}`
+      ? `ORDER SLIP${departmentName ? ` - ${departmentName}` : ''}`
       : 'SALES INVOICE';
 
     if (isKitchenCopy) {
