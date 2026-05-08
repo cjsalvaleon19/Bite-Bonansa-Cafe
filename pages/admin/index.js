@@ -3274,9 +3274,19 @@ export default function AdminPage() {
                                   }
                                 }
                               }
+                              // Deduplicate add-on entries: show each unique add-on name once
+                              const seenAddons = new Set();
+                              const deduped = expanded.filter((e) => {
+                                if (e.parentName) {
+                                  const key = e.displayName.toLowerCase();
+                                  if (seenAddons.has(key)) return false;
+                                  seenAddons.add(key);
+                                }
+                                return true;
+                              });
                               const existingNames = new Set(costingHeaders.map((h) => (h.menu_item_name || '').toLowerCase()));
                               const q = menuSearchQuery.toLowerCase();
-                              const filtered = expanded.filter((e) =>
+                              const filtered = deduped.filter((e) =>
                                 e.displayName.toLowerCase().includes(q) &&
                                 (!costingEditItem || (costingEditItem.menu_item_name || '').toLowerCase() !== e.displayName.toLowerCase()) &&
                                 (costingEditItem ? true : !existingNames.has(e.displayName.toLowerCase())),
@@ -3300,7 +3310,7 @@ export default function AdminPage() {
                                     setMenuSearchOpen(false);
                                   }}
                                 >
-                                  {entry.displayName} <span style={{ color: '#888', fontSize: 11 }}>({entry.category}) — {fmt(entry.price)}{entry.parentName ? ` • Add-on to ${entry.parentName}` : ''}</span>
+                                  {entry.displayName} <span style={{ color: '#888', fontSize: 11 }}>({entry.category}) — {fmt(entry.price)}{entry.parentName ? ' • Add-on (generic)' : ''}</span>
                                 </div>
                               ));
                             })()}
