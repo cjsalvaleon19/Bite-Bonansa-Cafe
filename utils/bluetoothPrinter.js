@@ -24,6 +24,8 @@ const PRINTER_CHAR_UUID    = '00002af1-0000-1000-8000-00805f9b34fb';
 const CHUNK_SIZE           = 512;  // max bytes per writeValue call
 const DEFAULT_PAPER_WIDTH  = 48;   // characters per line on 80 mm paper
 const PRINTER_WIDTH_KEY    = 'bbc_printer_paper_width';
+// Keep one explicit locale/format for receipt timestamps so output remains
+// consistent across Android, Windows, and other host devices.
 const RECEIPT_DATETIME_FORMATTER = new Intl.DateTimeFormat('en-PH', {
   year: 'numeric',
   month: 'numeric',
@@ -260,6 +262,11 @@ function wrapText(text, width) {
   return lines;
 }
 
+function labelLine(label, value, labelWidth = 11) {
+  const safeLabel = String(label || '').padEnd(labelWidth, ' ');
+  return `${safeLabel}: ${value}\n`;
+}
+
 /**
  * Two-column row: left text fills the remaining width after the right-aligned
  * value is placed at the right edge of PAPER_WIDTH.
@@ -365,8 +372,8 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...encodeText(divider('=', paperWidth)));
 
     b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_NORMAL, ...CMD.BOLD_ON);
-    b.push(...encodeText(`Order Slip #: ${getOrderSlipNumber(order)}\n`));
-    b.push(...encodeText(`Type       : ${(order.order_mode || 'N/A').toUpperCase()}\n`));
+    b.push(...encodeText(labelLine('Order Slip #', getOrderSlipNumber(order))));
+    b.push(...encodeText(labelLine('Type', (order.order_mode || 'N/A').toUpperCase())));
     b.push(...CMD.BOLD_OFF);
     b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
