@@ -35,8 +35,9 @@ const CMD = {
   BOLD_ON:      [ESC, 0x45, 0x01],       // bold on
   BOLD_OFF:     [ESC, 0x45, 0x00],       // bold off
   SIZE_2X:      [GS,  0x21, 0x11],       // double height + double width
+  SIZE_TALL:    [GS,  0x21, 0x01],       // double height
   SIZE_NORMAL:  [GS,  0x21, 0x00],       // normal character size
-  FEED_3:       [ESC, 0x64, 0x03],       // feed 3 lines before cut
+  FEED_1CM:     [ESC, 0x4A, 0x50],       // feed ~1 cm before cut (80 dots)
   CUT:          [GS,  0x56, 0x42, 0x00], // full paper cut
   LF:           [0x0A],                  // line feed (newline)
 };
@@ -245,12 +246,12 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   b.push(...CMD.INIT);
 
   if (isKitchen) {
-    b.push(...CMD.ALIGN_CENTER, ...CMD.BOLD_ON);
+    b.push(...CMD.ALIGN_CENTER, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
     b.push(...encodeText(`${title}\n`));
-    b.push(...CMD.BOLD_OFF);
+    b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('=', paperWidth)));
 
-    b.push(...CMD.ALIGN_LEFT);
+    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_TALL);
     b.push(...encodeText(`Order Slip #: ${getOrderSlipNumber(order)}\n`));
     b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
@@ -263,7 +264,8 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
       }
     }
 
-    b.push(...CMD.FEED_3);
+    b.push(...CMD.SIZE_NORMAL);
+    b.push(...CMD.FEED_1CM);
     b.push(...CMD.CUT);
     return new Uint8Array(b);
   }
@@ -394,7 +396,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   }
 
   // ── Feed + cut ────────────────────────────────────────────────────────────
-  b.push(...CMD.FEED_3);
+  b.push(...CMD.FEED_1CM);
   b.push(...CMD.CUT);
 
   return new Uint8Array(b);

@@ -294,14 +294,15 @@ export default function EndOfDayReport() {
         <head>
           <title>Order Slip #${getOrderSlipNumber(order)}</title>
           <style>
-            body { font-family: monospace; font-size: 12px; padding: 20px; }
+            @page { margin: 0 0 1cm 0; }
+            body { font-family: monospace; font-size: 14px; line-height: 1.35; padding: 20px 20px 0; margin: 0; }
             .section { margin: 12px 0; }
             table { width: 100%; border-collapse: collapse; }
           </style>
         </head>
         <body>
           <div class="section" style="text-align: center;">
-            <p style="font-size: 16px; font-weight: bold;">ORDER SLIP</p>
+            <p style="font-size: 20px; font-weight: bold;">ORDER SLIP</p>
           </div>
           <div class="section">
             <p><strong>Order Slip Number:</strong> ${getOrderSlipNumber(order)}</p>
@@ -387,7 +388,8 @@ export default function EndOfDayReport() {
         <head>
           <title>Receipt #${order.order_number || order.id.slice(0, 8)}</title>
           <style>
-            body { font-family: monospace; font-size: 12px; padding: 20px; }
+            @page { margin: 0 0 1cm 0; }
+            body { font-family: monospace; font-size: 12px; padding: 20px 20px 0; margin: 0; }
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
             .item { display: flex; justify-content: space-between; margin: 5px 0; }

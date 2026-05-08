@@ -580,7 +580,7 @@ export default function CashierPOS() {
         <head>
           <title>Receipt - ${order.order_number || order.id.slice(0, 8)}</title>
           <style>
-            @page { margin: 0.5cm 0; }
+            @page { margin: 0 0 1cm 0; }
             body { font-family: monospace; font-size: 12px; padding: 0 12px; margin: 0 auto; }
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
