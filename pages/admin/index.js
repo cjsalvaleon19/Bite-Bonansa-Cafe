@@ -2008,13 +2008,13 @@ export default function AdminPage() {
 
   // Category-level contribution margin ratio targets (2.3.3–2.3.9)
   const CM_TARGETS = {
-    'Snacks & Bites': 0.50,
-    'Noodles': 0.60,
-    'Rice & More': 0.50,
-    'Milktea Series': 0.60,
-    'Hot/Iced Drinks': 0.60,
-    'Frappe Series': 0.60,
-    'Fruit Soda & Lemonade': 0.60,
+    'Snacks & Bites': 0.40,
+    'Noodles': 0.40,
+    'Rice & More': 0.40,
+    'Milktea Series': 0.40,
+    'Hot/Iced Drinks': 0.40,
+    'Frappe Series': 0.40,
+    'Fruit Soda & Lemonade': 0.40,
   };
 
   // Derive computed costing values from form fields
