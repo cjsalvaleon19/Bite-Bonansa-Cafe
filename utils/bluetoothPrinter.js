@@ -103,21 +103,19 @@ export async function connectPrinter() {
     _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
   } catch (err) {
     // Recover once from transient disconnects while discovering services.
-    if (!isGattConnected(_device)) {
-      try {
-        const retryServer = await _device.gatt.connect();
-        const service = await retryServer.getPrimaryService(PRINTER_SERVICE_UUID);
-        _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
-      } catch (retryErr) {
-        console.warn('[BluetoothPrinter] Reconnect retry failed:', retryErr);
-        _characteristic = null;
-        _device = null;
-        throw new Error(
-          'Bluetooth printer disconnected. Please reconnect the printer and try again.'
-        );
-      }
-    } else {
-      throw err;
+    try {
+      const latestGattServer = (_device.gatt && _device.gatt.connected)
+        ? _device.gatt
+        : await _device.gatt.connect();
+      const service = await latestGattServer.getPrimaryService(PRINTER_SERVICE_UUID);
+      _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
+    } catch (retryErr) {
+      console.warn('[BluetoothPrinter] Reconnect retry failed:', retryErr);
+      _characteristic = null;
+      _device = null;
+      throw new Error(
+        'Bluetooth printer disconnected. Please reconnect the printer and try again.'
+      );
     }
   }
 
