@@ -162,6 +162,33 @@ function divider(char = '-', paperWidth = DEFAULT_PAPER_WIDTH) {
   return char.repeat(paperWidth) + '\n';
 }
 
+/**
+ * Build ESC/POS bytes for a QR code block (model 2, size 6, error level M).
+ * The QR code is stored and then printed; alignment should be set to CENTER
+ * before calling this.
+ *
+ * @param {string} url - The URL/string to encode in the QR code
+ * @returns {number[]}
+ */
+function qrCodeBytes(url) {
+  const urlData = encodeText(url);
+  const storeLen = 3 + urlData.length; // cn(0x31) + fn(0x50) + m(0x30) + data
+  const pL = storeLen & 0xFF;
+  const pH = (storeLen >> 8) & 0xFF;
+  return [
+    // Select QR model 2
+    GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00,
+    // Module size 6 — large enough to scan on 80mm paper, readable on 58mm
+    GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06,
+    // Error correction level M
+    GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31,
+    // Store URL data
+    GS, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30, ...urlData,
+    // Print the QR code
+    GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30,
+  ];
+}
+
 // ─── Public: build ESC/POS receipt bytes ─────────────────────────────────────
 
 /**
@@ -325,7 +352,11 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...encodeText('DO NOT GIVE TO CUSTOMER\n'));
     b.push(...CMD.BOLD_OFF);
   } else {
-    b.push(...encodeText('Thank you, Biter!\n'));
+    b.push(...encodeText('Thank you for your order, Biter!\n'));
+    b.push(...CMD.LF);
+    b.push(...qrCodeBytes('https://bitebonansacafe.com'));
+    b.push(...CMD.LF);
+    b.push(...CMD.BOLD_ON, ...encodeText('Scan to Order Online\n'), ...CMD.BOLD_OFF);
     b.push(...encodeText('bitebonansacafe.com\n'));
   }
   b.push(...CMD.LF, ...CMD.ALIGN_LEFT);
