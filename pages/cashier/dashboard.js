@@ -616,12 +616,15 @@ export default function CashierDashboard() {
     }, 250);
   };
 
-  const printKitchenReceipts = (order) => {
-    buildKitchenDepartmentOrders(order).forEach((group, index) => {
-      setTimeout(() => {
-        printReceipt(group.order, 'kitchen', { departmentName: group.name });
-      }, index * 500);
-    });
+  const printKitchenReceipts = async (order) => {
+    const kitchenOrders = buildKitchenDepartmentOrders(order);
+    for (let i = 0; i < kitchenOrders.length; i++) {
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      const group = kitchenOrders[i];
+      printReceipt(group.order, 'kitchen', { departmentName: group.name });
+    }
   };
 
   const printReceiptBluetooth = async (order, receiptType = 'sales', options = {}) => {
@@ -733,7 +736,7 @@ export default function CashierDashboard() {
       
       // Generate sales invoice receipt
       printReceipt(selectedOrderToView, 'sales');
-      printKitchenReceipts(selectedOrderToView);
+      await printKitchenReceipts(selectedOrderToView);
 
       // Auto Bluetooth print on accept click (non-blocking on failure)
       await printerWarmup;
@@ -813,7 +816,7 @@ export default function CashierDashboard() {
         
         // Generate sales invoice receipt
         printReceipt(order, 'sales');
-        printKitchenReceipts(order);
+        await printKitchenReceipts(order);
 
         // Auto Bluetooth print on accept click (non-blocking on failure)
         await printerWarmup;
@@ -1459,9 +1462,9 @@ export default function CashierDashboard() {
               <div style={styles.modalActions}>
                 <button
                   style={styles.modalReprintBtn}
-                  onClick={() => {
+                  onClick={async () => {
                     printReceipt(acceptedOrder, 'sales');
-                    printKitchenReceipts(acceptedOrder);
+                    await printKitchenReceipts(acceptedOrder);
                   }}
                 >
                   🖨️ Reprint Receipts
