@@ -7,6 +7,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions } from '../../utils/salesCalculations';
 import { printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
+import { buildKitchenDepartmentOrders } from '../../utils/receiptDepartments';
 
 export default function EndOfDayReport() {
   const router = useRouter();
@@ -103,6 +104,25 @@ export default function EndOfDayReport() {
   // Helper function to get order items with fallback
   const getOrderItems = (order) => {
     return order.order_items && order.order_items.length > 0 ? order.order_items : order.items || [];
+  };
+
+  const getOrderSlipNumber = (order) => {
+    const orderNumber = String(order.order_number || '').trim();
+    const match = orderNumber.match(/(\d{3})$/);
+    if (match && match[1]) return match[1];
+    const fallback = String(order.id || '').trim();
+    return fallback ? fallback.slice(-3) : '---';
+  };
+
+  const formatItemNameWithSubvariant = (item) => {
+    const rawName = String(item.name || '').trim();
+    const variants = item.variant_details || item.variantDetails;
+    if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
+      const subvariant = Object.values(variants).map((value) => `${value}`).join(', ');
+      const baseName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+      return `${baseName} (${subvariant})`;
+    }
+    return rawName;
   };
 
   const handlePreviewReceipt = (order) => {
@@ -287,7 +307,68 @@ export default function EndOfDayReport() {
     previewWindow.document.close();
   };
 
-  const handlePrintReceipt = (order) => {
+  const printOrderSlip = (order) => {
+    const slipWindow = window.open('', '_blank', 'width=300,height=600');
+    if (!slipWindow) return;
+
+    const orderItems = getOrderItems(order);
+
+    slipWindow.document.write(`
+      <html>
+        <head>
+          <title>Order Slip #${getOrderSlipNumber(order)}</title>
+          <style>
+            body { font-family: monospace; font-size: 12px; padding: 20px; }
+            .section { margin: 12px 0; }
+            table { width: 100%; border-collapse: collapse; }
+          </style>
+        </head>
+        <body>
+          <div class="section" style="text-align: center;">
+            <p style="font-size: 16px; font-weight: bold;">ORDER SLIP</p>
+          </div>
+          <div class="section">
+            <p><strong>Order Slip Number:</strong> ${getOrderSlipNumber(order)}</p>
+          </div>
+          <div class="section">
+            <table>
+              <thead>
+                <tr>
+                  <th style="text-align: left; padding: 4px 0; border-bottom: 2px solid #000;">Item</th>
+                  <th style="text-align: right; padding: 4px 0; border-bottom: 2px solid #000;">Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${orderItems.map(item => `
+                  <tr>
+                    <td style="padding: 4px 0;">${formatItemNameWithSubvariant(item)}</td>
+                    <td style="padding: 4px 0; text-align: right;">${item.quantity || 1}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </body>
+      </html>
+    `);
+
+    slipWindow.document.close();
+    setTimeout(() => {
+      slipWindow.print();
+    }, 250);
+  };
+
+  const printKitchenOrderSlips = async (order) => {
+    const kitchenOrders = buildKitchenDepartmentOrders(order);
+    for (let i = 0; i < kitchenOrders.length; i++) {
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      printOrderSlip(kitchenOrders[i].order);
+    }
+  };
+
+  const handlePrintReceipt = async (order) => {
     // Create a simple receipt print window
     const receiptWindow = window.open('', '_blank', 'width=300,height=600');
     if (!receiptWindow) return;
@@ -459,6 +540,8 @@ export default function EndOfDayReport() {
     setTimeout(() => {
       receiptWindow.print();
     }, 250);
+
+    await printKitchenOrderSlips(order);
   };
 
   const handleBtPrintReceipt = async (order) => {
@@ -479,7 +562,11 @@ export default function EndOfDayReport() {
       await printToBluetoothPrinter(order, 'sales', {
         customerLoyaltyId: order.users?.customer_id || null,
         displayPaymentMethod,
+        omitFooterMeta: true,
       });
+      for (const group of buildKitchenDepartmentOrders(order)) {
+        await printToBluetoothPrinter(group.order, 'kitchen');
+      }
     } catch (err) {
       alert('Bluetooth print failed: ' + (err.message || 'Unknown error'));
     }
