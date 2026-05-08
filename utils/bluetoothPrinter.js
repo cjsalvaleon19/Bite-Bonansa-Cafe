@@ -104,9 +104,13 @@ export async function connectPrinter() {
   } catch (err) {
     // Recover once from transient disconnects while discovering services.
     try {
-      const latestGattServer = (_device.gatt && _device.gatt.connected)
-        ? _device.gatt
-        : await _device.gatt.connect();
+      const retryGatt = _device && _device.gatt;
+      if (!retryGatt) {
+        throw new Error('Bluetooth printer is unavailable. Please pair the printer again.');
+      }
+      const latestGattServer = retryGatt.connected
+        ? retryGatt
+        : await retryGatt.connect();
       const service = await latestGattServer.getPrimaryService(PRINTER_SERVICE_UUID);
       _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
     } catch (retryErr) {
