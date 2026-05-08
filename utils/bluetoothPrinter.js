@@ -47,6 +47,12 @@ const CMD = {
 let _characteristic = null;
 let _device = null;
 
+/**
+ * Check whether a previously paired device still has an active GATT connection.
+ *
+ * @param {BluetoothDevice|null} device
+ * @returns {boolean}
+ */
 function isGattConnected(device) {
   return Boolean(device && device.gatt && device.gatt.connected);
 }
@@ -180,6 +186,13 @@ function getPaperWidth(opts = {}) {
   return DEFAULT_PAPER_WIDTH;
 }
 
+/**
+ * Format receipt timestamps in a consistent locale-sensitive format so output
+ * is stable across different host devices.
+ *
+ * @param {string|number|Date|undefined} value
+ * @returns {string}
+ */
 function formatReceiptDate(value) {
   const date = new Date(value || Date.now());
   return new Intl.DateTimeFormat('en-PH', {
@@ -193,6 +206,14 @@ function formatReceiptDate(value) {
   }).format(date);
 }
 
+/**
+ * Wrap text using word boundaries when possible so printed lines remain
+ * readable across paper widths; very long tokens are hard-split.
+ *
+ * @param {string} text
+ * @param {number} width
+ * @returns {string[]}
+ */
 function wrapText(text, width) {
   const safeWidth = Number.isFinite(width) && width > 0
     ? Math.floor(width)
