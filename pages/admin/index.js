@@ -101,6 +101,7 @@ export default function AdminPage() {
   // ── Price Costing state ───────────────────────────────────────────────────
   const [costingHeaders, setCostingHeaders] = useState([]);
   const [costingSearch, setCostingSearch] = useState('');
+  const [costingCmStatusFilter, setCostingCmStatusFilter] = useState('');
   const [invItems, setInvItems] = useState([]);
   const [menuItemsList, setMenuItemsList] = useState([]);
   const [costingDialogOpen, setCostingDialogOpen] = useState(false);
@@ -2017,6 +2018,19 @@ export default function AdminPage() {
     'Fruit Soda & Lemonade': 0.40,
   };
 
+  const filteredCostingHeaders = useMemo(() => costingHeaders.filter((item) => {
+    const q = costingSearch.trim().toLowerCase();
+    if (q && !(item.menu_item_name || '').toLowerCase().includes(q)) return false;
+    if (!costingCmStatusFilter) return true;
+    const sp = Number(item.selling_price) || 0;
+    const tec = Number(item.total_estimated_cogs) || 0;
+    const cmPct = sp > 0 ? ((sp - tec) / sp) * 100 : 0;
+    if (costingCmStatusFilter === 'above-target') return cmPct > 50;
+    if (costingCmStatusFilter === 'critical') return cmPct >= 40 && cmPct <= 49;
+    if (costingCmStatusFilter === 'below-target') return cmPct <= 49.99;
+    return true;
+  }), [costingHeaders, costingSearch, costingCmStatusFilter]);
+
   // Derive computed costing values from form fields
   const calcCostingValues = (form) => {
     const lineSubtotal = (form.lines || []).reduce(
@@ -3180,12 +3194,20 @@ export default function AdminPage() {
               </div>
               {loading && <p style={styles.loadingText}>Loading…</p>}
               <div style={{ marginBottom: 12 }}>
-                <input
-                  style={{ ...styles.input, width: 280 }}
-                  placeholder="Search menu items…"
-                  value={costingSearch}
-                  onChange={(e) => setCostingSearch(e.target.value)}
-                />
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    style={{ ...styles.input, width: 280 }}
+                    placeholder="Search menu items…"
+                    value={costingSearch}
+                    onChange={(e) => setCostingSearch(e.target.value)}
+                  />
+                  <select style={{ ...styles.input, width: 220 }} value={costingCmStatusFilter} onChange={(e) => setCostingCmStatusFilter(e.target.value)}>
+                    <option value="">All CM Ratio Status</option>
+                    <option value="above-target">Above Target (&gt; 50%)</option>
+                    <option value="critical">Critical (40% to 49%)</option>
+                    <option value="below-target">Below Target (49.99% and below)</option>
+                  </select>
+                </div>
               </div>
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
@@ -3197,7 +3219,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {costingHeaders.filter((item) => !costingSearch || (item.menu_item_name || '').toLowerCase().includes(costingSearch.toLowerCase())).map((item, idx) => {
+                    {filteredCostingHeaders.map((item, idx) => {
                       const sp = Number(item.selling_price) || 0;
                       const tec = Number(item.total_estimated_cogs) || 0;
                       const cmRatio = sp > 0 ? (sp - tec) / sp : 0;
@@ -3232,8 +3254,8 @@ export default function AdminPage() {
                         </tr>
                       );
                     })}
-                    {costingHeaders.length === 0 && !loading && (
-                      <tr><td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
+                    {filteredCostingHeaders.length === 0 && !loading && (
+                      <tr><td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>{costingHeaders.length === 0 ? 'No costing items yet.' : 'No costing items match current filters.'}</td></tr>
                     )}
                   </tbody>
                 </table>
