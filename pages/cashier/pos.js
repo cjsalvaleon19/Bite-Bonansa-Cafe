@@ -10,6 +10,7 @@ import VariantSelectionModal from '../../components/VariantSelectionModal';
 import NotificationBell from '../../components/NotificationBell';
 import { getDistanceBetweenCoordinates, calculateDeliveryFee, STORE_LOCATION } from '../../utils/deliveryCalculator';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
+import { buildKitchenDepartmentOrders, getOrderItems } from '../../utils/receiptDepartments';
 
 // Dynamically import OpenStreetMapPicker with SSR disabled
 const OpenStreetMapPicker = dynamic(
@@ -115,7 +116,20 @@ export default function CashierPOS() {
       // Fetch menu items with variants
       const { data: menuData, error: menuError } = await supabase
         .from('menu_items')
-        .select('id, name, price, base_price, category, available, has_variants, is_sold_out')
+        .select(`
+          id,
+          name,
+          price,
+          base_price,
+          category,
+          available,
+          has_variants,
+          is_sold_out,
+          kitchen_departments:kitchen_department_id (
+            department_name,
+            department_code
+          )
+        `)
         .eq('available', true)
         .order('category');
 
@@ -391,12 +405,14 @@ export default function CashierPOS() {
       }
 
       const orderData = {
-        items: items.map(({ id, name, price, quantity, variantDetails }) => ({
-          id,
-          name,
-          price,
-          quantity,
-          variantDetails: variantDetails || null,
+        items: items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.finalPrice || item.price || item.base_price || 0,
+          quantity: item.quantity,
+          variantDetails: item.variantDetails || null,
+          category: item.category || null,
+          kitchen_department: item.kitchen_departments || null,
         })),
         order_mode: orderMode,
         customer_name: customerInfo.customerName,
@@ -464,9 +480,6 @@ export default function CashierPOS() {
         });
       }
 
-      // Generate receipt (simple print)
-      printReceipt(order, remainingAmount);
-
       // Auto Bluetooth print on checkout click (non-blocking on failure)
       await printerWarmup;
       await printPOSReceiptBluetooth(order, { silent: true });
@@ -507,6 +520,7 @@ export default function CashierPOS() {
   const printReceipt = (order, paidAmount) => {
     const receiptWindow = window.open('', '_blank', 'width=300,height=600');
     if (!receiptWindow) return;
+    const receiptItems = getOrderItems(order);
 
     // Helper function to strip variant details from item name (for legacy data)
     const stripVariantsFromName = (name) => {
@@ -553,7 +567,8 @@ export default function CashierPOS() {
         <head>
           <title>Receipt - ${order.order_number || order.id.slice(0, 8)}</title>
           <style>
-            body { font-family: monospace; font-size: 12px; padding: 20px; }
+            @page { margin: 0.5cm 0; }
+            body { font-family: monospace; font-size: 12px; padding: 0 12px; margin: 0 auto; }
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
             .item { display: flex; justify-content: space-between; margin: 5px 0; }
@@ -584,9 +599,10 @@ export default function CashierPOS() {
           
           <p class="section-title">ITEMS ORDERED</p>
           <div class="items">
-            ${order.items.map(item => {
+            ${receiptItems.map(item => {
               const displayName = stripVariantsFromName(item.name);
-              const hasVariants = item.variantDetails && Object.keys(item.variantDetails).length > 0;
+              const variants = item.variantDetails || item.variant_details;
+              const hasVariants = variants && Object.keys(variants).length > 0;
               
               return `
               <div style="margin-bottom: 10px;">
@@ -596,7 +612,7 @@ export default function CashierPOS() {
                 </div>
                 ${hasVariants
                   ? `<div class="variant-details">
-                      (Add Ons: ${Object.entries(item.variantDetails).map(([type, value]) => 
+                      (Add Ons: ${Object.entries(variants).map(([type, value]) => 
                         `${value}`
                       ).join(', ')})
                     </div>`
@@ -704,11 +720,18 @@ export default function CashierPOS() {
       }
     }
     try {
-      await printToBluetoothPrinter(order, 'sales', {
+      const printerOptions = {
         cashierName: user?.full_name || user?.email || 'Cashier',
         customerLoyaltyId: customerInfo?.customerId || null,
         displayPaymentMethod,
-      });
+      };
+      await printToBluetoothPrinter(order, 'sales', printerOptions);
+      for (const group of buildKitchenDepartmentOrders(order)) {
+        await printToBluetoothPrinter(group.order, 'kitchen', {
+          ...printerOptions,
+          departmentName: group.name,
+        });
+      }
     } catch (err) {
       if (!silent) {
         alert('Bluetooth print failed: ' + (err.message || 'Unknown error'));

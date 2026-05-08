@@ -201,6 +201,7 @@ function qrCodeBytes(url) {
  * @param {string}  [opts.customerLoyaltyId]     - BBC-XXXXX loyalty card number
  * @param {number}  [opts.cashTendered]          - Overrides order.cash_amount
  * @param {string}  [opts.displayPaymentMethod]  - Overrides order.payment_method display
+ * @param {string}  [opts.departmentName]        - Kitchen department/station label
  * @returns {Uint8Array}
  */
 export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
@@ -249,6 +250,9 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   b.push(...encodeText("Tel: 0907-200-8247\n"));
   b.push(...CMD.LF);
   b.push(...CMD.BOLD_ON, ...encodeText(title + '\n'), ...CMD.BOLD_OFF);
+  if (isKitchen && opts.departmentName) {
+    b.push(...CMD.BOLD_ON, ...encodeText(`${opts.departmentName}\n`), ...CMD.BOLD_OFF);
+  }
   b.push(...encodeText(divider('=', paperWidth)));
 
   // ── Order info ────────────────────────────────────────────────────────────
@@ -256,6 +260,9 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   b.push(...encodeText(`Order#: ${order.order_number || String(order.id || '').slice(0, 8)}\n`));
   b.push(...encodeText(`Date  : ${new Date(order.created_at || Date.now()).toLocaleString()}\n`));
   b.push(...encodeText(`Type  : ${order.order_mode || 'N/A'}\n`));
+  if (isKitchen && opts.departmentName) {
+    b.push(...encodeText(`Dept  : ${opts.departmentName}\n`));
+  }
   if (order.customer_name) {
     b.push(...encodeText(`Name  : ${order.customer_name}\n`));
   }
