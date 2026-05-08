@@ -238,7 +238,6 @@ export default function AdminPage() {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState('');
   const [manualSuccess, setManualSuccess] = useState('');
-  const [manualSpecialNote, setManualSpecialNote] = useState('');
   // Contact picker for manual entry
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [contactPickerQuery, setContactPickerQuery] = useState('');
@@ -1263,7 +1262,7 @@ export default function AdminPage() {
         if (oIds.length > 0) {
           const { data: oi } = await supabase
             .from('order_items')
-            .select('name, price, quantity, subtotal, menu_item_id')
+            .select('name, price, quantity, subtotal, menu_item_id, variant_details')
             .in('order_id', oIds);
           salesItems = oi || [];
         }
@@ -1284,7 +1283,44 @@ export default function AdminPage() {
           const qty = Number(si.quantity) || 1;
           const rev = Number(si.subtotal) || (Number(si.price) || 0) * qty;
           const category = (si.menu_item_id && menuCatMap[si.menu_item_id]) || menuCatMap[baseName] || menuCatMap[si.name] || 'Other';
-          const unitCogs = cogsMap[si.name] || cogsMap[baseName] || 0;
+          const variantDetails = si.variant_details && typeof si.variant_details === 'object' ? si.variant_details : {};
+          const normalizeVariantKey = (key) => String(key || '').toLowerCase().replace(/[\s-]/g, '');
+
+          // Prefer variant-specific base costing (e.g., Americano - 16oz), then fall back to generic base name.
+          let unitBaseCogs = cogsMap[si.name] || cogsMap[baseName] || 0;
+          const variantCandidates = [];
+          Object.entries(variantDetails).forEach(([k, v]) => {
+            const normalized = normalizeVariantKey(k);
+            if (normalized === 'addon' || normalized === 'addons') return;
+            String(v || '').split(',').map((x) => x.trim()).filter(Boolean).forEach((variantValue) => {
+              variantCandidates.push({
+                name: `${baseName} - ${variantValue}`,
+                priority: normalized === 'size' ? 1 : 2,
+              });
+            });
+          });
+          variantCandidates
+            .sort((a, b) => (a.priority - b.priority) || (b.name.length - a.name.length))
+            .some((candidate) => {
+              if (cogsMap[candidate.name] !== undefined) {
+                unitBaseCogs = cogsMap[candidate.name];
+                return true;
+              }
+              return false;
+            });
+
+          // Add-on costing is generic by add-on name (e.g., "Extra Shot", "Coffee Jelly").
+          const unitAddonCogs = Object.entries(variantDetails).reduce((sum, [k, v]) => {
+            const normalized = normalizeVariantKey(k);
+            if (normalized !== 'addon' && normalized !== 'addons') return sum;
+            return sum + String(v || '')
+              .split(',')
+              .map((x) => x.trim())
+              .filter(Boolean)
+              .reduce((s, addonName) => s + (cogsMap[addonName] || 0), 0);
+          }, 0);
+
+          const unitCogs = unitBaseCogs + unitAddonCogs;
           const totalCogs = unitCogs * qty;
           const key = baseName;
           if (!itemMap[key]) {
@@ -1750,14 +1786,13 @@ export default function AdminPage() {
       setManualSuccess(`Manual entry ${manualEntryNumber} saved successfully.`);
       setManualEntryLines([{ description: '', account: '', type: 'debit', amount: '' }]);
       setManualEntryForm({ date: new Date().toISOString().split('T')[0], name: '', reference_number: '', description: '' });
-      setManualSpecialNote('');
       await generateManualEntryNumber();
     } catch (err) {
       setManualError(err.message);
     } finally {
       setManualSaving(false);
     }
-  }, [supabase, manualEntryForm, manualEntryLines, manualEntryNumber, manualSpecialNote, generateManualEntryNumber]);
+  }, [supabase, manualEntryForm, manualEntryLines, manualEntryNumber, generateManualEntryNumber]);
 
   // ── Trigger fetches on tab change ─────────────────────────────────────────
   useEffect(() => {
@@ -1768,7 +1803,7 @@ export default function AdminPage() {
     else if (activeTab === 'financial') fetchFinancial();
     else if (activeTab === 'profile') fetchProfile();
     else if (activeTab === 'journal') fetchJournal();
-    else if (activeTab === 'manual') { setManualSpecialNote(''); generateManualEntryNumber(); }
+    else if (activeTab === 'manual') { generateManualEntryNumber(); }
     else if (activeTab === 'bills') { fetchBills(); generateBillNumber(); }
   }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber, fetchBills, generateBillNumber]);
 
@@ -5205,17 +5240,13 @@ export default function AdminPage() {
                     onChange={(e) => setManualEntryForm((p) => ({ ...p, date: e.target.value }))}
                   />
 
-                  <label style={styles.label}>Description / Memo</label>
-                  <div>
-                    <input
-                      style={styles.input}
-                      placeholder="Brief description of this entry…"
-                      maxLength={180}
-                      value={manualEntryForm.description}
-                      onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
-                    />
-                    <span style={styles.helperText}>{manualEntryForm.description.length}/180</span>
-                  </div>
+                  <label style={styles.label}>Reference Number</label>
+                  <input
+                    style={styles.input}
+                    placeholder="Optional reference…"
+                    value={manualEntryForm.reference_number}
+                    onChange={(e) => setManualEntryForm((p) => ({ ...p, reference_number: e.target.value }))}
+                  />
 
                   <label style={styles.label}>Contact</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -5243,24 +5274,16 @@ export default function AdminPage() {
                   <label style={styles.label}>Entry Number</label>
                   <input style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }} readOnly value={manualEntryNumber} />
 
-                  <label style={styles.label}>Reference Number</label>
-                  <input
-                    style={styles.input}
-                    placeholder="Optional reference…"
-                    value={manualEntryForm.reference_number}
-                    onChange={(e) => setManualEntryForm((p) => ({ ...p, reference_number: e.target.value }))}
-                  />
-
-                  <label style={styles.label}>Special Note</label>
-                  <div>
+                  <label style={styles.label}>Description / Memo</label>
+                  <div style={{ gridColumn: '2 / -1' }}>
                     <input
                       style={styles.input}
-                      placeholder="Optional note or explanation…"
+                      placeholder="Brief description of this entry…"
                       maxLength={180}
-                      value={manualSpecialNote}
-                      onChange={(e) => setManualSpecialNote(e.target.value)}
+                      value={manualEntryForm.description}
+                      onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
                     />
-                    <span style={styles.helperText}>{manualSpecialNote.length}/180</span>
+                    <span style={styles.helperText}>{manualEntryForm.description.length}/180</span>
                   </div>
                 </div>
               </div>
@@ -5497,9 +5520,11 @@ export default function AdminPage() {
                           </td>
                           <td style={styles.td}>
                             <button onClick={() => viewBill(bill)} style={styles.actionBtn}>View</button>
+                            {bill.status !== 'paid' && (
+                              <button onClick={() => openBillDialog(bill)} style={styles.actionBtn}>Edit</button>
+                            )}
                             {bill.status === 'draft' && (
                               <>
-                                <button onClick={() => openBillDialog(bill)} style={styles.actionBtn}>Edit</button>
                                 <button
                                   onClick={() => approveBill(bill)}
                                   style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}
