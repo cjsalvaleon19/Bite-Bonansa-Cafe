@@ -5196,13 +5196,16 @@ export default function AdminPage() {
                   />
 
                   <label style={styles.label}>Description / Memo</label>
-                  <input
-                    style={styles.input}
-                    placeholder="Brief description of this entry…"
-                    maxLength={180}
-                    value={manualEntryForm.description}
-                    onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
-                  />
+                  <div>
+                    <input
+                      style={styles.input}
+                      placeholder="Brief description of this entry…"
+                      maxLength={180}
+                      value={manualEntryForm.description}
+                      onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
+                    />
+                    <span style={styles.helperText}>{manualEntryForm.description.length}/180</span>
+                  </div>
 
                   <label style={styles.label}>Contact</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -5239,13 +5242,16 @@ export default function AdminPage() {
                   />
 
                   <label style={styles.label}>Special Note</label>
-                  <input
-                    style={styles.input}
-                    placeholder="Optional note or explanation…"
-                    maxLength={180}
-                    value={manualSpecialNote}
-                    onChange={(e) => setManualSpecialNote(e.target.value)}
-                  />
+                  <div>
+                    <input
+                      style={styles.input}
+                      placeholder="Optional note or explanation…"
+                      maxLength={180}
+                      value={manualSpecialNote}
+                      onChange={(e) => setManualSpecialNote(e.target.value)}
+                    />
+                    <span style={styles.helperText}>{manualSpecialNote.length}/180</span>
+                  </div>
                 </div>
               </div>
 
