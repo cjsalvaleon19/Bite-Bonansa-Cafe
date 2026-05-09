@@ -2018,7 +2018,7 @@ export default function AdminPage() {
     'Fruit Soda & Lemonade': 0.40,
   };
 
-  const filteredCostingHeaders = useMemo(() => costingHeaders.filter((item) => {
+  const filteredCostingHeaders = costingHeaders.filter((item) => {
     const q = costingSearch.trim().toLowerCase();
     if (q && !(item.menu_item_name || '').toLowerCase().includes(q)) return false;
     if (!costingCmStatusFilter) return true;
@@ -2029,7 +2029,7 @@ export default function AdminPage() {
     if (costingCmStatusFilter === 'critical') return cmPct >= 40 && cmPct <= 49;
     if (costingCmStatusFilter === 'below-target') return cmPct <= 49.99;
     return true;
-  }), [costingHeaders, costingSearch, costingCmStatusFilter]);
+  });
 
   // Derive computed costing values from form fields
   const calcCostingValues = (form) => {
