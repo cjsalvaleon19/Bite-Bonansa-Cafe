@@ -1588,20 +1588,20 @@ function CartContent({
                   <p className="text-sm text-muted-foreground mt-0.5">{formatCurrency(item.basePrice + item.addonPrice)} each</p>
                 </div>
                 {/* Bottom row: qty controls (left) and total price (right) */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1">
-                    <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, -1)}>
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
+                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" onClick={() => updateQuantity(item.id, -1)}>
                       <Minus className="h-3 w-3" />
                     </Button>
-                    <span className="w-8 text-center font-medium text-sm text-foreground">{item.quantity}</span>
-                    <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, 1)}>
+                    <span className="w-6 sm:w-8 text-center font-medium text-sm text-foreground">{item.quantity}</span>
+                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" onClick={() => updateQuantity(item.id, 1)}>
                       <Plus className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 text-destructive touch-manipulation" onClick={() => removeFromCart(item.id)}>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 text-destructive touch-manipulation px-0" onClick={() => removeFromCart(item.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
-                  <p className="text-sm font-semibold text-primary shrink-0">{formatCurrency(item.price)}</p>
+                  <p className="ml-2 shrink-0 whitespace-nowrap text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
                 </div>
               </div>
             )
