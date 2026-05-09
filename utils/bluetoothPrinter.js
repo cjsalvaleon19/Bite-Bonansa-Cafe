@@ -21,7 +21,8 @@ import { formatOrderModeLabel, formatOrderSlipItemDetails, getOrderSlipNumber } 
 
 const PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb';
 const PRINTER_CHAR_UUID    = '00002af1-0000-1000-8000-00805f9b34fb';
-const CHUNK_SIZE           = 512;  // max bytes per writeValue call
+// Conservative chunk size for better Android BLE compatibility (incl. Xiaomi tablets).
+const CHUNK_SIZE           = 20;
 const DEFAULT_PAPER_WIDTH  = 48;   // characters per line on 80 mm paper
 const PRINTER_WIDTH_KEY    = 'bbc_printer_paper_width';
 // Keep one explicit locale/format for receipt timestamps so output remains
@@ -544,8 +545,22 @@ export async function printToBluetoothPrinter(order, receiptType = 'sales', opts
   const characteristic = await connectPrinter();
   const data = buildReceiptBytes(order, receiptType, opts);
 
-  // Send in CHUNK_SIZE slices to stay within the printer's BLE buffer limit
+  const delayMs = Number.isFinite(opts.chunkDelayMs)
+    ? Math.max(0, Math.floor(opts.chunkDelayMs))
+    : 10;
+
+  // Send in CHUNK_SIZE slices to stay within conservative BLE buffer limits.
   for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
-    await characteristic.writeValue(data.slice(offset, offset + CHUNK_SIZE));
+    const chunk = data.slice(offset, offset + CHUNK_SIZE);
+    if (typeof characteristic.writeValueWithoutResponse === 'function') {
+      await characteristic.writeValueWithoutResponse(chunk);
+    } else if (typeof characteristic.writeValueWithResponse === 'function') {
+      await characteristic.writeValueWithResponse(chunk);
+    } else {
+      await characteristic.writeValue(chunk);
+    }
+    if (delayMs > 0 && (offset + CHUNK_SIZE) < data.length) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
   }
 }

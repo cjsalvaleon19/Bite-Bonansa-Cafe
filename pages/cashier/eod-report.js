@@ -736,7 +736,7 @@ export default function EndOfDayReport() {
                           </button>
                           <button
                             style={styles.printBtn}
-                            onClick={() => handlePrintReceipt(order)}
+                            onClick={() => handleBtPrintReceipt(order)}
                           >
                             🖨️
                           </button>
