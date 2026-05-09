@@ -1595,9 +1595,10 @@ function CartContent({
                     <p className="font-medium text-foreground break-words">{item.menuItem.name}</p>
                     {(showLegacyVariety || variantEntries.length > 0 || item.selectedSize || item.selectedAddons.length > 0) && (
                       <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
-                        {variantEntries.map(([variantType, value]) => (
-                          <p key={variantType}>{variantType}: {value}</p>
-                        ))}
+                        {variantEntries.map(([variantType, value]) => {
+                          const variantLabel = variantType.charAt(0).toUpperCase() + variantType.slice(1)
+                          return <p key={variantType}>{variantLabel}: {value}</p>
+                        })}
                         {showLegacyVariety && <p>Variety: {item.selectedVariety}</p>}
                         {item.selectedSize && <p>Size: {item.selectedSize}</p>}
                         {item.selectedAddons.length > 0 && (
