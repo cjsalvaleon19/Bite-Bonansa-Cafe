@@ -9,6 +9,49 @@ import {
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 
+function shiftDateByMonthsClamped(inputDate, deltaMonths) {
+  const date = new Date(inputDate);
+  const originalDay = date.getDate();
+  date.setDate(1);
+  date.setMonth(date.getMonth() + deltaMonths);
+  const maxDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(originalDay, maxDay));
+  return date;
+}
+
+function shiftDateByYearsClamped(inputDate, deltaYears) {
+  const date = new Date(inputDate);
+  const originalDay = date.getDate();
+  date.setDate(1);
+  date.setFullYear(date.getFullYear() + deltaYears);
+  const maxDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(originalDay, maxDay));
+  return date;
+}
+
+function formatShortMonth(dateVal) {
+  const d = new Date(dateVal);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+}
+
+function formatFinancialCoverageLabel(fromDate, toDate, unit) {
+  const from = new Date(`${fromDate}T00:00:00`);
+  const to = new Date(`${toDate}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return String(toDate || '');
+
+  const isSingleDay = fromDate === toDate;
+  if (isSingleDay) {
+    const day = String(to.getDate()).padStart(2, '0');
+    return `${formatShortMonth(to)}${day}`;
+  }
+
+  if (unit === 'annual') return String(to.getFullYear());
+
+  const yy = String(to.getFullYear()).slice(-2);
+  return `${formatShortMonth(to)}${yy}`;
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('admin');
@@ -58,6 +101,7 @@ export default function AdminPage() {
   // ── Price Costing state ───────────────────────────────────────────────────
   const [costingHeaders, setCostingHeaders] = useState([]);
   const [costingSearch, setCostingSearch] = useState('');
+  const [costingCmStatusFilter, setCostingCmStatusFilter] = useState('');
   const [invItems, setInvItems] = useState([]);
   const [menuItemsList, setMenuItemsList] = useState([]);
   const [costingDialogOpen, setCostingDialogOpen] = useState(false);
@@ -163,6 +207,8 @@ export default function AdminPage() {
       'Accounts Payable', 'Accounts Payable - Rewards',
       'Revenue', 'Inventory', "Owner's Capital", 'Retained Earnings',
       'Rewards', 'Cost of Goods Sold',
+      // Liability accounts
+      'Credit Card Payable', 'Spaylater Payable',
       // Income
       'Delivery Income',
       // Operating Expenses
@@ -195,7 +241,6 @@ export default function AdminPage() {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState('');
   const [manualSuccess, setManualSuccess] = useState('');
-  const [manualSpecialNote, setManualSpecialNote] = useState('');
   // Contact picker for manual entry
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [contactPickerQuery, setContactPickerQuery] = useState('');
@@ -749,7 +794,7 @@ export default function AdminPage() {
       const { data, error: err } = await supabase
         .from('bills')
         .select('*')
-        .order('date', { ascending: false })
+        .order('bill_number', { ascending: false })
         .order('created_at', { ascending: false });
       if (err) throw err;
       setBillsList(data || []);
@@ -928,7 +973,8 @@ export default function AdminPage() {
     try {
       const creditAccount = billPayMethod === 'cash_on_hand' ? 'Cash on Hand'
         : billPayMethod === 'cash_in_bank' ? 'Cash in Bank'
-        : "Owner's Capital"; // credit card
+        : billPayMethod === 'spaylater' ? 'Spaylater Payable'
+        : 'Credit Card Payable'; // credit card
       const today = new Date().toISOString().split('T')[0];
       const jeRow = {
         date: today,
@@ -1220,7 +1266,7 @@ export default function AdminPage() {
         if (oIds.length > 0) {
           const { data: oi } = await supabase
             .from('order_items')
-            .select('name, price, quantity, subtotal, menu_item_id')
+            .select('name, price, quantity, subtotal, menu_item_id, variant_details')
             .in('order_id', oIds);
           salesItems = oi || [];
         }
@@ -1241,7 +1287,44 @@ export default function AdminPage() {
           const qty = Number(si.quantity) || 1;
           const rev = Number(si.subtotal) || (Number(si.price) || 0) * qty;
           const category = (si.menu_item_id && menuCatMap[si.menu_item_id]) || menuCatMap[baseName] || menuCatMap[si.name] || 'Other';
-          const unitCogs = cogsMap[si.name] || cogsMap[baseName] || 0;
+          const variantDetails = si.variant_details && typeof si.variant_details === 'object' ? si.variant_details : {};
+          const normalizeVariantKey = (key) => String(key || '').toLowerCase().replace(/[\s-]/g, '');
+
+          // Prefer variant-specific base costing (e.g., Americano - 16oz), then fall back to generic base name.
+          let unitBaseCogs = cogsMap[si.name] || cogsMap[baseName] || 0;
+          const variantCandidates = [];
+          Object.entries(variantDetails).forEach(([k, v]) => {
+            const normalized = normalizeVariantKey(k);
+            if (normalized === 'addon' || normalized === 'addons') return;
+            String(v || '').split(',').map((x) => x.trim()).filter(Boolean).forEach((variantValue) => {
+              variantCandidates.push({
+                name: `${baseName} - ${variantValue}`,
+                priority: normalized === 'size' ? 1 : 2,
+              });
+            });
+          });
+          variantCandidates
+            .sort((a, b) => (a.priority - b.priority) || (b.name.length - a.name.length))
+            .some((candidate) => {
+              if (cogsMap[candidate.name] !== undefined) {
+                unitBaseCogs = cogsMap[candidate.name];
+                return true;
+              }
+              return false;
+            });
+
+          // Add-on costing is generic by add-on name (e.g., "Extra Shot", "Coffee Jelly").
+          const unitAddonCogs = Object.entries(variantDetails).reduce((sum, [k, v]) => {
+            const normalized = normalizeVariantKey(k);
+            if (normalized !== 'addon' && normalized !== 'addons') return sum;
+            return sum + String(v || '')
+              .split(',')
+              .map((x) => x.trim())
+              .filter(Boolean)
+              .reduce((s, addonName) => s + (cogsMap[addonName] || 0), 0);
+          }, 0);
+
+          const unitCogs = unitBaseCogs + unitAddonCogs;
           const totalCogs = unitCogs * qty;
           const key = baseName;
           if (!itemMap[key]) {
@@ -1371,21 +1454,27 @@ export default function AdminPage() {
           const from = new Date(finDateFrom);
           const to = new Date(finDateTo);
           if (finCompareMode === 'same_period_last_year') {
-            from.setFullYear(from.getFullYear() - index);
-            to.setFullYear(to.getFullYear() - index);
+            return {
+              from: shiftDateByYearsClamped(from, -index),
+              to: shiftDateByYearsClamped(to, -index),
+            };
           } else if (unit === 'quarterly') {
-            from.setMonth(from.getMonth() - index * 3);
-            to.setMonth(to.getMonth() - index * 3);
+            return {
+              from: shiftDateByMonthsClamped(from, -(index * 3)),
+              to: shiftDateByMonthsClamped(to, -(index * 3)),
+            };
           } else if (unit === 'annual') {
-            from.setFullYear(from.getFullYear() - index);
-            to.setFullYear(to.getFullYear() - index);
+            return {
+              from: shiftDateByYearsClamped(from, -index),
+              to: shiftDateByYearsClamped(to, -index),
+            };
           } else {
-            from.setMonth(from.getMonth() - index);
-            to.setMonth(to.getMonth() - index);
+            return {
+              from: shiftDateByMonthsClamped(from, -index),
+              to: shiftDateByMonthsClamped(to, -index),
+            };
           }
-          return { from, to };
         };
-        const makeLabel = (to) => unit === 'annual' ? to.slice(0, 4) : (unit === 'monthly' || unit === 'quarterly') ? to.slice(0, 7) : to;
 
         const computePLPeriod = async (cFrom, cTo, cFromISO, cToISO) => {
           const [{ data: rev }, { data: del }, { data: cg }, { data: exps }] = await Promise.all([
@@ -1413,13 +1502,13 @@ export default function AdminPage() {
         };
 
         const compareFull = [];
-        if (periods > 0) for (let i = periods; i >= 1; i--) {
+        if (periods > 0) for (let i = 1; i <= periods; i++) {
           const { from: f, to: t } = shiftedRange(i);
           const cFrom = f.toISOString().split('T')[0];
           const cTo = t.toISOString().split('T')[0];
           const cFromISO = `${cFrom}T00:00:00.000Z`;
           const cToISO = `${cTo}T23:59:59.999Z`;
-          const label = makeLabel(cTo);
+          const label = formatFinancialCoverageLabel(cFrom, cTo, unit);
           let periodData = { label };
           if (finSubTab === 'pl' || finSubTab === 'sales' || finSubTab === 'budget') {
             const pl = await computePLPeriod(cFrom, cTo, cFromISO, cToISO);
@@ -1581,7 +1670,7 @@ export default function AdminPage() {
         if (journalSubFilter === 'approved_rr') q = q.eq('reference_type', 'receiving_report');
         else if (journalSubFilter === 'rr_cash_on_hand') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash on Hand');
         else if (journalSubFilter === 'rr_cash_in_bank') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash in Bank');
-        else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', "Owner's Capital");
+        else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Credit Card Payable');
         else if (journalSubFilter === 'bill_all') q = q.eq('reference_type', 'bill');
         else if (journalSubFilter === 'bill_approved') q = q.eq('reference_type', 'bill').eq('credit_account', 'Accounts Payable');
         else if (journalSubFilter === 'bill_paid') q = q.eq('reference_type', 'bill').eq('debit_account', 'Accounts Payable');
@@ -1701,14 +1790,13 @@ export default function AdminPage() {
       setManualSuccess(`Manual entry ${manualEntryNumber} saved successfully.`);
       setManualEntryLines([{ description: '', account: '', type: 'debit', amount: '' }]);
       setManualEntryForm({ date: new Date().toISOString().split('T')[0], name: '', reference_number: '', description: '' });
-      setManualSpecialNote('');
       await generateManualEntryNumber();
     } catch (err) {
       setManualError(err.message);
     } finally {
       setManualSaving(false);
     }
-  }, [supabase, manualEntryForm, manualEntryLines, manualEntryNumber, manualSpecialNote, generateManualEntryNumber]);
+  }, [supabase, manualEntryForm, manualEntryLines, manualEntryNumber, generateManualEntryNumber]);
 
   // ── Trigger fetches on tab change ─────────────────────────────────────────
   useEffect(() => {
@@ -1719,7 +1807,7 @@ export default function AdminPage() {
     else if (activeTab === 'financial') fetchFinancial();
     else if (activeTab === 'profile') fetchProfile();
     else if (activeTab === 'journal') fetchJournal();
-    else if (activeTab === 'manual') { setManualSpecialNote(''); generateManualEntryNumber(); }
+    else if (activeTab === 'manual') { generateManualEntryNumber(); }
     else if (activeTab === 'bills') { fetchBills(); generateBillNumber(); }
   }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber, fetchBills, generateBillNumber]);
 
@@ -1924,14 +2012,27 @@ export default function AdminPage() {
 
   // Category-level contribution margin ratio targets (2.3.3–2.3.9)
   const CM_TARGETS = {
-    'Snacks & Bites': 0.50,
-    'Noodles': 0.60,
-    'Rice & More': 0.50,
-    'Milktea Series': 0.60,
-    'Hot/Iced Drinks': 0.60,
-    'Frappe Series': 0.60,
-    'Fruit Soda & Lemonade': 0.60,
+    'Snacks & Bites': 0.40,
+    'Noodles': 0.40,
+    'Rice & More': 0.40,
+    'Milktea Series': 0.40,
+    'Hot/Iced Drinks': 0.40,
+    'Frappe Series': 0.40,
+    'Fruit Soda & Lemonade': 0.40,
   };
+
+  const filteredCostingHeaders = costingHeaders.filter((item) => {
+    const q = costingSearch.trim().toLowerCase();
+    if (q && !(item.menu_item_name || '').toLowerCase().includes(q)) return false;
+    if (!costingCmStatusFilter) return true;
+    const sp = Number(item.selling_price) || 0;
+    const tec = Number(item.total_estimated_cogs) || 0;
+    const cmPct = sp > 0 ? ((sp - tec) / sp) * 100 : 0;
+    if (costingCmStatusFilter === 'above-target') return cmPct > 50;
+    if (costingCmStatusFilter === 'critical') return cmPct >= 40 && cmPct < 50;
+    if (costingCmStatusFilter === 'below-target') return cmPct < 40;
+    return true;
+  });
 
   // Derive computed costing values from form fields
   const calcCostingValues = (form) => {
@@ -2390,10 +2491,12 @@ export default function AdminPage() {
       // Journal Entry based on payment mode
       // Cash on Hand: Debit Accounts Payable, Credit Cash on Hand
       // Cash in Bank: Debit Accounts Payable, Credit Cash in Bank
-      // Credit Card:  Debit Accounts Payable, Credit Owner's Capital
+      // Credit Card:  Debit Accounts Payable, Credit Credit Card Payable
+      // Spaylater:    Debit Accounts Payable, Credit Spaylater Payable
       const creditAccount =
         rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
-        rrPayForm.payment_mode === 'credit_card'  ? "Owner's Capital" :
+        rrPayForm.payment_mode === 'credit_card'  ? 'Credit Card Payable' :
+        rrPayForm.payment_mode === 'spaylater'    ? 'Spaylater Payable' :
         'Cash on Hand';
       const { error: jeErr } = await supabase.from('journal_entries').insert({
         date: rrPayForm.payment_date,
@@ -3096,12 +3199,20 @@ export default function AdminPage() {
               </div>
               {loading && <p style={styles.loadingText}>Loading…</p>}
               <div style={{ marginBottom: 12 }}>
-                <input
-                  style={{ ...styles.input, width: 280 }}
-                  placeholder="Search menu items…"
-                  value={costingSearch}
-                  onChange={(e) => setCostingSearch(e.target.value)}
-                />
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    style={{ ...styles.input, width: 280 }}
+                    placeholder="Search menu items…"
+                    value={costingSearch}
+                    onChange={(e) => setCostingSearch(e.target.value)}
+                  />
+                  <select style={{ ...styles.input, width: 220 }} value={costingCmStatusFilter} onChange={(e) => setCostingCmStatusFilter(e.target.value)}>
+                    <option value="">All CM Ratio Status</option>
+                    <option value="above-target">Above Target (&gt; 50%)</option>
+                    <option value="critical">Critical (40% to &lt; 50%)</option>
+                    <option value="below-target">Below Target (39.99% and below)</option>
+                  </select>
+                </div>
               </div>
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
@@ -3113,7 +3224,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {costingHeaders.filter((item) => !costingSearch || (item.menu_item_name || '').toLowerCase().includes(costingSearch.toLowerCase())).map((item, idx) => {
+                    {filteredCostingHeaders.map((item, idx) => {
                       const sp = Number(item.selling_price) || 0;
                       const tec = Number(item.total_estimated_cogs) || 0;
                       const cmRatio = sp > 0 ? (sp - tec) / sp : 0;
@@ -3148,8 +3259,8 @@ export default function AdminPage() {
                         </tr>
                       );
                     })}
-                    {costingHeaders.length === 0 && !loading && (
-                      <tr><td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No costing items yet.</td></tr>
+                    {filteredCostingHeaders.length === 0 && !loading && (
+                      <tr><td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>{costingHeaders.length === 0 ? 'No costing items yet.' : 'No costing items match current filters.'}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -3225,9 +3336,19 @@ export default function AdminPage() {
                                   }
                                 }
                               }
+                              // Deduplicate add-on entries: show each unique add-on name once
+                              const seenAddons = new Set();
+                              const deduped = expanded.filter((e) => {
+                                if (e.parentName) {
+                                  const key = e.displayName.toLowerCase();
+                                  if (seenAddons.has(key)) return false;
+                                  seenAddons.add(key);
+                                }
+                                return true;
+                              });
                               const existingNames = new Set(costingHeaders.map((h) => (h.menu_item_name || '').toLowerCase()));
                               const q = menuSearchQuery.toLowerCase();
-                              const filtered = expanded.filter((e) =>
+                              const filtered = deduped.filter((e) =>
                                 e.displayName.toLowerCase().includes(q) &&
                                 (!costingEditItem || (costingEditItem.menu_item_name || '').toLowerCase() !== e.displayName.toLowerCase()) &&
                                 (costingEditItem ? true : !existingNames.has(e.displayName.toLowerCase())),
@@ -3251,7 +3372,7 @@ export default function AdminPage() {
                                     setMenuSearchOpen(false);
                                   }}
                                 >
-                                  {entry.displayName} <span style={{ color: '#888', fontSize: 11 }}>({entry.category}) — {fmt(entry.price)}{entry.parentName ? ` • Add-on to ${entry.parentName}` : ''}</span>
+                                  {entry.displayName} <span style={{ color: '#888', fontSize: 11 }}>({entry.category}) — {fmt(entry.price)}{entry.parentName ? ' • Add-on (generic)' : ''}</span>
                                 </div>
                               ));
                             })()}
@@ -3986,6 +4107,7 @@ export default function AdminPage() {
                         <option value="cash_on_hand">Cash on Hand</option>
                         <option value="cash_in_bank">Cash in Bank</option>
                         <option value="credit_card">Credit Card</option>
+                        <option value="spaylater">SPayLater</option>
                       </select>
 
                       <label style={styles.label}>Reference #</label>
@@ -4013,7 +4135,8 @@ export default function AdminPage() {
                         <div style={{ paddingLeft: 24 }}>
                           Cr &nbsp;<strong>
                             {rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
-                             rrPayForm.payment_mode === 'credit_card'  ? "Owner's Capital" :
+                             rrPayForm.payment_mode === 'credit_card'  ? 'Credit Card Payable' :
+                             rrPayForm.payment_mode === 'spaylater'    ? 'Spaylater Payable' :
                              'Cash on Hand'}
                           </strong> &nbsp;₱{Number(rrPayForm.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                         </div>
@@ -4215,7 +4338,7 @@ export default function AdminPage() {
 
               {/* P&L */}
               {finSubTab === 'pl' && finData?.type === 'pl' && (() => {
-                const currentLabel = `${finDateFrom} – ${finDateTo}`;
+                const currentLabel = formatFinancialCoverageLabel(finDateFrom, finDateTo, finComparePeriod);
                 const hasCmp = finCompareFull.length > 0;
                 const colCount = 1 + finCompareFull.length;
                 const cmpVal = (p, key, opexKey) => opexKey ? (p.expByAccount?.[opexKey] || 0) : (p[key] || 0);
@@ -4281,6 +4404,7 @@ export default function AdminPage() {
               {finSubTab === 'balance' && finData?.type === 'balance' && (() => {
                 const hasCmp = finCompareFull.length > 0;
                 const colCount = 1 + finCompareFull.length;
+                const currentLabel = formatFinancialCoverageLabel(finDateFrom, finDateTo, finComparePeriod);
                 const cmpGet = (p, key) => p[key] ?? 0;
                 const hdrCell = (label, colSpan = 1) => (
                   <td colSpan={colSpan} style={{ ...styles.td, fontWeight: 600 }}>{label}</td>
@@ -4312,8 +4436,8 @@ export default function AdminPage() {
                         <thead>
                           <tr>
                             <th style={styles.th}>Item</th>
-                            <th style={{ ...styles.th, textAlign: 'right', color: '#ffc107' }}>As of {finDateTo}</th>
-                            {finCompareFull.map((p) => <th key={p.label} style={{ ...styles.th, textAlign: 'right' }}>As of {p.label}</th>)}
+                            <th style={{ ...styles.th, textAlign: 'right', color: '#ffc107' }}>{currentLabel}</th>
+                            {finCompareFull.map((p) => <th key={p.label} style={{ ...styles.th, textAlign: 'right' }}>{p.label}</th>)}
                           </tr>
                         </thead>
                       )}
@@ -4378,12 +4502,14 @@ export default function AdminPage() {
                       const catMap = {};
                       rows.forEach((r) => {
                         const cat = r.category || 'Other';
-                        if (!catMap[cat]) catMap[cat] = { revenue: 0, cogs: 0, cm: 0 };
+                        if (!catMap[cat]) catMap[cat] = { quantity: 0, revenue: 0, cogs: 0, cm: 0 };
+                        catMap[cat].quantity += Number(r.quantity) || 0;
                         catMap[cat].revenue += r.revenue;
                         catMap[cat].cogs += r.cogs;
                         catMap[cat].cm += r.cm;
                       });
                       const cats = Object.entries(catMap);
+                      const grandQty = cats.reduce((s, [, v]) => s + v.quantity, 0);
                       const grandRev = cats.reduce((s, [, v]) => s + v.revenue, 0);
                       const grandCogs = cats.reduce((s, [, v]) => s + v.cogs, 0);
                       const grandCm = cats.reduce((s, [, v]) => s + v.cm, 0);
@@ -4393,7 +4519,7 @@ export default function AdminPage() {
                           <table style={styles.table}>
                             <thead>
                               <tr>
-                                {['Category', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
+                                {['Category', 'Qty Sold', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
                                   <th key={h} style={{ ...styles.th, textAlign: h !== 'Category' ? 'right' : 'left' }}>{h}</th>
                                 ))}
                               </tr>
@@ -4404,6 +4530,7 @@ export default function AdminPage() {
                                 return (
                                   <tr key={cat} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
                                     <td style={styles.td}>{cat}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right' }}>{v.quantity}</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(v.revenue)}</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(v.cogs)})</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: v.cm >= 0 ? '#4caf50' : '#f44336' }}>{fmt(v.cm)}</td>
@@ -4413,6 +4540,7 @@ export default function AdminPage() {
                               })}
                               <tr style={{ background: '#2a2a1a', fontWeight: 700 }}>
                                 <td style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Grand Total</td>
+                                <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{grandQty}</td>
                                 <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandRev)}</td>
                                 <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(grandCogs)})</td>
                                 <td style={{ ...styles.td, textAlign: 'right', color: grandCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(grandCm)}</td>
@@ -4431,6 +4559,7 @@ export default function AdminPage() {
                       if (!catGroups[cat]) catGroups[cat] = [];
                       catGroups[cat].push(r);
                     });
+                    const grandQty = rows.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
                     const grandRev = rows.reduce((s, r) => s + r.revenue, 0);
                     const grandCogs = rows.reduce((s, r) => s + r.cogs, 0);
                     const grandCm = rows.reduce((s, r) => s + r.cm, 0);
@@ -4440,13 +4569,14 @@ export default function AdminPage() {
                         <table style={styles.table}>
                           <thead>
                             <tr>
-                              {['Item', 'Category', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
+                              {['Item', 'Category', 'Qty Sold', 'Revenue (₱)', 'COGS (₱)', 'CM Amount (₱)', 'CM %'].map((h) => (
                                 <th key={h} style={{ ...styles.th, textAlign: h !== 'Item' && h !== 'Category' ? 'right' : 'left' }}>{h}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
                             {Object.entries(catGroups).map(([cat, items]) => {
+                              const catQty = items.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
                               const catRev = items.reduce((s, r) => s + r.revenue, 0);
                               const catCogs = items.reduce((s, r) => s + r.cogs, 0);
                               const catCm = items.reduce((s, r) => s + r.cm, 0);
@@ -4457,6 +4587,7 @@ export default function AdminPage() {
                                     <tr key={r.name} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
                                       <td style={styles.td}>{r.name}</td>
                                       <td style={styles.td}>{r.category}</td>
+                                      <td style={{ ...styles.td, textAlign: 'right' }}>{r.quantity}</td>
                                       <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(r.revenue)}</td>
                                       <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>({fmt(r.cogs)})</td>
                                       <td style={{ ...styles.td, textAlign: 'right', color: r.cm >= 0 ? '#4caf50' : '#f44336' }}>{fmt(r.cm)}</td>
@@ -4465,6 +4596,7 @@ export default function AdminPage() {
                                   ))}
                                   <tr style={{ background: '#222' }}>
                                     <td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107', paddingLeft: 24 }}>Subtotal — {cat}</td>
+                                    <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{catQty}</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(catRev)}</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(catCogs)})</td>
                                     <td style={{ ...styles.td, textAlign: 'right', color: catCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(catCm)}</td>
@@ -4475,6 +4607,7 @@ export default function AdminPage() {
                             })}
                             <tr style={{ background: '#2a2a1a' }}>
                               <td colSpan={2} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>Grand Total</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{grandQty}</td>
                               <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(grandRev)}</td>
                               <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>({fmt(grandCogs)})</td>
                               <td style={{ ...styles.td, textAlign: 'right', color: grandCm >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }}>{fmt(grandCm)}</td>
@@ -4490,7 +4623,7 @@ export default function AdminPage() {
 
               {/* Budget Variance — follows P&L structure with editable budget rows */}
               {finSubTab === 'budget' && finData?.type === 'budget' && (
-                <div style={{ ...styles.card, maxWidth: 680 }}>
+                <div style={{ ...styles.card, width: '100%' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                     <h3 style={styles.cardTitle}>Budget Variance Report</h3>
                     <span style={{ color: '#4caf50', fontSize: 11, border: '1px solid #2e7d32', borderRadius: 12, padding: '4px 10px' }}>Auto-saved</span>
@@ -4608,7 +4741,7 @@ export default function AdminPage() {
                     const netProfitBudget = incomeBeforeTaxBudget - incomeTaxBudget;
                     return (
                       <div style={styles.tableWrap}>
-                        <table style={styles.table}>
+                        <table style={{ ...styles.table, minWidth: 1120 }}>
                           <thead>
                             <tr>
                               {['Account', 'Budget (₱)', 'Budget %', 'Actual (₱)', 'Actual %', 'Variance (₱)', 'Variance %'].map((h) => (
@@ -5127,7 +5260,7 @@ export default function AdminPage() {
 
               {/* Header fields */}
               <div style={{ ...styles.card, marginBottom: 16 }}>
-                <div style={styles.formGrid}>
+                <div style={{ display: 'grid', gridTemplateColumns: '110px minmax(180px, 1fr) 120px minmax(220px, 1fr)', gap: 12, alignItems: 'center' }}>
                   <label style={styles.label}>Date</label>
                   <input
                     type="date"
@@ -5136,12 +5269,12 @@ export default function AdminPage() {
                     onChange={(e) => setManualEntryForm((p) => ({ ...p, date: e.target.value }))}
                   />
 
-                  <label style={styles.label}>Description / Memo</label>
-                  <textarea
-                    style={{ ...styles.input, minHeight: 72, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, width: '100%', boxSizing: 'border-box' }}
-                    placeholder="Brief description of this entry…"
-                    value={manualEntryForm.description}
-                    onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
+                  <label style={styles.label}>Reference Number</label>
+                  <input
+                    style={styles.input}
+                    placeholder="Optional reference…"
+                    value={manualEntryForm.reference_number}
+                    onChange={(e) => setManualEntryForm((p) => ({ ...p, reference_number: e.target.value }))}
                   />
 
                   <label style={styles.label}>Contact</label>
@@ -5170,21 +5303,17 @@ export default function AdminPage() {
                   <label style={styles.label}>Entry Number</label>
                   <input style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }} readOnly value={manualEntryNumber} />
 
-                  <label style={styles.label}>Reference Number</label>
-                  <input
-                    style={styles.input}
-                    placeholder="Optional reference…"
-                    value={manualEntryForm.reference_number}
-                    onChange={(e) => setManualEntryForm((p) => ({ ...p, reference_number: e.target.value }))}
-                  />
-
-                  <label style={styles.label}>Special Note</label>
-                  <textarea
-                    style={{ ...styles.input, minHeight: 64, resize: 'vertical' }}
-                    placeholder="Optional note or explanation…"
-                    value={manualSpecialNote}
-                    onChange={(e) => setManualSpecialNote(e.target.value)}
-                  />
+                  <label style={styles.label}>Description / Memo</label>
+                  <div style={{ gridColumn: '2 / -1' }}>
+                    <input
+                      style={styles.input}
+                      placeholder="Brief description of this entry…"
+                      maxLength={180}
+                      value={manualEntryForm.description}
+                      onChange={(e) => setManualEntryForm((p) => ({ ...p, description: e.target.value }))}
+                    />
+                    <span style={styles.helperText}>{manualEntryForm.description.length}/180</span>
+                  </div>
                 </div>
               </div>
 
@@ -5420,9 +5549,11 @@ export default function AdminPage() {
                           </td>
                           <td style={styles.td}>
                             <button onClick={() => viewBill(bill)} style={styles.actionBtn}>View</button>
+                            {bill.status !== 'paid' && (
+                              <button onClick={() => openBillDialog(bill)} style={styles.actionBtn}>Edit</button>
+                            )}
                             {bill.status === 'draft' && (
                               <>
-                                <button onClick={() => openBillDialog(bill)} style={styles.actionBtn}>Edit</button>
                                 <button
                                   onClick={() => approveBill(bill)}
                                   style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}
@@ -5639,6 +5770,18 @@ export default function AdminPage() {
                       </div>
                     )}
                     <div style={styles.dialogFooter}>
+                      {billViewItem?.status === 'draft' && (
+                        <button
+                          style={styles.actionBtn}
+                          onClick={() => {
+                            const item = billViewItem;
+                            setBillViewItem(null);
+                            openBillDialog(item);
+                          }}
+                        >
+                          Edit
+                        </button>
+                      )}
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
                     </div>
                   </Dialog.Content>
@@ -5765,12 +5908,13 @@ export default function AdminPage() {
                             <option value="cash_on_hand">Cash on Hand</option>
                             <option value="cash_in_bank">Cash in Bank</option>
                             <option value="credit_card">Credit Card</option>
+                            <option value="spaylater">SPayLater</option>
                           </select>
                         </div>
                         <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 6, padding: '10px 14px', marginTop: 16, fontSize: 12, color: '#aaa' }}>
                           <p style={{ margin: '0 0 6px' }}><strong style={{ color: '#ffc107' }}>Journal Entry:</strong></p>
                           <p style={{ margin: '2px 0' }}>Dr Accounts Payable: {fmt(billPayItem.total_debit || 0)}</p>
-                          <p style={{ margin: '2px 0' }}>Cr {billPayMethod === 'cash_on_hand' ? 'Cash on Hand' : billPayMethod === 'cash_in_bank' ? 'Cash in Bank' : "Owner's Capital"}: {fmt(billPayItem.total_debit || 0)}</p>
+                          <p style={{ margin: '2px 0' }}>Cr {billPayMethod === 'cash_on_hand' ? 'Cash on Hand' : billPayMethod === 'cash_in_bank' ? 'Cash in Bank' : billPayMethod === 'spaylater' ? 'Spaylater Payable' : 'Credit Card Payable'}: {fmt(billPayItem.total_debit || 0)}</p>
                         </div>
                       </div>
                     )}

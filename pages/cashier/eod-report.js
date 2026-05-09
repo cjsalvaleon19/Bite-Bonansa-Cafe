@@ -107,6 +107,7 @@ export default function EndOfDayReport() {
     if (!previewWindow) return;
 
     const orderItems = getOrderItems(order);
+    const qrImageUrl = `${window.location.origin}/qr-code.png`;
     
     // Calculate values based on the new flow
     const subtotal = order.subtotal || 0;
@@ -269,7 +270,7 @@ export default function EndOfDayReport() {
             <div style="text-align: center; margin-top: 20px;">
               <p>Thank you for your order, Biter!</p>
               <div style="margin-top: 12px;">
-                <img src="/qr-code.png" alt="Scan to order online" style="width: 90px; height: 90px;" />
+                <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
                 <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
                 <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
               </div>
@@ -302,7 +303,7 @@ export default function EndOfDayReport() {
           <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
-            body { font-family: monospace; font-size: 14px; line-height: 1.35; padding: 20px 20px 0; margin: 0; }
+             body { font-family: monospace; font-size: 10.5px; line-height: 1.3; padding: 20px 20px 0; margin: 0; }
             .section { margin: 12px 0; }
             table { width: 100%; border-collapse: collapse; }
             @media print { button { display: none; } }
@@ -310,7 +311,7 @@ export default function EndOfDayReport() {
         </head>
         <body>
           <div class="section" style="text-align: center;">
-            <p style="font-size: 20px; font-weight: bold;">ORDER SLIP</p>
+            <p style="font-size: 15px; font-weight: bold;">ORDER SLIP</p>
           </div>
           <div class="section">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -367,6 +368,7 @@ export default function EndOfDayReport() {
     if (!receiptWindow) return;
 
     const orderItems = getOrderItems(order);
+    const qrImageUrl = `${window.location.origin}/qr-code.png`;
     
     // Calculate values based on the new flow
     const subtotal = order.subtotal || 0;
@@ -409,7 +411,7 @@ export default function EndOfDayReport() {
           <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
-            body { font-family: monospace; font-size: 12px; padding: 20px 20px 0; margin: 0; }
+            body { font-family: monospace; font-size: 12px; padding: 20px 20px 0; margin: 0; word-break: break-word; }
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
             .item { display: flex; justify-content: space-between; margin: 5px 0; }
@@ -443,7 +445,17 @@ export default function EndOfDayReport() {
             ${orderItems.map(item => {
               // Strip variant details from name (for legacy data)
               const displayName = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
-              const variants = item.variant_details;
+              const variants = (() => {
+                if (item.variant_details && typeof item.variant_details === 'object') return item.variant_details;
+                if (item.variantDetails && typeof item.variantDetails === 'object') return item.variantDetails;
+                if (typeof item.variant_details === 'string') {
+                  try { return JSON.parse(item.variant_details); } catch { return null; }
+                }
+                if (typeof item.variantDetails === 'string') {
+                  try { return JSON.parse(item.variantDetails); } catch { return null; }
+                }
+                return null;
+              })();
               const hasVariants = variants && typeof variants === 'object' && Object.keys(variants).length > 0;
               
               return `
@@ -525,7 +537,7 @@ export default function EndOfDayReport() {
           <div style="text-align: center; margin-top: 20px;">
             <p>Thank you for your order, Biter!</p>
             <div style="margin-top: 12px;">
-              <img src="/qr-code.png" alt="Scan to order online" style="width: 90px; height: 90px;" />
+              <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
               <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
               <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
             </div>

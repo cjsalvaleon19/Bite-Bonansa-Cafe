@@ -24,6 +24,17 @@ const PRINTER_CHAR_UUID    = '00002af1-0000-1000-8000-00805f9b34fb';
 const CHUNK_SIZE           = 512;  // max bytes per writeValue call
 const DEFAULT_PAPER_WIDTH  = 48;   // characters per line on 80 mm paper
 const PRINTER_WIDTH_KEY    = 'bbc_printer_paper_width';
+// Keep one explicit locale/format for receipt timestamps so output remains
+// consistent across Android, Windows, and other host devices.
+const RECEIPT_DATETIME_FORMATTER = new Intl.DateTimeFormat('en-PH', {
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: true,
+});
 
 // ESC/POS command sequences
 const ESC = 0x1B;
@@ -45,6 +56,17 @@ const CMD = {
 // ─── Connection state (module-level; reused within a browser session) ────────
 
 let _characteristic = null;
+let _device = null;
+
+/**
+ * Check whether a previously paired device still has an active GATT connection.
+ *
+ * @param {BluetoothDevice|null} device
+ * @returns {boolean}
+ */
+function isGattConnected(device) {
+  return Boolean(device && device.gatt && device.gatt.connected);
+}
 
 // ─── Public: connect / disconnect / status ───────────────────────────────────
 
@@ -57,7 +79,12 @@ let _characteristic = null;
  * @throws {Error} if Web Bluetooth is unsupported or the connection fails
  */
 export async function connectPrinter() {
-  if (_characteristic) return _characteristic;
+  if (_characteristic && isGattConnected(_device)) {
+    return _characteristic;
+  }
+
+  // Cached characteristic is stale when GATT is no longer connected.
+  _characteristic = null;
 
   if (typeof navigator === 'undefined' || !navigator.bluetooth) {
     throw new Error(
@@ -66,19 +93,52 @@ export async function connectPrinter() {
     );
   }
 
-  const device = await navigator.bluetooth.requestDevice({
-    filters: [{ services: [PRINTER_SERVICE_UUID] }],
-    optionalServices: [PRINTER_SERVICE_UUID],
-  });
+  if (!_device) {
+    _device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [PRINTER_SERVICE_UUID] }],
+      optionalServices: [PRINTER_SERVICE_UUID],
+    });
 
-  // Clear cached characteristic when the device disconnects
-  device.addEventListener('gattserverdisconnected', () => {
-    _characteristic = null;
-  });
+    // Clear cached characteristic when the device disconnects
+    _device.addEventListener('gattserverdisconnected', () => {
+      _characteristic = null;
+    });
+  }
 
-  const server  = await device.gatt.connect();
-  const service = await server.getPrimaryService(PRINTER_SERVICE_UUID);
-  _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
+  // Reconnect without prompting again when we already have a paired device.
+  const cachedGattServer = _device.gatt;
+  if (!cachedGattServer) {
+    _device = null;
+    throw new Error('Bluetooth printer is unavailable. Please pair the printer again.');
+  }
+  const gattServer = cachedGattServer.connected
+    ? cachedGattServer
+    : await _device.gatt.connect();
+
+  try {
+    const service = await gattServer.getPrimaryService(PRINTER_SERVICE_UUID);
+    _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
+  } catch (err) {
+    // Recover once from transient disconnects while discovering services.
+    try {
+      const retryGatt = _device && _device.gatt;
+      if (!retryGatt) {
+        throw new Error('Bluetooth printer is unavailable. Please pair the printer again.');
+      }
+      const latestGattServer = retryGatt.connected
+        ? retryGatt
+        : await retryGatt.connect();
+      const service = await latestGattServer.getPrimaryService(PRINTER_SERVICE_UUID);
+      _characteristic = await service.getCharacteristic(PRINTER_CHAR_UUID);
+    } catch (retryErr) {
+      console.warn('[BluetoothPrinter] Reconnect retry failed:', retryErr);
+      _characteristic = null;
+      _device = null;
+      throw new Error(
+        'Bluetooth printer disconnected. Please reconnect the printer and try again.'
+      );
+    }
+  }
 
   return _characteristic;
 }
@@ -90,7 +150,7 @@ export function disconnectPrinter() {
 
 /** Returns true if a printer characteristic is currently cached. */
 export function isPrinterConnected() {
-  return _characteristic !== null;
+  return _characteristic !== null && isGattConnected(_device);
 }
 
 // ─── Private: ESC/POS encoding helpers ───────────────────────────────────────
@@ -137,6 +197,26 @@ function getPaperWidth(opts = {}) {
   return DEFAULT_PAPER_WIDTH;
 }
 
+/**
+ * Format receipt timestamps in a consistent locale-sensitive format so output
+ * is stable across different host devices.
+ *
+ * @param {string|number|Date|undefined} value
+ * @returns {string}
+ */
+function formatReceiptDate(value) {
+  const date = new Date(value || Date.now());
+  return RECEIPT_DATETIME_FORMATTER.format(date);
+}
+
+/**
+ * Wrap text using word boundaries when possible so printed lines remain
+ * readable across paper widths; very long tokens are hard-split.
+ *
+ * @param {string} text
+ * @param {number} width
+ * @returns {string[]}
+ */
 function wrapText(text, width) {
   const safeWidth = Number.isFinite(width) && width > 0
     ? Math.floor(width)
@@ -144,10 +224,47 @@ function wrapText(text, width) {
   const src = String(text || '');
   if (!src) return [''];
   const lines = [];
-  for (let i = 0; i < src.length; i += safeWidth) {
-    lines.push(src.slice(i, i + safeWidth));
+  const sourceLines = src.split('\n');
+  for (const sourceLine of sourceLines) {
+    const words = sourceLine.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      lines.push('');
+      continue;
+    }
+    let current = '';
+    for (const word of words) {
+      if (!current) {
+        if (word.length <= safeWidth) {
+          current = word;
+        } else {
+          for (let i = 0; i < word.length; i += safeWidth) {
+            lines.push(word.slice(i, i + safeWidth));
+          }
+        }
+        continue;
+      }
+      if ((current.length + 1 + word.length) <= safeWidth) {
+        current += ` ${word}`;
+      } else {
+        lines.push(current);
+        if (word.length <= safeWidth) {
+          current = word;
+        } else {
+          current = '';
+          for (let i = 0; i < word.length; i += safeWidth) {
+            lines.push(word.slice(i, i + safeWidth));
+          }
+        }
+      }
+    }
+    if (current) lines.push(current);
   }
   return lines;
+}
+
+function labelLine(label, value, labelWidth = 11) {
+  const safeLabel = String(label || '').padEnd(labelWidth, ' ');
+  return `${safeLabel}: ${value}\n`;
 }
 
 /**
@@ -211,6 +328,9 @@ function qrCodeBytes(url) {
 export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   const isKitchen = receiptType === 'kitchen';
   const title     = isKitchen ? 'ORDER SLIP' : 'SALES INVOICE';
+  const kitchenTitle = isKitchen && opts.departmentName
+    ? `${title} - ${opts.departmentName}`
+    : title;
   const paperWidth = getPaperWidth(opts);
 
   // Support both order_items (DB joined) and items (JSONB / cart) shapes
@@ -247,12 +367,14 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
 
   if (isKitchen) {
     b.push(...CMD.ALIGN_CENTER, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
-    b.push(...encodeText(`${title}\n`));
+    b.push(...encodeText(`${kitchenTitle}\n`));
     b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('=', paperWidth)));
 
-    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_2X);
-    b.push(...encodeText(twoCol(`Order Slip #: ${getOrderSlipNumber(order)}`, (order.order_mode || 'N/A').toUpperCase(), paperWidth)));
+    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_NORMAL, ...CMD.BOLD_ON);
+    b.push(...encodeText(labelLine('Order Slip #', getOrderSlipNumber(order))));
+    b.push(...encodeText(labelLine('Type', (order.order_mode || 'N/A').toUpperCase())));
+    b.push(...CMD.BOLD_OFF);
     b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
 
@@ -284,7 +406,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   // ── Order info ────────────────────────────────────────────────────────────
   b.push(...CMD.ALIGN_LEFT);
   b.push(...encodeText(`Order#: ${order.order_number || String(order.id || '').slice(0, 8)}\n`));
-  b.push(...encodeText(`Date  : ${new Date(order.created_at || Date.now()).toLocaleString()}\n`));
+  b.push(...encodeText(`Date  : ${formatReceiptDate(order.created_at)}\n`));
   b.push(...encodeText(`Type  : ${order.order_mode || 'N/A'}\n`));
   if (order.customer_name) {
     b.push(...encodeText(`Name  : ${order.customer_name}\n`));
@@ -392,7 +514,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   if (!opts.omitFooterMeta) {
     b.push(...CMD.LF, ...CMD.ALIGN_LEFT);
     b.push(...encodeText(`Accepted by: ${cashier}\n`));
-    b.push(...encodeText(`${new Date().toLocaleString()}\n`));
+    b.push(...encodeText(`${formatReceiptDate(Date.now())}\n`));
   }
 
   // ── Feed + cut ────────────────────────────────────────────────────────────
