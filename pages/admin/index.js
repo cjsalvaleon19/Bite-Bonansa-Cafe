@@ -2490,7 +2490,7 @@ export default function AdminPage() {
     }, 'Deduction entry saved.');
     setDeductionForm({
       id: null,
-      date: new Date().toISOString().split('T')[0],
+      date: toDateOnly(new Date()),
       type: 'Cash Advance',
       amount: '',
       notes: '',
