@@ -5253,7 +5253,7 @@ export default function AdminPage() {
                                   style={{
                                     ...styles.payrollCheckBtn,
                                     color: isPresent ? '#4caf50' : (isAbsent ? '#f44336' : '#bbb'),
-                                    borderColor: day.isSunday ? '#4caf50' : (isBlank ? '#666' : '#555'),
+                                    borderColor: day.isSunday ? '#4caf50' : (isBlank ? '#9e9e9e' : '#222'),
                                     background: day.isSunday ? '#d9ead3' : (day.isToday ? '#dcdcdc' : '#f3f3f3'),
                                   }}
                                   onClick={() => toggleAttendance(employee.id, dayIndex)}
@@ -5327,11 +5327,11 @@ export default function AdminPage() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" style={{ ...styles.primaryBtn, background: '#4caf50', color: '#000' }} onClick={submitPayroll}>Submit</button>
+                    <button type="button" style={{ ...styles.primaryBtn, background: '#2e7d32', color: '#fff' }} onClick={submitPayroll}>Submit</button>
                   </div>
                 </div>
                 {payrollMessage && (
-                  <p style={{ marginTop: 10, fontSize: 12, color: '#aaa' }}>{payrollMessage}</p>
+                  <p style={{ marginTop: 10, fontSize: 12, color: '#666' }}>{payrollMessage}</p>
                 )}
               </div>
 
@@ -5343,7 +5343,7 @@ export default function AdminPage() {
 
                     <div style={styles.formGrid}>
                       <label style={styles.label}>Employee Name</label>
-                      <input style={{ ...styles.input, background: '#111', color: '#ffc107' }} readOnly value={selectedDeductionEmployee?.name || ''} />
+                      <input style={{ ...styles.input, background: '#111', color: '#fff' }} readOnly value={selectedDeductionEmployee?.name || ''} />
                       <label style={styles.label}>Date</label>
                       <input
                         type="date"

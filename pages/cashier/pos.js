@@ -375,7 +375,7 @@ export default function CashierPOS() {
       return;
     }
     if (paymentMethod === 'salary_deduction' && !selectedPayrollEmployee) {
-      alert('Checkout is disabled until an employee name in Attendance Sheet is selected.');
+      alert('Please select an employee to proceed with salary deduction checkout.');
       return;
     }
 
@@ -495,12 +495,12 @@ export default function CashierPOS() {
         const deductionResult = addSalaryDeductionToPayroll({
           employeeId: selectedPayrollEmployee.id,
           amount: deductionAmount,
-          date: new Date().toISOString(),
+          date: new Date().toISOString().split('T')[0],
           orderId: order.id,
           notes: `Order #${order.order_number || order.id.slice(0, 8)}`,
         });
         if (!deductionResult.ok) {
-          throw new Error('Selected employee is not available in Attendance Sheet.');
+          throw new Error('Failed to record salary deduction. Please refresh and try again.');
         }
 
         const { error: journalError } = await supabase.from('journal_entries').insert({

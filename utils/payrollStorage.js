@@ -17,6 +17,15 @@ function roundToCurrency(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+function dateToTimestamp(dateIso) {
+  const parsed = new Date(`${dateIso}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function isFutureDate(dateIso, baselineIso) {
+  return dateToTimestamp(dateIso) > dateToTimestamp(baselineIso);
+}
+
 function getDefaultCycleStart() {
   const now = new Date();
   const day = now.getDate();
@@ -77,7 +86,7 @@ function ensureDailyArray(daily = [], cycleDays = []) {
     if (d.date === today) return true;
     const raw = daily[idx];
     if (raw === true || raw === false || raw === null) return raw;
-    if (d.date > today) return null;
+    if (isFutureDate(d.date, today)) return null;
     return true;
   });
 }
@@ -100,7 +109,7 @@ export function getPayrollCycleDays(cycleStart) {
       dayLabel: d.toLocaleDateString('en-US', { weekday: 'short' }),
       isSunday: d.getDay() === 0,
       isToday: isoDate === toDateOnly(new Date()),
-      isFuture: isoDate > toDateOnly(new Date()),
+      isFuture: isFutureDate(isoDate, toDateOnly(new Date())),
     };
   });
 }
@@ -207,9 +216,6 @@ export {
   PAYROLL_CYCLE_DAYS,
   DAILY_PAYROLL_RATE,
   SALARY_DEDUCTION_SOURCE,
-  getPayrollPeriodLabel,
-  getPayrollPeriodMeta,
-  getPayrollCycleStartForPeriod,
   createId,
   roundToCurrency,
 };
