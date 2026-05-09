@@ -15,7 +15,7 @@
  *   Paper width     : 80 mm → 48 characters per line (normal font, 8 dots/char)
  */
 
-import { formatItemNameWithSubvariant, getOrderSlipNumber } from './receiptDepartments';
+import { formatOrderModeLabel, formatOrderSlipItemDetails, getOrderSlipNumber } from './receiptDepartments';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -317,20 +317,16 @@ function qrCodeBytes(url) {
  * @param {object} order  - The order object (supports both `order_items` and `items` shapes)
  * @param {'sales'|'kitchen'} [receiptType='sales']
  * @param {object} [opts]
- * @param {string}  [opts.cashierName]           - Displayed in footer (default: 'Cashier')
  * @param {string}  [opts.customerLoyaltyId]     - BBC-XXXXX loyalty card number
  * @param {number}  [opts.cashTendered]          - Overrides order.cash_amount
  * @param {string}  [opts.displayPaymentMethod]  - Overrides order.payment_method display
  * @param {string}  [opts.departmentName]        - Kitchen department/station label
- * @param {boolean} [opts.omitFooterMeta]        - Omits "Accepted by" and printed date lines
  * @returns {Uint8Array}
  */
 export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   const isKitchen = receiptType === 'kitchen';
   const title     = isKitchen ? 'ORDER SLIP' : 'SALES INVOICE';
-  const kitchenTitle = isKitchen && opts.departmentName
-    ? `${title} - ${opts.departmentName}`
-    : title;
+  const kitchenTitle = title;
   const paperWidth = getPaperWidth(opts);
 
   // Support both order_items (DB joined) and items (JSONB / cart) shapes
@@ -357,7 +353,6 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     || order.customer_phone
     || order.contact_number
     || null;
-  const cashier = opts.cashierName || 'Cashier';
   const payStr  = opts.displayPaymentMethod || order.payment_method || 'N/A';
 
   const b = [];
@@ -371,18 +366,33 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('=', paperWidth)));
 
-    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_NORMAL, ...CMD.BOLD_ON);
-    b.push(...encodeText(labelLine('Order Slip #', getOrderSlipNumber(order))));
-    b.push(...encodeText(labelLine('Type', (order.order_mode || 'N/A').toUpperCase())));
-    b.push(...CMD.BOLD_OFF);
+    // Order Slip # and mode of order in double size (2.1 & 2.2)
+    const halfWidth = Math.floor(paperWidth / 2);
+    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
+    b.push(...encodeText(`Order Slip #: ${getOrderSlipNumber(order)}\n`));
+    b.push(...encodeText(`${formatOrderModeLabel(order.order_mode)}\n`));
+    b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
 
+    // Item details in double size (2.3)
+    b.push(...CMD.SIZE_2X);
     for (const item of orderItems) {
       const qty = item.quantity || 1;
-      const itemLabel = `${qty} x ${formatItemNameWithSubvariant(item)}`;
-      for (const line of wrapText(itemLabel, paperWidth)) {
+      const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
+      const itemLabel = `${qty} x ${mainLine}`;
+      for (const line of wrapText(itemLabel, halfWidth)) {
         b.push(...encodeText(line + '\n'));
+      }
+      if (subvariantLines.length > 0) {
+        b.push(...CMD.SIZE_NORMAL);
+        for (const subvariant of subvariantLines) {
+          const wrappedSubvariant = wrapText(`  - ${subvariant}`, paperWidth);
+          for (const line of wrappedSubvariant) {
+            b.push(...encodeText(line + '\n'));
+          }
+        }
+        b.push(...CMD.SIZE_2X);
       }
     }
 
@@ -511,12 +521,6 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...CMD.BOLD_ON, ...encodeText('Scan to Order Online\n'), ...CMD.BOLD_OFF);
     b.push(...encodeText('bitebonansacafe.com\n'));
   }
-  if (!opts.omitFooterMeta) {
-    b.push(...CMD.LF, ...CMD.ALIGN_LEFT);
-    b.push(...encodeText(`Accepted by: ${cashier}\n`));
-    b.push(...encodeText(`${formatReceiptDate(Date.now())}\n`));
-  }
-
   // ── Feed + cut ────────────────────────────────────────────────────────────
   b.push(...CMD.FEED_1CM);
   b.push(...CMD.CUT);

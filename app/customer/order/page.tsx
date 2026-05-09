@@ -969,7 +969,6 @@ function CustomerOrderPage() {
               // Check for new variant system
               const hasVariants = item.has_variants && item.variant_types && item.variant_types.length > 0
               const variantCount = item.variant_types?.length || 0
-              const MAX_DISPLAYED_OPTIONS = 3
 
               const minSizePrice = hasSizes
                 ? Math.min(...sizes.map((s: any) => s.price))
@@ -1008,30 +1007,6 @@ function CustomerOrderPage() {
                         <span style={{ fontSize: '10px', color: '#ffc107', backgroundColor: 'rgba(255,193,7,0.1)', border: '1px solid rgba(255,193,7,0.3)', borderRadius: '4px', padding: '2px 6px', display: 'inline-block' }}>
                           ⚙ {variantCount} variant{variantCount > 1 ? 's' : ''}
                         </span>
-                      </div>
-                    )}
-
-                    {/* Variant type details */}
-                    {hasVariants && (
-                      <div className="mt-2 space-y-1">
-                        {(item.variant_types || []).map((vt, idx) => {
-                          const availableOptions = vt.options ? vt.options.filter(opt => opt.available !== false) : []
-                          const optionNames = availableOptions.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name)
-                          const totalOptions = availableOptions.length
-                          const hasMoreOptions = totalOptions > MAX_DISPLAYED_OPTIONS
-                          
-                          return (
-                            <div key={vt.id || idx} style={{ fontSize: '10px' }}>
-                              <span style={{ fontWeight: '600', color: '#ffc107' }}>
-                                {vt.variant_type_name}{vt.is_required ? '*' : ''}:
-                              </span>{' '}
-                              <span style={{ color: '#888888' }}>
-                                {optionNames.join(', ')}
-                                {hasMoreOptions && ` +${totalOptions - MAX_DISPLAYED_OPTIONS} more`}
-                              </span>
-                            </div>
-                          )
-                        })}
                       </div>
                     )}
 

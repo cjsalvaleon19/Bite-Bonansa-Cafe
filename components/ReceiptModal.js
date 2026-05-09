@@ -88,11 +88,13 @@ export default function ReceiptModal({ delivery, onClose }) {
             </div>
 
             <div style={styles.orderInfo}>
-              <p><strong>Order Number:</strong> {order.order_number || delivery.order_id}</p>
-              <p><strong>Date:</strong> {new Date(delivery.created_at || Date.now()).toLocaleString()}</p>
-              <p><strong>Order Type:</strong> {order.order_mode || 'delivery'}</p>
-              <p><strong>Customer:</strong> {order.customer_name || delivery.customer_name || 'N/A'}</p>
-              <p><strong>Phone Number:</strong> {order.customer_phone || delivery.customer_phone || 'N/A'}</p>
+              <p>Order#: {order.order_number || delivery.order_id}</p>
+              <p>Date  : {new Date(delivery.created_at || Date.now()).toLocaleString()}</p>
+              <p>Type  : {order.order_mode || 'delivery'}</p>
+              <p>Name  : {order.customer_name || delivery.customer_name || 'N/A'}</p>
+              {(order.customer_phone || delivery.customer_phone) && (
+                <p>Phone : {order.customer_phone || delivery.customer_phone}</p>
+              )}
               {customerLoyaltyId && (
                 <p><strong>Customer ID:</strong> {customerLoyaltyId}</p>
               )}
@@ -167,7 +169,7 @@ export default function ReceiptModal({ delivery, onClose }) {
                 <span>₱{change.toFixed(2)}</span>
               </div>
               <div style={{ ...styles.totalRow, borderTop: '1px dashed #000', paddingTop: '8px', marginTop: '8px' }}>
-                <span><strong>Payment Method:</strong></span>
+                <span><strong>Payment:</strong></span>
                 <span>{order.payment_method || 'cash'}</span>
               </div>
             </div>

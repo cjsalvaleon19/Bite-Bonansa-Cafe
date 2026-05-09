@@ -7,7 +7,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions } from '../../utils/salesCalculations';
 import { printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
-import { buildKitchenDepartmentOrders, formatItemNameWithSubvariant, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
+import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 export default function EndOfDayReport() {
   const router = useRouter();
@@ -140,6 +140,8 @@ export default function EndOfDayReport() {
       }
     }
 
+    const previewPhone = (order.users && order.users.phone) || order.customer_phone || order.contact_number || '';
+
     previewWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -174,11 +176,11 @@ export default function EndOfDayReport() {
             </div>
             
             <div style="margin-bottom: 15px;">
-              <p><strong>Order Number:</strong> ${order.order_number || order.id.slice(0, 8)}</p>
-              <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
-              <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
-              <p><strong>Customer:</strong> ${order.customer_name || 'Walk-in'}</p>
-              <p><strong>Phone Number:</strong> ${(order.users && order.users.phone) || order.customer_phone || order.contact_number || 'N/A'}</p>
+              <p>Order#: ${order.order_number || order.id.slice(0, 8)}</p>
+              <p>Date  : ${new Date(order.created_at).toLocaleString()}</p>
+              <p>Type  : ${order.order_mode || 'N/A'}</p>
+              <p>Name  : ${order.customer_name || 'Walk-in'}</p>
+              ${previewPhone ? `<p>Phone : ${previewPhone}</p>` : ''}
               ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
               ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
             </div>
@@ -244,7 +246,7 @@ export default function EndOfDayReport() {
                 </tr>
                 ` : ''}
                 <tr>
-                  <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
+                  <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment:</strong></td>
                   <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
                 </tr>
               </table>
@@ -292,6 +294,7 @@ export default function EndOfDayReport() {
     if (!slipWindow) return;
 
     const orderItems = getOrderItems(order);
+    const modeLabel = formatOrderModeLabel(order.order_mode);
 
     slipWindow.document.write(`
       <!DOCTYPE html>
@@ -303,7 +306,7 @@ export default function EndOfDayReport() {
           <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
-             body { font-family: monospace; font-size: 10.5px; line-height: 1.3; padding: 20px 20px 0; margin: 0; }
+            body { font-family: monospace; font-size: 10.5px; line-height: 1.3; padding: 20px 20px 0; margin: 0; }
             .section { margin: 12px 0; }
             table { width: 100%; border-collapse: collapse; }
             @media print { button { display: none; } }
@@ -314,10 +317,8 @@ export default function EndOfDayReport() {
             <p style="font-size: 15px; font-weight: bold;">ORDER SLIP</p>
           </div>
           <div class="section">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span><strong>Order Slip #:</strong> ${getOrderSlipNumber(order)}</span>
-              <span><strong>${(order.order_mode || 'N/A').toUpperCase()}</strong></span>
-            </div>
+            <p style="font-size: 21px; font-weight: bold;">Order Slip #: ${getOrderSlipNumber(order)}</p>
+            <p style="font-size: 21px; font-weight: bold;">${modeLabel}</p>
           </div>
           <div class="section">
             <table>
@@ -328,12 +329,21 @@ export default function EndOfDayReport() {
                 </tr>
               </thead>
               <tbody>
-                ${orderItems.map(item => `
-                  <tr>
-                    <td style="padding: 4px 0;">${formatItemNameWithSubvariant(item)}</td>
-                    <td style="padding: 4px 0; text-align: right;">${item.quantity || 1}</td>
-                  </tr>
-                `).join('')}
+                ${orderItems.map((item) => {
+                  const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
+                  const subvariantHtml = subvariantLines
+                    .map((line) => `<div style="font-size: 15.75px; padding-top: 2px; padding-left: 10px;">${line}</div>`)
+                    .join('');
+                  return `
+                    <tr>
+                      <td style="padding: 4px 0;">
+                        <div style="font-size: 15.75px;">${mainLine}</div>
+                        ${subvariantHtml}
+                      </td>
+                      <td style="padding: 4px 0; font-size: 21px; text-align: right;">${item.quantity || 1}</td>
+                    </tr>
+                  `;
+                }).join('')}
               </tbody>
             </table>
           </div>
@@ -401,6 +411,8 @@ export default function EndOfDayReport() {
       }
     }
 
+    const receiptPhone = (order.users && order.users.phone) || order.customer_phone || order.contact_number || '';
+
     receiptWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -431,11 +443,11 @@ export default function EndOfDayReport() {
           </div>
           
           <div style="margin-bottom: 15px;">
-            <p><strong>Order Number:</strong> ${order.order_number || order.id.slice(0, 8)}</p>
-            <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
-            <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
-            <p><strong>Customer:</strong> ${order.customer_name || 'Walk-in'}</p>
-            <p><strong>Phone Number:</strong> ${(order.users && order.users.phone) || order.customer_phone || order.contact_number || 'N/A'}</p>
+            <p>Order#: ${order.order_number || order.id.slice(0, 8)}</p>
+            <p>Date  : ${new Date(order.created_at).toLocaleString()}</p>
+            <p>Type  : ${order.order_mode || 'N/A'}</p>
+            <p>Name  : ${order.customer_name || 'Walk-in'}</p>
+            ${receiptPhone ? `<p>Phone : ${receiptPhone}</p>` : ''}
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
           </div>
@@ -511,7 +523,7 @@ export default function EndOfDayReport() {
               </tr>
               ` : ''}
               <tr>
-                <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
+                <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment:</strong></td>
                 <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
               </tr>
             </table>

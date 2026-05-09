@@ -20,7 +20,6 @@ const OpenStreetMapPicker = dynamic(
 
 const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
-const MAX_DISPLAYED_OPTIONS = 3; // Maximum number of variant options to display before showing "+X more"
 
 export default function CashierPOS() {
   const router = useRouter();
@@ -628,11 +627,11 @@ export default function CashierPOS() {
           </div>
           
           <div style="margin-bottom: 15px;">
-            <p><strong>Order Number: ${order.order_number || order.id.slice(0, 8)}</strong></p>
-            <p><strong>Date:</strong> ${receiptDate}</p>
-            <p><strong>Order Type:</strong> ${orderType}</p>
-            <p><strong>Customer:</strong> ${customerName}</p>
-            <p><strong>Phone Number:</strong> ${customerPhone}</p>
+            <p>Order#: ${order.order_number || order.id.slice(0, 8)}</p>
+            <p>Date  : ${receiptDate}</p>
+            <p>Type  : ${orderType}</p>
+            <p>Name  : ${customerName}</p>
+            ${customerPhone && customerPhone !== 'N/A' ? `<p>Phone : ${customerPhone}</p>` : ''}
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
           </div>
@@ -704,7 +703,7 @@ export default function CashierPOS() {
                 <td style="text-align: right;">₱${change.toFixed(2)}</td>
               </tr>
               <tr>
-                <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
+                <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment:</strong></td>
                 <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
               </tr>
             </table>
@@ -910,33 +909,6 @@ export default function CashierPOS() {
                     <span style={styles.variantBadge}>
                       ⚙️ {item.variant_types.length} variant{item.variant_types.length > 1 ? 's' : ''}
                     </span>
-                  )}
-                  
-                  {/* Detailed variant type summary */}
-                  {item.has_variants && item.variant_types && item.variant_types.length > 0 && (
-                    <div style={styles.variantInfo}>
-                      {item.variant_types.map((vt, idx) => {
-                        if (!vt.id) {
-                          console.warn('[POS] Variant type missing ID:', vt);
-                        }
-                        // Filter available options once for reuse
-                        const availableOptions = vt.options ? vt.options.filter(opt => opt.available !== false) : [];
-                        const optionNames = availableOptions.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name);
-                        const totalOptions = availableOptions.length;
-                        const hasMoreOptions = totalOptions > MAX_DISPLAYED_OPTIONS;
-                        return (
-                          <div key={vt.id || idx} style={styles.variantType}>
-                            <span style={styles.variantTypeName}>
-                              {vt.variant_type_name}{vt.is_required ? '*' : ''}:
-                            </span>
-                            <span style={styles.variantOptions}>
-                              {optionNames.join(', ')}
-                              {hasMoreOptions && ` +${totalOptions - MAX_DISPLAYED_OPTIONS} more`}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
                   )}
                   
                   {item.is_sold_out && (
