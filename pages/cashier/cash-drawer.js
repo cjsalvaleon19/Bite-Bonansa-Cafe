@@ -5,6 +5,11 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import { calculateSalesBreakdown } from '../../utils/salesCalculations';
+import {
+  getOutstandingPayrollSubmissions,
+  markPayrollSubmissionPaid,
+  PAYROLL_STORAGE_KEY,
+} from '../../utils/payrollStorage';
 
 export default function CashDrawer() {
   const router = useRouter();
@@ -26,6 +31,7 @@ export default function CashDrawer() {
     billType: '',
     billNumber: '',
     billReportId: '',
+    payrollSubmissionId: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [cashOnHand, setCashOnHand] = useState(0);
@@ -37,6 +43,9 @@ export default function CashDrawer() {
   const [riders, setRiders] = useState([]);
   const [deliveryReports, setDeliveryReports] = useState([]);
   const [filteredReports, setFilteredReports] = useState([]);
+  const [payrollReports, setPayrollReports] = useState([]);
+  const [filteredPayrollReports, setFilteredPayrollReports] = useState([]);
+  const [payrollPeriodSearch, setPayrollPeriodSearch] = useState('');
 
   // Cash Audit tab state
   const [activeTab, setActiveTab] = useState('transactions');
@@ -58,6 +67,21 @@ export default function CashDrawer() {
       initializePage();
     }
   }, [authLoading]);
+
+  useEffect(() => {
+    const refreshPayrollReports = () => {
+      const reports = getOutstandingPayrollSubmissions();
+      setPayrollReports(reports);
+      setFilteredPayrollReports(reports);
+    };
+    refreshPayrollReports();
+    if (typeof window === 'undefined') return undefined;
+    const onStorage = (event) => {
+      if (event.key === PAYROLL_STORAGE_KEY) refreshPayrollReports();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const initializePage = async () => {
     if (!supabase) return;
@@ -395,6 +419,44 @@ export default function CashDrawer() {
     }
   };
 
+  const handlePayrollPeriodSearch = (query) => {
+    setPayrollPeriodSearch(query);
+    const normalized = String(query || '').trim().toLowerCase();
+    if (!normalized) {
+      setFilteredPayrollReports(payrollReports);
+      return;
+    }
+    setFilteredPayrollReports(
+      payrollReports.filter((report) => (
+        String(report.periodLabel || '').toLowerCase().includes(normalized)
+        || String(report.cycleStart || '').toLowerCase().includes(normalized)
+        || String(report.cycleEnd || '').toLowerCase().includes(normalized)
+      )),
+    );
+  };
+
+  const handlePayrollPeriodChange = (reportId) => {
+    const selected = payrollReports.find((report) => report.id === reportId);
+    if (!selected) {
+      setFormData({
+        ...formData,
+        payrollSubmissionId: '',
+        billNumber: '',
+        amount: '',
+        purpose: '',
+      });
+      return;
+    }
+    setFormData({
+      ...formData,
+      payrollSubmissionId: selected.id,
+      billNumber: selected.id,
+      amount: selected.netPay?.toString() || '',
+      payeeName: 'Payroll',
+      purpose: `Payroll period ${selected.periodLabel} (${selected.cycleStart} to ${selected.cycleEnd})`,
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!supabase || !user) return;
@@ -402,6 +464,10 @@ export default function CashDrawer() {
     // Validate form
     if (!formData.amount || parseFloat(formData.amount) === 0 || isNaN(parseFloat(formData.amount))) {
       alert('Please enter a valid amount');
+      return;
+    }
+    if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'payroll' && !formData.payrollSubmissionId) {
+      alert('Please select a payroll period');
       return;
     }
 
@@ -448,7 +514,11 @@ export default function CashDrawer() {
         payee_name: formData.payeeName || null,
         purpose: formData.purpose || null,
         category: formData.category || null,
-        reference_number: formData.referenceNumber || null,
+        reference_number: (
+          formData.billType === 'payroll' && formData.payrollSubmissionId
+            ? formData.payrollSubmissionId
+            : (formData.referenceNumber || null)
+        ),
         adjustment_reason: formData.reason || null,
         bill_type: formData.billType || null,
         payment_adjustment_type: paymentAdjustmentType,
@@ -483,6 +553,17 @@ export default function CashDrawer() {
         await fetchDeliveryReports();
       }
 
+      if (formData.billType === 'payroll' && formData.payrollSubmissionId) {
+        markPayrollSubmissionPaid({
+          reportId: formData.payrollSubmissionId,
+          paymentReference: formData.payrollSubmissionId,
+          paidAt: new Date().toISOString(),
+        });
+        const refreshedReports = getOutstandingPayrollSubmissions();
+        setPayrollReports(refreshedReports);
+        setFilteredPayrollReports(refreshedReports);
+      }
+
       // Reset form and close modal
       setFormData({
         amount: '',
@@ -496,10 +577,12 @@ export default function CashDrawer() {
         billType: '',
         billNumber: '',
         billReportId: '',
+        payrollSubmissionId: '',
       });
       setActiveModal(null);
       setCashOutType(null);
       setFilteredReports(deliveryReports);
+      setPayrollPeriodSearch('');
       
       // Refresh transactions
       await fetchTransactions();
@@ -751,7 +834,10 @@ export default function CashDrawer() {
                       placeholder="0.00"
                       value={formData.amount}
                       onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                      readOnly={formData.billType === 'drivers_fee' && formData.billNumber ? true : false}
+                      readOnly={
+                        (formData.billType === 'drivers_fee' && formData.billNumber)
+                        || (formData.billType === 'payroll' && formData.payrollSubmissionId)
+                      }
                       required
                     />
                   </div>
@@ -791,7 +877,22 @@ export default function CashDrawer() {
                         <select
                           style={styles.input}
                           value={formData.billType}
-                          onChange={(e) => setFormData({ ...formData, billType: e.target.value, payeeName: '', billNumber: '', amount: '', purpose: '' })}
+                          onChange={(e) => {
+                            const reports = getOutstandingPayrollSubmissions();
+                            setPayrollReports(reports);
+                            setFilteredPayrollReports(reports);
+                            setPayrollPeriodSearch('');
+                            setFormData({
+                              ...formData,
+                              billType: e.target.value,
+                              payeeName: '',
+                              billNumber: '',
+                              amount: '',
+                              purpose: '',
+                              billReportId: '',
+                              payrollSubmissionId: '',
+                            });
+                          }}
                           required
                         >
                           <option value="">Select bill type</option>
@@ -854,6 +955,62 @@ export default function CashDrawer() {
                               value={formData.purpose}
                               onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
                               readOnly={formData.billNumber ? true : false}
+                            />
+                          </div>
+                        </>
+                      ) : formData.billType === 'payroll' ? (
+                        <>
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Payroll Period Search</label>
+                            <input
+                              style={styles.input}
+                              type="text"
+                              placeholder="Search period (e.g. May 1-15)"
+                              value={payrollPeriodSearch}
+                              onChange={(e) => handlePayrollPeriodSearch(e.target.value)}
+                            />
+                          </div>
+
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Payroll Period *</label>
+                            <select
+                              style={styles.input}
+                              value={formData.payrollSubmissionId}
+                              onChange={(e) => handlePayrollPeriodChange(e.target.value)}
+                              required
+                            >
+                              <option value="">Select payroll period</option>
+                              {filteredPayrollReports.map((report) => (
+                                <option key={report.id} value={report.id}>
+                                  {report.periodLabel} - ₱{Number(report.netPay || 0).toFixed(2)}
+                                </option>
+                              ))}
+                            </select>
+                            {filteredPayrollReports.length === 0 && (
+                              <p style={{ fontSize: '11px', color: '#ffc107', marginTop: '4px' }}>
+                                No outstanding submitted attendance sheets found
+                              </p>
+                            )}
+                          </div>
+
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Payee Name *</label>
+                            <input
+                              style={styles.input}
+                              type="text"
+                              value={formData.payeeName || 'Payroll'}
+                              readOnly
+                              required
+                            />
+                          </div>
+
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Purpose/Description</label>
+                            <textarea
+                              style={{ ...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif" }}
+                              placeholder="Payroll payment details"
+                              value={formData.purpose}
+                              onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
                             />
                           </div>
                         </>

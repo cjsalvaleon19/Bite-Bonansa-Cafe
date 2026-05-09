@@ -10,17 +10,22 @@ import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import {
   buildDefaultPayrollData,
+  computePayrollSummary,
+  getPayrollPeriodLabel,
   PAYROLL_CYCLES_PER_MONTH,
   WORKING_DAYS_PER_CYCLE,
   getPayrollCycleStartForPeriod,
   getPayrollCycleDays,
   getPayrollPeriodMeta,
+  isPayrollCyclePaid,
   loadPayrollData,
+  PAYROLL_SUBMISSION_REFERENCE_PREFIX,
   normalizePayrollData,
   PAYROLL_STORAGE_KEY,
   roundToCurrency,
   SALARY_DEDUCTION_SOURCE,
   savePayrollData,
+  upsertPayrollSubmissionReport,
   createId,
 } from '../../utils/payrollStorage';
 
@@ -236,7 +241,7 @@ export default function AdminPage() {
       'Depreciation Expense', 'Interest Expense', 'Income Tax Expense',
       // Balance Sheet
       'Kitchen Equipment', 'Accumulated Depreciation',
-      'Income Tax Payable', 'Loans Payable',
+      'Income Tax Payable', 'Loans Payable', 'Salaries & Wages Payable',
     ];
     const fromData = (journalData || []).flatMap((r) => [r.debit_account, r.credit_account].filter(Boolean));
     const all = Array.from(new Set([...defaults, ...fromData])).sort();
@@ -357,6 +362,7 @@ export default function AdminPage() {
   const [payrollData, setPayrollData] = useState(() => normalizePayrollData(buildDefaultPayrollData()));
   const [payrollCycleDays, setPayrollCycleDays] = useState(() => getPayrollCycleDays());
   const [payrollMessage, setPayrollMessage] = useState('');
+  const [payrollSubmitting, setPayrollSubmitting] = useState(false);
   const [newPayrollEmployeeName, setNewPayrollEmployeeName] = useState('');
   const [payrollSelectedEmployeeId, setPayrollSelectedEmployeeId] = useState('');
   const [deductionDialogEmployeeId, setDeductionDialogEmployeeId] = useState(null);
@@ -1214,6 +1220,7 @@ export default function AdminPage() {
           if (
             acct === 'Salaries & Wages'
             || acct === 'Income Tax Expense'
+            || acct === 'Salaries & Wages Payable'
             || acct === 'Loans Payable'
             || acct === "Owner's Capital"
             || acct === 'Loans Receivable'
@@ -1386,6 +1393,7 @@ export default function AdminPage() {
           { data: ownCapCredit }, { data: ownCapDebit }, { data: retEarnCredit }, { data: retEarnDebit },
           { data: apCredit }, { data: apDebit },
           { data: incomeTaxPayableCredit }, { data: incomeTaxPayableDebit },
+          { data: salariesPayableCredit }, { data: salariesPayableDebit },
           { data: loansPayableCredit }, { data: loansPayableDebit },
         ] = await Promise.all([
           supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
@@ -1404,6 +1412,8 @@ export default function AdminPage() {
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Accounts Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Income Tax Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Income Tax Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Salaries & Wages Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Salaries & Wages Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Loans Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Loans Payable').lte('date', bsDateTo),
         ]);
@@ -1412,13 +1422,14 @@ export default function AdminPage() {
         const invValue = (invList || []).reduce((s, i) => s + (Number(i.current_stock) || 0) * (Number(i.cost_per_unit) || 0), 0);
         const ap = sumAmt(apCredit) - sumAmt(apDebit);
         const incomeTaxPayable = sumAmt(incomeTaxPayableCredit) - sumAmt(incomeTaxPayableDebit);
+        const salariesWagesPayable = sumAmt(salariesPayableCredit) - sumAmt(salariesPayableDebit);
         const loansPayable = sumAmt(loansPayableCredit) - sumAmt(loansPayableDebit);
         const kitchenEquipment = sumAmt(kitEquipDebit) - sumAmt(kitEquipCredit);
         const accumDepreciation = sumAmt(accumDeprData);
         const ownersCapital = sumAmt(ownCapCredit) - sumAmt(ownCapDebit);
         const retainedEarnings = sumAmt(retEarnCredit) - sumAmt(retEarnDebit);
         const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
-        const totalLiabilities = ap + incomeTaxPayable + loansPayable;
+        const totalLiabilities = ap + incomeTaxPayable + salariesWagesPayable + loansPayable;
         const totalEquity = ownersCapital + retainedEarnings;
         setFinData({
           type: 'balance',
@@ -1430,6 +1441,7 @@ export default function AdminPage() {
           totalAssets,
           ap,
           incomeTaxPayable,
+          salariesWagesPayable,
           loansPayable,
           totalLiabilities,
           ownersCapital,
@@ -1570,13 +1582,14 @@ export default function AdminPage() {
             const accumDepreciation = Math.abs(nets['Accumulated Depreciation'] || 0);
             const ap = Math.abs(nets['Accounts Payable'] || 0);
             const incomeTaxPayable = Math.abs(nets['Income Tax Payable'] || 0);
+            const salariesWagesPayable = Math.abs(nets['Salaries & Wages Payable'] || 0);
             const loansPayable = Math.abs(nets['Loans Payable'] || 0);
             const ownersCapital = nets["Owner's Capital"] || 0;
             const retainedEarnings = Math.abs(nets['Retained Earnings'] || 0);
             const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
-            const totalLiabilities = ap + incomeTaxPayable + loansPayable;
+            const totalLiabilities = ap + incomeTaxPayable + salariesWagesPayable + loansPayable;
             const totalEquity = ownersCapital + retainedEarnings;
-            Object.assign(periodData, { cashOnHand, cashInBank, invValue, kitchenEquipment, accumDepreciation, ap, incomeTaxPayable, loansPayable, ownersCapital, retainedEarnings, totalAssets, totalLiabilities, totalEquity });
+            Object.assign(periodData, { cashOnHand, cashInBank, invValue, kitchenEquipment, accumDepreciation, ap, incomeTaxPayable, salariesWagesPayable, loansPayable, ownersCapital, retainedEarnings, totalAssets, totalLiabilities, totalEquity });
           }
           compareFull.push(periodData);
         }
@@ -1625,7 +1638,7 @@ export default function AdminPage() {
       const BS_ACCOUNTS = [
         'Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory',
         'Kitchen Equipment', 'Accumulated Depreciation',
-        'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable',
+        'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable', 'Salaries & Wages Payable',
         "Owner's Capital", 'Retained Earnings',
       ];
       // Income Statement accounts use period activity only
@@ -1936,7 +1949,11 @@ export default function AdminPage() {
     [payrollData.employees],
   );
 
-  const payrollCanEdit = !payrollHasProcessedDeduction;
+  const payrollIsPaid = useMemo(
+    () => isPayrollCyclePaid(payrollData.cycleStart, payrollData.submittedReports),
+    [payrollData.cycleStart, payrollData.submittedReports],
+  );
+  const payrollCanEdit = !payrollHasProcessedDeduction && !payrollIsPaid;
   const payrollPeriodMeta = useMemo(
     () => getPayrollPeriodMeta(payrollData.cycleStart),
     [payrollData.cycleStart],
@@ -1969,15 +1986,106 @@ export default function AdminPage() {
     return () => window.removeEventListener('storage', onStorage);
   }, [loadPayrollState]);
 
-  const submitPayroll = () => {
-    syncPayrollState(
-      {
-        ...payrollData,
-        submitted: true,
-        submittedAt: new Date().toISOString(),
-      },
-      'Attendance report submitted to cashier.',
-    );
+  const submitPayroll = async () => {
+    if (payrollSubmitting) return;
+    const employees = payrollData.employees || [];
+    if (employees.length === 0) {
+      setPayrollMessage('Add at least one employee before submitting.');
+      return;
+    }
+
+    const summary = computePayrollSummary(employees);
+    const cycleEndDate = payrollCycleDays[payrollCycleDays.length - 1]?.date || payrollData.cycleStart;
+    const submittedAt = new Date().toISOString();
+    const reportId = `${PAYROLL_SUBMISSION_REFERENCE_PREFIX}-${payrollData.cycleStart}`;
+    const periodLabel = getPayrollPeriodLabel(payrollData.cycleStart);
+    const journalReference = reportId;
+    const payrollReport = {
+      id: reportId,
+      cycleStart: payrollData.cycleStart,
+      cycleEnd: cycleEndDate,
+      periodLabel,
+      submittedAt,
+      grossPay: summary.grossPay,
+      absences: summary.absences,
+      deductions: summary.deductions,
+      netPay: summary.netPay,
+      paid: false,
+      paidAt: null,
+      paymentReference: null,
+      journalReference,
+    };
+
+    setPayrollSubmitting(true);
+    try {
+      if (supabase) {
+        const { error: deleteError } = await supabase
+          .from('journal_entries')
+          .delete()
+          .eq('reference_type', 'payroll_attendance')
+          .eq('reference', journalReference);
+        if (deleteError) throw deleteError;
+
+        const rows = [];
+        if (summary.grossPay > 0) {
+          rows.push({
+            date: cycleEndDate,
+            description: `Payroll Attendance ${periodLabel} - Gross Pay`,
+            debit_account: 'Salaries & Wages',
+            credit_account: 'Salaries & Wages Payable',
+            amount: summary.grossPay,
+            reference_type: 'payroll_attendance',
+            reference: journalReference,
+            name: 'Payroll',
+          });
+        }
+        if (summary.absences > 0) {
+          rows.push({
+            date: cycleEndDate,
+            description: `Payroll Attendance ${periodLabel} - Absences`,
+            debit_account: 'Salaries & Wages Payable',
+            credit_account: 'Salaries & Wages',
+            amount: summary.absences,
+            reference_type: 'payroll_attendance',
+            reference: journalReference,
+            name: 'Payroll',
+          });
+        }
+        if (summary.deductions > 0) {
+          rows.push({
+            date: cycleEndDate,
+            description: `Payroll Attendance ${periodLabel} - Deductions`,
+            debit_account: 'Advances to Employees',
+            credit_account: 'Salaries & Wages Payable',
+            amount: summary.deductions,
+            reference_type: 'payroll_attendance',
+            reference: journalReference,
+            name: 'Payroll',
+          });
+        }
+
+        if (rows.length > 0) {
+          const { error: insertError } = await supabase.from('journal_entries').insert(rows);
+          if (insertError) throw insertError;
+        }
+      }
+
+      const upsertResult = upsertPayrollSubmissionReport(payrollReport);
+      if (!upsertResult.ok) throw new Error('Failed to save payroll submission report.');
+      syncPayrollState(
+        {
+          ...payrollData,
+          submitted: true,
+          submittedAt,
+          submittedReports: upsertResult.data.submittedReports || [],
+        },
+        'Attendance report submitted to cashier.',
+      );
+    } catch (err) {
+      setPayrollMessage(`Failed to submit attendance sheet: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setPayrollSubmitting(false);
+    }
   };
 
   const changePayrollPeriod = (monthValue, cycleType) => {
@@ -4703,6 +4811,7 @@ export default function AdminPage() {
                         {sectionRow('Liabilities')}
                         {dataRow('Accounts Payable', finData.ap, 'ap', true)}
                         {dataRow('Income Tax Payable', finData.incomeTaxPayable || 0, 'incomeTaxPayable', true)}
+                        {dataRow('Salaries & Wages Payable', finData.salariesWagesPayable || 0, 'salariesWagesPayable', true)}
                         {dataRow('Loans Payable', finData.loansPayable || 0, 'loansPayable', true)}
                         {dataRow('Total Liabilities', finData.totalLiabilities, 'totalLiabilities', false, false, true, '#f44336')}
                         {sectionRow('Equity')}
@@ -5090,7 +5199,7 @@ export default function AdminPage() {
                         category: 'Liabilities',
                         color: '#f44336',
                         type: 'bs',
-                        accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable'],
+                        accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable', 'Salaries & Wages Payable'],
                       },
                       {
                         category: 'Equity',
@@ -5218,6 +5327,11 @@ export default function AdminPage() {
                 {payrollHasProcessedDeduction && (
                   <p style={{ color: '#ff9800', margin: '8px 0 0 0', fontSize: 12 }}>
                     Cashier already processed salary deduction entries. Attendance editing is locked.
+                  </p>
+                )}
+                {payrollIsPaid && (
+                  <p style={{ color: '#ff9800', margin: '8px 0 0 0', fontSize: 12 }}>
+                    This payroll period has been paid by cashier. Attendance editing is locked.
                   </p>
                 )}
               </div>
@@ -5445,7 +5559,14 @@ export default function AdminPage() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" style={{ ...styles.primaryBtn, background: '#2e7d32', color: '#fff' }} onClick={submitPayroll}>Submit</button>
+                    <button
+                      type="button"
+                      style={{ ...styles.primaryBtn, background: '#2e7d32', color: '#fff' }}
+                      onClick={submitPayroll}
+                      disabled={payrollSubmitting || payrollIsPaid}
+                    >
+                      {payrollSubmitting ? 'Submitting…' : 'Submit'}
+                    </button>
                   </div>
                 </div>
                 {payrollMessage && (
