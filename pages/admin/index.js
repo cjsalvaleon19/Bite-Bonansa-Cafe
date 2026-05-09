@@ -2035,6 +2035,7 @@ export default function AdminPage() {
   const toggleAttendance = (employeeId, dayIndex) => {
     if (!payrollCanEdit) return;
     if (payrollCycleDays[dayIndex]?.isSunday) return;
+    if (payrollCycleDays[dayIndex]?.isFuture) return;
     syncPayrollState({
       ...payrollData,
       employees: (payrollData.employees || []).map((employee) => {
@@ -5283,8 +5284,8 @@ export default function AdminPage() {
                                       background: day.isSunday ? '#274130' : (day.isToday ? '#3a3a3a' : '#222'),
                                     }}
                                     onClick={() => toggleAttendance(emp.id, dayIndex)}
-                                    disabled={!payrollCanEdit || day.isSunday}
-                                    title={day.isSunday ? 'Sunday (rest day – default present)' : 'Toggle present / absent'}
+                                    disabled={!payrollCanEdit || day.isSunday || day.isFuture}
+                                    title={day.isSunday ? 'Sunday (rest day – default present)' : day.isFuture ? 'Future date – not yet editable' : 'Toggle present / absent'}
                                   >
                                     {isPresent ? '✔' : (isAbsent ? 'X' : '')}
                                   </button>
