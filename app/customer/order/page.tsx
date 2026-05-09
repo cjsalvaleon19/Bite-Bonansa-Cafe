@@ -1571,7 +1571,11 @@ function CartContent({
                     {(showLegacyVariety || variantEntries.length > 0 || item.selectedSize || item.selectedAddons.length > 0) && (
                       <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5 max-w-full">
                         {variantEntries.map(([variantType, value]) => {
-                          const variantLabel = variantType.charAt(0).toUpperCase() + variantType.slice(1)
+                          const variantLabel = variantType
+                            .split(/[_\s-]+/)
+                            .filter(Boolean)
+                            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                            .join(' ')
                           return <p key={variantType} className="break-words whitespace-normal">{variantLabel}: {value}</p>
                         })}
                         {showLegacyVariety && <p className="break-words whitespace-normal">Variety: {item.selectedVariety}</p>}
