@@ -25,6 +25,7 @@ import {
   roundToCurrency,
   SALARY_DEDUCTION_SOURCE,
   savePayrollData,
+  toDateOnly,
   upsertPayrollSubmissionReport,
   createId,
 } from '../../utils/payrollStorage';
@@ -2174,7 +2175,7 @@ export default function AdminPage() {
     setDeductionDialogEmployeeId(payrollSelectedEmployeeId);
     setDeductionForm({
       id: null,
-      date: new Date().toISOString().split('T')[0],
+      date: toDateOnly(new Date()),
       type: 'Cash Advance',
       amount: '',
       notes: '',
@@ -2184,7 +2185,7 @@ export default function AdminPage() {
   const editDeduction = (deduction) => {
     setDeductionForm({
       id: deduction.id,
-      date: deduction.date || new Date().toISOString().split('T')[0],
+      date: deduction.date || toDateOnly(new Date()),
       type: deduction.type || 'Cash Advance',
       amount: String(deduction.amount || ''),
       notes: deduction.notes || '',
@@ -2200,7 +2201,7 @@ export default function AdminPage() {
     }
     const deductionPayload = {
       id: deductionForm.id || createId('ded'),
-      date: deductionForm.date || new Date().toISOString().split('T')[0],
+      date: deductionForm.date || toDateOnly(new Date()),
       type: deductionForm.type || 'Cash Advance',
       amount,
       notes: deductionForm.notes || '',

@@ -11,7 +11,7 @@ import NotificationBell from '../../components/NotificationBell';
 import { getDistanceBetweenCoordinates, calculateDeliveryFee, STORE_LOCATION } from '../../utils/deliveryCalculator';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, getOrderItems } from '../../utils/receiptDepartments';
-import { addSalaryDeductionToPayroll, getPayrollEmployees, PAYROLL_STORAGE_KEY, roundToCurrency } from '../../utils/payrollStorage';
+import { addSalaryDeductionToPayroll, getPayrollEmployees, PAYROLL_STORAGE_KEY, roundToCurrency, toDateOnly } from '../../utils/payrollStorage';
 
 // Dynamically import OpenStreetMapPicker with SSR disabled
 const OpenStreetMapPicker = dynamic(
@@ -492,10 +492,11 @@ export default function CashierPOS() {
 
       if (paymentMethod === 'salary_deduction') {
         const deductionAmount = roundToCurrency(remainingAmount);
+        const transactionDate = toDateOnly(new Date());
         const deductionResult = addSalaryDeductionToPayroll({
           employeeId: selectedPayrollEmployee.id,
           amount: deductionAmount,
-          date: new Date().toISOString().split('T')[0],
+          date: transactionDate,
           orderId: order.id,
           notes: `Order #${order.order_number || order.id.slice(0, 8)}`,
         });
@@ -504,7 +505,7 @@ export default function CashierPOS() {
         }
 
         const { error: journalError } = await supabase.from('journal_entries').insert({
-          date: new Date().toISOString().split('T')[0],
+          date: transactionDate,
           description: `Salary Deduction: Order #${order.order_number || order.id.slice(0, 8)}`,
           debit_account: 'Advances to Employees',
           credit_account: 'Revenue',

@@ -18,7 +18,7 @@ function parseDateValue(value) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-function toDateOnly(value) {
+export function toDateOnly(value) {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const d = parseDateValue(value);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
