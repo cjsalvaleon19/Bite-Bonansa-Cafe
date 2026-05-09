@@ -1590,14 +1590,14 @@ function CartContent({
                   <div className="ml-auto flex flex-col items-end gap-1">
                     <p className="text-right text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
                     <div className="flex items-center gap-1 shrink-0">
-                    <Button variant="outline" size="sm" className="h-8 w-8 md:h-7 md:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, -1)}>
+                    <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, -1)}>
                       <Minus className="h-3 w-3" />
                     </Button>
                     <span className="w-8 text-center font-medium text-sm text-foreground">{item.quantity}</span>
-                    <Button variant="outline" size="sm" className="h-8 w-8 md:h-7 md:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, 1)}>
+                    <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, 1)}>
                       <Plus className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 md:h-7 md:w-7 text-destructive touch-manipulation" onClick={() => removeFromCart(item.id)}>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 text-destructive touch-manipulation" onClick={() => removeFromCart(item.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                     </div>
