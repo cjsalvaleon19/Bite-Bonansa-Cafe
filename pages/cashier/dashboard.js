@@ -7,7 +7,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount } from '../../utils/salesCalculations';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
-import { buildKitchenDepartmentOrders, formatItemNameWithSubvariant, formatOrderModeLabel, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
+import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
@@ -443,12 +443,21 @@ export default function CashierDashboard() {
     const title = isKitchenCopy ? 'ORDER SLIP' : 'SALES INVOICE';
 
     if (isKitchenCopy) {
-      const kitchenItemsHtml = items.map((item) => `
-        <tr>
-          <td style="padding: 4px 0; font-size: 24px;">${formatItemNameWithSubvariant(item)}</td>
-          <td style="padding: 4px 0; font-size: 24px; text-align: right;">${item.quantity || 1}</td>
-        </tr>
-      `).join('');
+      const kitchenItemsHtml = items.map((item) => {
+        const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
+        const subvariantHtml = subvariantLines
+          .map((line) => `<div style="font-size: 13.5px; padding-top: 2px; padding-left: 12px;">${line}</div>`)
+          .join('');
+        return `
+          <tr>
+            <td style="padding: 4px 0;">
+              <div style="font-size: 18px;">${mainLine}</div>
+              ${subvariantHtml}
+            </td>
+            <td style="padding: 4px 0; font-size: 24px; text-align: right;">${item.quantity || 1}</td>
+          </tr>
+        `;
+      }).join('');
 
       const kitchenSlipHtml = `
         <!DOCTYPE html>

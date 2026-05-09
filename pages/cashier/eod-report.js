@@ -7,7 +7,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions } from '../../utils/salesCalculations';
 import { printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
-import { buildKitchenDepartmentOrders, formatItemNameWithSubvariant, formatOrderModeLabel, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
+import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 export default function EndOfDayReport() {
   const router = useRouter();
@@ -329,12 +329,21 @@ export default function EndOfDayReport() {
                 </tr>
               </thead>
               <tbody>
-                ${orderItems.map(item => `
-                  <tr>
-                    <td style="padding: 4px 0; font-size: 21px;">${formatItemNameWithSubvariant(item)}</td>
-                    <td style="padding: 4px 0; font-size: 21px; text-align: right;">${item.quantity || 1}</td>
-                  </tr>
-                `).join('')}
+                ${orderItems.map((item) => {
+                  const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
+                  const subvariantHtml = subvariantLines
+                    .map((line) => `<div style="font-size: 11.81px; padding-top: 2px; padding-left: 10px;">${line}</div>`)
+                    .join('');
+                  return `
+                    <tr>
+                      <td style="padding: 4px 0;">
+                        <div style="font-size: 15.75px;">${mainLine}</div>
+                        ${subvariantHtml}
+                      </td>
+                      <td style="padding: 4px 0; font-size: 21px; text-align: right;">${item.quantity || 1}</td>
+                    </tr>
+                  `;
+                }).join('')}
               </tbody>
             </table>
           </div>

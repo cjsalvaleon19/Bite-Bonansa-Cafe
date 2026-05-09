@@ -15,7 +15,7 @@
  *   Paper width     : 80 mm → 48 characters per line (normal font, 8 dots/char)
  */
 
-import { formatItemNameWithSubvariant, formatOrderModeLabel, getOrderSlipNumber } from './receiptDepartments';
+import { formatOrderModeLabel, formatOrderSlipItemDetails, getOrderSlipNumber } from './receiptDepartments';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -382,9 +382,20 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...CMD.SIZE_2X);
     for (const item of orderItems) {
       const qty = item.quantity || 1;
-      const itemLabel = `${qty} x ${formatItemNameWithSubvariant(item)}`;
+      const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
+      const itemLabel = `${qty} x ${mainLine}`;
       for (const line of wrapText(itemLabel, halfWidth)) {
         b.push(...encodeText(line + '\n'));
+      }
+      if (subvariantLines.length > 0) {
+        b.push(...CMD.SIZE_NORMAL);
+        for (const subvariant of subvariantLines) {
+          const wrappedSubvariant = wrapText(`  - ${subvariant}`, paperWidth);
+          for (const line of wrappedSubvariant) {
+            b.push(...encodeText(line + '\n'));
+          }
+        }
+        b.push(...CMD.SIZE_2X);
       }
     }
 

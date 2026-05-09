@@ -30,14 +30,50 @@ export function getOrderSlipNumber(order = {}) {
 }
 
 export function formatItemNameWithSubvariant(item = {}) {
-  const rawName = String(item.name || '').trim();
-  const variants = item.variant_details || item.variantDetails;
-  if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
-    const subvariant = Object.values(variants).map((value) => String(value)).join(', ');
-    const baseName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
-    return `${baseName} (${subvariant})`;
+  const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
+  if (subvariantLines.length === 0) return mainLine;
+  return `${mainLine} (${subvariantLines.join(', ')})`;
+}
+
+function normalizeItemVariants(item = {}) {
+  const rawVariants = item.variant_details ?? item.variantDetails;
+  if (!rawVariants) return null;
+  if (typeof rawVariants === 'object' && !Array.isArray(rawVariants)) return rawVariants;
+  if (typeof rawVariants === 'string') {
+    try {
+      const parsed = JSON.parse(rawVariants);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
   }
-  return rawName;
+  return null;
+}
+
+export function formatOrderSlipItemDetails(item = {}) {
+  const rawName = String(item.name || '').trim();
+  const baseName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  const variants = normalizeItemVariants(item);
+  if (!variants || Object.keys(variants).length === 0) {
+    return { mainLine: baseName, subvariantLines: [] };
+  }
+
+  const entries = Object.entries(variants)
+    .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '');
+  if (entries.length === 0) {
+    return { mainLine: baseName, subvariantLines: [] };
+  }
+
+  const sizeEntry = entries.find(([type]) => String(type || '').toLowerCase().includes('size'));
+  const sizeValue = sizeEntry ? String(sizeEntry[1]).trim() : '';
+  const subvariantLines = entries
+    .filter(([type]) => !String(type || '').toLowerCase().includes('size'))
+    .map(([, value]) => String(value).trim());
+
+  return {
+    mainLine: sizeValue ? `${baseName} (${sizeValue})` : baseName,
+    subvariantLines,
+  };
 }
 
 function normalizeDepartment(item = {}) {
