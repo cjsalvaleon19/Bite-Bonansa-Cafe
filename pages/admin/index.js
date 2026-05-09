@@ -5230,16 +5230,16 @@ export default function AdminPage() {
                             key={day.date}
                             style={
                               day.isSunday
-                                ? { background: '#f0faf0' }
+                                ? { background: '#1e2f24' }
                                 : day.isToday
-                                  ? { background: '#f0f0f0' }
+                                  ? { background: '#2a2a2a' }
                                   : dayIndex % 2 === 0 ? styles.payrollTrEven : styles.payrollTrOdd
                             }
                           >
-                            <td style={{ ...styles.payrollTd, color: day.isSunday ? '#2e7d32' : '#333', fontWeight: day.isToday ? 700 : 400 }}>
+                            <td style={{ ...styles.payrollTd, color: day.isSunday ? '#7bc67b' : '#f0f0f0', fontWeight: day.isToday ? 700 : 400 }}>
                               {day.dayLabel}
                             </td>
-                            <td style={{ ...styles.payrollTd, color: day.isSunday ? '#2e7d32' : '#333', fontWeight: day.isToday ? 700 : 400 }}>
+                            <td style={{ ...styles.payrollTd, color: day.isSunday ? '#7bc67b' : '#f0f0f0', fontWeight: day.isToday ? 700 : 400 }}>
                               {day.label}
                             </td>
                             {employees.map((emp) => {
@@ -5254,8 +5254,8 @@ export default function AdminPage() {
                                     style={{
                                       ...styles.payrollCheckBtn,
                                       color: isPresent ? '#1a7f1a' : (isAbsent ? '#c62828' : '#bbb'),
-                                      borderColor: day.isSunday ? '#2e7d32' : (isBlank ? '#9e9e9e' : '#222'),
-                                      background: day.isSunday ? '#d9ead3' : (day.isToday ? '#dcdcdc' : '#f3f3f3'),
+                                      borderColor: day.isSunday ? '#4caf50' : (isBlank ? '#777' : '#666'),
+                                      background: day.isSunday ? '#274130' : (day.isToday ? '#3a3a3a' : '#222'),
                                     }}
                                     onClick={() => toggleAttendance(emp.id, dayIndex)}
                                     disabled={!payrollCanEdit || day.isSunday}
@@ -5272,7 +5272,7 @@ export default function AdminPage() {
 
                         {employees.length === 0 && (
                           <tr>
-                            <td colSpan={3} style={{ ...styles.payrollTd, textAlign: 'center', color: '#666', padding: 24 }}>
+                            <td colSpan={3} style={{ ...styles.payrollTd, textAlign: 'center', color: '#aaa', padding: 24 }}>
                               No employees yet. Add an employee to start attendance tracking.
                             </td>
                           </tr>
@@ -5280,61 +5280,61 @@ export default function AdminPage() {
 
                         {employees.length > 0 && (
                           <>
-                            <tr style={{ background: '#d8d8d8' }}>
-                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#111' }}>Total Present</td>
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Total Present</td>
                               {employees.map((emp) => (
-                                <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'center', fontWeight: 700, color: '#111' }}>
+                                <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'center', fontWeight: 700, color: '#f3f3f3' }}>
                                   {(emp.daily || []).filter(Boolean).length}
                                 </td>
                               ))}
                               <td style={styles.payrollTd} />
                             </tr>
 
-                            <tr style={{ background: '#d8d8d8' }}>
-                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#111' }}>Gross Payroll</td>
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Gross Payroll</td>
                               {employees.map((emp) => (
-                                <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', color: '#111' }}>
+                                <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', color: '#f3f3f3' }}>
                                   {fmt((emp.daily || []).filter(Boolean).length * DAILY_PAYROLL_RATE)}
                                 </td>
                               ))}
-                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#111' }}>{fmt(grandGross)}</td>
+                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#f3f3f3' }}>{fmt(grandGross)}</td>
                             </tr>
 
-                            <tr style={{ background: '#d8d8d8' }}>
-                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#111' }}>Deductions</td>
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Deductions</td>
                               {employees.map((emp) => {
                                 const ded = (emp.deductions || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
                                 return (
-                                  <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', color: ded > 0 ? '#c62828' : '#666' }}>
+                                  <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', color: ded > 0 ? '#ef5350' : '#aaa' }}>
                                     {ded > 0 ? `- ${fmt(ded)}` : '-'}
                                   </td>
                                 );
                               })}
-                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: grandDed > 0 ? '#c62828' : '#666' }}>
+                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: grandDed > 0 ? '#ef5350' : '#aaa' }}>
                                 {grandDed > 0 ? `- ${fmt(grandDed)}` : '-'}
                               </td>
                             </tr>
 
-                            <tr style={{ background: '#d8d8d8' }}>
-                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#111' }}>Net Pay</td>
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Net Pay</td>
                               {employees.map((emp) => {
                                 const present = (emp.daily || []).filter(Boolean).length;
                                 const gross = present * DAILY_PAYROLL_RATE;
                                 const ded = (emp.deductions || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
                                 return (
-                                  <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#111' }}>
+                                  <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#f3f3f3' }}>
                                     {fmt(gross - ded)}
                                   </td>
                                 );
                               })}
-                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#111' }}>{fmt(grandNet)}</td>
+                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#f3f3f3' }}>{fmt(grandNet)}</td>
                             </tr>
 
-                            <tr style={{ background: '#c8c8c8' }}>
-                              <td colSpan={employees.length + 2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#111' }}>
+                            <tr style={{ background: '#303030' }}>
+                              <td colSpan={employees.length + 2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#fff' }}>
                                 Billable to Cashier
                               </td>
-                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#111' }}>{fmt(grandNet)}</td>
+                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#fff' }}>{fmt(grandNet)}</td>
                             </tr>
                           </>
                         )}
@@ -6678,32 +6678,32 @@ const styles = {
     fontFamily: 'Poppins, sans-serif',
   },
   payrollTableWrap: {
-    background: '#e5e5e5',
-    border: '1px solid #bdbdbd',
+    background: '#1a1a1a',
+    border: '1px solid #333',
     borderRadius: 6,
     overflowX: 'auto',
   },
   payrollTh: {
     padding: '8px 10px',
     textAlign: 'left',
-    color: '#111',
-    borderBottom: '1px solid #bdbdbd',
-    borderRight: '1px solid #cfcfcf',
+    color: '#ffc107',
+    borderBottom: '1px solid #333',
+    borderRight: '1px solid #2f2f2f',
     fontWeight: 600,
-    background: '#e5e5e5',
+    background: '#111',
     fontSize: 12,
     whiteSpace: 'nowrap',
   },
   payrollTd: {
     padding: '7px 10px',
-    color: '#111',
-    borderBottom: '1px solid #cfcfcf',
-    borderRight: '1px solid #d5d5d5',
+    color: '#e0e0e0',
+    borderBottom: '1px solid #2b2b2b',
+    borderRight: '1px solid #2f2f2f',
     fontSize: 13,
-    background: '#efefef',
+    background: '#1a1a1a',
   },
-  payrollTrEven: { background: '#efefef' },
-  payrollTrOdd: { background: '#e9e9e9' },
+  payrollTrEven: { background: '#1a1a1a' },
+  payrollTrOdd: { background: '#161616' },
   badge: {
     display: 'inline-block',
     padding: '2px 10px',
