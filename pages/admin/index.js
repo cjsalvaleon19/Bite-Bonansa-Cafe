@@ -8,6 +8,14 @@ import {
 } from 'recharts';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
+import {
+  buildDefaultPayrollData,
+  getPayrollCycleDays,
+  loadPayrollData,
+  normalizePayrollData,
+  savePayrollData,
+  createId,
+} from '../../utils/payrollStorage';
 
 function shiftDateByMonthsClamped(inputDate, deltaMonths) {
   const date = new Date(inputDate);
@@ -207,6 +215,7 @@ export default function AdminPage() {
       'Accounts Payable', 'Accounts Payable - Rewards',
       'Revenue', 'Inventory', "Owner's Capital", 'Retained Earnings',
       'Rewards', 'Cost of Goods Sold',
+      'Advances to Employees',
       // Liability accounts
       'Credit Card Payable', 'Spaylater Payable',
       // Income
@@ -274,7 +283,12 @@ export default function AdminPage() {
   const [finCompareFull, setFinCompareFull] = useState([]);
   const [salesSubView, setSalesSubView] = useState('general');
   const [salesData, setSalesData] = useState(null);
-  const [navGroupOpen, setNavGroupOpen] = useState({ transactions: false, inventory: false, financial: false });
+  const [navGroupOpen, setNavGroupOpen] = useState({
+    transactions: false,
+    inventory: false,
+    financial: false,
+    payroll: false,
+  });
   // Chart of Accounts state (separate date coverage from finDateFrom/To)
   const [coaDateFrom, setCoaDateFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
   const [coaDateTo, setCoaDateTo] = useState(monthEndStr);
@@ -331,6 +345,22 @@ export default function AdminPage() {
   const [billNewContactForm, setBillNewContactForm] = useState({ name: '', address: '', contact: '', tin: '' });
   const [billNewContactSaving, setBillNewContactSaving] = useState(false);
   const [billNewContactError, setBillNewContactError] = useState('');
+
+  // ── Payroll / Attendance Sheet state ───────────────────────────────────────
+  const [payrollData, setPayrollData] = useState(() => normalizePayrollData(buildDefaultPayrollData()));
+  const [payrollCycleDays, setPayrollCycleDays] = useState(() => getPayrollCycleDays());
+  const [payrollEditMode, setPayrollEditMode] = useState(true);
+  const [payrollMessage, setPayrollMessage] = useState('');
+  const [newPayrollEmployeeName, setNewPayrollEmployeeName] = useState('');
+  const [payrollSelectedEmployeeId, setPayrollSelectedEmployeeId] = useState('');
+  const [deductionDialogEmployeeId, setDeductionDialogEmployeeId] = useState(null);
+  const [deductionForm, setDeductionForm] = useState({
+    id: null,
+    date: new Date().toISOString().split('T')[0],
+    type: 'Cash Advance',
+    amount: '',
+    notes: '',
+  });
 
   // ── My Profile state ──────────────────────────────────────────────────────
   const [profileData, setProfileData] = useState(null);
@@ -1890,6 +1920,200 @@ export default function AdminPage() {
     return () => { supabase.removeChannel(channel); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const selectedDeductionEmployee = useMemo(
+    () => (payrollData.employees || []).find((employee) => employee.id === deductionDialogEmployeeId) || null,
+    [payrollData.employees, deductionDialogEmployeeId],
+  );
+
+  const payrollHasProcessedDeduction = useMemo(
+    () => (payrollData.employees || []).some((employee) => (employee.deductions || []).some((deduction) => deduction.processed)),
+    [payrollData.employees],
+  );
+
+  const payrollCanEdit = payrollEditMode && !payrollHasProcessedDeduction;
+
+  const syncPayrollState = useCallback((nextData, message = '') => {
+    const normalized = normalizePayrollData(nextData);
+    setPayrollData(normalized);
+    setPayrollCycleDays(getPayrollCycleDays(normalized.cycleStart));
+    savePayrollData(normalized);
+    if (message) setPayrollMessage(message);
+  }, []);
+
+  const loadPayrollState = useCallback(() => {
+    const loaded = loadPayrollData();
+    setPayrollData(loaded);
+    setPayrollCycleDays(getPayrollCycleDays(loaded.cycleStart));
+    const hasProcessed = (loaded.employees || []).some((employee) => (employee.deductions || []).some((deduction) => deduction.processed));
+    setPayrollEditMode(!hasProcessed);
+  }, []);
+
+  useEffect(() => {
+    loadPayrollState();
+  }, [loadPayrollState]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onStorage = (event) => {
+      if (event.key === 'bbc_payroll_attendance_v1') loadPayrollState();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [loadPayrollState]);
+
+  const savePayrollSnapshot = () => {
+    syncPayrollState(payrollData, 'Attendance sheet saved.');
+  };
+
+  const setPayrollEdit = () => {
+    if (payrollHasProcessedDeduction) {
+      setPayrollMessage('Payroll is locked because cashier already processed at least one salary deduction.');
+      return;
+    }
+    setPayrollEditMode(true);
+    setPayrollMessage('Edit mode enabled.');
+  };
+
+  const submitPayroll = () => {
+    syncPayrollState(
+      {
+        ...payrollData,
+        submitted: true,
+        submittedAt: new Date().toISOString(),
+      },
+      'Attendance report submitted to cashier.',
+    );
+    if (!payrollHasProcessedDeduction) setPayrollEditMode(true);
+  };
+
+  const addPayrollEmployee = () => {
+    if (!payrollCanEdit) return;
+    const name = newPayrollEmployeeName.trim();
+    if (!name) return;
+    const alreadyExists = (payrollData.employees || []).some(
+      (employee) => String(employee.name || '').trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (alreadyExists) {
+      setPayrollMessage('Employee already exists in attendance sheet.');
+      return;
+    }
+    const employee = {
+      id: createId('emp'),
+      name,
+      daily: payrollCycleDays.map(() => true),
+      deductions: [],
+    };
+    syncPayrollState(
+      { ...payrollData, employees: [...(payrollData.employees || []), employee] },
+      'Employee added and auto-saved.',
+    );
+    setNewPayrollEmployeeName('');
+    if (!payrollSelectedEmployeeId) setPayrollSelectedEmployeeId(employee.id);
+  };
+
+  const deletePayrollEmployee = (employeeId) => {
+    if (!payrollCanEdit) return;
+    syncPayrollState(
+      {
+        ...payrollData,
+        employees: (payrollData.employees || []).filter((employee) => employee.id !== employeeId),
+      },
+      'Employee removed and auto-saved.',
+    );
+    if (payrollSelectedEmployeeId === employeeId) setPayrollSelectedEmployeeId('');
+  };
+
+  const toggleAttendance = (employeeId, dayIndex) => {
+    if (!payrollCanEdit) return;
+    if (payrollCycleDays[dayIndex]?.isSunday) return;
+    syncPayrollState({
+      ...payrollData,
+      employees: (payrollData.employees || []).map((employee) => {
+        if (employee.id !== employeeId) return employee;
+        const nextDaily = [...(employee.daily || [])];
+        nextDaily[dayIndex] = !nextDaily[dayIndex];
+        return { ...employee, daily: nextDaily };
+      }),
+    });
+  };
+
+  const openDeductionsDialog = () => {
+    if (!payrollSelectedEmployeeId) {
+      setPayrollMessage('Select an employee first.');
+      return;
+    }
+    setDeductionDialogEmployeeId(payrollSelectedEmployeeId);
+    setDeductionForm({
+      id: null,
+      date: new Date().toISOString().split('T')[0],
+      type: 'Cash Advance',
+      amount: '',
+      notes: '',
+    });
+  };
+
+  const editDeduction = (deduction) => {
+    setDeductionForm({
+      id: deduction.id,
+      date: deduction.date || new Date().toISOString().split('T')[0],
+      type: deduction.type || 'Cash Advance',
+      amount: String(deduction.amount || ''),
+      notes: deduction.notes || '',
+    });
+  };
+
+  const saveDeductionEntry = () => {
+    if (!selectedDeductionEmployee || !payrollCanEdit) return;
+    const amount = Math.round((Number(deductionForm.amount) || 0) * 100) / 100;
+    if (amount <= 0) {
+      setPayrollMessage('Deduction amount must be greater than zero.');
+      return;
+    }
+    const deductionPayload = {
+      id: deductionForm.id || createId('ded'),
+      date: deductionForm.date || new Date().toISOString().split('T')[0],
+      type: deductionForm.type || 'Cash Advance',
+      amount,
+      notes: deductionForm.notes || '',
+      source: 'manual',
+      processed: false,
+      orderId: null,
+    };
+    syncPayrollState({
+      ...payrollData,
+      employees: (payrollData.employees || []).map((employee) => {
+        if (employee.id !== selectedDeductionEmployee.id) return employee;
+        const current = [...(employee.deductions || [])];
+        const hasExisting = current.some((deduction) => deduction.id === deductionPayload.id);
+        const nextDeductions = hasExisting
+          ? current.map((deduction) => (deduction.id === deductionPayload.id ? deductionPayload : deduction))
+          : [...current, deductionPayload];
+        return { ...employee, deductions: nextDeductions };
+      }),
+    }, 'Deduction entry saved.');
+    setDeductionForm({
+      id: null,
+      date: new Date().toISOString().split('T')[0],
+      type: 'Cash Advance',
+      amount: '',
+      notes: '',
+    });
+  };
+
+  const deleteDeductionEntry = (deductionId) => {
+    if (!selectedDeductionEmployee || !payrollCanEdit) return;
+    syncPayrollState({
+      ...payrollData,
+      employees: (payrollData.employees || []).map((employee) => {
+        if (employee.id !== selectedDeductionEmployee.id) return employee;
+        return {
+          ...employee,
+          deductions: (employee.deductions || []).filter((deduction) => deduction.id !== deductionId),
+        };
+      }),
+    }, 'Deduction entry deleted.');
+  };
+
   // ── Nav items (memoised) — must be declared before any early return ──────
   const navGroups = useMemo(
     () => [
@@ -1920,6 +2144,12 @@ export default function AdminPage() {
           { key: 'tax', finTab: true, label: '🏦 Tax Report' },
           { key: 'journal', finTab: false, label: '📒 Journal Entries' },
           { key: 'coa', finTab: true, label: '📑 Chart of Accounts' },
+        ],
+      },
+      {
+        type: 'group', key: 'payroll', label: '💼 Payroll',
+        children: [
+          { key: 'attendance_sheet', label: '🗂️ Attendance Sheet' },
         ],
       },
       { type: 'item', key: 'profile', label: '👤 My Profile' },
@@ -4914,6 +5144,292 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* ──────────────── PAYROLL / ATTENDANCE SHEET ──────────────── */}
+          {activeTab === 'attendance_sheet' && (
+            <div>
+              <div style={styles.tabHeader}>
+                <h1 style={styles.pageTitle}>Payroll - Attendance Sheet</h1>
+              </div>
+
+              <div style={{ ...styles.card, marginBottom: 16 }}>
+                <div style={styles.payrollControlGrid}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label style={{ ...styles.label, paddingTop: 0 }}>Cycle Start</label>
+                    <input
+                      type="date"
+                      value={payrollData.cycleStart}
+                      onChange={(e) => {
+                        if (!payrollCanEdit) return;
+                        syncPayrollState({ ...payrollData, cycleStart: e.target.value }, 'Cycle updated.');
+                      }}
+                      style={{ ...styles.input, maxWidth: 180 }}
+                      disabled={!payrollCanEdit}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="Employee name"
+                      value={newPayrollEmployeeName}
+                      onChange={(e) => setNewPayrollEmployeeName(e.target.value)}
+                      style={{ ...styles.input, maxWidth: 240 }}
+                      disabled={!payrollCanEdit}
+                    />
+                    <button type="button" style={styles.primaryBtn} onClick={addPayrollEmployee} disabled={!payrollCanEdit}>
+                      + Add Employee
+                    </button>
+                  </div>
+                </div>
+                {payrollData.submitted && (
+                  <p style={{ color: '#4caf50', margin: '8px 0 0 0', fontSize: 12 }}>
+                    Submitted: {new Date(payrollData.submittedAt || Date.now()).toLocaleString('en-PH')}
+                  </p>
+                )}
+                {payrollHasProcessedDeduction && (
+                  <p style={{ color: '#ff9800', margin: '8px 0 0 0', fontSize: 12 }}>
+                    Cashier already processed salary deduction entries. Attendance editing is locked.
+                  </p>
+                )}
+              </div>
+
+              <div style={styles.tableWrap}>
+                <table style={{ ...styles.table, fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Employee</th>
+                      {payrollCycleDays.map((day) => (
+                        <th key={day.date} style={{ ...styles.th, textAlign: 'center' }}>
+                          {day.label}
+                        </th>
+                      ))}
+                      <th style={styles.th}>Total Present</th>
+                      <th style={styles.th}>Gross Payroll</th>
+                      <th style={styles.th}>Deductions</th>
+                      <th style={styles.th}>Net Pay</th>
+                      <th style={styles.th}>Action</th>
+                    </tr>
+                    <tr>
+                      <th style={styles.th} />
+                      {payrollCycleDays.map((day) => (
+                        <th key={`${day.date}-day`} style={{ ...styles.th, textAlign: 'center', color: day.isSunday ? '#4caf50' : '#aaa' }}>
+                          {day.dayLabel}
+                        </th>
+                      ))}
+                      <th style={styles.th} />
+                      <th style={styles.th} />
+                      <th style={styles.th} />
+                      <th style={styles.th} />
+                      <th style={styles.th} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(payrollData.employees || []).map((employee, idx) => {
+                      const presentCount = (employee.daily || []).filter(Boolean).length;
+                      const grossPayroll = presentCount * 266.67;
+                      const deductionsTotal = (employee.deductions || []).reduce((sum, deduction) => sum + (Number(deduction.amount) || 0), 0);
+                      const netPay = grossPayroll - deductionsTotal;
+                      return (
+                        <tr key={employee.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                          <td style={styles.td}>{employee.name}</td>
+                          {payrollCycleDays.map((day, dayIndex) => {
+                            const isPresent = Boolean(employee.daily?.[dayIndex]);
+                            return (
+                              <td key={`${employee.id}-${day.date}`} style={{ ...styles.td, textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  style={{
+                                    ...styles.payrollCheckBtn,
+                                    color: isPresent ? '#4caf50' : '#f44336',
+                                    borderColor: day.isSunday ? '#4caf50' : '#555',
+                                    background: day.isSunday ? '#143114' : 'transparent',
+                                  }}
+                                  onClick={() => toggleAttendance(employee.id, dayIndex)}
+                                  disabled={!payrollCanEdit || day.isSunday}
+                                  title={day.isSunday ? 'Sunday rest day (default present)' : 'Toggle present / absent'}
+                                >
+                                  {isPresent ? '✔' : 'X'}
+                                </button>
+                              </td>
+                            );
+                          })}
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{presentCount}</td>
+                          <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(grossPayroll)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: deductionsTotal > 0 ? '#f44336' : '#aaa' }}>
+                            {deductionsTotal > 0 ? fmt(deductionsTotal) : '-'}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(netPay)}</td>
+                          <td style={styles.td}>
+                            <button
+                              type="button"
+                              style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
+                              onClick={() => deletePayrollEmployee(employee.id)}
+                              disabled={!payrollCanEdit}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {(!payrollData.employees || payrollData.employees.length === 0) && (
+                      <tr>
+                        <td colSpan={payrollCycleDays.length + 6} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 24 }}>
+                          No employees yet. Add an employee to start attendance tracking.
+                        </td>
+                      </tr>
+                    )}
+                    {(payrollData.employees || []).length > 0 && (
+                      <tr style={{ background: '#1a1a2a' }}>
+                        <td colSpan={payrollCycleDays.length + 4} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>
+                          Billable to Cashier
+                        </td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>
+                          {fmt((payrollData.employees || []).reduce((sum, employee) => {
+                            const present = (employee.daily || []).filter(Boolean).length;
+                            const gross = present * 266.67;
+                            const ded = (employee.deductions || []).reduce((dSum, deduction) => dSum + (Number(deduction.amount) || 0), 0);
+                            return sum + (gross - ded);
+                          }, 0))}
+                        </td>
+                        <td style={styles.td} />
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ ...styles.card, marginTop: 16 }}>
+                <div style={styles.payrollControlGrid}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label style={{ ...styles.label, paddingTop: 0 }}>Employee</label>
+                    <select
+                      style={{ ...styles.input, width: 240 }}
+                      value={payrollSelectedEmployeeId}
+                      onChange={(e) => setPayrollSelectedEmployeeId(e.target.value)}
+                    >
+                      <option value="">Select employee</option>
+                      {(payrollData.employees || []).map((employee) => (
+                        <option key={employee.id} value={employee.id}>{employee.name}</option>
+                      ))}
+                    </select>
+                    <button type="button" style={styles.primaryBtn} onClick={openDeductionsDialog}>
+                      Deductions
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" style={styles.primaryBtn} onClick={savePayrollSnapshot}>Save</button>
+                    <button type="button" style={styles.actionBtn} onClick={setPayrollEdit}>Edit</button>
+                    <button type="button" style={{ ...styles.primaryBtn, background: '#4caf50', color: '#000' }} onClick={submitPayroll}>Submit</button>
+                  </div>
+                </div>
+                {payrollMessage && (
+                  <p style={{ marginTop: 10, fontSize: 12, color: '#aaa' }}>{payrollMessage}</p>
+                )}
+              </div>
+
+              <Dialog.Root open={!!deductionDialogEmployeeId} onOpenChange={(open) => { if (!open) setDeductionDialogEmployeeId(null); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 640 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Deductions</Dialog.Title>
+
+                    <div style={styles.formGrid}>
+                      <label style={styles.label}>Employee Name</label>
+                      <input style={{ ...styles.input, background: '#111', color: '#ffc107' }} readOnly value={selectedDeductionEmployee?.name || ''} />
+                      <label style={styles.label}>Date</label>
+                      <input
+                        type="date"
+                        style={styles.input}
+                        value={deductionForm.date}
+                        onChange={(e) => setDeductionForm((prev) => ({ ...prev, date: e.target.value }))}
+                        disabled={!payrollCanEdit}
+                      />
+                      <label style={styles.label}>Transaction Type</label>
+                      <select
+                        style={styles.input}
+                        value={deductionForm.type}
+                        onChange={(e) => setDeductionForm((prev) => ({ ...prev, type: e.target.value }))}
+                        disabled={!payrollCanEdit}
+                      >
+                        <option value="Cash Advance">Cash Advance</option>
+                        <option value="Others">Others</option>
+                      </select>
+                      <label style={styles.label}>Amount</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        style={styles.input}
+                        value={deductionForm.amount}
+                        onChange={(e) => setDeductionForm((prev) => ({ ...prev, amount: e.target.value }))}
+                        disabled={!payrollCanEdit}
+                      />
+                      <label style={styles.label}>Notes</label>
+                      <input
+                        type="text"
+                        style={styles.input}
+                        value={deductionForm.notes}
+                        onChange={(e) => setDeductionForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        placeholder="Optional notes"
+                        disabled={!payrollCanEdit}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                      <button type="button" style={styles.actionBtn} onClick={() => setDeductionForm((prev) => ({ ...prev, id: null, amount: '', notes: '' }))}>
+                        Edit
+                      </button>
+                      <button type="button" style={styles.primaryBtn} onClick={saveDeductionEntry} disabled={!payrollCanEdit}>
+                        Save
+                      </button>
+                    </div>
+
+                    <div style={{ ...styles.tableWrap, marginTop: 16 }}>
+                      <table style={{ ...styles.table, fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            {['Date', 'Type', 'Amount', 'Source', 'Action'].map((h) => <th key={h} style={styles.th}>{h}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedDeductionEmployee?.deductions || []).map((deduction, idx) => (
+                            <tr key={deduction.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                              <td style={styles.td}>{deduction.date}</td>
+                              <td style={styles.td}>{deduction.type}</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>{fmt(deduction.amount || 0)}</td>
+                              <td style={styles.td}>{deduction.source === 'cashier_salary_deduction' ? 'Cashier' : 'Manual'}</td>
+                              <td style={styles.td}>
+                                <button type="button" style={styles.actionBtn} onClick={() => editDeduction(deduction)} disabled={!payrollCanEdit}>Edit</button>
+                                <button
+                                  type="button"
+                                  style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
+                                  onClick={() => deleteDeductionEntry(deduction.id)}
+                                  disabled={!payrollCanEdit || deduction.source === 'cashier_salary_deduction'}
+                                >
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {(selectedDeductionEmployee?.deductions || []).length === 0 && (
+                            <tr>
+                              <td colSpan={5} style={{ ...styles.td, color: '#666', textAlign: 'center' }}>
+                                No deductions yet.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+            </div>
+          )}
+
           {/* ──────────────── MY PROFILE ──────────────── */}
           {activeTab === 'profile' && (
             <div>
@@ -6090,6 +6606,24 @@ const styles = {
     border: '1px solid #333',
     borderRadius: 10,
     overflowX: 'auto',
+  },
+  payrollControlGrid: {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  payrollCheckBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    border: '1px solid #555',
+    background: 'transparent',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 700,
+    fontFamily: 'Poppins, sans-serif',
   },
   badge: {
     display: 'inline-block',
