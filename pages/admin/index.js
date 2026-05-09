@@ -11,7 +11,9 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import {
   buildDefaultPayrollData,
   DAILY_PAYROLL_RATE,
+  getPayrollCycleStartForPeriod,
   getPayrollCycleDays,
+  getPayrollPeriodMeta,
   loadPayrollData,
   normalizePayrollData,
   PAYROLL_STORAGE_KEY,
@@ -353,7 +355,6 @@ export default function AdminPage() {
   // ── Payroll / Attendance Sheet state ───────────────────────────────────────
   const [payrollData, setPayrollData] = useState(() => normalizePayrollData(buildDefaultPayrollData()));
   const [payrollCycleDays, setPayrollCycleDays] = useState(() => getPayrollCycleDays());
-  const [payrollEditMode, setPayrollEditMode] = useState(true);
   const [payrollMessage, setPayrollMessage] = useState('');
   const [newPayrollEmployeeName, setNewPayrollEmployeeName] = useState('');
   const [payrollSelectedEmployeeId, setPayrollSelectedEmployeeId] = useState('');
@@ -1934,7 +1935,11 @@ export default function AdminPage() {
     [payrollData.employees],
   );
 
-  const payrollCanEdit = payrollEditMode && !payrollHasProcessedDeduction;
+  const payrollCanEdit = !payrollHasProcessedDeduction;
+  const payrollPeriodMeta = useMemo(
+    () => getPayrollPeriodMeta(payrollData.cycleStart),
+    [payrollData.cycleStart],
+  );
 
   const syncPayrollState = useCallback((nextData, message = '') => {
     const normalized = normalizePayrollData(nextData);
@@ -1948,8 +1953,6 @@ export default function AdminPage() {
     const loaded = loadPayrollData();
     setPayrollData(loaded);
     setPayrollCycleDays(getPayrollCycleDays(loaded.cycleStart));
-    const hasProcessed = (loaded.employees || []).some((employee) => (employee.deductions || []).some((deduction) => deduction.processed));
-    setPayrollEditMode(!hasProcessed);
   }, []);
 
   useEffect(() => {
@@ -1965,19 +1968,6 @@ export default function AdminPage() {
     return () => window.removeEventListener('storage', onStorage);
   }, [loadPayrollState]);
 
-  const savePayrollSnapshot = () => {
-    syncPayrollState(payrollData, 'Attendance sheet saved.');
-  };
-
-  const setPayrollEdit = () => {
-    if (payrollHasProcessedDeduction) {
-      setPayrollMessage('Payroll is locked because cashier already processed at least one salary deduction.');
-      return;
-    }
-    setPayrollEditMode(true);
-    setPayrollMessage('Edit mode enabled.');
-  };
-
   const submitPayroll = () => {
     syncPayrollState(
       {
@@ -1987,7 +1977,12 @@ export default function AdminPage() {
       },
       'Attendance report submitted to cashier.',
     );
-    if (!payrollHasProcessedDeduction) setPayrollEditMode(true);
+  };
+
+  const changePayrollPeriod = (monthValue, cycleType) => {
+    if (!payrollCanEdit) return;
+    const nextCycleStart = getPayrollCycleStartForPeriod(monthValue, cycleType);
+    syncPayrollState({ ...payrollData, cycleStart: nextCycleStart }, 'Payroll period updated (auto-saved).');
   };
 
   const addPayrollEmployee = () => {
@@ -2004,7 +1999,11 @@ export default function AdminPage() {
     const employee = {
       id: createId('emp'),
       name,
-      daily: payrollCycleDays.map(() => true),
+      daily: payrollCycleDays.map((day) => {
+        if (day.isSunday) return true;
+        if (day.isFuture) return null;
+        return true;
+      }),
       deductions: [],
     };
     syncPayrollState(
@@ -5158,17 +5157,23 @@ export default function AdminPage() {
               <div style={{ ...styles.card, marginBottom: 16 }}>
                 <div style={styles.payrollControlGrid}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <label style={{ ...styles.label, paddingTop: 0 }}>Cycle Start</label>
+                    <label style={{ ...styles.label, paddingTop: 0 }}>Payroll Period</label>
                     <input
-                      type="date"
-                      value={payrollData.cycleStart}
-                      onChange={(e) => {
-                        if (!payrollCanEdit) return;
-                        syncPayrollState({ ...payrollData, cycleStart: e.target.value }, 'Cycle updated.');
-                      }}
-                      style={{ ...styles.input, maxWidth: 180 }}
+                      type="month"
+                      value={payrollPeriodMeta.monthValue}
+                      onChange={(e) => changePayrollPeriod(e.target.value, payrollPeriodMeta.cycleType)}
+                      style={{ ...styles.input, maxWidth: 150 }}
                       disabled={!payrollCanEdit}
                     />
+                    <select
+                      value={payrollPeriodMeta.cycleType}
+                      onChange={(e) => changePayrollPeriod(payrollPeriodMeta.monthValue, e.target.value)}
+                      style={{ ...styles.input, maxWidth: 180 }}
+                      disabled={!payrollCanEdit}
+                    >
+                      <option value="first">{payrollPeriodMeta.firstLabel}</option>
+                      <option value="second">{payrollPeriodMeta.secondLabel}</option>
+                    </select>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
@@ -5184,6 +5189,9 @@ export default function AdminPage() {
                     </button>
                   </div>
                 </div>
+                <p style={{ color: '#888', margin: '8px 0 0 0', fontSize: 12 }}>
+                  Auto-save is enabled. Changes are saved immediately.
+                </p>
                 {payrollData.submitted && (
                   <p style={{ color: '#4caf50', margin: '8px 0 0 0', fontSize: 12 }}>
                     Submitted: {new Date(payrollData.submittedAt || Date.now()).toLocaleString('en-PH')}
@@ -5196,34 +5204,32 @@ export default function AdminPage() {
                 )}
               </div>
 
-              <div style={styles.tableWrap}>
+              <div style={styles.payrollTableWrap}>
                 <table style={{ ...styles.table, fontSize: 12 }}>
                   <thead>
                     <tr>
-                      <th style={styles.th}>Employee</th>
+                      <th style={styles.payrollTh}>Employee</th>
                       {payrollCycleDays.map((day) => (
-                        <th key={day.date} style={{ ...styles.th, textAlign: 'center' }}>
+                        <th key={day.date} style={{ ...styles.payrollTh, textAlign: 'center' }}>
                           {day.label}
                         </th>
                       ))}
-                      <th style={styles.th}>Total Present</th>
-                      <th style={styles.th}>Gross Payroll</th>
-                      <th style={styles.th}>Deductions</th>
-                      <th style={styles.th}>Net Pay</th>
-                      <th style={styles.th}>Action</th>
+                      <th style={styles.payrollTh}>Total Present</th>
+                      <th style={styles.payrollTh}>Gross Payroll</th>
+                      <th style={styles.payrollTh}>Deductions</th>
+                      <th style={styles.payrollTh}>Net Pay</th>
                     </tr>
                     <tr>
-                      <th style={styles.th} />
+                      <th style={styles.payrollTh} />
                       {payrollCycleDays.map((day) => (
-                        <th key={`${day.date}-day`} style={{ ...styles.th, textAlign: 'center', color: day.isSunday ? '#4caf50' : '#aaa' }}>
+                        <th key={`${day.date}-day`} style={{ ...styles.payrollTh, textAlign: 'center', color: day.isSunday ? '#2e7d32' : '#333', background: day.isToday ? '#d8d8d8' : '#e5e5e5' }}>
                           {day.dayLabel}
                         </th>
                       ))}
-                      <th style={styles.th} />
-                      <th style={styles.th} />
-                      <th style={styles.th} />
-                      <th style={styles.th} />
-                      <th style={styles.th} />
+                      <th style={styles.payrollTh} />
+                      <th style={styles.payrollTh} />
+                      <th style={styles.payrollTh} />
+                      <th style={styles.payrollTh} />
                     </tr>
                   </thead>
                   <tbody>
@@ -5233,61 +5239,54 @@ export default function AdminPage() {
                       const deductionsTotal = (employee.deductions || []).reduce((sum, deduction) => sum + (Number(deduction.amount) || 0), 0);
                       const netPay = grossPayroll - deductionsTotal;
                       return (
-                        <tr key={employee.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-                          <td style={styles.td}>{employee.name}</td>
+                        <tr key={employee.id} style={idx % 2 === 0 ? styles.payrollTrEven : styles.payrollTrOdd}>
+                          <td style={styles.payrollTd}>{employee.name}</td>
                           {payrollCycleDays.map((day, dayIndex) => {
-                            const isPresent = Boolean(employee.daily?.[dayIndex]);
+                            const attendanceValue = employee.daily?.[dayIndex];
+                            const isPresent = attendanceValue === true;
+                            const isAbsent = attendanceValue === false;
+                            const isBlank = attendanceValue === null || typeof attendanceValue === 'undefined';
                             return (
-                              <td key={`${employee.id}-${day.date}`} style={{ ...styles.td, textAlign: 'center' }}>
+                              <td key={`${employee.id}-${day.date}`} style={{ ...styles.payrollTd, textAlign: 'center' }}>
                                 <button
                                   type="button"
                                   style={{
                                     ...styles.payrollCheckBtn,
-                                    color: isPresent ? '#4caf50' : '#f44336',
-                                    borderColor: day.isSunday ? '#4caf50' : '#555',
-                                    background: day.isSunday ? '#143114' : 'transparent',
+                                    color: isPresent ? '#4caf50' : (isAbsent ? '#f44336' : '#bbb'),
+                                    borderColor: day.isSunday ? '#4caf50' : (isBlank ? '#666' : '#555'),
+                                    background: day.isSunday ? '#d9ead3' : (day.isToday ? '#dcdcdc' : '#f3f3f3'),
                                   }}
                                   onClick={() => toggleAttendance(employee.id, dayIndex)}
                                   disabled={!payrollCanEdit || day.isSunday}
                                   title={day.isSunday ? 'Sunday rest day (default present)' : 'Toggle present / absent'}
                                 >
-                                  {isPresent ? '✔' : 'X'}
+                                  {isPresent ? '✔' : (isAbsent ? 'X' : '')}
                                 </button>
                               </td>
                             );
                           })}
-                          <td style={{ ...styles.td, textAlign: 'right', color: '#ffc107', fontWeight: 700 }}>{presentCount}</td>
-                          <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(grossPayroll)}</td>
-                          <td style={{ ...styles.td, textAlign: 'right', color: deductionsTotal > 0 ? '#f44336' : '#aaa' }}>
+                          <td style={{ ...styles.payrollTd, textAlign: 'right', color: '#111', fontWeight: 700 }}>{presentCount}</td>
+                          <td style={{ ...styles.payrollTd, textAlign: 'right' }}>{fmt(grossPayroll)}</td>
+                          <td style={{ ...styles.payrollTd, textAlign: 'right', color: deductionsTotal > 0 ? '#d32f2f' : '#666' }}>
                             {deductionsTotal > 0 ? fmt(deductionsTotal) : '-'}
                           </td>
-                          <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(netPay)}</td>
-                          <td style={styles.td}>
-                            <button
-                              type="button"
-                              style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
-                              onClick={() => deletePayrollEmployee(employee.id)}
-                              disabled={!payrollCanEdit}
-                            >
-                              Delete
-                            </button>
-                          </td>
+                          <td style={{ ...styles.payrollTd, textAlign: 'right', color: '#111', fontWeight: 700 }}>{fmt(netPay)}</td>
                         </tr>
                       );
                     })}
                     {(!payrollData.employees || payrollData.employees.length === 0) && (
                       <tr>
-                        <td colSpan={payrollCycleDays.length + 6} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 24 }}>
+                        <td colSpan={payrollCycleDays.length + 5} style={{ ...styles.payrollTd, textAlign: 'center', color: '#666', padding: 24 }}>
                           No employees yet. Add an employee to start attendance tracking.
                         </td>
                       </tr>
                     )}
                     {(payrollData.employees || []).length > 0 && (
-                      <tr style={{ background: '#1a1a2a' }}>
-                        <td colSpan={payrollCycleDays.length + 4} style={{ ...styles.td, fontWeight: 700, color: '#ffc107' }}>
+                      <tr style={{ background: '#e1e1e1' }}>
+                        <td colSpan={payrollCycleDays.length + 4} style={{ ...styles.payrollTd, fontWeight: 700, color: '#111' }}>
                           Billable to Cashier
                         </td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>
+                        <td style={{ ...styles.payrollTd, textAlign: 'right', color: '#111', fontWeight: 700 }}>
                           {fmt((payrollData.employees || []).reduce((sum, employee) => {
                             const present = (employee.daily || []).filter(Boolean).length;
                             const gross = present * DAILY_PAYROLL_RATE;
@@ -5295,7 +5294,6 @@ export default function AdminPage() {
                             return sum + (gross - ded);
                           }, 0))}
                         </td>
-                        <td style={styles.td} />
                       </tr>
                     )}
                   </tbody>
@@ -5319,10 +5317,16 @@ export default function AdminPage() {
                     <button type="button" style={styles.primaryBtn} onClick={openDeductionsDialog}>
                       Deductions
                     </button>
+                    <button
+                      type="button"
+                      style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
+                      onClick={() => payrollSelectedEmployeeId && deletePayrollEmployee(payrollSelectedEmployeeId)}
+                      disabled={!payrollCanEdit || !payrollSelectedEmployeeId}
+                    >
+                      Delete Employee
+                    </button>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" style={styles.primaryBtn} onClick={savePayrollSnapshot}>Save</button>
-                    <button type="button" style={styles.actionBtn} onClick={setPayrollEdit}>Edit</button>
                     <button type="button" style={{ ...styles.primaryBtn, background: '#4caf50', color: '#000' }} onClick={submitPayroll}>Submit</button>
                   </div>
                 </div>
@@ -6629,6 +6633,33 @@ const styles = {
     fontWeight: 700,
     fontFamily: 'Poppins, sans-serif',
   },
+  payrollTableWrap: {
+    background: '#e5e5e5',
+    border: '1px solid #bdbdbd',
+    borderRadius: 6,
+    overflowX: 'auto',
+  },
+  payrollTh: {
+    padding: '8px 10px',
+    textAlign: 'left',
+    color: '#111',
+    borderBottom: '1px solid #bdbdbd',
+    borderRight: '1px solid #cfcfcf',
+    fontWeight: 600,
+    background: '#e5e5e5',
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+  },
+  payrollTd: {
+    padding: '7px 10px',
+    color: '#111',
+    borderBottom: '1px solid #cfcfcf',
+    borderRight: '1px solid #d5d5d5',
+    fontSize: 13,
+    background: '#efefef',
+  },
+  payrollTrEven: { background: '#efefef' },
+  payrollTrOdd: { background: '#e9e9e9' },
   badge: {
     display: 'inline-block',
     padding: '2px 10px',

@@ -25,19 +25,70 @@ function getDefaultCycleStart() {
   return toDateOnly(start);
 }
 
+function deriveCycleEnd(startDate) {
+  const start = new Date(startDate);
+  if (Number.isNaN(start.getTime())) return new Date();
+  const year = start.getFullYear();
+  const month = start.getMonth();
+  const startDay = start.getDate();
+  if (startDay <= 15) return new Date(year, month, 15);
+  return new Date(year, month + 1, 0);
+}
+
+export function getPayrollPeriodLabel(cycleStart) {
+  const start = new Date(cycleStart || getDefaultCycleStart());
+  const safeStart = Number.isNaN(start.getTime()) ? new Date(getDefaultCycleStart()) : start;
+  const end = deriveCycleEnd(safeStart);
+  const monthLabel = safeStart.toLocaleDateString('en-US', { month: 'short' });
+  const endDay = end.getDate();
+  return `${monthLabel} ${safeStart.getDate()}-${endDay}`;
+}
+
+export function getPayrollCycleStartForPeriod(monthValue, cycleType) {
+  const now = new Date();
+  const fallbackMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthStr = monthValue || fallbackMonth;
+  const [yearRaw, monthRaw] = monthStr.split('-');
+  const year = Number(yearRaw);
+  const monthIndex = Number(monthRaw) - 1;
+  if (!year || Number.isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) return getDefaultCycleStart();
+  const startDay = cycleType === 'second' ? 16 : 1;
+  return toDateOnly(new Date(year, monthIndex, startDay));
+}
+
+export function getPayrollPeriodMeta(cycleStart) {
+  const start = new Date(cycleStart || getDefaultCycleStart());
+  const safeStart = Number.isNaN(start.getTime()) ? new Date(getDefaultCycleStart()) : start;
+  const cycleType = safeStart.getDate() <= 15 ? 'first' : 'second';
+  const monthValue = `${safeStart.getFullYear()}-${String(safeStart.getMonth() + 1).padStart(2, '0')}`;
+  const secondCycleEnd = new Date(safeStart.getFullYear(), safeStart.getMonth() + 1, 0).getDate();
+  return {
+    monthValue,
+    cycleType,
+    firstLabel: `${safeStart.toLocaleDateString('en-US', { month: 'short' })} 1-15`,
+    secondLabel: `${safeStart.toLocaleDateString('en-US', { month: 'short' })} 16-${secondCycleEnd}`,
+  };
+}
+
 function ensureDailyArray(daily = [], cycleDays = []) {
+  const today = toDateOnly(new Date());
   return cycleDays.map((d, idx) => {
     if (d.isSunday) return true;
+    if (d.date === today) return true;
     const raw = daily[idx];
-    return typeof raw === 'boolean' ? raw : true;
+    if (raw === true || raw === false || raw === null) return raw;
+    if (d.date > today) return null;
+    return true;
   });
 }
 
-export function getPayrollCycleDays(cycleStart, count = PAYROLL_CYCLE_DAYS) {
+export function getPayrollCycleDays(cycleStart) {
   const proposedStart = new Date(cycleStart || getDefaultCycleStart());
   const start = Number.isNaN(proposedStart.getTime())
     ? new Date(getDefaultCycleStart())
     : proposedStart;
+  const end = deriveCycleEnd(start);
+  const count = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
   return Array.from({ length: count }, (_, idx) => {
     const d = new Date(start);
     d.setDate(start.getDate() + idx);
@@ -48,6 +99,8 @@ export function getPayrollCycleDays(cycleStart, count = PAYROLL_CYCLE_DAYS) {
       label: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
       dayLabel: d.toLocaleDateString('en-US', { weekday: 'short' }),
       isSunday: d.getDay() === 0,
+      isToday: isoDate === toDateOnly(new Date()),
+      isFuture: isoDate > toDateOnly(new Date()),
     };
   });
 }
@@ -154,6 +207,9 @@ export {
   PAYROLL_CYCLE_DAYS,
   DAILY_PAYROLL_RATE,
   SALARY_DEDUCTION_SOURCE,
+  getPayrollPeriodLabel,
+  getPayrollPeriodMeta,
+  getPayrollCycleStartForPeriod,
   createId,
   roundToCurrency,
 };
