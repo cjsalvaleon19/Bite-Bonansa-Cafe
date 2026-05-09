@@ -64,6 +64,19 @@ function normalizeDepartment(item = {}) {
   };
 }
 
+/**
+ * Return a human-friendly label for the order mode value used on order slips.
+ * Matches the canonical modes stored in the database.
+ */
+export function formatOrderModeLabel(mode) {
+  const m = String(mode || '').toLowerCase();
+  if (m === 'dine-in')  return 'Dine-in';
+  if (m === 'take-out') return 'Take-out';
+  if (m === 'pick-up')  return 'Pick-up';
+  if (m === 'delivery') return 'Delivery';
+  return mode || 'N/A';
+}
+
 export function buildKitchenDepartmentOrders(order) {
   const grouped = new Map();
 

@@ -628,11 +628,11 @@ export default function CashierPOS() {
           </div>
           
           <div style="margin-bottom: 15px;">
-            <p><strong>Order Number: ${order.order_number || order.id.slice(0, 8)}</strong></p>
-            <p><strong>Date:</strong> ${receiptDate}</p>
-            <p><strong>Order Type:</strong> ${orderType}</p>
-            <p><strong>Customer:</strong> ${customerName}</p>
-            <p><strong>Phone Number:</strong> ${customerPhone}</p>
+            <p>Order#: ${order.order_number || order.id.slice(0, 8)}</p>
+            <p>Date  : ${receiptDate}</p>
+            <p>Type  : ${orderType}</p>
+            <p>Name  : ${customerName}</p>
+            ${customerPhone && customerPhone !== 'N/A' ? `<p>Phone : ${customerPhone}</p>` : ''}
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
           </div>
@@ -704,7 +704,7 @@ export default function CashierPOS() {
                 <td style="text-align: right;">₱${change.toFixed(2)}</td>
               </tr>
               <tr>
-                <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
+                <td style="padding-top: 8px; border-top: 1px dashed #000;"><strong>Payment:</strong></td>
                 <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
               </tr>
             </table>

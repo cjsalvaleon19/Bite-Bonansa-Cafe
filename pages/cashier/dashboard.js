@@ -7,7 +7,7 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount } from '../../utils/salesCalculations';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
-import { buildKitchenDepartmentOrders, formatItemNameWithSubvariant, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
+import { buildKitchenDepartmentOrders, formatItemNameWithSubvariant, formatOrderModeLabel, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
@@ -447,8 +447,8 @@ export default function CashierDashboard() {
     if (isKitchenCopy) {
       const kitchenItemsHtml = items.map((item) => `
         <tr>
-          <td style="padding: 4px 0;">${formatItemNameWithSubvariant(item)}</td>
-          <td style="padding: 4px 0; text-align: right;">${item.quantity || 1}</td>
+          <td style="padding: 4px 0; font-size: 24px;">${formatItemNameWithSubvariant(item)}</td>
+          <td style="padding: 4px 0; font-size: 24px; text-align: right;">${item.quantity || 1}</td>
         </tr>
       `).join('');
 
@@ -484,10 +484,8 @@ export default function CashierDashboard() {
             <p style="font-size: 18px; font-weight: bold; text-align: center;">ORDER SLIP</p>
           </div>
           <div class="section">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span><strong>Order Slip #:</strong> ${getOrderSlipNumber(order)}</span>
-              <span><strong>${(order.order_mode || 'N/A').toUpperCase()}</strong></span>
-            </div>
+            <p style="font-size: 24px; font-weight: bold;">Order Slip #: ${getOrderSlipNumber(order)}</p>
+            <p style="font-size: 24px; font-weight: bold;">${formatOrderModeLabel(order.order_mode)}</p>
           </div>
           <div class="section">
             <table>
@@ -591,12 +589,12 @@ export default function CashierDashboard() {
         </div>
 
         <div class="section">
-          <p><strong>Order Number:</strong> ${order.order_number || order.id.slice(0, 8)}</p>
-          <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
-          <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
+          <p>Order#: ${order.order_number || order.id.slice(0, 8)}</p>
+          <p>Date  : ${new Date(order.created_at).toLocaleString()}</p>
+          <p>Type  : ${order.order_mode || 'N/A'}</p>
           ${isKitchenCopy && departmentName ? `<p><strong>Kitchen Department:</strong> ${departmentName}</p>` : ''}
-          <p><strong>Customer:</strong> ${order.customer_name || 'Walk-in'}</p>
-          <p><strong>Phone Number:</strong> ${(order.users && order.users.phone) || order.customer_phone || order.contact_number || 'N/A'}</p>
+          <p>Name  : ${order.customer_name || 'Walk-in'}</p>
+          ${(() => { const ph = (order.users && order.users.phone) || order.customer_phone || order.contact_number || ''; return ph ? `<p>Phone : ${ph}</p>` : ''; })()}
           ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
           ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
         </div>
@@ -653,7 +651,7 @@ export default function CashierDashboard() {
               <td style="text-align: right;">₱${change.toFixed(2)}</td>
             </tr>
             <tr>
-              <td style="padding: 8px 0 4px 0; border-top: 1px dashed #000;"><strong>Payment Method:</strong></td>
+              <td style="padding: 8px 0 4px 0; border-top: 1px dashed #000;"><strong>Payment:</strong></td>
               <td style="text-align: right; padding-top: 8px; border-top: 1px dashed #000;">${displayPaymentMethod}</td>
             </tr>
           </table>

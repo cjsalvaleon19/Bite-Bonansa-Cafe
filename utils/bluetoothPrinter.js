@@ -15,7 +15,7 @@
  *   Paper width     : 80 mm → 48 characters per line (normal font, 8 dots/char)
  */
 
-import { formatItemNameWithSubvariant, getOrderSlipNumber } from './receiptDepartments';
+import { formatItemNameWithSubvariant, formatOrderModeLabel, getOrderSlipNumber } from './receiptDepartments';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -371,17 +371,21 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('=', paperWidth)));
 
-    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_NORMAL, ...CMD.BOLD_ON);
-    b.push(...encodeText(labelLine('Order Slip #', getOrderSlipNumber(order))));
-    b.push(...encodeText(labelLine('Type', (order.order_mode || 'N/A').toUpperCase())));
-    b.push(...CMD.BOLD_OFF);
+    // Order Slip # and mode of order in double size (2.1 & 2.2)
+    const halfWidth = Math.floor(paperWidth / 2);
+    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
+    b.push(...encodeText(`Order Slip #: ${getOrderSlipNumber(order)}\n`));
+    b.push(...encodeText(`${formatOrderModeLabel(order.order_mode)}\n`));
+    b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
 
+    // Item details in double size (2.3)
+    b.push(...CMD.SIZE_2X);
     for (const item of orderItems) {
       const qty = item.quantity || 1;
       const itemLabel = `${qty} x ${formatItemNameWithSubvariant(item)}`;
-      for (const line of wrapText(itemLabel, paperWidth)) {
+      for (const line of wrapText(itemLabel, halfWidth)) {
         b.push(...encodeText(line + '\n'));
       }
     }
