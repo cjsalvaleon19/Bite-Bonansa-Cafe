@@ -27,7 +27,8 @@ const DEFAULT_CHUNK_SIZE   = 20;
 const MIN_CHUNK_SIZE       = 20;
 // Web Bluetooth write payloads above this commonly fail across device/printer firmware mixes.
 const MAX_CHUNK_SIZE       = 512;
-// Small pacing delay to avoid dropped bytes on low-buffer thermal printer firmware.
+// 10ms is an empirically stable default on GOOJPRT Z80C + Xiaomi tablets; lower
+// values print faster but can cause dropped bytes on low-buffer firmware.
 const DEFAULT_CHUNK_DELAY_MS = 10;
 const DEFAULT_PAPER_WIDTH  = 48;   // characters per line on 80 mm paper
 const PRINTER_WIDTH_KEY    = 'bbc_printer_paper_width';
@@ -560,18 +561,26 @@ export async function printToBluetoothPrinter(order, receiptType = 'sales', opts
     ? Math.max(0, Math.floor(opts.chunkDelayMs))
     : DEFAULT_CHUNK_DELAY_MS;
 
-  // Send in bounded slices to stay within BLE buffer limits.
-  for (let offset = 0; offset < data.length; offset += chunkSize) {
-    const chunk = data.slice(offset, offset + chunkSize);
-    if (typeof characteristic.writeValueWithoutResponse === 'function') {
-      await characteristic.writeValueWithoutResponse(chunk);
-    } else if (typeof characteristic.writeValueWithResponse === 'function') {
-      await characteristic.writeValueWithResponse(chunk);
-    } else {
-      await characteristic.writeValue(chunk);
+  try {
+    // Send in bounded slices to stay within BLE buffer limits.
+    for (let offset = 0; offset < data.length; offset += chunkSize) {
+      const chunk = data.slice(offset, offset + chunkSize);
+      if (typeof characteristic.writeValueWithoutResponse === 'function') {
+        await characteristic.writeValueWithoutResponse(chunk);
+      } else if (typeof characteristic.writeValueWithResponse === 'function') {
+        await characteristic.writeValueWithResponse(chunk);
+      } else if (typeof characteristic.writeValue === 'function') {
+        await characteristic.writeValue(chunk);
+      } else {
+        throw new Error('No supported Bluetooth write method is available.');
+      }
+      if (delayMs > 0 && (offset + chunkSize) < data.length) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
     }
-    if (delayMs > 0 && (offset + chunkSize) < data.length) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
+  } catch (err) {
+    throw new Error(
+      `Failed to write to Bluetooth printer characteristic: ${err?.message || 'Unknown error'}`
+    );
   }
 }
