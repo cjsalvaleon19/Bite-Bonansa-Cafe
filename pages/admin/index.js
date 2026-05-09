@@ -10,7 +10,8 @@ import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import {
   buildDefaultPayrollData,
-  DAILY_PAYROLL_RATE,
+  PAYROLL_CYCLES_PER_MONTH,
+  WORKING_DAYS_PER_CYCLE,
   getPayrollCycleStartForPeriod,
   getPayrollCycleDays,
   getPayrollPeriodMeta,
@@ -2003,6 +2004,7 @@ export default function AdminPage() {
     const employee = {
       id: createId('emp'),
       name,
+      monthlyPay: 0,
       daily: payrollCycleDays.map((day) => {
         if (day.isSunday) return true;
         if (day.isFuture) return null;
@@ -2041,6 +2043,17 @@ export default function AdminPage() {
         nextDaily[dayIndex] = !nextDaily[dayIndex];
         return { ...employee, daily: nextDaily };
       }),
+    });
+  };
+
+  const updateMonthlyPay = (employeeId, rawValue) => {
+    if (!payrollCanEdit) return;
+    const value = roundToCurrency(rawValue);
+    syncPayrollState({
+      ...payrollData,
+      employees: (payrollData.employees || []).map((employee) => (
+        employee.id === employeeId ? { ...employee, monthlyPay: value } : employee
+      )),
     });
   };
 
@@ -5210,9 +5223,17 @@ export default function AdminPage() {
 
               {(() => {
                 const employees = payrollData.employees || [];
-                const grandGross = employees.reduce((s, emp) => s + (emp.daily || []).filter(Boolean).length * DAILY_PAYROLL_RATE, 0);
+                const grandGross = employees.reduce((s, emp) => {
+                  const grossPay = roundToCurrency((emp.monthlyPay || 0) / PAYROLL_CYCLES_PER_MONTH);
+                  return s + grossPay;
+                }, 0);
+                const grandAbsences = employees.reduce((s, emp) => {
+                  const grossPay = roundToCurrency((emp.monthlyPay || 0) / PAYROLL_CYCLES_PER_MONTH);
+                  const absentCount = (emp.daily || []).filter((v) => v === false).length;
+                  return s + roundToCurrency((grossPay / WORKING_DAYS_PER_CYCLE) * absentCount);
+                }, 0);
                 const grandDed = employees.reduce((s, emp) => s + (emp.deductions || []).reduce((ds, d) => ds + (Number(d.amount) || 0), 0), 0);
-                const grandNet = grandGross - grandDed;
+                const grandNet = grandGross - grandAbsences - grandDed;
                 return (
                   <div style={styles.payrollTableWrap}>
                     <table style={{ ...styles.table, fontSize: 12 }}>
@@ -5295,13 +5316,60 @@ export default function AdminPage() {
                             </tr>
 
                             <tr style={{ background: '#242424' }}>
-                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Gross Payroll</td>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Monthly Pay</td>
                               {employees.map((emp) => (
-                                <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', color: '#f3f3f3' }}>
-                                  {fmt((emp.daily || []).filter(Boolean).length * DAILY_PAYROLL_RATE)}
+                                <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right' }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    disabled={!payrollCanEdit}
+                                    value={emp.monthlyPay || ''}
+                                    onChange={(e) => updateMonthlyPay(emp.id, e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      background: '#1a1a1a',
+                                      color: '#fff',
+                                      border: '1px solid #555',
+                                      borderRadius: 4,
+                                      padding: '2px 4px',
+                                      textAlign: 'right',
+                                      fontSize: 12,
+                                    }}
+                                  />
                                 </td>
                               ))}
+                              <td style={styles.payrollTd} />
+                            </tr>
+
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Gross Pay</td>
+                              {employees.map((emp) => {
+                                const grossPay = roundToCurrency((emp.monthlyPay || 0) / PAYROLL_CYCLES_PER_MONTH);
+                                return (
+                                  <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', color: '#f3f3f3' }}>
+                                    {fmt(grossPay)}
+                                  </td>
+                                );
+                              })}
                               <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#f3f3f3' }}>{fmt(grandGross)}</td>
+                            </tr>
+
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Absences</td>
+                              {employees.map((emp) => {
+                                const grossPay = roundToCurrency((emp.monthlyPay || 0) / PAYROLL_CYCLES_PER_MONTH);
+                                const absentCount = (emp.daily || []).filter((v) => v === false).length;
+                                const absences = roundToCurrency((grossPay / WORKING_DAYS_PER_CYCLE) * absentCount);
+                                return (
+                                  <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', color: absences > 0 ? '#ef5350' : '#aaa' }}>
+                                    {absences > 0 ? `- ${fmt(absences)}` : '-'}
+                                  </td>
+                                );
+                              })}
+                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: grandAbsences > 0 ? '#ef5350' : '#aaa' }}>
+                                {grandAbsences > 0 ? `- ${fmt(grandAbsences)}` : '-'}
+                              </td>
                             </tr>
 
                             <tr style={{ background: '#242424' }}>
@@ -5322,12 +5390,13 @@ export default function AdminPage() {
                             <tr style={{ background: '#242424' }}>
                               <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Net Pay</td>
                               {employees.map((emp) => {
-                                const present = (emp.daily || []).filter(Boolean).length;
-                                const gross = present * DAILY_PAYROLL_RATE;
+                                const grossPay = roundToCurrency((emp.monthlyPay || 0) / PAYROLL_CYCLES_PER_MONTH);
+                                const absentCount = (emp.daily || []).filter((v) => v === false).length;
+                                const absences = roundToCurrency((grossPay / WORKING_DAYS_PER_CYCLE) * absentCount);
                                 const ded = (emp.deductions || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
                                 return (
                                   <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#f3f3f3' }}>
-                                    {fmt(gross - ded)}
+                                    {fmt(grossPay - absences - ded)}
                                   </td>
                                 );
                               })}

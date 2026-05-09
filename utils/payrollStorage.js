@@ -1,6 +1,7 @@
 const PAYROLL_STORAGE_KEY = 'bbc_payroll_attendance_v1';
 const PAYROLL_CYCLE_DAYS = 15;
-const DAILY_PAYROLL_RATE = 266.67;
+const PAYROLL_CYCLES_PER_MONTH = 2;
+const WORKING_DAYS_PER_CYCLE = 15;
 const SALARY_DEDUCTION_SOURCE = 'cashier_salary_deduction';
 
 function parseDateValue(value) {
@@ -153,6 +154,7 @@ export function normalizePayrollData(rawData) {
         return {
           id: employee?.id || createId('emp'),
           name,
+          monthlyPay: roundToCurrency(employee?.monthlyPay ?? 0),
           daily: ensureDailyArray(employee?.daily || [], cycleDays),
           deductions: Array.isArray(employee?.deductions)
             ? employee.deductions.map((d) => ({
@@ -227,7 +229,8 @@ export function addSalaryDeductionToPayroll({ employeeId, amount, date, orderId,
 export {
   PAYROLL_STORAGE_KEY,
   PAYROLL_CYCLE_DAYS,
-  DAILY_PAYROLL_RATE,
+  PAYROLL_CYCLES_PER_MONTH,
+  WORKING_DAYS_PER_CYCLE,
   SALARY_DEDUCTION_SOURCE,
   createId,
   roundToCurrency,
