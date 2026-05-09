@@ -207,6 +207,8 @@ export default function AdminPage() {
       'Accounts Payable', 'Accounts Payable - Rewards',
       'Revenue', 'Inventory', "Owner's Capital", 'Retained Earnings',
       'Rewards', 'Cost of Goods Sold',
+      // Liability accounts
+      'Credit Card Payable', 'Spaylater Payable',
       // Income
       'Delivery Income',
       // Operating Expenses
@@ -792,7 +794,7 @@ export default function AdminPage() {
       const { data, error: err } = await supabase
         .from('bills')
         .select('*')
-        .order('date', { ascending: false })
+        .order('bill_number', { ascending: false })
         .order('created_at', { ascending: false });
       if (err) throw err;
       setBillsList(data || []);
@@ -971,7 +973,8 @@ export default function AdminPage() {
     try {
       const creditAccount = billPayMethod === 'cash_on_hand' ? 'Cash on Hand'
         : billPayMethod === 'cash_in_bank' ? 'Cash in Bank'
-        : "Owner's Capital"; // credit card
+        : billPayMethod === 'spaylater' ? 'Spaylater Payable'
+        : 'Credit Card Payable'; // credit card
       const today = new Date().toISOString().split('T')[0];
       const jeRow = {
         date: today,
@@ -1667,7 +1670,7 @@ export default function AdminPage() {
         if (journalSubFilter === 'approved_rr') q = q.eq('reference_type', 'receiving_report');
         else if (journalSubFilter === 'rr_cash_on_hand') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash on Hand');
         else if (journalSubFilter === 'rr_cash_in_bank') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Cash in Bank');
-        else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', "Owner's Capital");
+        else if (journalSubFilter === 'rr_credit_card') q = q.eq('reference_type', 'rr_payment').eq('credit_account', 'Credit Card Payable');
         else if (journalSubFilter === 'bill_all') q = q.eq('reference_type', 'bill');
         else if (journalSubFilter === 'bill_approved') q = q.eq('reference_type', 'bill').eq('credit_account', 'Accounts Payable');
         else if (journalSubFilter === 'bill_paid') q = q.eq('reference_type', 'bill').eq('debit_account', 'Accounts Payable');
@@ -2026,8 +2029,8 @@ export default function AdminPage() {
     const tec = Number(item.total_estimated_cogs) || 0;
     const cmPct = sp > 0 ? ((sp - tec) / sp) * 100 : 0;
     if (costingCmStatusFilter === 'above-target') return cmPct > 50;
-    if (costingCmStatusFilter === 'critical') return cmPct >= 40 && cmPct <= 49;
-    if (costingCmStatusFilter === 'below-target') return cmPct <= 49.99;
+    if (costingCmStatusFilter === 'critical') return cmPct >= 40 && cmPct < 50;
+    if (costingCmStatusFilter === 'below-target') return cmPct < 40;
     return true;
   });
 
@@ -2488,10 +2491,12 @@ export default function AdminPage() {
       // Journal Entry based on payment mode
       // Cash on Hand: Debit Accounts Payable, Credit Cash on Hand
       // Cash in Bank: Debit Accounts Payable, Credit Cash in Bank
-      // Credit Card:  Debit Accounts Payable, Credit Owner's Capital
+      // Credit Card:  Debit Accounts Payable, Credit Credit Card Payable
+      // Spaylater:    Debit Accounts Payable, Credit Spaylater Payable
       const creditAccount =
         rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
-        rrPayForm.payment_mode === 'credit_card'  ? "Owner's Capital" :
+        rrPayForm.payment_mode === 'credit_card'  ? 'Credit Card Payable' :
+        rrPayForm.payment_mode === 'spaylater'    ? 'Spaylater Payable' :
         'Cash on Hand';
       const { error: jeErr } = await supabase.from('journal_entries').insert({
         date: rrPayForm.payment_date,
@@ -3204,8 +3209,8 @@ export default function AdminPage() {
                   <select style={{ ...styles.input, width: 220 }} value={costingCmStatusFilter} onChange={(e) => setCostingCmStatusFilter(e.target.value)}>
                     <option value="">All CM Ratio Status</option>
                     <option value="above-target">Above Target (&gt; 50%)</option>
-                    <option value="critical">Critical (40% to 49%)</option>
-                    <option value="below-target">Below Target (49.99% and below)</option>
+                    <option value="critical">Critical (40% to &lt; 50%)</option>
+                    <option value="below-target">Below Target (39.99% and below)</option>
                   </select>
                 </div>
               </div>
@@ -4102,6 +4107,7 @@ export default function AdminPage() {
                         <option value="cash_on_hand">Cash on Hand</option>
                         <option value="cash_in_bank">Cash in Bank</option>
                         <option value="credit_card">Credit Card</option>
+                        <option value="spaylater">SPayLater</option>
                       </select>
 
                       <label style={styles.label}>Reference #</label>
@@ -4129,7 +4135,8 @@ export default function AdminPage() {
                         <div style={{ paddingLeft: 24 }}>
                           Cr &nbsp;<strong>
                             {rrPayForm.payment_mode === 'cash_in_bank' ? 'Cash in Bank' :
-                             rrPayForm.payment_mode === 'credit_card'  ? "Owner's Capital" :
+                             rrPayForm.payment_mode === 'credit_card'  ? 'Credit Card Payable' :
+                             rrPayForm.payment_mode === 'spaylater'    ? 'Spaylater Payable' :
                              'Cash on Hand'}
                           </strong> &nbsp;₱{Number(rrPayForm.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                         </div>
@@ -5901,12 +5908,13 @@ export default function AdminPage() {
                             <option value="cash_on_hand">Cash on Hand</option>
                             <option value="cash_in_bank">Cash in Bank</option>
                             <option value="credit_card">Credit Card</option>
+                            <option value="spaylater">SPayLater</option>
                           </select>
                         </div>
                         <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 6, padding: '10px 14px', marginTop: 16, fontSize: 12, color: '#aaa' }}>
                           <p style={{ margin: '0 0 6px' }}><strong style={{ color: '#ffc107' }}>Journal Entry:</strong></p>
                           <p style={{ margin: '2px 0' }}>Dr Accounts Payable: {fmt(billPayItem.total_debit || 0)}</p>
-                          <p style={{ margin: '2px 0' }}>Cr {billPayMethod === 'cash_on_hand' ? 'Cash on Hand' : billPayMethod === 'cash_in_bank' ? 'Cash in Bank' : "Owner's Capital"}: {fmt(billPayItem.total_debit || 0)}</p>
+                          <p style={{ margin: '2px 0' }}>Cr {billPayMethod === 'cash_on_hand' ? 'Cash on Hand' : billPayMethod === 'cash_in_bank' ? 'Cash in Bank' : billPayMethod === 'spaylater' ? 'Spaylater Payable' : 'Credit Card Payable'}: {fmt(billPayItem.total_debit || 0)}</p>
                         </div>
                       </div>
                     )}
