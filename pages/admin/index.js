@@ -17,8 +17,10 @@ import {
   getPayrollCycleStartForPeriod,
   getPayrollCycleDays,
   getPayrollPeriodMeta,
+  getOutstandingPayrollSubmissions,
   isPayrollCyclePaid,
   loadPayrollData,
+  markPayrollSubmissionPaid,
   PAYROLL_SUBMISSION_REFERENCE_PREFIX,
   normalizePayrollData,
   PAYROLL_STORAGE_KEY,
@@ -353,6 +355,21 @@ export default function AdminPage() {
   const [billPayMethod, setBillPayMethod] = useState('cash_on_hand');
   const [billPaying, setBillPaying] = useState(false);
   const [billPayError, setBillPayError] = useState('');
+  // Bills Payment (unified payment of unpaid Bills/RR/Attendance Sheet)
+  const [billsPaymentRefs, setBillsPaymentRefs] = useState([]);
+  const [billsPaymentNumber, setBillsPaymentNumber] = useState('');
+  const [billsPaymentSearch, setBillsPaymentSearch] = useState('');
+  const [billsPaymentSelectedRef, setBillsPaymentSelectedRef] = useState('');
+  const [billsPaymentSaving, setBillsPaymentSaving] = useState(false);
+  const [billsPaymentError, setBillsPaymentError] = useState('');
+  const [billsPaymentSuccess, setBillsPaymentSuccess] = useState('');
+  const [billsPaymentForm, setBillsPaymentForm] = useState({
+    payment_date: toDateOnly(new Date()),
+    payment_mode: 'cash_on_hand',
+    contact: '',
+    amount: '',
+    notes: '',
+  });
   // New contact enrollment inside contact picker
   const [billNewContactMode, setBillNewContactMode] = useState(false);
   const [billNewContactForm, setBillNewContactForm] = useState({ name: '', address: '', contact: '', tin: '' });
@@ -877,6 +894,111 @@ export default function AdminPage() {
     }
   }, []);
 
+  const getCreditAccountForPaymentMode = useCallback((paymentMode) => (
+    paymentMode === 'cash_in_bank' ? 'Cash in Bank'
+      : paymentMode === 'credit_card' ? 'Credit Card Payable'
+        : paymentMode === 'spaylater' ? 'Spaylater Payable'
+          : 'Cash on Hand'
+  ), []);
+
+  const generateBillsPaymentNumber = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const yy = new Date().getFullYear().toString().slice(-2);
+      const prefix = `BP# - ${yy}`;
+      const { data: rows, error: rowsErr } = await supabase
+        .from('journal_entries')
+        .select('reference')
+        .eq('reference_type', 'bills_payment')
+        .like('reference', `${prefix}%`)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (rowsErr) throw rowsErr;
+      const maxSeq = (rows || []).reduce((maxValue, row) => {
+        const ref = String(row?.reference || '');
+        const match = ref.match(/(\d{6})$/);
+        const seq = match ? Number(match[1]) : 0;
+        return seq > maxValue ? seq : maxValue;
+      }, 0);
+      setBillsPaymentNumber(`${prefix}${String(maxSeq + 1).padStart(6, '0')}`);
+    } catch {
+      setBillsPaymentNumber('');
+    }
+  }, [supabase]);
+
+  const fetchBillsPaymentReferences = useCallback(async () => {
+    if (!supabase) return;
+    setLoading(true);
+    try {
+      const [{ data: unpaidBills, error: billsErr }, { data: unpaidRR, error: rrErr }] = await Promise.all([
+        supabase
+          .from('bills')
+          .select('id, bill_number, contact, date, total_debit, status')
+          .eq('status', 'approved')
+          .order('date', { ascending: false }),
+        supabase
+          .from('receiving_reports')
+          .select('id, rr_number, date, total_landed_cost, status, vendor:vendors(name)')
+          .eq('status', 'approved')
+          .order('date', { ascending: false }),
+      ]);
+      if (billsErr) throw billsErr;
+      if (rrErr) throw rrErr;
+
+      const payrollRefs = getOutstandingPayrollSubmissions();
+      const mappedBills = (unpaidBills || []).map((bill) => ({
+        id: `bill:${bill.id}`,
+        sourceType: 'bill',
+        sourceLabel: 'Bills',
+        sourceId: bill.id,
+        referenceLabel: bill.bill_number || `Bill ${bill.id}`,
+        contact: bill.contact || '',
+        amount: Number(bill.total_debit || 0),
+        date: bill.date || '',
+        searchValue: `${bill.bill_number || ''} ${bill.contact || ''}`.toLowerCase(),
+      }));
+      const mappedRR = (unpaidRR || []).map((rr) => ({
+        id: `rr:${rr.id}`,
+        sourceType: 'receiving_report',
+        sourceLabel: 'Receiving Report',
+        sourceId: rr.id,
+        referenceLabel: rr.rr_number || `RR ${rr.id}`,
+        contact: rr.vendor?.name || '',
+        amount: Number(rr.total_landed_cost || 0),
+        date: rr.date || '',
+        searchValue: `${rr.rr_number || ''} ${rr.vendor?.name || ''}`.toLowerCase(),
+      }));
+      const mappedPayroll = (payrollRefs || []).map((report) => ({
+        id: `attendance:${report.id}`,
+        sourceType: 'attendance_sheet',
+        sourceLabel: 'Attendance Sheet',
+        sourceId: report.id,
+        referenceLabel: report.periodLabel || `${report.cycleStart} to ${report.cycleEnd}`,
+        contact: 'Payroll',
+        amount: Number(report.netPay || 0),
+        date: report.cycleEnd || report.cycleStart || '',
+        searchValue: `${report.periodLabel || ''} ${report.cycleStart || ''} ${report.cycleEnd || ''}`.toLowerCase(),
+      }));
+
+      setBillsPaymentRefs([...mappedBills, ...mappedPayroll, ...mappedRR]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase]);
+
+  const filteredBillsPaymentRefs = useMemo(() => {
+    if (!billsPaymentSearch) return billsPaymentRefs;
+    const q = billsPaymentSearch.toLowerCase();
+    return (billsPaymentRefs || []).filter((ref) => (
+      ref.sourceLabel.toLowerCase().includes(q)
+      || ref.referenceLabel.toLowerCase().includes(q)
+      || (ref.contact || '').toLowerCase().includes(q)
+      || (ref.searchValue || '').includes(q)
+    ));
+  }, [billsPaymentRefs, billsPaymentSearch]);
+
   // ── Bills: Save Bill ──────────────────────────────────────────────────────
   const saveBill = useCallback(async () => {
     if (!supabase) return;
@@ -1046,6 +1168,139 @@ export default function AdminPage() {
       setBillPaying(false);
     }
   };
+
+  const selectedBillsPaymentRef = useMemo(
+    () => (billsPaymentRefs || []).find((ref) => ref.id === billsPaymentSelectedRef) || null,
+    [billsPaymentRefs, billsPaymentSelectedRef],
+  );
+
+  const onBillsPaymentReferenceChange = useCallback((refId) => {
+    setBillsPaymentSelectedRef(refId);
+    const selected = (billsPaymentRefs || []).find((ref) => ref.id === refId);
+    setBillsPaymentError('');
+    setBillsPaymentForm((prev) => ({
+      ...prev,
+      contact: selected?.contact || '',
+      amount: selected ? String(selected.amount || 0) : '',
+      notes: selected ? `Payment for ${selected.sourceLabel}: ${selected.referenceLabel}` : prev.notes,
+    }));
+  }, [billsPaymentRefs]);
+
+  const payBillsPaymentReference = useCallback(async () => {
+    if (!supabase) return;
+    if (!selectedBillsPaymentRef) {
+      setBillsPaymentError('Please select a reference.');
+      return;
+    }
+    const amount = roundToCurrency(billsPaymentForm.amount);
+    if (amount <= 0) {
+      setBillsPaymentError('Amount must be greater than zero.');
+      return;
+    }
+    if (!billsPaymentNumber) {
+      setBillsPaymentError('Bills payment number was not generated.');
+      return;
+    }
+
+    setBillsPaymentSaving(true);
+    setBillsPaymentError('');
+    setBillsPaymentSuccess('');
+    try {
+      const creditAccount = getCreditAccountForPaymentMode(billsPaymentForm.payment_mode);
+
+      if (selectedBillsPaymentRef.sourceType === 'bill') {
+        const { error: jeErr } = await supabase.from('journal_entries').insert({
+          date: billsPaymentForm.payment_date,
+          description: `Bills Payment ${billsPaymentNumber}: ${selectedBillsPaymentRef.referenceLabel}`,
+          debit_account: 'Accounts Payable',
+          credit_account: creditAccount,
+          amount,
+          reference_id: selectedBillsPaymentRef.sourceId,
+          reference_type: 'bills_payment',
+          reference: billsPaymentNumber,
+          name: selectedBillsPaymentRef.contact || null,
+        });
+        if (jeErr) throw jeErr;
+        const { error: updErr } = await supabase
+          .from('bills')
+          .update({ status: 'paid', payment_method: billsPaymentForm.payment_mode, updated_at: new Date().toISOString() })
+          .eq('id', selectedBillsPaymentRef.sourceId);
+        if (updErr) throw updErr;
+      } else if (selectedBillsPaymentRef.sourceType === 'receiving_report') {
+        const { error: pmtErr } = await supabase.from('rr_payments').insert({
+          receiving_report_id: selectedBillsPaymentRef.sourceId,
+          payment_date: billsPaymentForm.payment_date,
+          amount,
+          payment_mode: billsPaymentForm.payment_mode,
+          reference_number: billsPaymentNumber,
+          notes: billsPaymentForm.notes || null,
+        });
+        if (pmtErr) throw pmtErr;
+        const { error: jeErr } = await supabase.from('journal_entries').insert({
+          date: billsPaymentForm.payment_date,
+          description: `Bills Payment ${billsPaymentNumber}: ${selectedBillsPaymentRef.referenceLabel}`,
+          debit_account: 'Accounts Payable',
+          credit_account: creditAccount,
+          amount,
+          reference_id: selectedBillsPaymentRef.sourceId,
+          reference_type: 'bills_payment',
+          reference: billsPaymentNumber,
+          name: selectedBillsPaymentRef.contact || null,
+        });
+        if (jeErr) throw jeErr;
+        const { error: rrUpdErr } = await supabase
+          .from('receiving_reports')
+          .update({ status: 'paid' })
+          .eq('id', selectedBillsPaymentRef.sourceId);
+        if (rrUpdErr) throw rrUpdErr;
+      } else {
+        const { error: jeErr } = await supabase.from('journal_entries').insert({
+          date: billsPaymentForm.payment_date,
+          description: `Bills Payment ${billsPaymentNumber}: ${selectedBillsPaymentRef.referenceLabel}`,
+          debit_account: 'Salaries & Wages Payable',
+          credit_account: creditAccount,
+          amount,
+          reference_type: 'bills_payment',
+          reference: billsPaymentNumber,
+          name: 'Payroll',
+        });
+        if (jeErr) throw jeErr;
+        const markResult = markPayrollSubmissionPaid({
+          reportId: selectedBillsPaymentRef.sourceId,
+          paymentReference: billsPaymentNumber,
+          paidAt: new Date().toISOString(),
+        });
+        if (!markResult.ok) throw new Error('Failed to mark attendance sheet as paid.');
+      }
+
+      setBillsPaymentSuccess(`${billsPaymentNumber} recorded successfully.`);
+      setBillsPaymentSelectedRef('');
+      setBillsPaymentSearch('');
+      setBillsPaymentForm((prev) => ({
+        ...prev,
+        contact: '',
+        amount: '',
+        notes: '',
+      }));
+      await fetchBillsPaymentReferences();
+      await fetchBills();
+      await fetchRR();
+      await generateBillsPaymentNumber();
+    } catch (err) {
+      setBillsPaymentError(err.message);
+    } finally {
+      setBillsPaymentSaving(false);
+    }
+  }, [
+    supabase,
+    selectedBillsPaymentRef,
+    billsPaymentForm,
+    billsPaymentNumber,
+    getCreditAccountForPaymentMode,
+    fetchBillsPaymentReferences,
+    fetchBills,
+    generateBillsPaymentNumber,
+  ]);
 
   // ── Bills: Save new contact (vendor enrollment) ───────────────────────────
   const saveNewBillContact = async () => {
@@ -1859,7 +2114,8 @@ export default function AdminPage() {
     else if (activeTab === 'journal') fetchJournal();
     else if (activeTab === 'manual') { generateManualEntryNumber(); }
     else if (activeTab === 'bills') { fetchBills(); generateBillNumber(); }
-  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber, fetchBills, generateBillNumber]);
+    else if (activeTab === 'bills_payment') { fetchBillsPaymentReferences(); generateBillsPaymentNumber(); }
+  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber, fetchBills, generateBillNumber, fetchBillsPaymentReferences, generateBillsPaymentNumber]);
 
   useEffect(() => {
     if (activeTab === 'dashboard' && dashSubTab === 'stock-alerts') fetchLowStockItems();
@@ -1986,6 +2242,17 @@ export default function AdminPage() {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [loadPayrollState]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onStorage = (event) => {
+      if (event.key === PAYROLL_STORAGE_KEY && activeTab === 'bills_payment') {
+        fetchBillsPaymentReferences();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [activeTab, fetchBillsPaymentReferences]);
 
   const submitPayroll = async () => {
     if (payrollSubmitting) return;
@@ -2252,6 +2519,7 @@ export default function AdminPage() {
         type: 'group', key: 'transactions', label: '💳 Transactions',
         children: [
           { key: 'bills', label: '🧾 Bills' },
+          { key: 'bills_payment', label: '💸 Bills Payment' },
           { key: 'manual', label: '✏️ Manual Entry' },
         ],
       },
@@ -6249,6 +6517,116 @@ export default function AdminPage() {
                   </Dialog.Content>
                 </Dialog.Portal>
               </Dialog.Root>
+            </div>
+          )}
+
+          {/* ──────────────── BILLS PAYMENT ──────────────── */}
+          {activeTab === 'bills_payment' && (
+            <div>
+              <div style={styles.tabHeader}>
+                <h1 style={styles.pageTitle}>Bills Payment</h1>
+              </div>
+
+              {billsPaymentSuccess && <p style={{ color: '#4caf50', marginBottom: 12 }}>{billsPaymentSuccess}</p>}
+              {billsPaymentError && <p style={{ color: '#f44336', marginBottom: 12 }}>{billsPaymentError}</p>}
+
+              <div style={{ ...styles.card, maxWidth: 860 }}>
+                <div style={styles.formGrid}>
+                  <label style={styles.label}>Bills Payment Number</label>
+                  <input
+                    style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
+                    value={billsPaymentNumber}
+                    readOnly
+                  />
+
+                  <label style={styles.label}>Payment Date</label>
+                  <input
+                    type="date"
+                    style={styles.input}
+                    value={billsPaymentForm.payment_date}
+                    onChange={(e) => setBillsPaymentForm((prev) => ({ ...prev, payment_date: e.target.value }))}
+                  />
+
+                  <label style={styles.label}>Reference Search</label>
+                  <input
+                    style={styles.input}
+                    placeholder='Search unpaid "Bills", "Attendance Sheet", "Receiving Report"...'
+                    value={billsPaymentSearch}
+                    onChange={(e) => setBillsPaymentSearch(e.target.value)}
+                  />
+
+                  <label style={styles.label}>Reference *</label>
+                  <select
+                    style={styles.input}
+                    value={billsPaymentSelectedRef}
+                    onChange={(e) => onBillsPaymentReferenceChange(e.target.value)}
+                  >
+                    <option value="">Select unpaid reference</option>
+                    {filteredBillsPaymentRefs.map((ref) => (
+                      <option key={ref.id} value={ref.id}>
+                        [{ref.sourceLabel}] {ref.referenceLabel} — {fmt(ref.amount || 0)}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label style={styles.label}>Contact</label>
+                  <input
+                    style={{ ...styles.input, background: '#111', color: '#fff' }}
+                    value={billsPaymentForm.contact}
+                    readOnly
+                  />
+
+                  <label style={styles.label}>Amount (₱)</label>
+                  <input
+                    style={{ ...styles.input, background: '#111', color: '#4caf50', fontWeight: 700 }}
+                    value={billsPaymentForm.amount}
+                    readOnly
+                  />
+
+                  <label style={styles.label}>Payment Method</label>
+                  <select
+                    style={styles.input}
+                    value={billsPaymentForm.payment_mode}
+                    onChange={(e) => setBillsPaymentForm((prev) => ({ ...prev, payment_mode: e.target.value }))}
+                  >
+                    <option value="cash_on_hand">Cash on Hand</option>
+                    <option value="cash_in_bank">Cash in Bank</option>
+                    <option value="credit_card">Credit Card</option>
+                    <option value="spaylater">SPayLater</option>
+                  </select>
+
+                  <label style={styles.label}>Notes</label>
+                  <textarea
+                    style={{ ...styles.input, minHeight: 72, resize: 'vertical' }}
+                    value={billsPaymentForm.notes}
+                    onChange={(e) => setBillsPaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Optional notes..."
+                  />
+                </div>
+
+                <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                  <span style={{ color: '#888', fontSize: 12 }}>
+                    Unpaid references available: {filteredBillsPaymentRefs.length}
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => { fetchBillsPaymentReferences(); generateBillsPaymentNumber(); }}
+                      style={styles.actionBtn}
+                    >
+                      Refresh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={payBillsPaymentReference}
+                      style={{ ...styles.primaryBtn, background: '#1a3a1a', color: '#4caf50', border: '1px solid #4caf50' }}
+                      disabled={billsPaymentSaving}
+                    >
+                      {billsPaymentSaving ? 'Processing…' : '✓ Confirm Bills Payment'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
