@@ -440,9 +440,7 @@ export default function CashierDashboard() {
     }).join('');
 
     const departmentName = options.departmentName || '';
-    const title = isKitchenCopy
-      ? `ORDER SLIP${departmentName ? ` - ${departmentName}` : ''}`
-      : 'SALES INVOICE';
+    const title = isKitchenCopy ? 'ORDER SLIP' : 'SALES INVOICE';
 
     if (isKitchenCopy) {
       const kitchenItemsHtml = items.map((item) => `

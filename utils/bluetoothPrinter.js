@@ -328,9 +328,7 @@ function qrCodeBytes(url) {
 export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   const isKitchen = receiptType === 'kitchen';
   const title     = isKitchen ? 'ORDER SLIP' : 'SALES INVOICE';
-  const kitchenTitle = isKitchen && opts.departmentName
-    ? `${title} - ${opts.departmentName}`
-    : title;
+  const kitchenTitle = title;
   const paperWidth = getPaperWidth(opts);
 
   // Support both order_items (DB joined) and items (JSONB / cart) shapes
