@@ -2,15 +2,23 @@ const PAYROLL_STORAGE_KEY = 'bbc_payroll_attendance_v1';
 const PAYROLL_CYCLE_DAYS = 15;
 const DAILY_PAYROLL_RATE = 266.67;
 const SALARY_DEDUCTION_SOURCE = 'cashier_salary_deduction';
-const MS_PER_DAY = 86400000;
+
+function parseDateValue(value) {
+  if (typeof value === 'string') {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      const [, yearRaw, monthRaw, dayRaw] = match;
+      // Build local calendar dates directly so YYYY-MM-DD values do not shift across months in non-UTC timezones.
+      return new Date(Number(yearRaw), Number(monthRaw) - 1, Number(dayRaw));
+    }
+  }
+  const parsed = value ? new Date(value) : new Date();
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
 
 function toDateOnly(value) {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  const d = value ? new Date(value) : new Date();
-  if (Number.isNaN(d.getTime())) {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  }
+  const d = parseDateValue(value);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
@@ -23,8 +31,7 @@ function roundToCurrency(value) {
 }
 
 function dateToTimestamp(dateIso) {
-  const parsed = new Date(`${dateIso}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+  return parseDateValue(dateIso).getTime();
 }
 
 function isFutureDate(dateIso, baselineIso) {
@@ -40,8 +47,7 @@ function getDefaultCycleStart() {
 }
 
 function deriveCycleEnd(startDate) {
-  const start = new Date(startDate);
-  if (Number.isNaN(start.getTime())) return new Date();
+  const start = parseDateValue(startDate);
   const year = start.getFullYear();
   const month = start.getMonth();
   const startDay = start.getDate();
@@ -50,8 +56,7 @@ function deriveCycleEnd(startDate) {
 }
 
 function normalizeCycleStartDate(cycleStart) {
-  const raw = new Date(cycleStart || getDefaultCycleStart());
-  const safe = Number.isNaN(raw.getTime()) ? new Date(getDefaultCycleStart()) : raw;
+  const safe = parseDateValue(cycleStart || getDefaultCycleStart());
   const startDay = safe.getDate() <= 15 ? 1 : 16;
   return new Date(safe.getFullYear(), safe.getMonth(), startDay);
 }
@@ -104,21 +109,22 @@ function ensureDailyArray(daily = [], cycleDays = []) {
 export function getPayrollCycleDays(cycleStart) {
   const start = normalizeCycleStartDate(cycleStart);
   const end = deriveCycleEnd(start);
-  const count = Math.max(1, Math.round((end.getTime() - start.getTime()) / MS_PER_DAY) + 1);
-  return Array.from({ length: count }, (_, idx) => {
-    const d = new Date(start);
-    d.setDate(start.getDate() + idx);
+  const days = [];
+  let d = new Date(start);
+  while (d <= end) {
     const isoDate = toDateOnly(d);
-    return {
-      index: idx,
+    days.push({
+      index: days.length,
       date: isoDate,
       label: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
       dayLabel: d.toLocaleDateString('en-US', { weekday: 'short' }),
       isSunday: d.getDay() === 0,
       isToday: isoDate === toDateOnly(new Date()),
       isFuture: isFutureDate(isoDate, toDateOnly(new Date())),
-    };
-  });
+    });
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  }
+  return days;
 }
 
 export function buildDefaultPayrollData() {

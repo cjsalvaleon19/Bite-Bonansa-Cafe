@@ -1981,6 +1981,10 @@ export default function AdminPage() {
 
   const changePayrollPeriod = (monthValue, cycleType) => {
     if (!payrollCanEdit) return;
+    if (!/^\d{4}-\d{2}$/.test(String(monthValue || ''))) {
+      setPayrollMessage('Select a valid payroll month.');
+      return;
+    }
     const nextCycleStart = getPayrollCycleStartForPeriod(monthValue, cycleType);
     syncPayrollState({ ...payrollData, cycleStart: nextCycleStart }, 'Payroll period updated (auto-saved).');
   };
