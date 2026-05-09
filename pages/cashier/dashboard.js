@@ -548,6 +548,8 @@ export default function CashierDashboard() {
       }
     }
     
+    const receiptPhone = (order.users && order.users.phone) || order.customer_phone || order.contact_number || '';
+
     const receiptHtml = `
       <!DOCTYPE html>
       <html>
@@ -594,7 +596,7 @@ export default function CashierDashboard() {
           <p>Type  : ${order.order_mode || 'N/A'}</p>
           ${isKitchenCopy && departmentName ? `<p><strong>Kitchen Department:</strong> ${departmentName}</p>` : ''}
           <p>Name  : ${order.customer_name || 'Walk-in'}</p>
-          ${(() => { const ph = (order.users && order.users.phone) || order.customer_phone || order.contact_number || ''; return ph ? `<p>Phone : ${ph}</p>` : ''; })()}
+          ${receiptPhone ? `<p>Phone : ${receiptPhone}</p>` : ''}
           ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
           ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
         </div>

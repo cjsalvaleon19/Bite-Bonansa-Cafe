@@ -140,6 +140,8 @@ export default function EndOfDayReport() {
       }
     }
 
+    const previewPhone = (order.users && order.users.phone) || order.customer_phone || order.contact_number || '';
+
     previewWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -178,7 +180,7 @@ export default function EndOfDayReport() {
               <p>Date  : ${new Date(order.created_at).toLocaleString()}</p>
               <p>Type  : ${order.order_mode || 'N/A'}</p>
               <p>Name  : ${order.customer_name || 'Walk-in'}</p>
-              ${(() => { const ph = (order.users && order.users.phone) || order.customer_phone || order.contact_number || ''; return ph ? `<p>Phone : ${ph}</p>` : ''; })()}
+              ${previewPhone ? `<p>Phone : ${previewPhone}</p>` : ''}
               ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
               ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
             </div>
@@ -400,6 +402,8 @@ export default function EndOfDayReport() {
       }
     }
 
+    const receiptPhone = (order.users && order.users.phone) || order.customer_phone || order.contact_number || '';
+
     receiptWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -434,7 +438,7 @@ export default function EndOfDayReport() {
             <p>Date  : ${new Date(order.created_at).toLocaleString()}</p>
             <p>Type  : ${order.order_mode || 'N/A'}</p>
             <p>Name  : ${order.customer_name || 'Walk-in'}</p>
-            ${(() => { const ph = (order.users && order.users.phone) || order.customer_phone || order.contact_number || ''; return ph ? `<p>Phone : ${ph}</p>` : ''; })()}
+            ${receiptPhone ? `<p>Phone : ${receiptPhone}</p>` : ''}
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
           </div>
