@@ -575,6 +575,26 @@ export default function CashierPOS() {
       }
     }
 
+    const customerName = order.customer_name || 'Walk-in';
+    const customerPhone = order.customer_phone || order.contact_number || 'N/A';
+    const orderType = order.order_mode || 'N/A';
+    const receiptDate = new Date(order.created_at || Date.now()).toLocaleString();
+    const qrImageUrl = `${window.location.origin}/qr-code.png`;
+
+    const normalizeVariants = (rawVariants) => {
+      if (!rawVariants) return null;
+      if (typeof rawVariants === 'object') return rawVariants;
+      if (typeof rawVariants === 'string') {
+        try {
+          const parsed = JSON.parse(rawVariants);
+          return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    };
+
     receiptWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -585,11 +605,13 @@ export default function CashierPOS() {
           <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
-            body { font-family: monospace; font-size: 12px; padding: 0 12px; margin: 0 auto; }
+            body { font-family: monospace; font-size: 12px; padding: 0 12px; margin: 0 auto; word-break: break-word; }
             @media print { button { display: none; } }
             .header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
             .items { margin: 20px 0; }
-            .item { display: flex; justify-content: space-between; margin: 5px 0; }
+            .item-line { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; align-items: start; }
+            .item-name { word-break: break-word; }
+            .item-price { white-space: nowrap; text-align: right; }
             .variant-details { font-size: 10px; color: #666; margin-top: 2px; }
             .footer { border-top: 2px dashed #000; padding-top: 10px; margin-top: 20px; }
             .total { font-weight: bold; font-size: 14px; }
@@ -607,26 +629,33 @@ export default function CashierPOS() {
           
           <div style="margin-bottom: 15px;">
             <p><strong>Order Number: ${order.order_number || order.id.slice(0, 8)}</strong></p>
-            <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
-            <p><strong>Order Type:</strong> ${order.order_mode}</p>
-            <p><strong>Customer:</strong> ${order.customer_name}</p>
-            <p><strong>Phone Number:</strong> ${order.customer_phone || order.contact_number || 'N/A'}</p>
+            <p><strong>Date:</strong> ${receiptDate}</p>
+            <p><strong>Order Type:</strong> ${orderType}</p>
+            <p><strong>Customer:</strong> ${customerName}</p>
+            <p><strong>Phone Number:</strong> ${customerPhone}</p>
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
             ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
           </div>
           
           <p class="section-title">ITEMS ORDERED</p>
           <div class="items">
-            ${receiptItems.map(item => {
+            ${receiptItems.length === 0 ? `
+              <div style="margin-bottom: 10px;">
+                <div class="item-line">
+                  <span class="item-name">No items found</span>
+                  <span class="item-price">₱0.00</span>
+                </div>
+              </div>
+            ` : receiptItems.map(item => {
               const displayName = stripVariantsFromName(item.name);
-              const variants = item.variantDetails || item.variant_details;
+              const variants = normalizeVariants(item.variantDetails || item.variant_details);
               const hasVariants = variants && Object.keys(variants).length > 0;
               
               return `
               <div style="margin-bottom: 10px;">
-                <div class="item">
-                  <span>${displayName} x${item.quantity}</span>
-                  <span>₱${(item.price * item.quantity).toFixed(2)}</span>
+                <div class="item-line">
+                  <span class="item-name">${displayName} x${item.quantity}</span>
+                  <span class="item-price">₱${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
                 </div>
                 ${hasVariants
                   ? `<div class="variant-details">
@@ -701,7 +730,7 @@ export default function CashierPOS() {
           <div style="text-align: center; margin-top: 20px;">
             <p>Thank you for your order, Biter!</p>
             <div style="margin-top: 12px;">
-              <img src="/qr-code.png" alt="Scan to order online" style="width: 90px; height: 90px;" />
+              <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
               <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
               <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
             </div>

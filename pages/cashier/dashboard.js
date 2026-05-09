@@ -391,13 +391,28 @@ export default function CashierDashboard() {
       return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
     };
 
+    const qrImageUrl = `${window.location.origin}/qr-code.png`;
+    const normalizeVariants = (rawVariants) => {
+      if (!rawVariants) return null;
+      if (typeof rawVariants === 'object') return rawVariants;
+      if (typeof rawVariants === 'string') {
+        try {
+          const parsed = JSON.parse(rawVariants);
+          return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    };
+
     // Build items HTML with variant details
     const itemsHtml = items.map(item => {
       const itemPrice = (item.price || 0) * (item.quantity || 0);
       let variantDetailsHtml = '';
       
       // Check if variant_details (snake_case from order_items) or variantDetails (camelCase from orders.items) exists and has content
-      const variants = item.variant_details || item.variantDetails;
+      const variants = normalizeVariants(item.variant_details || item.variantDetails);
       if (variants && typeof variants === 'object' && Object.keys(variants).length > 0) {
         const variantValues = Object.entries(variants)
           .map(([type, value]) => `${value}`)
@@ -450,7 +465,7 @@ export default function CashierDashboard() {
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
             body {
               font-family: 'Courier New', monospace;
-              font-size: 16px;
+              font-size: 12px;
               line-height: 1.45;
               padding: 0 12px;
               max-width: 350px;
@@ -466,7 +481,7 @@ export default function CashierDashboard() {
         </head>
         <body>
           <div class="section">
-            <p style="font-size: 24px; font-weight: bold; text-align: center;">ORDER SLIP</p>
+            <p style="font-size: 18px; font-weight: bold; text-align: center;">ORDER SLIP</p>
           </div>
           <div class="section">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -546,12 +561,13 @@ export default function CashierDashboard() {
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
-            body { 
-              font-family: 'Courier New', monospace; 
-              padding: 0 12px; 
-              max-width: 350px;
-              margin: 0 auto;
-            }
+             body { 
+               font-family: 'Courier New', monospace; 
+               padding: 0 12px; 
+               max-width: 350px;
+               margin: 0 auto;
+               word-break: break-word;
+             }
           .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
           .header h1 { font-size: 20px; margin-bottom: 5px; }
           .header p { font-size: 12px; }
@@ -579,7 +595,7 @@ export default function CashierDashboard() {
           <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleString()}</p>
           <p><strong>Order Type:</strong> ${order.order_mode || 'N/A'}</p>
           ${isKitchenCopy && departmentName ? `<p><strong>Kitchen Department:</strong> ${departmentName}</p>` : ''}
-          ${order.customer_name ? `<p><strong>Customer:</strong> ${order.customer_name}</p>` : ''}
+          <p><strong>Customer:</strong> ${order.customer_name || 'Walk-in'}</p>
           <p><strong>Phone Number:</strong> ${(order.users && order.users.phone) || order.customer_phone || order.contact_number || 'N/A'}</p>
           ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
           ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
@@ -664,7 +680,7 @@ export default function CashierDashboard() {
         <div class="footer">
           <p>Thank you for your order, Biter!</p>
           ${!isKitchenCopy ? `<div style="margin-top: 12px; text-align: center;">
-            <img src="/qr-code.png" alt="Scan to order online" style="width: 90px; height: 90px;" />
+            <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
             <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
             <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
           </div>` : ''}
