@@ -1565,8 +1565,8 @@ function CartContent({
             const showLegacyVariety = item.selectedVariety && variantEntries.length === 0
             return (
               <div key={item.id} className="rounded-lg border border-border p-2 space-y-1">
-                <div className="flex flex-col gap-2 md:flex-row md:items-start md:gap-3">
-                  <div className="flex-1 min-w-0">
+                <div className="flex flex-col gap-2">
+                  <div className="min-w-0">
                     <p className="font-medium text-foreground break-words whitespace-normal">{item.menuItem.name}</p>
                     {(showLegacyVariety || variantEntries.length > 0 || item.selectedSize || item.selectedAddons.length > 0) && (
                       <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5 max-w-full">
@@ -1587,7 +1587,9 @@ function CartContent({
                     )}
                     <p className="text-sm text-muted-foreground">{formatCurrency(item.basePrice + item.addonPrice)} each</p>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0 self-end md:self-auto">
+                  <div className="ml-auto flex flex-col items-end gap-1">
+                    <p className="text-right text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
+                    <div className="flex items-center gap-1 shrink-0">
                     <Button variant="outline" size="sm" className="h-8 w-8 md:h-7 md:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, -1)}>
                       <Minus className="h-3 w-3" />
                     </Button>
@@ -1598,9 +1600,9 @@ function CartContent({
                     <Button variant="ghost" size="sm" className="h-8 w-8 md:h-7 md:w-7 text-destructive touch-manipulation" onClick={() => removeFromCart(item.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
+                    </div>
                   </div>
                 </div>
-                <p className="text-right text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
               </div>
             )
           })}
