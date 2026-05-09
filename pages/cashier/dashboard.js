@@ -1555,22 +1555,22 @@ export default function CashierDashboard() {
               </p>
               <div style={styles.modalActions}>
                 <button
-                  style={styles.modalReprintBtn}
-                  onClick={async () => {
-                    printReceipt(acceptedOrder, 'sales');
-                    await printKitchenReceipts(acceptedOrder);
-                  }}
-                >
-                  🖨️ Reprint Receipts
-                </button>
-                <button
                   style={styles.modalBtPrintBtn}
                   onClick={async () => {
                     await printReceiptBluetooth(acceptedOrder, 'sales');
                     await printKitchenReceiptsBluetooth(acceptedOrder);
                   }}
                 >
-                  📶 BT Print
+                  🖨️ Reprint Receipts (Bluetooth)
+                </button>
+                <button
+                  style={styles.modalReprintBtn}
+                  onClick={async () => {
+                    printReceipt(acceptedOrder, 'sales');
+                    await printKitchenReceipts(acceptedOrder);
+                  }}
+                >
+                  🧾 Browser Print
                 </button>
                 <button
                   style={styles.modalCloseBtn}

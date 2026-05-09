@@ -21,7 +21,15 @@ import { formatOrderModeLabel, formatOrderSlipItemDetails, getOrderSlipNumber } 
 
 const PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb';
 const PRINTER_CHAR_UUID    = '00002af1-0000-1000-8000-00805f9b34fb';
-const CHUNK_SIZE           = 512;  // max bytes per writeValue call
+// Conservative default for better Android BLE compatibility (incl. Xiaomi tablets).
+const DEFAULT_CHUNK_SIZE   = 20;
+// 20 bytes is the most conservative payload size that works across low-MTU BLE links.
+const MIN_CHUNK_SIZE       = 20;
+// Web Bluetooth write payloads above this commonly fail across device/printer firmware mixes.
+const MAX_CHUNK_SIZE       = 512;
+// 10ms is an empirically stable default on GOOJPRT Z80C + Xiaomi tablets; lower
+// values print faster but can cause dropped bytes on low-buffer firmware.
+const DEFAULT_CHUNK_DELAY_MS = 10;
 const DEFAULT_PAPER_WIDTH  = 48;   // characters per line on 80 mm paper
 const PRINTER_WIDTH_KEY    = 'bbc_printer_paper_width';
 // Keep one explicit locale/format for receipt timestamps so output remains
@@ -543,9 +551,36 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
 export async function printToBluetoothPrinter(order, receiptType = 'sales', opts = {}) {
   const characteristic = await connectPrinter();
   const data = buildReceiptBytes(order, receiptType, opts);
+  const chunkSize = Number.isFinite(opts.chunkSize)
+    ? Math.min(MAX_CHUNK_SIZE, Math.max(MIN_CHUNK_SIZE, Math.floor(opts.chunkSize)))
+    : DEFAULT_CHUNK_SIZE;
 
-  // Send in CHUNK_SIZE slices to stay within the printer's BLE buffer limit
-  for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
-    await characteristic.writeValue(data.slice(offset, offset + CHUNK_SIZE));
+  // A short inter-chunk pause helps low-buffer BLE printer firmware avoid drops
+  // on Android devices; callers can override this when faster printers are used.
+  const delayMs = Number.isFinite(opts.chunkDelayMs)
+    ? Math.max(0, Math.floor(opts.chunkDelayMs))
+    : DEFAULT_CHUNK_DELAY_MS;
+
+  try {
+    // Send in bounded slices to stay within BLE buffer limits.
+    for (let offset = 0; offset < data.length; offset += chunkSize) {
+      const chunk = data.slice(offset, offset + chunkSize);
+      if (typeof characteristic.writeValueWithoutResponse === 'function') {
+        await characteristic.writeValueWithoutResponse(chunk);
+      } else if (typeof characteristic.writeValueWithResponse === 'function') {
+        await characteristic.writeValueWithResponse(chunk);
+      } else if (typeof characteristic.writeValue === 'function') {
+        await characteristic.writeValue(chunk);
+      } else {
+        throw new Error('No supported Bluetooth write method is available.');
+      }
+      if (delayMs > 0 && (offset + chunkSize) < data.length) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  } catch (err) {
+    throw new Error(
+      `Failed to write to Bluetooth printer characteristic: ${err?.message || 'Unknown error'}`
+    );
   }
 }
