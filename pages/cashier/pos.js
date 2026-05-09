@@ -639,7 +639,7 @@ export default function CashierPOS() {
           
           <p class="section-title">ITEMS ORDERED</p>
           <div class="items">
-            ${receiptItems.length === 0 ? `
+            ${!receiptItems || receiptItems.length === 0 ? `
               <div style="margin-bottom: 10px;">
                 <div class="item-line">
                   <span class="item-name">No items found</span>
