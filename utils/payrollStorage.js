@@ -2,11 +2,16 @@ const PAYROLL_STORAGE_KEY = 'bbc_payroll_attendance_v1';
 const PAYROLL_CYCLE_DAYS = 15;
 const DAILY_PAYROLL_RATE = 266.67;
 const SALARY_DEDUCTION_SOURCE = 'cashier_salary_deduction';
+const MS_PER_DAY = 86400000;
 
 function toDateOnly(value) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const d = value ? new Date(value) : new Date();
-  if (Number.isNaN(d.getTime())) return new Date().toISOString().split('T')[0];
-  return d.toISOString().split('T')[0];
+  if (Number.isNaN(d.getTime())) {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function createId(prefix = 'id') {
@@ -44,9 +49,15 @@ function deriveCycleEnd(startDate) {
   return new Date(year, month + 1, 0);
 }
 
+function normalizeCycleStartDate(cycleStart) {
+  const raw = new Date(cycleStart || getDefaultCycleStart());
+  const safe = Number.isNaN(raw.getTime()) ? new Date(getDefaultCycleStart()) : raw;
+  const startDay = safe.getDate() <= 15 ? 1 : 16;
+  return new Date(safe.getFullYear(), safe.getMonth(), startDay);
+}
+
 export function getPayrollPeriodLabel(cycleStart) {
-  const start = new Date(cycleStart || getDefaultCycleStart());
-  const safeStart = Number.isNaN(start.getTime()) ? new Date(getDefaultCycleStart()) : start;
+  const safeStart = normalizeCycleStartDate(cycleStart);
   const end = deriveCycleEnd(safeStart);
   const monthLabel = safeStart.toLocaleDateString('en-US', { month: 'short' });
   const endDay = end.getDate();
@@ -66,8 +77,7 @@ export function getPayrollCycleStartForPeriod(monthValue, cycleType) {
 }
 
 export function getPayrollPeriodMeta(cycleStart) {
-  const start = new Date(cycleStart || getDefaultCycleStart());
-  const safeStart = Number.isNaN(start.getTime()) ? new Date(getDefaultCycleStart()) : start;
+  const safeStart = normalizeCycleStartDate(cycleStart);
   const cycleType = safeStart.getDate() <= 15 ? 'first' : 'second';
   const monthValue = `${safeStart.getFullYear()}-${String(safeStart.getMonth() + 1).padStart(2, '0')}`;
   const secondCycleEnd = new Date(safeStart.getFullYear(), safeStart.getMonth() + 1, 0).getDate();
@@ -92,12 +102,9 @@ function ensureDailyArray(daily = [], cycleDays = []) {
 }
 
 export function getPayrollCycleDays(cycleStart) {
-  const proposedStart = new Date(cycleStart || getDefaultCycleStart());
-  const start = Number.isNaN(proposedStart.getTime())
-    ? new Date(getDefaultCycleStart())
-    : proposedStart;
+  const start = normalizeCycleStartDate(cycleStart);
   const end = deriveCycleEnd(start);
-  const count = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+  const count = Math.max(1, Math.round((end.getTime() - start.getTime()) / MS_PER_DAY) + 1);
   return Array.from({ length: count }, (_, idx) => {
     const d = new Date(start);
     d.setDate(start.getDate() + idx);
@@ -125,7 +132,7 @@ export function buildDefaultPayrollData() {
 
 export function normalizePayrollData(rawData) {
   const base = rawData && typeof rawData === 'object' ? rawData : buildDefaultPayrollData();
-  const cycleStart = toDateOnly(base.cycleStart || getDefaultCycleStart());
+  const cycleStart = toDateOnly(normalizeCycleStartDate(base.cycleStart || getDefaultCycleStart()));
   const cycleDays = getPayrollCycleDays(cycleStart);
   const employees = Array.isArray(base.employees) ? base.employees : [];
 
