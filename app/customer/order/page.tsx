@@ -1585,38 +1585,45 @@ function CartContent({
     <div className="flex flex-1 flex-col">
       <ScrollArea className="flex-1 pr-4">
         <div className="space-y-3">
-          {cart.map((item) => (
-            <div key={item.id} className="rounded-lg border border-border p-2 space-y-1">
-              <div className="flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium line-clamp-1 text-foreground">{item.menuItem.name}</p>
-                  {(item.selectedVariety || item.selectedSize || item.selectedAddons.length > 0) && (
-                    <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
-                      {item.selectedVariety && <p>Variety: {item.selectedVariety}</p>}
-                      {item.selectedSize && <p>Size: {item.selectedSize}</p>}
-                      {item.selectedAddons.length > 0 && (
-                        <p>Add-ons: {item.selectedAddons.map(a => a.name).join(', ')}</p>
-                      )}
-                    </div>
-                  )}
-                  <p className="text-sm text-muted-foreground">{formatCurrency(item.basePrice + item.addonPrice)} each</p>
+          {cart.map((item) => {
+            const variantEntries = item.variantDetails ? Object.entries(item.variantDetails) : []
+            const showLegacyVariety = item.selectedVariety && variantEntries.length === 0
+            return (
+              <div key={item.id} className="rounded-lg border border-border p-2 space-y-1">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground break-words">{item.menuItem.name}</p>
+                    {(showLegacyVariety || variantEntries.length > 0 || item.selectedSize || item.selectedAddons.length > 0) && (
+                      <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
+                        {variantEntries.map(([type, value]) => (
+                          <p key={type}>{type}: {value}</p>
+                        ))}
+                        {showLegacyVariety && <p>Variety: {item.selectedVariety}</p>}
+                        {item.selectedSize && <p>Size: {item.selectedSize}</p>}
+                        {item.selectedAddons.length > 0 && (
+                          <p>Add-ons: {item.selectedAddons.map(a => a.name).join(', ')}</p>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-sm text-muted-foreground">{formatCurrency(item.basePrice + item.addonPrice)} each</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, -1)}>
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="w-8 text-center font-medium text-sm text-foreground">{item.quantity}</span>
+                    <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, 1)}>
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 text-destructive touch-manipulation" onClick={() => removeFromCart(item.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, -1)}>
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                  <span className="w-8 text-center font-medium text-sm text-foreground">{item.quantity}</span>
-                  <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, 1)}>
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 text-destructive touch-manipulation" onClick={() => removeFromCart(item.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
+                <p className="text-right text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
               </div>
-              <p className="text-right text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <Separator className="my-4" />
