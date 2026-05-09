@@ -20,7 +20,6 @@ const OpenStreetMapPicker = dynamic(
 
 const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
-const MAX_DISPLAYED_OPTIONS = 3; // Maximum number of variant options to display before showing "+X more"
 
 export default function CashierPOS() {
   const router = useRouter();
@@ -910,33 +909,6 @@ export default function CashierPOS() {
                     <span style={styles.variantBadge}>
                       ⚙️ {item.variant_types.length} variant{item.variant_types.length > 1 ? 's' : ''}
                     </span>
-                  )}
-                  
-                  {/* Detailed variant type summary */}
-                  {item.has_variants && item.variant_types && item.variant_types.length > 0 && (
-                    <div style={styles.variantInfo}>
-                      {item.variant_types.map((vt, idx) => {
-                        if (!vt.id) {
-                          console.warn('[POS] Variant type missing ID:', vt);
-                        }
-                        // Filter available options once for reuse
-                        const availableOptions = vt.options ? vt.options.filter(opt => opt.available !== false) : [];
-                        const optionNames = availableOptions.slice(0, MAX_DISPLAYED_OPTIONS).map(opt => opt.option_name);
-                        const totalOptions = availableOptions.length;
-                        const hasMoreOptions = totalOptions > MAX_DISPLAYED_OPTIONS;
-                        return (
-                          <div key={vt.id || idx} style={styles.variantType}>
-                            <span style={styles.variantTypeName}>
-                              {vt.variant_type_name}{vt.is_required ? '*' : ''}:
-                            </span>
-                            <span style={styles.variantOptions}>
-                              {optionNames.join(', ')}
-                              {hasMoreOptions && ` +${totalOptions - MAX_DISPLAYED_OPTIONS} more`}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
                   )}
                   
                   {item.is_sold_out && (
