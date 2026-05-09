@@ -8,6 +8,29 @@ import {
 } from 'recharts';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
+import {
+  buildDefaultPayrollData,
+  computePayrollSummary,
+  getPayrollPeriodLabel,
+  PAYROLL_CYCLES_PER_MONTH,
+  WORKING_DAYS_PER_CYCLE,
+  getPayrollCycleStartForPeriod,
+  getPayrollCycleDays,
+  getPayrollPeriodMeta,
+  getOutstandingPayrollSubmissions,
+  isPayrollCyclePaid,
+  loadPayrollData,
+  markPayrollSubmissionPaid,
+  PAYROLL_SUBMISSION_REFERENCE_PREFIX,
+  normalizePayrollData,
+  PAYROLL_STORAGE_KEY,
+  roundToCurrency,
+  SALARY_DEDUCTION_SOURCE,
+  savePayrollData,
+  toDateOnly,
+  upsertPayrollSubmissionReport,
+  createId,
+} from '../../utils/payrollStorage';
 
 function shiftDateByMonthsClamped(inputDate, deltaMonths) {
   const date = new Date(inputDate);
@@ -207,6 +230,7 @@ export default function AdminPage() {
       'Accounts Payable', 'Accounts Payable - Rewards',
       'Revenue', 'Inventory', "Owner's Capital", 'Retained Earnings',
       'Rewards', 'Cost of Goods Sold',
+      'Advances to Employees',
       // Liability accounts
       'Credit Card Payable', 'Spaylater Payable',
       // Income
@@ -220,7 +244,7 @@ export default function AdminPage() {
       'Depreciation Expense', 'Interest Expense', 'Income Tax Expense',
       // Balance Sheet
       'Kitchen Equipment', 'Accumulated Depreciation',
-      'Income Tax Payable', 'Loans Payable',
+      'Income Tax Payable', 'Loans Payable', 'Salaries & Wages Payable',
     ];
     const fromData = (journalData || []).flatMap((r) => [r.debit_account, r.credit_account].filter(Boolean));
     const all = Array.from(new Set([...defaults, ...fromData])).sort();
@@ -274,7 +298,12 @@ export default function AdminPage() {
   const [finCompareFull, setFinCompareFull] = useState([]);
   const [salesSubView, setSalesSubView] = useState('general');
   const [salesData, setSalesData] = useState(null);
-  const [navGroupOpen, setNavGroupOpen] = useState({ transactions: false, inventory: false, financial: false });
+  const [navGroupOpen, setNavGroupOpen] = useState({
+    transactions: false,
+    inventory: false,
+    financial: false,
+    payroll: false,
+  });
   // Chart of Accounts state (separate date coverage from finDateFrom/To)
   const [coaDateFrom, setCoaDateFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
   const [coaDateTo, setCoaDateTo] = useState(monthEndStr);
@@ -326,11 +355,42 @@ export default function AdminPage() {
   const [billPayMethod, setBillPayMethod] = useState('cash_on_hand');
   const [billPaying, setBillPaying] = useState(false);
   const [billPayError, setBillPayError] = useState('');
+  // Bills Payment (unified payment of unpaid Bills/RR/Attendance Sheet)
+  const [billsPaymentRefs, setBillsPaymentRefs] = useState([]);
+  const [billsPaymentNumber, setBillsPaymentNumber] = useState('');
+  const [billsPaymentSearch, setBillsPaymentSearch] = useState('');
+  const [billsPaymentSelectedRef, setBillsPaymentSelectedRef] = useState('');
+  const [billsPaymentSaving, setBillsPaymentSaving] = useState(false);
+  const [billsPaymentError, setBillsPaymentError] = useState('');
+  const [billsPaymentSuccess, setBillsPaymentSuccess] = useState('');
+  const [billsPaymentForm, setBillsPaymentForm] = useState({
+    payment_date: toDateOnly(new Date()),
+    payment_mode: 'cash_on_hand',
+    contact: '',
+    amount: '',
+    notes: '',
+  });
   // New contact enrollment inside contact picker
   const [billNewContactMode, setBillNewContactMode] = useState(false);
   const [billNewContactForm, setBillNewContactForm] = useState({ name: '', address: '', contact: '', tin: '' });
   const [billNewContactSaving, setBillNewContactSaving] = useState(false);
   const [billNewContactError, setBillNewContactError] = useState('');
+
+  // ── Payroll / Attendance Sheet state ───────────────────────────────────────
+  const [payrollData, setPayrollData] = useState(() => normalizePayrollData(buildDefaultPayrollData()));
+  const [payrollCycleDays, setPayrollCycleDays] = useState(() => getPayrollCycleDays());
+  const [payrollMessage, setPayrollMessage] = useState('');
+  const [payrollSubmitting, setPayrollSubmitting] = useState(false);
+  const [newPayrollEmployeeName, setNewPayrollEmployeeName] = useState('');
+  const [payrollSelectedEmployeeId, setPayrollSelectedEmployeeId] = useState('');
+  const [deductionDialogEmployeeId, setDeductionDialogEmployeeId] = useState(null);
+  const [deductionForm, setDeductionForm] = useState({
+    id: null,
+    date: new Date().toISOString().split('T')[0],
+    type: 'Cash Advance',
+    amount: '',
+    notes: '',
+  });
 
   // ── My Profile state ──────────────────────────────────────────────────────
   const [profileData, setProfileData] = useState(null);
@@ -834,6 +894,111 @@ export default function AdminPage() {
     }
   }, []);
 
+  const getCreditAccountForPaymentMode = useCallback((paymentMode) => (
+    paymentMode === 'cash_in_bank' ? 'Cash in Bank'
+      : paymentMode === 'credit_card' ? 'Credit Card Payable'
+        : paymentMode === 'spaylater' ? 'Spaylater Payable'
+          : 'Cash on Hand'
+  ), []);
+
+  const generateBillsPaymentNumber = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const yy = new Date().getFullYear().toString().slice(-2);
+      const prefix = `BP# - ${yy}`;
+      const { data: rows, error: rowsErr } = await supabase
+        .from('journal_entries')
+        .select('reference')
+        .eq('reference_type', 'bills_payment')
+        .like('reference', `${prefix}%`)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (rowsErr) throw rowsErr;
+      const maxSeq = (rows || []).reduce((maxValue, row) => {
+        const ref = String(row?.reference || '');
+        const match = ref.match(/(\d{6})$/);
+        const seq = match ? Number(match[1]) : 0;
+        return seq > maxValue ? seq : maxValue;
+      }, 0);
+      setBillsPaymentNumber(`${prefix}${String(maxSeq + 1).padStart(6, '0')}`);
+    } catch {
+      setBillsPaymentNumber('');
+    }
+  }, [supabase]);
+
+  const fetchBillsPaymentReferences = useCallback(async () => {
+    if (!supabase) return;
+    setLoading(true);
+    try {
+      const [{ data: unpaidBills, error: billsErr }, { data: unpaidRR, error: rrErr }] = await Promise.all([
+        supabase
+          .from('bills')
+          .select('id, bill_number, contact, date, total_debit, status')
+          .eq('status', 'approved')
+          .order('date', { ascending: false }),
+        supabase
+          .from('receiving_reports')
+          .select('id, rr_number, date, total_landed_cost, status, vendor:vendors(name)')
+          .eq('status', 'approved')
+          .order('date', { ascending: false }),
+      ]);
+      if (billsErr) throw billsErr;
+      if (rrErr) throw rrErr;
+
+      const payrollRefs = getOutstandingPayrollSubmissions();
+      const mappedBills = (unpaidBills || []).map((bill) => ({
+        id: `bill:${bill.id}`,
+        sourceType: 'bill',
+        sourceLabel: 'Bills',
+        sourceId: bill.id,
+        referenceLabel: bill.bill_number || `Bill ${bill.id}`,
+        contact: bill.contact || '',
+        amount: Number(bill.total_debit || 0),
+        date: bill.date || '',
+        searchValue: `${bill.bill_number || ''} ${bill.contact || ''}`.toLowerCase(),
+      }));
+      const mappedRR = (unpaidRR || []).map((rr) => ({
+        id: `rr:${rr.id}`,
+        sourceType: 'receiving_report',
+        sourceLabel: 'Receiving Report',
+        sourceId: rr.id,
+        referenceLabel: rr.rr_number || `RR ${rr.id}`,
+        contact: rr.vendor?.name || '',
+        amount: Number(rr.total_landed_cost || 0),
+        date: rr.date || '',
+        searchValue: `${rr.rr_number || ''} ${rr.vendor?.name || ''}`.toLowerCase(),
+      }));
+      const mappedPayroll = (payrollRefs || []).map((report) => ({
+        id: `attendance:${report.id}`,
+        sourceType: 'attendance_sheet',
+        sourceLabel: 'Attendance Sheet',
+        sourceId: report.id,
+        referenceLabel: report.periodLabel || `${report.cycleStart} to ${report.cycleEnd}`,
+        contact: 'Payroll',
+        amount: Number(report.netPay || 0),
+        date: report.cycleEnd || report.cycleStart || '',
+        searchValue: `${report.periodLabel || ''} ${report.cycleStart || ''} ${report.cycleEnd || ''}`.toLowerCase(),
+      }));
+
+      setBillsPaymentRefs([...mappedBills, ...mappedPayroll, ...mappedRR]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase]);
+
+  const filteredBillsPaymentRefs = useMemo(() => {
+    if (!billsPaymentSearch) return billsPaymentRefs;
+    const q = billsPaymentSearch.toLowerCase();
+    return (billsPaymentRefs || []).filter((ref) => (
+      ref.sourceLabel.toLowerCase().includes(q)
+      || ref.referenceLabel.toLowerCase().includes(q)
+      || (ref.contact || '').toLowerCase().includes(q)
+      || (ref.searchValue || '').includes(q)
+    ));
+  }, [billsPaymentRefs, billsPaymentSearch]);
+
   // ── Bills: Save Bill ──────────────────────────────────────────────────────
   const saveBill = useCallback(async () => {
     if (!supabase) return;
@@ -1003,6 +1168,139 @@ export default function AdminPage() {
       setBillPaying(false);
     }
   };
+
+  const selectedBillsPaymentRef = useMemo(
+    () => (billsPaymentRefs || []).find((ref) => ref.id === billsPaymentSelectedRef) || null,
+    [billsPaymentRefs, billsPaymentSelectedRef],
+  );
+
+  const onBillsPaymentReferenceChange = useCallback((refId) => {
+    setBillsPaymentSelectedRef(refId);
+    const selected = (billsPaymentRefs || []).find((ref) => ref.id === refId);
+    setBillsPaymentError('');
+    setBillsPaymentForm((prev) => ({
+      ...prev,
+      contact: selected?.contact || '',
+      amount: selected ? String(selected.amount || 0) : '',
+      notes: selected ? `Payment for ${selected.sourceLabel}: ${selected.referenceLabel}` : prev.notes,
+    }));
+  }, [billsPaymentRefs]);
+
+  const payBillsPaymentReference = useCallback(async () => {
+    if (!supabase) return;
+    if (!selectedBillsPaymentRef) {
+      setBillsPaymentError('Please select a reference.');
+      return;
+    }
+    const amount = roundToCurrency(billsPaymentForm.amount);
+    if (amount <= 0) {
+      setBillsPaymentError('Amount must be greater than zero.');
+      return;
+    }
+    if (!billsPaymentNumber) {
+      setBillsPaymentError('Bills payment number was not generated.');
+      return;
+    }
+
+    setBillsPaymentSaving(true);
+    setBillsPaymentError('');
+    setBillsPaymentSuccess('');
+    try {
+      const creditAccount = getCreditAccountForPaymentMode(billsPaymentForm.payment_mode);
+
+      if (selectedBillsPaymentRef.sourceType === 'bill') {
+        const { error: jeErr } = await supabase.from('journal_entries').insert({
+          date: billsPaymentForm.payment_date,
+          description: `Bills Payment ${billsPaymentNumber}: ${selectedBillsPaymentRef.referenceLabel}`,
+          debit_account: 'Accounts Payable',
+          credit_account: creditAccount,
+          amount,
+          reference_id: selectedBillsPaymentRef.sourceId,
+          reference_type: 'bills_payment',
+          reference: billsPaymentNumber,
+          name: selectedBillsPaymentRef.contact || null,
+        });
+        if (jeErr) throw jeErr;
+        const { error: updErr } = await supabase
+          .from('bills')
+          .update({ status: 'paid', payment_method: billsPaymentForm.payment_mode, updated_at: new Date().toISOString() })
+          .eq('id', selectedBillsPaymentRef.sourceId);
+        if (updErr) throw updErr;
+      } else if (selectedBillsPaymentRef.sourceType === 'receiving_report') {
+        const { error: pmtErr } = await supabase.from('rr_payments').insert({
+          receiving_report_id: selectedBillsPaymentRef.sourceId,
+          payment_date: billsPaymentForm.payment_date,
+          amount,
+          payment_mode: billsPaymentForm.payment_mode,
+          reference_number: billsPaymentNumber,
+          notes: billsPaymentForm.notes || null,
+        });
+        if (pmtErr) throw pmtErr;
+        const { error: jeErr } = await supabase.from('journal_entries').insert({
+          date: billsPaymentForm.payment_date,
+          description: `Bills Payment ${billsPaymentNumber}: ${selectedBillsPaymentRef.referenceLabel}`,
+          debit_account: 'Accounts Payable',
+          credit_account: creditAccount,
+          amount,
+          reference_id: selectedBillsPaymentRef.sourceId,
+          reference_type: 'bills_payment',
+          reference: billsPaymentNumber,
+          name: selectedBillsPaymentRef.contact || null,
+        });
+        if (jeErr) throw jeErr;
+        const { error: rrUpdErr } = await supabase
+          .from('receiving_reports')
+          .update({ status: 'paid' })
+          .eq('id', selectedBillsPaymentRef.sourceId);
+        if (rrUpdErr) throw rrUpdErr;
+      } else {
+        const { error: jeErr } = await supabase.from('journal_entries').insert({
+          date: billsPaymentForm.payment_date,
+          description: `Bills Payment ${billsPaymentNumber}: ${selectedBillsPaymentRef.referenceLabel}`,
+          debit_account: 'Salaries & Wages Payable',
+          credit_account: creditAccount,
+          amount,
+          reference_type: 'bills_payment',
+          reference: billsPaymentNumber,
+          name: 'Payroll',
+        });
+        if (jeErr) throw jeErr;
+        const markResult = markPayrollSubmissionPaid({
+          reportId: selectedBillsPaymentRef.sourceId,
+          paymentReference: billsPaymentNumber,
+          paidAt: new Date().toISOString(),
+        });
+        if (!markResult.ok) throw new Error('Failed to mark attendance sheet as paid.');
+      }
+
+      setBillsPaymentSuccess(`${billsPaymentNumber} recorded successfully.`);
+      setBillsPaymentSelectedRef('');
+      setBillsPaymentSearch('');
+      setBillsPaymentForm((prev) => ({
+        ...prev,
+        contact: '',
+        amount: '',
+        notes: '',
+      }));
+      await fetchBillsPaymentReferences();
+      await fetchBills();
+      await fetchRR();
+      await generateBillsPaymentNumber();
+    } catch (err) {
+      setBillsPaymentError(err.message);
+    } finally {
+      setBillsPaymentSaving(false);
+    }
+  }, [
+    supabase,
+    selectedBillsPaymentRef,
+    billsPaymentForm,
+    billsPaymentNumber,
+    getCreditAccountForPaymentMode,
+    fetchBillsPaymentReferences,
+    fetchBills,
+    generateBillsPaymentNumber,
+  ]);
 
   // ── Bills: Save new contact (vendor enrollment) ───────────────────────────
   const saveNewBillContact = async () => {
@@ -1178,6 +1476,7 @@ export default function AdminPage() {
           if (
             acct === 'Salaries & Wages'
             || acct === 'Income Tax Expense'
+            || acct === 'Salaries & Wages Payable'
             || acct === 'Loans Payable'
             || acct === "Owner's Capital"
             || acct === 'Loans Receivable'
@@ -1350,6 +1649,7 @@ export default function AdminPage() {
           { data: ownCapCredit }, { data: ownCapDebit }, { data: retEarnCredit }, { data: retEarnDebit },
           { data: apCredit }, { data: apDebit },
           { data: incomeTaxPayableCredit }, { data: incomeTaxPayableDebit },
+          { data: salariesPayableCredit }, { data: salariesPayableDebit },
           { data: loansPayableCredit }, { data: loansPayableDebit },
         ] = await Promise.all([
           supabase.from('admin_inventory_items').select('current_stock, cost_per_unit'),
@@ -1368,6 +1668,8 @@ export default function AdminPage() {
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Accounts Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Income Tax Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Income Tax Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Salaries & Wages Payable').lte('date', bsDateTo),
+          supabase.from('journal_entries').select('amount').eq('debit_account', 'Salaries & Wages Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('credit_account', 'Loans Payable').lte('date', bsDateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Loans Payable').lte('date', bsDateTo),
         ]);
@@ -1376,13 +1678,14 @@ export default function AdminPage() {
         const invValue = (invList || []).reduce((s, i) => s + (Number(i.current_stock) || 0) * (Number(i.cost_per_unit) || 0), 0);
         const ap = sumAmt(apCredit) - sumAmt(apDebit);
         const incomeTaxPayable = sumAmt(incomeTaxPayableCredit) - sumAmt(incomeTaxPayableDebit);
+        const salariesWagesPayable = sumAmt(salariesPayableCredit) - sumAmt(salariesPayableDebit);
         const loansPayable = sumAmt(loansPayableCredit) - sumAmt(loansPayableDebit);
         const kitchenEquipment = sumAmt(kitEquipDebit) - sumAmt(kitEquipCredit);
         const accumDepreciation = sumAmt(accumDeprData);
         const ownersCapital = sumAmt(ownCapCredit) - sumAmt(ownCapDebit);
         const retainedEarnings = sumAmt(retEarnCredit) - sumAmt(retEarnDebit);
         const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
-        const totalLiabilities = ap + incomeTaxPayable + loansPayable;
+        const totalLiabilities = ap + incomeTaxPayable + salariesWagesPayable + loansPayable;
         const totalEquity = ownersCapital + retainedEarnings;
         setFinData({
           type: 'balance',
@@ -1394,6 +1697,7 @@ export default function AdminPage() {
           totalAssets,
           ap,
           incomeTaxPayable,
+          salariesWagesPayable,
           loansPayable,
           totalLiabilities,
           ownersCapital,
@@ -1534,13 +1838,14 @@ export default function AdminPage() {
             const accumDepreciation = Math.abs(nets['Accumulated Depreciation'] || 0);
             const ap = Math.abs(nets['Accounts Payable'] || 0);
             const incomeTaxPayable = Math.abs(nets['Income Tax Payable'] || 0);
+            const salariesWagesPayable = Math.abs(nets['Salaries & Wages Payable'] || 0);
             const loansPayable = Math.abs(nets['Loans Payable'] || 0);
             const ownersCapital = nets["Owner's Capital"] || 0;
             const retainedEarnings = Math.abs(nets['Retained Earnings'] || 0);
             const totalAssets = cashOnHand + cashInBank + invValue + kitchenEquipment - accumDepreciation;
-            const totalLiabilities = ap + incomeTaxPayable + loansPayable;
+            const totalLiabilities = ap + incomeTaxPayable + salariesWagesPayable + loansPayable;
             const totalEquity = ownersCapital + retainedEarnings;
-            Object.assign(periodData, { cashOnHand, cashInBank, invValue, kitchenEquipment, accumDepreciation, ap, incomeTaxPayable, loansPayable, ownersCapital, retainedEarnings, totalAssets, totalLiabilities, totalEquity });
+            Object.assign(periodData, { cashOnHand, cashInBank, invValue, kitchenEquipment, accumDepreciation, ap, incomeTaxPayable, salariesWagesPayable, loansPayable, ownersCapital, retainedEarnings, totalAssets, totalLiabilities, totalEquity });
           }
           compareFull.push(periodData);
         }
@@ -1589,7 +1894,7 @@ export default function AdminPage() {
       const BS_ACCOUNTS = [
         'Cash on Hand', 'Cash in Bank', 'Accounts Receivable', 'Inventory',
         'Kitchen Equipment', 'Accumulated Depreciation',
-        'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable',
+        'Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable', 'Salaries & Wages Payable',
         "Owner's Capital", 'Retained Earnings',
       ];
       // Income Statement accounts use period activity only
@@ -1809,7 +2114,8 @@ export default function AdminPage() {
     else if (activeTab === 'journal') fetchJournal();
     else if (activeTab === 'manual') { generateManualEntryNumber(); }
     else if (activeTab === 'bills') { fetchBills(); generateBillNumber(); }
-  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber, fetchBills, generateBillNumber]);
+    else if (activeTab === 'bills_payment') { fetchBillsPaymentReferences(); generateBillsPaymentNumber(); }
+  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber, fetchBills, generateBillNumber, fetchBillsPaymentReferences, generateBillsPaymentNumber]);
 
   useEffect(() => {
     if (activeTab === 'dashboard' && dashSubTab === 'stock-alerts') fetchLowStockItems();
@@ -1890,6 +2196,321 @@ export default function AdminPage() {
     return () => { supabase.removeChannel(channel); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const selectedDeductionEmployee = useMemo(
+    () => (payrollData.employees || []).find((employee) => employee.id === deductionDialogEmployeeId) || null,
+    [payrollData.employees, deductionDialogEmployeeId],
+  );
+
+  const payrollHasProcessedDeduction = useMemo(
+    () => (payrollData.employees || []).some((employee) => (employee.deductions || []).some((deduction) => deduction.processed)),
+    [payrollData.employees],
+  );
+
+  const payrollIsPaid = useMemo(
+    () => isPayrollCyclePaid(payrollData.cycleStart, payrollData.submittedReports),
+    [payrollData.cycleStart, payrollData.submittedReports],
+  );
+  const payrollCanEdit = !payrollHasProcessedDeduction && !payrollIsPaid;
+  const payrollPeriodMeta = useMemo(
+    () => getPayrollPeriodMeta(payrollData.cycleStart),
+    [payrollData.cycleStart],
+  );
+
+  const syncPayrollState = useCallback((nextData, message = '') => {
+    const normalized = normalizePayrollData(nextData);
+    setPayrollData(normalized);
+    setPayrollCycleDays(getPayrollCycleDays(normalized.cycleStart));
+    savePayrollData(normalized);
+    if (message) setPayrollMessage(message);
+  }, []);
+
+  const loadPayrollState = useCallback(() => {
+    const loaded = loadPayrollData();
+    setPayrollData(loaded);
+    setPayrollCycleDays(getPayrollCycleDays(loaded.cycleStart));
+  }, []);
+
+  useEffect(() => {
+    loadPayrollState();
+  }, [loadPayrollState]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onStorage = (event) => {
+      if (event.key === PAYROLL_STORAGE_KEY) loadPayrollState();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [loadPayrollState]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onStorage = (event) => {
+      if (event.key === PAYROLL_STORAGE_KEY && activeTab === 'bills_payment') {
+        fetchBillsPaymentReferences();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [activeTab, fetchBillsPaymentReferences]);
+
+  const submitPayroll = async () => {
+    if (payrollSubmitting) return;
+    const employees = payrollData.employees || [];
+    if (employees.length === 0) {
+      setPayrollMessage('Add at least one employee before submitting.');
+      return;
+    }
+
+    const summary = computePayrollSummary(employees);
+    const cycleEndDate = payrollCycleDays[payrollCycleDays.length - 1]?.date || payrollData.cycleStart;
+    const submittedAt = new Date().toISOString();
+    const reportId = `${PAYROLL_SUBMISSION_REFERENCE_PREFIX}-${payrollData.cycleStart}`;
+    const periodLabel = getPayrollPeriodLabel(payrollData.cycleStart);
+    const journalReference = reportId;
+    const payrollReport = {
+      id: reportId,
+      cycleStart: payrollData.cycleStart,
+      cycleEnd: cycleEndDate,
+      periodLabel,
+      submittedAt,
+      grossPay: summary.grossPay,
+      absences: summary.absences,
+      deductions: summary.deductions,
+      netPay: summary.netPay,
+      paid: false,
+      paidAt: null,
+      paymentReference: null,
+      journalReference,
+    };
+
+    setPayrollSubmitting(true);
+    try {
+      if (supabase) {
+        const { error: deleteError } = await supabase
+          .from('journal_entries')
+          .delete()
+          .eq('reference_type', 'payroll_attendance')
+          .eq('reference', journalReference);
+        if (deleteError) throw deleteError;
+
+        const rows = [];
+        if (summary.grossPay > 0) {
+          rows.push({
+            date: cycleEndDate,
+            description: `Payroll Attendance ${periodLabel} - Gross Pay`,
+            debit_account: 'Salaries & Wages',
+            credit_account: 'Salaries & Wages Payable',
+            amount: summary.grossPay,
+            reference_type: 'payroll_attendance',
+            reference: journalReference,
+            name: 'Payroll',
+          });
+        }
+        if (summary.absences > 0) {
+          rows.push({
+            date: cycleEndDate,
+            description: `Payroll Attendance ${periodLabel} - Absences`,
+            debit_account: 'Salaries & Wages Payable',
+            credit_account: 'Salaries & Wages',
+            amount: summary.absences,
+            reference_type: 'payroll_attendance',
+            reference: journalReference,
+            name: 'Payroll',
+          });
+        }
+        if (summary.deductions > 0) {
+          rows.push({
+            date: cycleEndDate,
+            description: `Payroll Attendance ${periodLabel} - Deductions`,
+            debit_account: 'Advances to Employees',
+            credit_account: 'Salaries & Wages Payable',
+            amount: summary.deductions,
+            reference_type: 'payroll_attendance',
+            reference: journalReference,
+            name: 'Payroll',
+          });
+        }
+
+        if (rows.length > 0) {
+          const { error: insertError } = await supabase.from('journal_entries').insert(rows);
+          if (insertError) throw insertError;
+        }
+      }
+
+      const upsertResult = upsertPayrollSubmissionReport(payrollReport);
+      if (!upsertResult.ok) throw new Error('Failed to save payroll submission report.');
+      syncPayrollState(
+        {
+          ...payrollData,
+          submitted: true,
+          submittedAt,
+          submittedReports: upsertResult.data.submittedReports || [],
+        },
+        'Attendance report submitted to cashier.',
+      );
+    } catch (err) {
+      setPayrollMessage(`Failed to submit attendance sheet: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setPayrollSubmitting(false);
+    }
+  };
+
+  const changePayrollPeriod = (monthValue, cycleType) => {
+    if (!payrollCanEdit) return;
+    if (!/^\d{4}-\d{2}$/.test(String(monthValue || ''))) {
+      setPayrollMessage('Select a valid payroll month.');
+      return;
+    }
+    const nextCycleStart = getPayrollCycleStartForPeriod(monthValue, cycleType);
+    syncPayrollState({ ...payrollData, cycleStart: nextCycleStart }, 'Payroll period updated (auto-saved).');
+  };
+
+  const addPayrollEmployee = () => {
+    if (!payrollCanEdit) return;
+    const name = newPayrollEmployeeName.trim();
+    if (!name) return;
+    const alreadyExists = (payrollData.employees || []).some(
+      (employee) => String(employee.name || '').trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (alreadyExists) {
+      setPayrollMessage('Employee already exists in attendance sheet.');
+      return;
+    }
+    const employee = {
+      id: createId('emp'),
+      name,
+      monthlyPay: 0,
+      daily: payrollCycleDays.map((day) => {
+        if (day.isSunday) return true;
+        if (day.isFuture) return null;
+        return true;
+      }),
+      deductions: [],
+    };
+    syncPayrollState(
+      { ...payrollData, employees: [...(payrollData.employees || []), employee] },
+      'Employee added and auto-saved.',
+    );
+    setNewPayrollEmployeeName('');
+    if (!payrollSelectedEmployeeId) setPayrollSelectedEmployeeId(employee.id);
+  };
+
+  const deletePayrollEmployee = (employeeId) => {
+    if (!payrollCanEdit) return;
+    syncPayrollState(
+      {
+        ...payrollData,
+        employees: (payrollData.employees || []).filter((employee) => employee.id !== employeeId),
+      },
+      'Employee removed and auto-saved.',
+    );
+    if (payrollSelectedEmployeeId === employeeId) setPayrollSelectedEmployeeId('');
+  };
+
+  const toggleAttendance = (employeeId, dayIndex) => {
+    if (!payrollCanEdit) return;
+    if (payrollCycleDays[dayIndex]?.isSunday) return;
+    if (payrollCycleDays[dayIndex]?.isFuture) return;
+    syncPayrollState({
+      ...payrollData,
+      employees: (payrollData.employees || []).map((employee) => {
+        if (employee.id !== employeeId) return employee;
+        const nextDaily = [...(employee.daily || [])];
+        nextDaily[dayIndex] = !nextDaily[dayIndex];
+        return { ...employee, daily: nextDaily };
+      }),
+    });
+  };
+
+  const updateMonthlyPay = (employeeId, rawValue) => {
+    if (!payrollCanEdit) return;
+    const value = roundToCurrency(rawValue);
+    syncPayrollState({
+      ...payrollData,
+      employees: (payrollData.employees || []).map((employee) => (
+        employee.id === employeeId ? { ...employee, monthlyPay: value } : employee
+      )),
+    });
+  };
+
+  const openDeductionsDialog = () => {
+    if (!payrollSelectedEmployeeId) {
+      setPayrollMessage('Select an employee first.');
+      return;
+    }
+    setDeductionDialogEmployeeId(payrollSelectedEmployeeId);
+    setDeductionForm({
+      id: null,
+      date: toDateOnly(new Date()),
+      type: 'Cash Advance',
+      amount: '',
+      notes: '',
+    });
+  };
+
+  const editDeduction = (deduction) => {
+    setDeductionForm({
+      id: deduction.id,
+      date: deduction.date || toDateOnly(new Date()),
+      type: deduction.type || 'Cash Advance',
+      amount: String(deduction.amount || ''),
+      notes: deduction.notes || '',
+    });
+  };
+
+  const saveDeductionEntry = () => {
+    if (!selectedDeductionEmployee || !payrollCanEdit) return;
+    const amount = roundToCurrency(deductionForm.amount);
+    if (amount <= 0) {
+      setPayrollMessage('Deduction amount must be greater than zero.');
+      return;
+    }
+    const deductionPayload = {
+      id: deductionForm.id || createId('ded'),
+      date: deductionForm.date || toDateOnly(new Date()),
+      type: deductionForm.type || 'Cash Advance',
+      amount,
+      notes: deductionForm.notes || '',
+      source: 'manual',
+      processed: false,
+      orderId: null,
+    };
+    syncPayrollState({
+      ...payrollData,
+      employees: (payrollData.employees || []).map((employee) => {
+        if (employee.id !== selectedDeductionEmployee.id) return employee;
+        const current = [...(employee.deductions || [])];
+        const hasExisting = current.some((deduction) => deduction.id === deductionPayload.id);
+        const nextDeductions = hasExisting
+          ? current.map((deduction) => (deduction.id === deductionPayload.id ? deductionPayload : deduction))
+          : [...current, deductionPayload];
+        return { ...employee, deductions: nextDeductions };
+      }),
+    }, 'Deduction entry saved.');
+    setDeductionForm({
+      id: null,
+      date: toDateOnly(new Date()),
+      type: 'Cash Advance',
+      amount: '',
+      notes: '',
+    });
+  };
+
+  const deleteDeductionEntry = (deductionId) => {
+    if (!selectedDeductionEmployee || !payrollCanEdit) return;
+    syncPayrollState({
+      ...payrollData,
+      employees: (payrollData.employees || []).map((employee) => {
+        if (employee.id !== selectedDeductionEmployee.id) return employee;
+        return {
+          ...employee,
+          deductions: (employee.deductions || []).filter((deduction) => deduction.id !== deductionId),
+        };
+      }),
+    }, 'Deduction entry deleted.');
+  };
+
   // ── Nav items (memoised) — must be declared before any early return ──────
   const navGroups = useMemo(
     () => [
@@ -1898,6 +2519,7 @@ export default function AdminPage() {
         type: 'group', key: 'transactions', label: '💳 Transactions',
         children: [
           { key: 'bills', label: '🧾 Bills' },
+          { key: 'bills_payment', label: '💸 Bills Payment' },
           { key: 'manual', label: '✏️ Manual Entry' },
         ],
       },
@@ -1920,6 +2542,12 @@ export default function AdminPage() {
           { key: 'tax', finTab: true, label: '🏦 Tax Report' },
           { key: 'journal', finTab: false, label: '📒 Journal Entries' },
           { key: 'coa', finTab: true, label: '📑 Chart of Accounts' },
+        ],
+      },
+      {
+        type: 'group', key: 'payroll', label: '💼 Payroll',
+        children: [
+          { key: 'attendance_sheet', label: '🗂️ Attendance Sheet' },
         ],
       },
       { type: 'item', key: 'profile', label: '👤 My Profile' },
@@ -4452,6 +5080,7 @@ export default function AdminPage() {
                         {sectionRow('Liabilities')}
                         {dataRow('Accounts Payable', finData.ap, 'ap', true)}
                         {dataRow('Income Tax Payable', finData.incomeTaxPayable || 0, 'incomeTaxPayable', true)}
+                        {dataRow('Salaries & Wages Payable', finData.salariesWagesPayable || 0, 'salariesWagesPayable', true)}
                         {dataRow('Loans Payable', finData.loansPayable || 0, 'loansPayable', true)}
                         {dataRow('Total Liabilities', finData.totalLiabilities, 'totalLiabilities', false, false, true, '#f44336')}
                         {sectionRow('Equity')}
@@ -4839,7 +5468,7 @@ export default function AdminPage() {
                         category: 'Liabilities',
                         color: '#f44336',
                         type: 'bs',
-                        accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable'],
+                        accounts: ['Accounts Payable', 'Accounts Payable - Rewards', 'Notes Payable', 'Accrued Liabilities', 'Income Tax Payable', 'Loans Payable', 'Salaries & Wages Payable'],
                       },
                       {
                         category: 'Equity',
@@ -4911,6 +5540,409 @@ export default function AdminPage() {
                   })()}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ──────────────── PAYROLL / ATTENDANCE SHEET ──────────────── */}
+          {activeTab === 'attendance_sheet' && (
+            <div>
+              <div style={styles.tabHeader}>
+                <h1 style={styles.pageTitle}>Payroll - Attendance Sheet</h1>
+              </div>
+
+              <div style={{ ...styles.card, marginBottom: 16 }}>
+                <div style={styles.payrollControlGrid}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label style={{ ...styles.label, paddingTop: 0 }}>Payroll Period</label>
+                    <input
+                      type="month"
+                      value={payrollPeriodMeta.monthValue}
+                      onChange={(e) => changePayrollPeriod(e.target.value, payrollPeriodMeta.cycleType)}
+                      style={{ ...styles.input, maxWidth: 150 }}
+                      disabled={!payrollCanEdit}
+                    />
+                    <select
+                      value={payrollPeriodMeta.cycleType}
+                      onChange={(e) => changePayrollPeriod(payrollPeriodMeta.monthValue, e.target.value)}
+                      style={{ ...styles.input, maxWidth: 180 }}
+                      disabled={!payrollCanEdit}
+                    >
+                      <option value="first">{payrollPeriodMeta.firstLabel}</option>
+                      <option value="second">{payrollPeriodMeta.secondLabel}</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="Employee name"
+                      value={newPayrollEmployeeName}
+                      onChange={(e) => setNewPayrollEmployeeName(e.target.value)}
+                      style={{ ...styles.input, maxWidth: 240 }}
+                      disabled={!payrollCanEdit}
+                    />
+                    <button type="button" style={styles.primaryBtn} onClick={addPayrollEmployee} disabled={!payrollCanEdit}>
+                      + Add Employee
+                    </button>
+                  </div>
+                </div>
+                <p style={{ color: '#888', margin: '8px 0 0 0', fontSize: 12 }}>
+                  Auto-save is enabled. Changes are saved immediately.
+                </p>
+                {payrollData.submitted && (
+                  <p style={{ color: '#4caf50', margin: '8px 0 0 0', fontSize: 12 }}>
+                    Submitted: {new Date(payrollData.submittedAt || Date.now()).toLocaleString('en-PH')}
+                  </p>
+                )}
+                {payrollHasProcessedDeduction && (
+                  <p style={{ color: '#ff9800', margin: '8px 0 0 0', fontSize: 12 }}>
+                    Cashier already processed salary deduction entries. Attendance editing is locked.
+                  </p>
+                )}
+                {payrollIsPaid && (
+                  <p style={{ color: '#ff9800', margin: '8px 0 0 0', fontSize: 12 }}>
+                    This payroll period has been paid by cashier. Attendance editing is locked.
+                  </p>
+                )}
+              </div>
+
+              {(() => {
+                const employees = payrollData.employees || [];
+                const grandGross = employees.reduce((s, emp) => {
+                  const grossPay = roundToCurrency((emp.monthlyPay || 0) / PAYROLL_CYCLES_PER_MONTH);
+                  return s + grossPay;
+                }, 0);
+                const grandAbsences = employees.reduce((s, emp) => {
+                  const grossPay = roundToCurrency((emp.monthlyPay || 0) / PAYROLL_CYCLES_PER_MONTH);
+                  const absentCount = (emp.daily || []).filter((v) => v === false).length;
+                  return s + roundToCurrency((grossPay / WORKING_DAYS_PER_CYCLE) * absentCount);
+                }, 0);
+                const grandDed = employees.reduce((s, emp) => s + (emp.deductions || []).reduce((ds, d) => ds + (Number(d.amount) || 0), 0), 0);
+                const grandNet = grandGross - grandAbsences - grandDed;
+                return (
+                  <div style={styles.payrollTableWrap}>
+                    <table style={{ ...styles.table, fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          <th style={styles.payrollTh}>Day</th>
+                          <th style={styles.payrollTh}>Date</th>
+                          {employees.map((emp) => (
+                            <th key={emp.id} style={{ ...styles.payrollTh, textAlign: 'center', minWidth: 80 }}>
+                              {emp.name}
+                            </th>
+                          ))}
+                          <th style={{ ...styles.payrollTh, textAlign: 'right' }}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {payrollCycleDays.map((day, dayIndex) => (
+                          <tr
+                            key={day.date}
+                            style={
+                              day.isSunday
+                                ? { background: '#1e2f24' }
+                                : day.isToday
+                                  ? { background: '#2a2a2a' }
+                                  : dayIndex % 2 === 0 ? styles.payrollTrEven : styles.payrollTrOdd
+                            }
+                          >
+                            <td style={{ ...styles.payrollTd, color: day.isSunday ? '#7bc67b' : '#f0f0f0', fontWeight: day.isToday ? 700 : 400 }}>
+                              {day.dayLabel}
+                            </td>
+                            <td style={{ ...styles.payrollTd, color: day.isSunday ? '#7bc67b' : '#f0f0f0', fontWeight: day.isToday ? 700 : 400 }}>
+                              {day.label}
+                            </td>
+                            {employees.map((emp) => {
+                              const attendanceValue = emp.daily?.[dayIndex];
+                              const isPresent = attendanceValue === true;
+                              const isAbsent = attendanceValue === false;
+                              const isBlank = attendanceValue === null || typeof attendanceValue === 'undefined';
+                              return (
+                                <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'center' }}>
+                                  <button
+                                    type="button"
+                                    style={{
+                                      ...styles.payrollCheckBtn,
+                                      color: isPresent ? '#1a7f1a' : (isAbsent ? '#c62828' : '#bbb'),
+                                      borderColor: day.isSunday ? '#4caf50' : (isBlank ? '#777' : '#666'),
+                                      background: day.isSunday ? '#274130' : (day.isToday ? '#3a3a3a' : '#222'),
+                                    }}
+                                    onClick={() => toggleAttendance(emp.id, dayIndex)}
+                                    disabled={!payrollCanEdit || day.isSunday || day.isFuture}
+                                    title={day.isSunday ? 'Sunday (rest day – default present)' : day.isFuture ? 'Future date – not yet editable' : 'Toggle present / absent'}
+                                  >
+                                    {isPresent ? '✔' : (isAbsent ? 'X' : '')}
+                                  </button>
+                                </td>
+                              );
+                            })}
+                            <td style={styles.payrollTd} />
+                          </tr>
+                        ))}
+
+                        {employees.length === 0 && (
+                          <tr>
+                            <td colSpan={3} style={{ ...styles.payrollTd, textAlign: 'center', color: '#aaa', padding: 24 }}>
+                              No employees yet. Add an employee to start attendance tracking.
+                            </td>
+                          </tr>
+                        )}
+
+                        {employees.length > 0 && (
+                          <>
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Total Present</td>
+                              {employees.map((emp) => (
+                                <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'center', fontWeight: 700, color: '#f3f3f3' }}>
+                                  {(emp.daily || []).filter(Boolean).length}
+                                </td>
+                              ))}
+                              <td style={styles.payrollTd} />
+                            </tr>
+
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Monthly Pay</td>
+                              {employees.map((emp) => (
+                                <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right' }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    disabled={!payrollCanEdit}
+                                    value={emp.monthlyPay || ''}
+                                    onChange={(e) => updateMonthlyPay(emp.id, e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      background: '#1a1a1a',
+                                      color: '#fff',
+                                      border: '1px solid #555',
+                                      borderRadius: 4,
+                                      padding: '2px 4px',
+                                      textAlign: 'right',
+                                      fontSize: 12,
+                                    }}
+                                  />
+                                </td>
+                              ))}
+                              <td style={styles.payrollTd} />
+                            </tr>
+
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Gross Pay</td>
+                              {employees.map((emp) => {
+                                const grossPay = roundToCurrency((emp.monthlyPay || 0) / PAYROLL_CYCLES_PER_MONTH);
+                                return (
+                                  <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', color: '#f3f3f3' }}>
+                                    {fmt(grossPay)}
+                                  </td>
+                                );
+                              })}
+                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#f3f3f3' }}>{fmt(grandGross)}</td>
+                            </tr>
+
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Absences</td>
+                              {employees.map((emp) => {
+                                const grossPay = roundToCurrency((emp.monthlyPay || 0) / PAYROLL_CYCLES_PER_MONTH);
+                                const absentCount = (emp.daily || []).filter((v) => v === false).length;
+                                const absences = roundToCurrency((grossPay / WORKING_DAYS_PER_CYCLE) * absentCount);
+                                return (
+                                  <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', color: absences > 0 ? '#ef5350' : '#aaa' }}>
+                                    {absences > 0 ? `- ${fmt(absences)}` : '-'}
+                                  </td>
+                                );
+                              })}
+                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: grandAbsences > 0 ? '#ef5350' : '#aaa' }}>
+                                {grandAbsences > 0 ? `- ${fmt(grandAbsences)}` : '-'}
+                              </td>
+                            </tr>
+
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Deductions</td>
+                              {employees.map((emp) => {
+                                const ded = (emp.deductions || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
+                                return (
+                                  <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', color: ded > 0 ? '#ef5350' : '#aaa' }}>
+                                    {ded > 0 ? `- ${fmt(ded)}` : '-'}
+                                  </td>
+                                );
+                              })}
+                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: grandDed > 0 ? '#ef5350' : '#aaa' }}>
+                                {grandDed > 0 ? `- ${fmt(grandDed)}` : '-'}
+                              </td>
+                            </tr>
+
+                            <tr style={{ background: '#242424' }}>
+                              <td colSpan={2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#f3f3f3' }}>Net Pay</td>
+                              {employees.map((emp) => {
+                                const grossPay = roundToCurrency((emp.monthlyPay || 0) / PAYROLL_CYCLES_PER_MONTH);
+                                const absentCount = (emp.daily || []).filter((v) => v === false).length;
+                                const absences = roundToCurrency((grossPay / WORKING_DAYS_PER_CYCLE) * absentCount);
+                                const ded = (emp.deductions || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
+                                return (
+                                  <td key={emp.id} style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#f3f3f3' }}>
+                                    {fmt(grossPay - absences - ded)}
+                                  </td>
+                                );
+                              })}
+                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#f3f3f3' }}>{fmt(grandNet)}</td>
+                            </tr>
+
+                            <tr style={{ background: '#303030' }}>
+                              <td colSpan={employees.length + 2} style={{ ...styles.payrollTd, fontWeight: 700, color: '#fff' }}>
+                                Billable to Cashier
+                              </td>
+                              <td style={{ ...styles.payrollTd, textAlign: 'right', fontWeight: 700, color: '#fff' }}>{fmt(grandNet)}</td>
+                            </tr>
+                          </>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+
+              <div style={{ ...styles.card, marginTop: 16 }}>
+                <div style={styles.payrollControlGrid}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label style={{ ...styles.label, paddingTop: 0 }}>Employee</label>
+                    <select
+                      style={{ ...styles.input, width: 240 }}
+                      value={payrollSelectedEmployeeId}
+                      onChange={(e) => setPayrollSelectedEmployeeId(e.target.value)}
+                    >
+                      <option value="">Select employee</option>
+                      {(payrollData.employees || []).map((employee) => (
+                        <option key={employee.id} value={employee.id}>{employee.name}</option>
+                      ))}
+                    </select>
+                    <button type="button" style={styles.primaryBtn} onClick={openDeductionsDialog}>
+                      Deductions
+                    </button>
+                    <button
+                      type="button"
+                      style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
+                      onClick={() => payrollSelectedEmployeeId && deletePayrollEmployee(payrollSelectedEmployeeId)}
+                      disabled={!payrollCanEdit || !payrollSelectedEmployeeId}
+                    >
+                      Delete Employee
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      style={{ ...styles.primaryBtn, background: '#2e7d32', color: '#fff' }}
+                      onClick={submitPayroll}
+                      disabled={payrollSubmitting || payrollIsPaid}
+                    >
+                      {payrollSubmitting ? 'Submitting…' : 'Submit'}
+                    </button>
+                  </div>
+                </div>
+                {payrollMessage && (
+                  <p style={{ marginTop: 10, fontSize: 12, color: '#666' }}>{payrollMessage}</p>
+                )}
+              </div>
+
+              <Dialog.Root open={!!deductionDialogEmployeeId} onOpenChange={(open) => { if (!open) setDeductionDialogEmployeeId(null); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 640 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Deductions</Dialog.Title>
+
+                    <div style={styles.formGrid}>
+                      <label style={styles.label}>Employee Name</label>
+                      <input style={{ ...styles.input, background: '#111', color: '#fff' }} readOnly value={selectedDeductionEmployee?.name || ''} />
+                      <label style={styles.label}>Date</label>
+                      <input
+                        type="date"
+                        style={styles.input}
+                        value={deductionForm.date}
+                        onChange={(e) => setDeductionForm((prev) => ({ ...prev, date: e.target.value }))}
+                        disabled={!payrollCanEdit}
+                      />
+                      <label style={styles.label}>Transaction Type</label>
+                      <select
+                        style={styles.input}
+                        value={deductionForm.type}
+                        onChange={(e) => setDeductionForm((prev) => ({ ...prev, type: e.target.value }))}
+                        disabled={!payrollCanEdit}
+                      >
+                        <option value="Cash Advance">Cash Advance</option>
+                        <option value="Others">Others</option>
+                      </select>
+                      <label style={styles.label}>Amount</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        style={styles.input}
+                        value={deductionForm.amount}
+                        onChange={(e) => setDeductionForm((prev) => ({ ...prev, amount: e.target.value }))}
+                        disabled={!payrollCanEdit}
+                      />
+                      <label style={styles.label}>Notes</label>
+                      <input
+                        type="text"
+                        style={styles.input}
+                        value={deductionForm.notes}
+                        onChange={(e) => setDeductionForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        placeholder="Optional notes"
+                        disabled={!payrollCanEdit}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                      <button type="button" style={styles.actionBtn} onClick={() => setDeductionForm((prev) => ({ ...prev, id: null, amount: '', notes: '' }))}>
+                        Clear
+                      </button>
+                      <button type="button" style={styles.primaryBtn} onClick={saveDeductionEntry} disabled={!payrollCanEdit}>
+                        Save
+                      </button>
+                    </div>
+
+                    <div style={{ ...styles.tableWrap, marginTop: 16 }}>
+                      <table style={{ ...styles.table, fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            {['Date', 'Type', 'Amount', 'Source', 'Action'].map((h) => <th key={h} style={styles.th}>{h}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedDeductionEmployee?.deductions || []).map((deduction, idx) => (
+                            <tr key={deduction.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                              <td style={styles.td}>{deduction.date}</td>
+                              <td style={styles.td}>{deduction.type}</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>{fmt(deduction.amount || 0)}</td>
+                              <td style={styles.td}>{deduction.source === SALARY_DEDUCTION_SOURCE ? 'Cashier' : 'Manual'}</td>
+                              <td style={styles.td}>
+                                <button type="button" style={styles.actionBtn} onClick={() => editDeduction(deduction)} disabled={!payrollCanEdit}>Edit</button>
+                                <button
+                                  type="button"
+                                  style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
+                                  onClick={() => deleteDeductionEntry(deduction.id)}
+                                  disabled={!payrollCanEdit || deduction.source === SALARY_DEDUCTION_SOURCE}
+                                >
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {(selectedDeductionEmployee?.deductions || []).length === 0 && (
+                            <tr>
+                              <td colSpan={5} style={{ ...styles.td, color: '#666', textAlign: 'center' }}>
+                                No deductions yet.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
             </div>
           )}
 
@@ -5485,6 +6517,116 @@ export default function AdminPage() {
                   </Dialog.Content>
                 </Dialog.Portal>
               </Dialog.Root>
+            </div>
+          )}
+
+          {/* ──────────────── BILLS PAYMENT ──────────────── */}
+          {activeTab === 'bills_payment' && (
+            <div>
+              <div style={styles.tabHeader}>
+                <h1 style={styles.pageTitle}>Bills Payment</h1>
+              </div>
+
+              {billsPaymentSuccess && <p style={{ color: '#4caf50', marginBottom: 12 }}>{billsPaymentSuccess}</p>}
+              {billsPaymentError && <p style={{ color: '#f44336', marginBottom: 12 }}>{billsPaymentError}</p>}
+
+              <div style={{ ...styles.card, maxWidth: 860 }}>
+                <div style={styles.formGrid}>
+                  <label style={styles.label}>Bills Payment Number</label>
+                  <input
+                    style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
+                    value={billsPaymentNumber}
+                    readOnly
+                  />
+
+                  <label style={styles.label}>Payment Date</label>
+                  <input
+                    type="date"
+                    style={styles.input}
+                    value={billsPaymentForm.payment_date}
+                    onChange={(e) => setBillsPaymentForm((prev) => ({ ...prev, payment_date: e.target.value }))}
+                  />
+
+                  <label style={styles.label}>Reference Search</label>
+                  <input
+                    style={styles.input}
+                    placeholder='Search unpaid "Bills", "Attendance Sheet", "Receiving Report"...'
+                    value={billsPaymentSearch}
+                    onChange={(e) => setBillsPaymentSearch(e.target.value)}
+                  />
+
+                  <label style={styles.label}>Reference *</label>
+                  <select
+                    style={styles.input}
+                    value={billsPaymentSelectedRef}
+                    onChange={(e) => onBillsPaymentReferenceChange(e.target.value)}
+                  >
+                    <option value="">Select unpaid reference</option>
+                    {filteredBillsPaymentRefs.map((ref) => (
+                      <option key={ref.id} value={ref.id}>
+                        [{ref.sourceLabel}] {ref.referenceLabel} — {fmt(ref.amount || 0)}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label style={styles.label}>Contact</label>
+                  <input
+                    style={{ ...styles.input, background: '#111', color: '#fff' }}
+                    value={billsPaymentForm.contact}
+                    readOnly
+                  />
+
+                  <label style={styles.label}>Amount (₱)</label>
+                  <input
+                    style={{ ...styles.input, background: '#111', color: '#4caf50', fontWeight: 700 }}
+                    value={billsPaymentForm.amount}
+                    readOnly
+                  />
+
+                  <label style={styles.label}>Payment Method</label>
+                  <select
+                    style={styles.input}
+                    value={billsPaymentForm.payment_mode}
+                    onChange={(e) => setBillsPaymentForm((prev) => ({ ...prev, payment_mode: e.target.value }))}
+                  >
+                    <option value="cash_on_hand">Cash on Hand</option>
+                    <option value="cash_in_bank">Cash in Bank</option>
+                    <option value="credit_card">Credit Card</option>
+                    <option value="spaylater">SPayLater</option>
+                  </select>
+
+                  <label style={styles.label}>Notes</label>
+                  <textarea
+                    style={{ ...styles.input, minHeight: 72, resize: 'vertical' }}
+                    value={billsPaymentForm.notes}
+                    onChange={(e) => setBillsPaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Optional notes..."
+                  />
+                </div>
+
+                <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                  <span style={{ color: '#888', fontSize: 12 }}>
+                    Unpaid references available: {filteredBillsPaymentRefs.length}
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => { fetchBillsPaymentReferences(); generateBillsPaymentNumber(); }}
+                      style={styles.actionBtn}
+                    >
+                      Refresh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={payBillsPaymentReference}
+                      style={{ ...styles.primaryBtn, background: '#1a3a1a', color: '#4caf50', border: '1px solid #4caf50' }}
+                      disabled={billsPaymentSaving}
+                    >
+                      {billsPaymentSaving ? 'Processing…' : '✓ Confirm Bills Payment'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -6091,6 +7233,51 @@ const styles = {
     borderRadius: 10,
     overflowX: 'auto',
   },
+  payrollControlGrid: {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  payrollCheckBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    border: '1px solid #555',
+    background: 'transparent',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 700,
+    fontFamily: 'Poppins, sans-serif',
+  },
+  payrollTableWrap: {
+    background: '#1a1a1a',
+    border: '1px solid #333',
+    borderRadius: 6,
+    overflowX: 'auto',
+  },
+  payrollTh: {
+    padding: '8px 10px',
+    textAlign: 'left',
+    color: '#ffc107',
+    borderBottom: '1px solid #333',
+    borderRight: '1px solid #2f2f2f',
+    fontWeight: 600,
+    background: '#111',
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+  },
+  payrollTd: {
+    padding: '7px 10px',
+    color: '#e0e0e0',
+    borderBottom: '1px solid #2b2b2b',
+    borderRight: '1px solid #2f2f2f',
+    fontSize: 13,
+    background: '#1a1a1a',
+  },
+  payrollTrEven: { background: '#1a1a1a' },
+  payrollTrOdd: { background: '#161616' },
   badge: {
     display: 'inline-block',
     padding: '2px 10px',

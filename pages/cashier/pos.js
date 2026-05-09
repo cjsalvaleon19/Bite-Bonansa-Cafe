@@ -11,6 +11,7 @@ import NotificationBell from '../../components/NotificationBell';
 import { getDistanceBetweenCoordinates, calculateDeliveryFee, STORE_LOCATION } from '../../utils/deliveryCalculator';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, getOrderItems } from '../../utils/receiptDepartments';
+import { addSalaryDeductionToPayroll, getPayrollEmployees, PAYROLL_STORAGE_KEY, roundToCurrency, toDateOnly } from '../../utils/payrollStorage';
 
 // Dynamically import OpenStreetMapPicker with SSR disabled
 const OpenStreetMapPicker = dynamic(
@@ -49,6 +50,8 @@ export default function CashierPOS() {
     cashTendered: '',
     gcashReference: '',
   });
+  const [payrollEmployees, setPayrollEmployees] = useState([]);
+  const [salaryDeductionEmployeeId, setSalaryDeductionEmployeeId] = useState('');
   const [pointsToUse, setPointsToUse] = useState(0);
   const [customerPointsBalance, setCustomerPointsBalance] = useState(0);
   const [deliveryFee, setDeliveryFee] = useState(0);
@@ -103,6 +106,28 @@ export default function CashierPOS() {
       setDeliveryFee(calculatedFee);
     }
   }, [deliveryCoordinates, orderMode]);
+
+  useEffect(() => {
+    const refreshPayrollEmployees = () => {
+      setPayrollEmployees(getPayrollEmployees());
+    };
+    refreshPayrollEmployees();
+    if (typeof window === 'undefined') return undefined;
+    const onStorage = (event) => {
+      if (event.key === PAYROLL_STORAGE_KEY) refreshPayrollEmployees();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  useEffect(() => {
+    if (paymentMethod === 'salary_deduction') {
+      setCombinedPayment(false);
+      setPointsToUse(0);
+      return;
+    }
+    setSalaryDeductionEmployeeId('');
+  }, [paymentMethod]);
 
   const handleLocationChange = (lat, lng) => {
     setDeliveryCoordinates({ lat, lng });
@@ -341,9 +366,16 @@ export default function CashierPOS() {
     }
   };
 
+  const selectedPayrollEmployee = payrollEmployees.find((employee) => employee.id === salaryDeductionEmployeeId);
+  const salaryDeductionMissingMatch = paymentMethod === 'salary_deduction' && !selectedPayrollEmployee;
+
   const handleCheckout = async () => {
     if (items.length === 0) {
       alert('Please add items to the cart');
+      return;
+    }
+    if (paymentMethod === 'salary_deduction' && !selectedPayrollEmployee) {
+      alert('Please select an employee to proceed with salary deduction checkout.');
       return;
     }
 
@@ -458,6 +490,36 @@ export default function CashierPOS() {
 
       if (error) throw error;
 
+      if (paymentMethod === 'salary_deduction') {
+        const deductionAmount = roundToCurrency(remainingAmount);
+        const transactionDate = toDateOnly(new Date());
+        const deductionResult = addSalaryDeductionToPayroll({
+          employeeId: selectedPayrollEmployee.id,
+          amount: deductionAmount,
+          date: transactionDate,
+          orderId: order.id,
+          notes: `Order #${order.order_number || order.id.slice(0, 8)}`,
+        });
+        if (!deductionResult.ok) {
+          throw new Error('Failed to record salary deduction. Please refresh and try again.');
+        }
+
+        const { error: journalError } = await supabase.from('journal_entries').insert({
+          date: transactionDate,
+          description: `Salary Deduction: Order #${order.order_number || order.id.slice(0, 8)}`,
+          debit_account: 'Advances to Employees',
+          credit_account: 'Revenue',
+          amount: deductionAmount,
+          reference_id: order.id,
+          reference_type: 'salary_deduction',
+          name: selectedPayrollEmployee.name,
+          reference: order.order_number || null,
+        });
+        if (journalError) {
+          throw new Error(`Salary deduction journal entry failed: ${journalError.message}`);
+        }
+      }
+
       // Insert order_items
       if (order && items.length > 0) {
         const orderItems = items.map(item => {
@@ -517,6 +579,7 @@ export default function CashierPOS() {
       setOrderMode('dine-in');
       setPaymentMethod('cash');
       setCombinedPayment(false);
+      setSalaryDeductionEmployeeId('');
 
       setOrderStatus('success');
       setTimeout(() => setOrderStatus(null), 3000);
@@ -1027,11 +1090,33 @@ export default function CashierPOS() {
                 <option value="cash">💰 Cash</option>
                 <option value="gcash">📱 GCash</option>
                 <option value="points">🎁 Points</option>
+                <option value="salary_deduction">🧾 Salary Deduction</option>
               </select>
             </div>
 
+            {paymentMethod === 'salary_deduction' && (
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Employee Name (Attendance Sheet match required)</label>
+                <select
+                  style={styles.input}
+                  value={salaryDeductionEmployeeId}
+                  onChange={(e) => setSalaryDeductionEmployeeId(e.target.value)}
+                >
+                  <option value="">Select employee</option>
+                  {payrollEmployees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>{employee.name}</option>
+                  ))}
+                </select>
+                {salaryDeductionMissingMatch && (
+                  <p style={{ ...styles.errorText, marginTop: '6px' }}>
+                    Checkout cannot proceed without a matching employee in Attendance Sheet.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Combined Payment Option */}
-            {customerPointsBalance > 0 && paymentMethod !== 'points' && (
+            {customerPointsBalance > 0 && paymentMethod !== 'points' && paymentMethod !== 'salary_deduction' && (
               <div style={styles.formGroup}>
                 <label style={styles.checkboxLabel}>
                   <input
@@ -1179,9 +1264,9 @@ export default function CashierPOS() {
             <div style={styles.cartActions}>
               <button style={styles.clearBtn} onClick={clearCart} disabled={items.length === 0}>Clear</button>
               <button
-                style={{ ...styles.checkoutBtn, opacity: items.length === 0 || checkoutLoading ? 0.6 : 1 }}
+                style={{ ...styles.checkoutBtn, opacity: items.length === 0 || checkoutLoading || salaryDeductionMissingMatch ? 0.6 : 1 }}
                 onClick={handleCheckout}
-                disabled={items.length === 0 || checkoutLoading}
+                disabled={items.length === 0 || checkoutLoading || salaryDeductionMissingMatch}
               >
                 {checkoutLoading ? '⏳ Processing…' : '✔ Checkout'}
               </button>
