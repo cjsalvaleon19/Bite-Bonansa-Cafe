@@ -1558,32 +1558,32 @@ function CartContent({
 
   return (
     <div className="flex flex-1 flex-col">
-      <ScrollArea className="flex-1 pr-4">
+      <ScrollArea className="flex-1 pr-2 sm:pr-4">
         <div className="space-y-3">
           {cart.map((item) => {
             const variantEntries = item.variantDetails ? Object.entries(item.variantDetails) : []
             const showLegacyVariety = item.selectedVariety && variantEntries.length === 0
             return (
               <div key={item.id} className="rounded-lg border border-border p-2 space-y-1">
-                <div className="flex items-start gap-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-foreground break-words">{item.menuItem.name}</p>
                     {(showLegacyVariety || variantEntries.length > 0 || item.selectedSize || item.selectedAddons.length > 0) && (
                       <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
                         {variantEntries.map(([variantType, value]) => {
                           const variantLabel = variantType.charAt(0).toUpperCase() + variantType.slice(1)
-                          return <p key={variantType}>{variantLabel}: {value}</p>
+                          return <p key={variantType} className="break-words whitespace-normal">{variantLabel}: {value}</p>
                         })}
-                        {showLegacyVariety && <p>Variety: {item.selectedVariety}</p>}
-                        {item.selectedSize && <p>Size: {item.selectedSize}</p>}
+                        {showLegacyVariety && <p className="break-words whitespace-normal">Variety: {item.selectedVariety}</p>}
+                        {item.selectedSize && <p className="break-words whitespace-normal">Size: {item.selectedSize}</p>}
                         {item.selectedAddons.length > 0 && (
-                          <p>Add-ons: {item.selectedAddons.map(a => a.name).join(', ')}</p>
+                          <p className="break-words whitespace-normal">Add-ons: {item.selectedAddons.map(a => a.name).join(', ')}</p>
                         )}
                       </div>
                     )}
                     <p className="text-sm text-muted-foreground">{formatCurrency(item.basePrice + item.addonPrice)} each</p>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0 self-end sm:self-auto">
                     <Button variant="outline" size="sm" className="h-8 w-8 sm:h-7 sm:w-7 touch-manipulation" onClick={() => updateQuantity(item.id, -1)}>
                       <Minus className="h-3 w-3" />
                     </Button>
