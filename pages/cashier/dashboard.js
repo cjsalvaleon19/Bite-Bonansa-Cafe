@@ -691,8 +691,6 @@ export default function CashierDashboard() {
             <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
             <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
           </div>` : ''}
-          <p style="margin-top: 10px;">Accepted by: ${user?.full_name || 'Cashier'}</p>
-          <p>${new Date().toLocaleString()}</p>
         </div>
 
         <div style="text-align: center; margin-top: 20px;">

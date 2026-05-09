@@ -317,12 +317,10 @@ function qrCodeBytes(url) {
  * @param {object} order  - The order object (supports both `order_items` and `items` shapes)
  * @param {'sales'|'kitchen'} [receiptType='sales']
  * @param {object} [opts]
- * @param {string}  [opts.cashierName]           - Displayed in footer (default: 'Cashier')
  * @param {string}  [opts.customerLoyaltyId]     - BBC-XXXXX loyalty card number
  * @param {number}  [opts.cashTendered]          - Overrides order.cash_amount
  * @param {string}  [opts.displayPaymentMethod]  - Overrides order.payment_method display
  * @param {string}  [opts.departmentName]        - Kitchen department/station label
- * @param {boolean} [opts.omitFooterMeta]        - Omits "Accepted by" and printed date lines
  * @returns {Uint8Array}
  */
 export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
@@ -355,7 +353,6 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     || order.customer_phone
     || order.contact_number
     || null;
-  const cashier = opts.cashierName || 'Cashier';
   const payStr  = opts.displayPaymentMethod || order.payment_method || 'N/A';
 
   const b = [];
@@ -524,12 +521,6 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...CMD.BOLD_ON, ...encodeText('Scan to Order Online\n'), ...CMD.BOLD_OFF);
     b.push(...encodeText('bitebonansacafe.com\n'));
   }
-  if (!opts.omitFooterMeta) {
-    b.push(...CMD.LF, ...CMD.ALIGN_LEFT);
-    b.push(...encodeText(`Accepted by: ${cashier}\n`));
-    b.push(...encodeText(`${formatReceiptDate(Date.now())}\n`));
-  }
-
   // ── Feed + cut ────────────────────────────────────────────────────────────
   b.push(...CMD.FEED_1CM);
   b.push(...CMD.CUT);
