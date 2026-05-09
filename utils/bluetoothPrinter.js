@@ -21,8 +21,8 @@ import { formatOrderModeLabel, formatOrderSlipItemDetails, getOrderSlipNumber } 
 
 const PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb';
 const PRINTER_CHAR_UUID    = '00002af1-0000-1000-8000-00805f9b34fb';
-// Conservative chunk size for better Android BLE compatibility (incl. Xiaomi tablets).
-const CHUNK_SIZE           = 20;
+// Conservative default for better Android BLE compatibility (incl. Xiaomi tablets).
+const DEFAULT_CHUNK_SIZE   = 20;
 const DEFAULT_PAPER_WIDTH  = 48;   // characters per line on 80 mm paper
 const PRINTER_WIDTH_KEY    = 'bbc_printer_paper_width';
 // Keep one explicit locale/format for receipt timestamps so output remains
@@ -544,14 +544,19 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
 export async function printToBluetoothPrinter(order, receiptType = 'sales', opts = {}) {
   const characteristic = await connectPrinter();
   const data = buildReceiptBytes(order, receiptType, opts);
+  const chunkSize = Number.isFinite(opts.chunkSize)
+    ? Math.min(512, Math.max(20, Math.floor(opts.chunkSize)))
+    : DEFAULT_CHUNK_SIZE;
 
+  // A short inter-chunk pause helps low-buffer BLE printer firmware avoid drops
+  // on Android devices; callers can override this when faster printers are used.
   const delayMs = Number.isFinite(opts.chunkDelayMs)
     ? Math.max(0, Math.floor(opts.chunkDelayMs))
     : 10;
 
-  // Send in CHUNK_SIZE slices to stay within conservative BLE buffer limits.
-  for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
-    const chunk = data.slice(offset, offset + CHUNK_SIZE);
+  // Send in bounded slices to stay within BLE buffer limits.
+  for (let offset = 0; offset < data.length; offset += chunkSize) {
+    const chunk = data.slice(offset, offset + chunkSize);
     if (typeof characteristic.writeValueWithoutResponse === 'function') {
       await characteristic.writeValueWithoutResponse(chunk);
     } else if (typeof characteristic.writeValueWithResponse === 'function') {
@@ -559,7 +564,7 @@ export async function printToBluetoothPrinter(order, receiptType = 'sales', opts
     } else {
       await characteristic.writeValue(chunk);
     }
-    if (delayMs > 0 && (offset + CHUNK_SIZE) < data.length) {
+    if (delayMs > 0 && (offset + chunkSize) < data.length) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
