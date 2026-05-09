@@ -332,7 +332,7 @@ export default function EndOfDayReport() {
                 ${orderItems.map((item) => {
                   const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
                   const subvariantHtml = subvariantLines
-                    .map((line) => `<div style="font-size: 11.81px; padding-top: 2px; padding-left: 10px;">${line}</div>`)
+                    .map((line) => `<div style="font-size: 15.75px; padding-top: 2px; padding-left: 10px;">${line}</div>`)
                     .join('');
                   return `
                     <tr>

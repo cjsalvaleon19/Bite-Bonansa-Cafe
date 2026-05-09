@@ -446,7 +446,7 @@ export default function CashierDashboard() {
       const kitchenItemsHtml = items.map((item) => {
         const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
         const subvariantHtml = subvariantLines
-          .map((line) => `<div style="font-size: 13.5px; padding-top: 2px; padding-left: 12px;">${line}</div>`)
+          .map((line) => `<div style="font-size: 18px; padding-top: 2px; padding-left: 12px;">${line}</div>`)
           .join('');
         return `
           <tr>
