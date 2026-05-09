@@ -1595,8 +1595,8 @@ function CartContent({
                     <p className="font-medium text-foreground break-words">{item.menuItem.name}</p>
                     {(showLegacyVariety || variantEntries.length > 0 || item.selectedSize || item.selectedAddons.length > 0) && (
                       <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
-                        {variantEntries.map(([type, value]) => (
-                          <p key={type}>{type}: {value}</p>
+                        {variantEntries.map(([variantType, value]) => (
+                          <p key={variantType}>{variantType}: {value}</p>
                         ))}
                         {showLegacyVariety && <p>Variety: {item.selectedVariety}</p>}
                         {item.selectedSize && <p>Size: {item.selectedSize}</p>}
