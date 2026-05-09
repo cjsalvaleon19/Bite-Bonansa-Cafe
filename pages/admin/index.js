@@ -10,9 +10,13 @@ import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import {
   buildDefaultPayrollData,
+  DAILY_PAYROLL_RATE,
   getPayrollCycleDays,
   loadPayrollData,
   normalizePayrollData,
+  PAYROLL_STORAGE_KEY,
+  roundToCurrency,
+  SALARY_DEDUCTION_SOURCE,
   savePayrollData,
   createId,
 } from '../../utils/payrollStorage';
@@ -1955,7 +1959,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const onStorage = (event) => {
-      if (event.key === 'bbc_payroll_attendance_v1') loadPayrollState();
+      if (event.key === PAYROLL_STORAGE_KEY) loadPayrollState();
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -2064,7 +2068,7 @@ export default function AdminPage() {
 
   const saveDeductionEntry = () => {
     if (!selectedDeductionEmployee || !payrollCanEdit) return;
-    const amount = Math.round((Number(deductionForm.amount) || 0) * 100) / 100;
+    const amount = roundToCurrency(deductionForm.amount);
     if (amount <= 0) {
       setPayrollMessage('Deduction amount must be greater than zero.');
       return;
@@ -5225,7 +5229,7 @@ export default function AdminPage() {
                   <tbody>
                     {(payrollData.employees || []).map((employee, idx) => {
                       const presentCount = (employee.daily || []).filter(Boolean).length;
-                      const grossPayroll = presentCount * 266.67;
+                      const grossPayroll = presentCount * DAILY_PAYROLL_RATE;
                       const deductionsTotal = (employee.deductions || []).reduce((sum, deduction) => sum + (Number(deduction.amount) || 0), 0);
                       const netPay = grossPayroll - deductionsTotal;
                       return (
@@ -5286,7 +5290,7 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>
                           {fmt((payrollData.employees || []).reduce((sum, employee) => {
                             const present = (employee.daily || []).filter(Boolean).length;
-                            const gross = present * 266.67;
+                            const gross = present * DAILY_PAYROLL_RATE;
                             const ded = (employee.deductions || []).reduce((dSum, deduction) => dSum + (Number(deduction.amount) || 0), 0);
                             return sum + (gross - ded);
                           }, 0))}
@@ -5376,7 +5380,7 @@ export default function AdminPage() {
 
                     <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                       <button type="button" style={styles.actionBtn} onClick={() => setDeductionForm((prev) => ({ ...prev, id: null, amount: '', notes: '' }))}>
-                        Edit
+                        Clear
                       </button>
                       <button type="button" style={styles.primaryBtn} onClick={saveDeductionEntry} disabled={!payrollCanEdit}>
                         Save
@@ -5396,14 +5400,14 @@ export default function AdminPage() {
                               <td style={styles.td}>{deduction.date}</td>
                               <td style={styles.td}>{deduction.type}</td>
                               <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>{fmt(deduction.amount || 0)}</td>
-                              <td style={styles.td}>{deduction.source === 'cashier_salary_deduction' ? 'Cashier' : 'Manual'}</td>
+                              <td style={styles.td}>{deduction.source === SALARY_DEDUCTION_SOURCE ? 'Cashier' : 'Manual'}</td>
                               <td style={styles.td}>
                                 <button type="button" style={styles.actionBtn} onClick={() => editDeduction(deduction)} disabled={!payrollCanEdit}>Edit</button>
                                 <button
                                   type="button"
                                   style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
                                   onClick={() => deleteDeductionEntry(deduction.id)}
-                                  disabled={!payrollCanEdit || deduction.source === 'cashier_salary_deduction'}
+                                  disabled={!payrollCanEdit || deduction.source === SALARY_DEDUCTION_SOURCE}
                                 >
                                   Delete
                                 </button>

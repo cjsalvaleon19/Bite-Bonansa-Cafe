@@ -11,7 +11,7 @@ import NotificationBell from '../../components/NotificationBell';
 import { getDistanceBetweenCoordinates, calculateDeliveryFee, STORE_LOCATION } from '../../utils/deliveryCalculator';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, getOrderItems } from '../../utils/receiptDepartments';
-import { addSalaryDeductionToPayroll, getPayrollEmployees } from '../../utils/payrollStorage';
+import { addSalaryDeductionToPayroll, getPayrollEmployees, PAYROLL_STORAGE_KEY, roundToCurrency } from '../../utils/payrollStorage';
 
 // Dynamically import OpenStreetMapPicker with SSR disabled
 const OpenStreetMapPicker = dynamic(
@@ -114,7 +114,7 @@ export default function CashierPOS() {
     refreshPayrollEmployees();
     if (typeof window === 'undefined') return undefined;
     const onStorage = (event) => {
-      if (event.key === 'bbc_payroll_attendance_v1') refreshPayrollEmployees();
+      if (event.key === PAYROLL_STORAGE_KEY) refreshPayrollEmployees();
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -491,9 +491,10 @@ export default function CashierPOS() {
       if (error) throw error;
 
       if (paymentMethod === 'salary_deduction') {
+        const deductionAmount = roundToCurrency(remainingAmount);
         const deductionResult = addSalaryDeductionToPayroll({
           employeeId: selectedPayrollEmployee.id,
-          amount: remainingAmount,
+          amount: deductionAmount,
           date: new Date().toISOString(),
           orderId: order.id,
           notes: `Order #${order.order_number || order.id.slice(0, 8)}`,
@@ -507,7 +508,7 @@ export default function CashierPOS() {
           description: `Salary Deduction: Order #${order.order_number || order.id.slice(0, 8)}`,
           debit_account: 'Advances to Employees',
           credit_account: 'Revenue',
-          amount: Math.round((Number(remainingAmount) || 0) * 100) / 100,
+          amount: deductionAmount,
           reference_id: order.id,
           reference_type: 'salary_deduction',
           name: selectedPayrollEmployee.name,

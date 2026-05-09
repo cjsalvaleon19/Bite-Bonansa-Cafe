@@ -1,5 +1,7 @@
 const PAYROLL_STORAGE_KEY = 'bbc_payroll_attendance_v1';
 const PAYROLL_CYCLE_DAYS = 15;
+const DAILY_PAYROLL_RATE = 266.67;
+const SALARY_DEDUCTION_SOURCE = 'cashier_salary_deduction';
 
 function toDateOnly(value) {
   const d = value ? new Date(value) : new Date();
@@ -9,6 +11,10 @@ function toDateOnly(value) {
 
 function createId(prefix = 'id') {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function roundToCurrency(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
 }
 
 function getDefaultCycleStart() {
@@ -28,7 +34,10 @@ function ensureDailyArray(daily = [], cycleDays = []) {
 }
 
 export function getPayrollCycleDays(cycleStart, count = PAYROLL_CYCLE_DAYS) {
-  const start = new Date(cycleStart || getDefaultCycleStart());
+  const proposedStart = new Date(cycleStart || getDefaultCycleStart());
+  const start = Number.isNaN(proposedStart.getTime())
+    ? new Date(getDefaultCycleStart())
+    : proposedStart;
   return Array.from({ length: count }, (_, idx) => {
     const d = new Date(start);
     d.setDate(start.getDate() + idx);
@@ -75,7 +84,7 @@ export function normalizePayrollData(rawData) {
                 id: d?.id || createId('ded'),
                 date: toDateOnly(d?.date || new Date()),
                 type: d?.type || 'Cash Advance',
-                amount: Number(d?.amount) || 0,
+                amount: roundToCurrency(d?.amount),
                 notes: d?.notes || '',
                 source: d?.source || 'manual',
                 processed: Boolean(d?.processed),
@@ -120,9 +129,9 @@ export function addSalaryDeductionToPayroll({ employeeId, amount, date, orderId,
     id: createId('ded'),
     date: toDateOnly(date || new Date()),
     type: 'Cash Advance',
-    amount: Math.round((Number(amount) || 0) * 100) / 100,
+    amount: roundToCurrency(amount),
     notes: notes || 'Salary deduction from cashier checkout',
-    source: 'cashier_salary_deduction',
+    source: SALARY_DEDUCTION_SOURCE,
     processed: true,
     orderId: orderId || null,
   };
@@ -140,4 +149,11 @@ export function addSalaryDeductionToPayroll({ employeeId, amount, date, orderId,
   return { ok: true, data: next, deduction };
 }
 
-export { PAYROLL_STORAGE_KEY, PAYROLL_CYCLE_DAYS, createId };
+export {
+  PAYROLL_STORAGE_KEY,
+  PAYROLL_CYCLE_DAYS,
+  DAILY_PAYROLL_RATE,
+  SALARY_DEDUCTION_SOURCE,
+  createId,
+  roundToCurrency,
+};
