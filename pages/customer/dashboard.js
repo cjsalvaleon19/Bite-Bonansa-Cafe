@@ -503,8 +503,8 @@ export default function CustomerDashboard() {
                 onChange={(event) => setPurchaseSortOrder(event.target.value)}
                 style={styles.purchaseSortSelect}
               >
-                <option value="most">Most Purchased → Least Purchased</option>
-                <option value="least">Least Purchased → Most Purchased</option>
+                <option value="most">Most Purchased to Least Purchased</option>
+                <option value="least">Least Purchased to Most Purchased</option>
               </select>
             </div>
             {dashboardData.mostPurchasedItems.length > 0 ? (
@@ -520,7 +520,7 @@ export default function CustomerDashboard() {
                         ...(focusedCardId === purchase.menu_item_id ? styles.itemCardFocused : {})
                       }}
                       type="button"
-                      aria-label={`Add ${item?.name || 'item'} to cart`}
+                      aria-label={`Add ${quantity} ${item?.name || 'item'} to cart`}
                       onClick={() => handleAddToCart(purchase)}
                       onFocus={() => setFocusedCardId(purchase.menu_item_id)}
                       onBlur={() => setFocusedCardId(null)}
