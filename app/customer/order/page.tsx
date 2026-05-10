@@ -1862,20 +1862,20 @@ function CartContent({
                 {/* Bottom row: qty controls (left) and total price (right) */}
                 <div className="flex min-w-0 items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
-                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" onClick={(event) => {
+                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" aria-label={`Decrease quantity for ${item.menuItem.name}`} onClick={(event) => {
                       event.stopPropagation()
                       updateQuantity(item.id, -1)
                     }}>
                       <Minus className="h-3 w-3" />
                     </Button>
                     <span className="w-6 sm:w-8 text-center font-medium text-sm text-foreground">{item.quantity}</span>
-                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" onClick={(event) => {
+                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" aria-label={`Increase quantity for ${item.menuItem.name}`} onClick={(event) => {
                       event.stopPropagation()
                       updateQuantity(item.id, 1)
                     }}>
                       <Plus className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 text-destructive touch-manipulation px-0" onClick={(event) => {
+                    <Button variant="ghost" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 text-destructive touch-manipulation px-0" aria-label={`Remove ${item.menuItem.name} from cart`} onClick={(event) => {
                       event.stopPropagation()
                       removeFromCart(item.id)
                     }}>
