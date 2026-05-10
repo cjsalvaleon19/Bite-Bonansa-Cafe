@@ -169,7 +169,7 @@ function calcEarnedPoints(subtotal: number): number {
   return calculated
 }
 
-function normalizeVariantValue(rawValue: unknown): string[] {
+function normalizeVariantValues(rawValue: unknown): string[] {
   if (Array.isArray(rawValue)) {
     return rawValue.map((value) => String(value).trim()).filter(Boolean)
   }
@@ -339,7 +339,7 @@ function CustomerOrderPage() {
       const variantTypeName = variantType?.variant_type_name
       if (!variantTypeName) return
 
-      const selectedValues = normalizeVariantValue((cartItem.variantDetails as Record<string, unknown>)[variantTypeName])
+      const selectedValues = normalizeVariantValues((cartItem.variantDetails as Record<string, unknown>)[variantTypeName])
       if (selectedValues.length === 0) return
 
       const selectedValueSet = new Set(selectedValues.map((value) => value.toLowerCase()))
