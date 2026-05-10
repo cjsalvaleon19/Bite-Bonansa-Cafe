@@ -7,6 +7,7 @@ import NotificationBell from '../../components/NotificationBell';
 import { isSundayInManila, SUNDAY_CLOSURE_MESSAGE } from '../../lib/store';
 
 const SUNDAY_LOGIN_REMINDER_KEY = 'bite-bonanza-sunday-login-reminder';
+const HISTORY_CART_KEY_PREFIX = 'history';
 
 const normalizeQuantity = (value) => Math.max(1, Number(value) || 1);
 
@@ -260,7 +261,12 @@ export default function CustomerDashboard() {
               const preferredSelection = Array.from(entry.selections.values()).sort((a, b) => {
                 if (b.count !== a.count) return b.count - a.count;
                 return (b.lastPurchasedAt || '').localeCompare(a.lastPurchasedAt || '');
-              })[0];
+              })[0] || {
+                variantDetails: null,
+                quantity: 1,
+                unitPrice: Number(item.price) || 0,
+                variantKey: 'default',
+              };
 
               return {
                 menu_item_id: entry.menu_item_id,
@@ -361,7 +367,7 @@ export default function CustomerDashboard() {
       'pendingCartItem',
       JSON.stringify({
         ...item,
-        cartKey: `${item.id}|history|${preferredVariantKey}`,
+        cartKey: `${item.id}|${HISTORY_CART_KEY_PREFIX}|${preferredVariantKey}`,
         variantDetails: preferredVariantDetails,
         finalPrice: preferredUnitPrice,
         quantity: preferredQuantity,
@@ -760,7 +766,6 @@ const styles = {
     color: '#fff',
     width: '100%',
     cursor: 'pointer',
-    outline: 'none',
   },
   itemCardFocused: {
     boxShadow: '0 0 0 2px #ffc107',
