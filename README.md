@@ -91,6 +91,11 @@ Edit `.env.local` with the following variables (all are required):
 | `NEXT_PUBLIC_API_URL` | Your app's base URL | `http://localhost:3000` for local dev |
 
 > ⚠️ **Never commit your `.env.local` file or expose `SUPABASE_SERVICE_ROLE_KEY` on the client.**
+>
+> If a secret is ever committed:
+> 1. Rotate the leaked key in Supabase immediately.
+> 2. Rewrite Git history to remove the leaked value from all commits.
+> 3. Force-push cleaned branches and ask collaborators to rebase/reset.
 
 ### 3. Run the development server
 ```bash
