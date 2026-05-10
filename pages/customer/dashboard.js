@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import NotificationBell from '../../components/NotificationBell';
 import { isSundayInManila, SUNDAY_CLOSURE_MESSAGE } from '../../lib/store';
+import VariantSelectionModal from '../../components/VariantSelectionModal';
 
 const SUNDAY_LOGIN_REMINDER_KEY = 'bite-bonanza-sunday-login-reminder';
 const normalizeQuantity = (value) => Math.max(1, Number(value) || 1);
@@ -23,6 +24,10 @@ export default function CustomerDashboard() {
   const [showSundayReminder, setShowSundayReminder] = useState(false);
   const [purchaseSortOrder, setPurchaseSortOrder] = useState('most');
   const [focusedCardId, setFocusedCardId] = useState(null);
+  const [variantModalItem, setVariantModalItem] = useState(null);
+  const [loadingItemId, setLoadingItemId] = useState(null);
+  const [cartFeedback, setCartFeedback] = useState(null);
+  const cartFeedbackTimerRef = useRef(null);
   const [dashboardData, setDashboardData] = useState({
     loyaltyBalance: 0,
     currentOrder: null,
@@ -349,10 +354,102 @@ export default function CustomerDashboard() {
     router.replace('/login').catch(console.error);
   };
 
-  const handleAddToCart = (purchase) => {
+  const handleAddToCart = async (purchase) => {
     const item = purchase?.menu_items;
     if (!item?.id) return;
-    router.push(`/customer/order?addItem=${item.id}`).catch(console.error);
+
+    setLoadingItemId(item.id);
+
+    try {
+      let fullItem = { ...item, variant_types: [] };
+
+      if (item.has_variants) {
+        const { data: variantTypes } = await supabase
+          .from('menu_item_variant_types')
+          .select(`
+            id,
+            variant_type_name,
+            is_required,
+            allow_multiple,
+            display_order,
+            options:menu_item_variant_options(
+              id,
+              option_name,
+              price_modifier,
+              available,
+              display_order
+            )
+          `)
+          .eq('menu_item_id', item.id)
+          .order('display_order');
+
+        fullItem = { ...item, variant_types: variantTypes || [] };
+      }
+
+      setVariantModalItem(fullItem);
+    } catch (err) {
+      console.error('[CustomerDashboard] Failed to load item variants:', err);
+      setVariantModalItem({ ...item, variant_types: [] });
+    } finally {
+      setLoadingItemId(null);
+    }
+  };
+
+  const handleVariantConfirm = (itemWithVariants) => {
+    const { cartKey, finalPrice, quantity, variantDetails } = itemWithVariants;
+
+    const variantSummary =
+      variantDetails && typeof variantDetails === 'object'
+        ? Object.entries(variantDetails)
+            .map(([type, value]) => `${type}: ${value}`)
+            .join(', ')
+        : undefined;
+
+    try {
+      const savedCart = JSON.parse(localStorage.getItem('bite-bonanza-cart') || '[]');
+      const existing = savedCart.find((c) => c.comboKey === cartKey);
+
+      let updatedCart;
+      if (existing) {
+        updatedCart = savedCart.map((c) =>
+          c.comboKey === cartKey
+            ? { ...c, quantity: c.quantity + quantity, price: (c.quantity + quantity) * finalPrice }
+            : c
+        );
+      } else {
+        updatedCart = [
+          ...savedCart,
+          {
+            id: String(Date.now()),
+            comboKey: cartKey,
+            menuItemId: itemWithVariants.id,
+            menuItem: itemWithVariants,
+            quantity,
+            basePrice: finalPrice,
+            addonPrice: 0,
+            price: finalPrice * quantity,
+            selectedVariety: variantSummary,
+            selectedSize: undefined,
+            selectedAddons: [],
+            variantDetails: variantDetails,
+          },
+        ];
+      }
+
+      localStorage.setItem('bite-bonanza-cart', JSON.stringify(updatedCart));
+    } catch (err) {
+      console.error('[CustomerDashboard] Failed to update cart:', err);
+    }
+
+    setVariantModalItem(null);
+
+    if (cartFeedbackTimerRef.current) clearTimeout(cartFeedbackTimerRef.current);
+    setCartFeedback(`✅ ${itemWithVariants.name} added to cart!`);
+    cartFeedbackTimerRef.current = setTimeout(() => setCartFeedback(null), 3000);
+  };
+
+  const handleVariantCancel = () => {
+    setVariantModalItem(null);
   };
 
   const getStatusDisplay = (status, orderMode) => {
@@ -495,7 +592,9 @@ export default function CustomerDashboard() {
                       key={purchase.menu_item_id}
                       style={{
                         ...styles.itemCard,
-                        ...(focusedCardId === purchase.menu_item_id ? styles.itemCardFocused : {})
+                        ...(focusedCardId === purchase.menu_item_id ? styles.itemCardFocused : {}),
+                        opacity: loadingItemId === purchase.menu_item_id ? 0.6 : 1,
+                        pointerEvents: loadingItemId ? 'none' : 'auto',
                       }}
                       type="button"
                       aria-label={`Customize and add ${item?.name || 'item'} to cart`}
@@ -516,7 +615,7 @@ export default function CustomerDashboard() {
                         Ordered {purchase.purchase_count} {purchase.purchase_count === 1 ? 'time' : 'times'}
                       </p>
                       <div style={styles.addToCartBtn}>
-                        🛒 Customize & Add to Cart
+                        {loadingItemId === purchase.menu_item_id ? '⏳ Loading…' : '🛒 Add to Cart'}
                       </div>
                     </button>
                   );
@@ -541,6 +640,22 @@ export default function CustomerDashboard() {
                 OK
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Subvariant selection modal for Most Purchased items */}
+        {variantModalItem && (
+          <VariantSelectionModal
+            item={variantModalItem}
+            onConfirm={handleVariantConfirm}
+            onCancel={handleVariantCancel}
+          />
+        )}
+
+        {/* Cart feedback toast */}
+        {cartFeedback && (
+          <div style={styles.cartToast} role="status" aria-live="polite">
+            {cartFeedback}
           </div>
         )}
       </div>
@@ -867,5 +982,22 @@ const styles = {
     fontWeight: '600',
     fontSize: '14px',
     fontFamily: "'Poppins', sans-serif",
+  },
+  cartToast: {
+    position: 'fixed',
+    bottom: '24px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    backgroundColor: '#1a1a1a',
+    border: '1px solid #4caf50',
+    color: '#4caf50',
+    padding: '12px 24px',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
+    fontWeight: '600',
+    zIndex: 2000,
+    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+    whiteSpace: 'nowrap',
   },
 };
