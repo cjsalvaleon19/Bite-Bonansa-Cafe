@@ -135,7 +135,7 @@ function isWithinDeliverySchedule(): boolean {
   return manilaMinutes >= DELIVERY_SCHEDULE_START_MINUTES && manilaMinutes <= DELIVERY_SCHEDULE_END_MINUTES
 }
 
-const DELIVERY_SCHEDULE_LABEL = `${formatMinutesTo12Hour(DELIVERY_SCHEDULE_START_MINUTES)} – ${formatMinutesTo12Hour(DELIVERY_SCHEDULE_END_MINUTES)} (PH Time, UTC+08:00)`
+const DELIVERY_SCHEDULE_LABEL = `${formatMinutesTo12Hour(DELIVERY_SCHEDULE_START_MINUTES)} - ${formatMinutesTo12Hour(DELIVERY_SCHEDULE_END_MINUTES)} (PH Time, UTC+08:00)`
 
 function calcEarnedPoints(subtotal: number): number {
   if (subtotal <= 0) return 0
