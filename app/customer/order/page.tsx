@@ -97,9 +97,19 @@ const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz'])
  */
 const CART_LOAD_DELAY_MS = 100
 const DELIVERY_TIMEZONE = 'Asia/Manila'
-const DELIVERY_SCHEDULE_START_MINUTES = 10 * 60 // 10:00 AM
-const DELIVERY_SCHEDULE_END_MINUTES = 17 * 60 // 5:00 PM
-const DELIVERY_SCHEDULE_LABEL = '10:00 AM – 5:00 PM (PH Time, UTC+08:00)'
+const DELIVERY_START_HOUR = 10
+const DELIVERY_END_HOUR = 17
+const DELIVERY_SCHEDULE_START_MINUTES = DELIVERY_START_HOUR * 60
+const DELIVERY_SCHEDULE_END_MINUTES = DELIVERY_END_HOUR * 60
+const DELIVERY_SCHEDULE_LABEL = `${formatMinutesTo12Hour(DELIVERY_SCHEDULE_START_MINUTES)} – ${formatMinutesTo12Hour(DELIVERY_SCHEDULE_END_MINUTES)} (PH Time, UTC+08:00)`
+
+function formatMinutesTo12Hour(minutesOfDay: number): string {
+  const hours24 = Math.floor(minutesOfDay / 60)
+  const minutes = minutesOfDay % 60
+  const suffix = hours24 >= 12 ? 'PM' : 'AM'
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12
+  return `${hours12}:${String(minutes).padStart(2, '0')} ${suffix}`
+}
 
 function getCurrentManilaMinutesOfDay(): number {
   const parts = new Intl.DateTimeFormat('en-US', {
