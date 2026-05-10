@@ -1689,10 +1689,12 @@ function CartContent({
               <MapPin className="mr-2 h-4 w-4" />
               Search &amp; Pin Location on Map
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Delivery schedule: {DELIVERY_SCHEDULE_LABEL}
-            </p>
-            {!isDeliveryScheduleOpen && (
+            {!isSundayClosed && (
+              <p className="text-xs text-muted-foreground">
+                Delivery schedule: {DELIVERY_SCHEDULE_LABEL}
+              </p>
+            )}
+            {!isSundayClosed && !isDeliveryScheduleOpen && (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 Delivery is currently closed. Delivery orders are accepted from {DELIVERY_SCHEDULE_LABEL}.
               </div>
