@@ -101,7 +101,6 @@ const DELIVERY_START_HOUR = 10
 const DELIVERY_END_HOUR = 17
 const DELIVERY_SCHEDULE_START_MINUTES = DELIVERY_START_HOUR * 60
 const DELIVERY_SCHEDULE_END_MINUTES = DELIVERY_END_HOUR * 60
-const DELIVERY_SCHEDULE_LABEL = `${formatMinutesTo12Hour(DELIVERY_SCHEDULE_START_MINUTES)} – ${formatMinutesTo12Hour(DELIVERY_SCHEDULE_END_MINUTES)} (PH Time, UTC+08:00)`
 
 function formatMinutesTo12Hour(minutesOfDay: number): string {
   const hours24 = Math.floor(minutesOfDay / 60)
@@ -125,7 +124,7 @@ function getCurrentManilaMinutesOfDay(): number {
   const minutes = Number.parseInt(minutePart, 10)
 
   if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-    return 0
+    return -1
   }
 
   return (hours * 60) + minutes
@@ -135,6 +134,8 @@ function isWithinDeliverySchedule(): boolean {
   const manilaMinutes = getCurrentManilaMinutesOfDay()
   return manilaMinutes >= DELIVERY_SCHEDULE_START_MINUTES && manilaMinutes <= DELIVERY_SCHEDULE_END_MINUTES
 }
+
+const DELIVERY_SCHEDULE_LABEL = `${formatMinutesTo12Hour(DELIVERY_SCHEDULE_START_MINUTES)} – ${formatMinutesTo12Hour(DELIVERY_SCHEDULE_END_MINUTES)} (PH Time, UTC+08:00)`
 
 function calcEarnedPoints(subtotal: number): number {
   if (subtotal <= 0) return 0
