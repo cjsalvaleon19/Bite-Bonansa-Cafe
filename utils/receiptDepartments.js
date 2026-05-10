@@ -2,7 +2,7 @@ export const FALLBACK_KITCHEN_DEPARTMENT = 'General Kitchen';
 
 const DEPARTMENT_NAME_PATTERNS = [
   { pattern: /\bdrinks?\b/i, name: 'Drinks' },
-  { pattern: /\bfried?\b/i, name: 'Fried' },
+  { pattern: /\bfr(?:y|ied)\b/i, name: 'Fried' },
   { pattern: /\bpastr(?:y|ies)\b/i, name: 'Pastries' },
 ];
 
