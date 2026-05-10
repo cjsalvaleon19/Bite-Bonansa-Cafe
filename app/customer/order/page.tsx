@@ -1579,6 +1579,7 @@ function CartContent({
   maxPointsUsable, actualPointsToUse, remainingBalance,
 }: CartContentProps) {
   const change = paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
+  const isDeliveryScheduleOpen = isWithinDeliverySchedule()
 
   if (cart.length === 0) {
     return (
