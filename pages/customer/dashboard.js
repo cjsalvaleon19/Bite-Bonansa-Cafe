@@ -7,8 +7,6 @@ import NotificationBell from '../../components/NotificationBell';
 import { isSundayInManila, SUNDAY_CLOSURE_MESSAGE } from '../../lib/store';
 
 const SUNDAY_LOGIN_REMINDER_KEY = 'bite-bonanza-sunday-login-reminder';
-const HISTORY_CART_KEY_PREFIX = 'history';
-
 const normalizeQuantity = (value) => Math.max(1, Number(value) || 1);
 
 const generateVariantKey = (variantDetails) => (
@@ -354,26 +352,7 @@ export default function CustomerDashboard() {
   const handleAddToCart = (purchase) => {
     const item = purchase?.menu_items;
     if (!item?.id) return;
-
-    const preferredQuantity = normalizeQuantity(purchase?.preferred_quantity);
-    const preferredVariantDetails =
-      purchase?.preferred_variant_details && typeof purchase.preferred_variant_details === 'object'
-        ? purchase.preferred_variant_details
-        : null;
-    const preferredUnitPrice = Number(purchase?.preferred_unit_price) || Number(item.price) || 0;
-    const preferredVariantKey = purchase?.preferred_variant_key || generateVariantKey(preferredVariantDetails);
-
-    localStorage.setItem(
-      'pendingCartItem',
-      JSON.stringify({
-        ...item,
-        cartKey: `${item.id}|${HISTORY_CART_KEY_PREFIX}|${preferredVariantKey}`,
-        variantDetails: preferredVariantDetails,
-        finalPrice: preferredUnitPrice,
-        quantity: preferredQuantity,
-      })
-    );
-    router.push('/customer/order').catch(console.error);
+    router.push(`/customer/order?addItem=${item.id}`).catch(console.error);
   };
 
   const getStatusDisplay = (status, orderMode) => {
@@ -511,7 +490,6 @@ export default function CustomerDashboard() {
               <div style={styles.itemsGrid}>
                 {sortedMostPurchasedItems.map((purchase) => {
                   const item = purchase.menu_items;
-                  const quantity = normalizeQuantity(purchase.preferred_quantity);
                   return (
                     <button
                       key={purchase.menu_item_id}
@@ -520,7 +498,7 @@ export default function CustomerDashboard() {
                         ...(focusedCardId === purchase.menu_item_id ? styles.itemCardFocused : {})
                       }}
                       type="button"
-                      aria-label={`Add ${quantity} ${item?.name || 'item'} to cart`}
+                      aria-label={`Customize and add ${item?.name || 'item'} to cart`}
                       onClick={() => handleAddToCart(purchase)}
                       onFocus={() => setFocusedCardId(purchase.menu_item_id)}
                       onBlur={() => setFocusedCardId(null)}
@@ -538,7 +516,7 @@ export default function CustomerDashboard() {
                         Ordered {purchase.purchase_count} {purchase.purchase_count === 1 ? 'time' : 'times'}
                       </p>
                       <div style={styles.addToCartBtn}>
-                        🛒 Add {quantity} to Cart
+                        🛒 Customize & Add to Cart
                       </div>
                     </button>
                   );

@@ -55,9 +55,18 @@ import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
 
+interface VariantSelectionModalProps {
+  item: MenuItem
+  onConfirm: (itemWithVariants: any) => void
+  onCancel: () => void
+  initialSelectedVariants?: Record<string, { optionId: string; optionName: string; priceModifier: number }[]> | null
+  initialQuantity?: number
+  confirmLabel?: string
+}
+
 // Dynamically import VariantSelectionModal for variant selection
-const VariantSelectionModal = dynamic(
-  () => import('../../../components/VariantSelectionModal'),
+const VariantSelectionModal = dynamic<VariantSelectionModalProps>(
+  () => import('../../../components/VariantSelectionModal') as any,
   { ssr: false }
 )
 
@@ -76,6 +85,13 @@ interface CartItem {
   selectedSize?: string
   selectedAddons: MenuItemAddon[]
   variantDetails?: Record<string, string> | null
+}
+
+interface LegacyDialogInitialState {
+  variety: string
+  sizeName: string
+  addons: MenuItemAddon[]
+  quantity: number
 }
 
 const GCASH_OWNER = {
@@ -135,6 +151,12 @@ function isWithinDeliverySchedule(): boolean {
 }
 
 const DELIVERY_SCHEDULE_LABEL = `${formatMinutesTo12Hour(DELIVERY_SCHEDULE_START_MINUTES)} - ${formatMinutesTo12Hour(DELIVERY_SCHEDULE_END_MINUTES)} (PH Time, UTC+08:00)`
+const EMPTY_LEGACY_DIALOG_STATE: LegacyDialogInitialState = {
+  variety: '',
+  sizeName: '',
+  addons: [],
+  quantity: 1,
+}
 
 function calcEarnedPoints(subtotal: number): number {
   if (subtotal <= 0) return 0
@@ -142,6 +164,19 @@ function calcEarnedPoints(subtotal: number): number {
   const calculated = Math.round(subtotal * rate * 100) / 100 // Round to 2 decimals
   // Points calculated from percentage (most purchases will earn > 0)
   return calculated
+}
+
+function normalizeVariantValue(rawValue: unknown): string[] {
+  if (Array.isArray(rawValue)) {
+    return rawValue.map((value) => String(value).trim()).filter(Boolean)
+  }
+  if (typeof rawValue === 'string') {
+    return rawValue
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+  }
+  return []
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -175,6 +210,10 @@ function CustomerOrderPage() {
   // State for new variant system modal
   const [showVariantModal, setShowVariantModal] = useState(false)
   const [variantModalItem, setVariantModalItem] = useState<MenuItem | null>(null)
+  const [editingCartItemId, setEditingCartItemId] = useState<string | null>(null)
+  const [variantModalInitialSelection, setVariantModalInitialSelection] = useState<Record<string, { optionId: string; optionName: string; priceModifier: number }[]> | null>(null)
+  const [variantModalInitialQuantity, setVariantModalInitialQuantity] = useState(1)
+  const [legacyDialogInitialState, setLegacyDialogInitialState] = useState<LegacyDialogInitialState>(EMPTY_LEGACY_DIALOG_STATE)
   // State for loyalty points payment
   const [loyaltyBalance, setLoyaltyBalance] = useState(0)
   const [pointsToUse, setPointsToUse] = useState(0)
@@ -272,6 +311,52 @@ function CustomerOrderPage() {
     }
   }, [cart])
 
+  const closeItemDialog = useCallback(() => {
+    setShowItemDialog(false)
+    setDialogItem(null)
+    setEditingCartItemId(null)
+    setLegacyDialogInitialState(EMPTY_LEGACY_DIALOG_STATE)
+  }, [])
+
+  const closeVariantModal = useCallback(() => {
+    setShowVariantModal(false)
+    setVariantModalItem(null)
+    setEditingCartItemId(null)
+    setVariantModalInitialSelection(null)
+    setVariantModalInitialQuantity(1)
+  }, [])
+
+  const buildInitialVariantSelection = useCallback((cartItem: CartItem, item: MenuItem) => {
+    if (!cartItem.variantDetails || typeof cartItem.variantDetails !== 'object') return null
+    if (!item.variant_types || item.variant_types.length === 0) return null
+
+    const initialSelections: Record<string, { optionId: string; optionName: string; priceModifier: number }[]> = {}
+
+    item.variant_types.forEach((variantType: any) => {
+      const variantTypeName = variantType?.variant_type_name
+      if (!variantTypeName) return
+
+      const selectedValues = normalizeVariantValue((cartItem.variantDetails as Record<string, unknown>)[variantTypeName])
+      if (selectedValues.length === 0) return
+
+      const selectedValueSet = new Set(selectedValues.map((value) => value.toLowerCase()))
+      const options = Array.isArray(variantType.options) ? variantType.options : []
+      const matchedOptions = options
+        .filter((option: any) => selectedValueSet.has(String(option?.option_name || '').trim().toLowerCase()))
+        .map((option: any) => ({
+          optionId: option.id,
+          optionName: option.option_name,
+          priceModifier: Number(option.price_modifier) || 0,
+        }))
+
+      if (matchedOptions.length > 0) {
+        initialSelections[variantType.id] = matchedOptions
+      }
+    })
+
+    return Object.keys(initialSelections).length > 0 ? initialSelections : null
+  }, [])
+
   // Handle variant modal confirmation (new variant system)
   // This function must be defined before the pendingCartItem useEffect below
   const handleVariantConfirm = useCallback((itemWithVariants: any) => {
@@ -283,16 +368,20 @@ function CustomerOrderPage() {
       : undefined
     
     setCart(prev => {
-      const existing = prev.find(c => c.comboKey === cartKey)
+      const editingItem = editingCartItemId ? prev.find(c => c.id === editingCartItemId) : null
+      const baseCart = editingItem ? prev.filter(c => c.id !== editingCartItemId) : prev
+      const existing = baseCart.find(c => c.comboKey === cartKey)
+
       if (existing) {
-        return prev.map(c =>
+        return baseCart.map(c =>
           c.comboKey === cartKey
             ? { ...c, quantity: c.quantity + quantity, price: (c.quantity + quantity) * finalPrice }
             : c
         )
       }
-      return [...prev, {
-        id: String(Date.now()),
+
+      return [...baseCart, {
+        id: editingItem?.id || String(Date.now()),
         comboKey: cartKey,
         menuItemId: itemWithVariants.id,
         menuItem: itemWithVariants,
@@ -306,11 +395,10 @@ function CustomerOrderPage() {
         variantDetails: variantDetails,
       }]
     })
-    
-    setShowVariantModal(false)
-    setVariantModalItem(null)
-    toast.success(`Added ${itemWithVariants.name} to cart`)
-  }, [])
+
+    closeVariantModal()
+    toast.success(editingCartItemId ? `Updated ${itemWithVariants.name}` : `Added ${itemWithVariants.name} to cart`)
+  }, [closeVariantModal, editingCartItemId])
 
   // Handle pendingCartItem from dashboard variant selection
   // This processes items added to cart from the dashboard after variant selection.
@@ -461,11 +549,56 @@ function CustomerOrderPage() {
         price: unitPrice * quantity,
         selectedVariety: variety || undefined,
         selectedSize: sizeName || undefined,
-        selectedAddons: addons,
+        selectedAddons: [...addons],
       }]
     })
     toast.success(`Added ${item.name} to cart`)
   }, [])
+
+  const handleLegacyDialogConfirm = useCallback((
+    item: MenuItem,
+    variety: string,
+    sizeName: string,
+    addons: MenuItemAddon[],
+    quantity: number
+  ) => {
+    const sizeObj = (item.sizes as any[])?.find((s: any) => s.name === sizeName)
+    const basePrice = sizeObj?.price ?? item.price
+    const addonPrice = addons.reduce((sum, a) => sum + a.price, 0)
+    const unitPrice = basePrice + addonPrice
+    const comboKey = `${item.id}|${variety}|${sizeName}|${addons.map(a => a.name).sort().join(',')}`
+
+    setCart(prev => {
+      const editingItem = editingCartItemId ? prev.find(c => c.id === editingCartItemId) : null
+      const baseCart = editingItem ? prev.filter(c => c.id !== editingCartItemId) : prev
+      const existing = baseCart.find(c => c.comboKey === comboKey)
+
+      if (existing) {
+        return baseCart.map(c =>
+          c.comboKey === comboKey
+            ? { ...c, quantity: c.quantity + quantity, price: (c.quantity + quantity) * unitPrice }
+            : c
+        )
+      }
+
+      return [...baseCart, {
+        id: editingItem?.id || String(Date.now()),
+        comboKey,
+        menuItemId: item.id,
+        menuItem: item,
+        quantity,
+        basePrice,
+        addonPrice,
+        price: unitPrice * quantity,
+        selectedVariety: variety || undefined,
+        selectedSize: sizeName || undefined,
+        selectedAddons: [...addons],
+      }]
+    })
+
+    toast.success(editingCartItemId ? `Updated ${item.name}` : `Added ${item.name} to cart`)
+    closeItemDialog()
+  }, [closeItemDialog, editingCartItemId])
 
   // Handle URL parameter to auto-add items from dashboard
   useEffect(() => {
@@ -500,11 +633,16 @@ function CustomerOrderPage() {
         
         if (hasVariantTypes) {
           // If item has variant types, open the variant modal
+          setEditingCartItemId(null)
+          setVariantModalInitialSelection(null)
+          setVariantModalInitialQuantity(1)
           setVariantModalItem(item)
           setShowVariantModal(true)
           return prevCart // Don't modify cart yet, wait for modal
         } else if (hasOldOptions) {
           // If item has old-style options, open the customization dialog
+          setEditingCartItemId(null)
+          setLegacyDialogInitialState(EMPTY_LEGACY_DIALOG_STATE)
           setDialogItem(item)
           setShowItemDialog(true)
           return prevCart // Don't modify cart yet, wait for dialog
@@ -544,6 +682,11 @@ function CustomerOrderPage() {
   })
 
   const openItemDialog = (item: MenuItem) => {
+    setEditingCartItemId(null)
+    setVariantModalInitialSelection(null)
+    setVariantModalInitialQuantity(1)
+    setLegacyDialogInitialState(EMPTY_LEGACY_DIALOG_STATE)
+
     // Check for new variant system first
     const hasVariantTypes = item.has_variants && item.variant_types && item.variant_types.length > 0
     
@@ -566,6 +709,39 @@ function CustomerOrderPage() {
       addToCartWithCustomizations(item, '', '', [], 1)
     }
   }
+
+  const openCartItemEditor = useCallback((cartItem: CartItem) => {
+    const item = cartItem.menuItem
+    const hasVariantTypes = item.has_variants && item.variant_types && item.variant_types.length > 0
+    const hasOldOptions =
+      (item.varieties && item.varieties.length > 0) ||
+      (item.sizes && item.sizes.length > 0) ||
+      (item.addons && item.addons.length > 0)
+
+    if (hasVariantTypes) {
+      setEditingCartItemId(cartItem.id)
+      setVariantModalItem(item)
+      setVariantModalInitialSelection(buildInitialVariantSelection(cartItem, item))
+      setVariantModalInitialQuantity(Math.max(1, Number(cartItem.quantity) || 1))
+      setShowVariantModal(true)
+      return
+    }
+
+    if (hasOldOptions) {
+      setEditingCartItemId(cartItem.id)
+      setLegacyDialogInitialState({
+        variety: cartItem.selectedVariety || '',
+        sizeName: cartItem.selectedSize || '',
+        addons: Array.isArray(cartItem.selectedAddons) ? [...cartItem.selectedAddons] : [],
+        quantity: Math.max(1, Number(cartItem.quantity) || 1),
+      })
+      setDialogItem(item)
+      setShowItemDialog(true)
+      return
+    }
+
+    toast.info('This item has no editable subvariant options.')
+  }, [buildInitialVariantSelection])
 
   const updateQuantity = (itemId: string, delta: number) => {
     setCart(
@@ -887,6 +1063,7 @@ function CustomerOrderPage() {
               cart={cart}
               updateQuantity={updateQuantity}
               removeFromCart={removeFromCart}
+              onEditItem={openCartItemEditor}
               subtotal={subtotal}
               deliveryFee={appliedDeliveryFee}
               deliveryDistance={deliveryDistance}
@@ -1138,6 +1315,7 @@ function CustomerOrderPage() {
                 cart={cart}
                 updateQuantity={updateQuantity}
                 removeFromCart={removeFromCart}
+                onEditItem={openCartItemEditor}
                 subtotal={subtotal}
                 deliveryFee={appliedDeliveryFee}
                 deliveryDistance={deliveryDistance}
@@ -1173,8 +1351,13 @@ function CustomerOrderPage() {
       <ItemCustomizationDialog
         item={dialogItem}
         open={showItemDialog}
-        onClose={() => setShowItemDialog(false)}
-        onAddToCart={addToCartWithCustomizations}
+        onClose={closeItemDialog}
+        onAddToCart={handleLegacyDialogConfirm}
+        initialVariety={legacyDialogInitialState.variety}
+        initialSizeName={legacyDialogInitialState.sizeName}
+        initialAddons={legacyDialogInitialState.addons}
+        initialQuantity={legacyDialogInitialState.quantity}
+        submitLabel={editingCartItemId ? 'Update Item' : 'Add to Cart'}
       />
 
       {/* Variant Selection Modal for new variant system */}
@@ -1182,10 +1365,10 @@ function CustomerOrderPage() {
         <VariantSelectionModal
           item={variantModalItem}
           onConfirm={handleVariantConfirm}
-          onCancel={() => {
-            setShowVariantModal(false)
-            setVariantModalItem(null)
-          }}
+          onCancel={closeVariantModal}
+          initialSelectedVariants={variantModalInitialSelection}
+          initialQuantity={variantModalInitialQuantity}
+          confirmLabel={editingCartItemId ? 'Update Item' : 'Add to Cart'}
         />
       )}
 
@@ -1229,9 +1412,24 @@ interface ItemCustomizationDialogProps {
     addons: MenuItemAddon[],
     quantity: number
   ) => void
+  initialVariety?: string
+  initialSizeName?: string
+  initialAddons?: MenuItemAddon[]
+  initialQuantity?: number
+  submitLabel?: string
 }
 
-function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCustomizationDialogProps) {
+function ItemCustomizationDialog({
+  item,
+  open,
+  onClose,
+  onAddToCart,
+  initialVariety = '',
+  initialSizeName = '',
+  initialAddons = [],
+  initialQuantity = 1,
+  submitLabel = 'Add to Cart',
+}: ItemCustomizationDialogProps) {
   const [selectedVariety, setSelectedVariety] = useState('')
   const [selectedSize, setSelectedSize] = useState<{ name: string; price: number } | null>(null)
   const [selectedAddons, setSelectedAddons] = useState<MenuItemAddon[]>([])
@@ -1239,12 +1437,16 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
 
   useEffect(() => {
     if (item) {
-      setSelectedVariety('')
-      setSelectedSize(null)
-      setSelectedAddons([])
-      setQuantity(1)
+      const sizeOptions = (item.sizes as any[]) ?? []
+      const matchedSize = initialSizeName
+        ? sizeOptions.find((size: any) => size.name === initialSizeName) || null
+        : null
+      setSelectedVariety(initialVariety || '')
+      setSelectedSize(matchedSize)
+      setSelectedAddons(Array.isArray(initialAddons) ? [...initialAddons] : [])
+      setQuantity(Math.max(1, Number(initialQuantity) || 1))
     }
-  }, [item])
+  }, [item, initialAddons, initialQuantity, initialSizeName, initialVariety])
 
   // Clear size selection if switching to Hot variety with incompatible size.
   // This useEffect ensures that when a user changes from Iced to Hot variety,
@@ -1405,11 +1607,10 @@ function ItemCustomizationDialog({ item, open, onClose, onAddToCart }: ItemCusto
               }
               onClick={() => {
                 onAddToCart(item, selectedVariety, selectedSize?.name || '', selectedAddons, quantity)
-                onClose()
               }}
             >
               <Plus className="mr-2 h-4 w-4" />
-              Add to Cart
+              {submitLabel}
             </Button>
           </div>
         </DialogFooter>
@@ -1567,6 +1768,7 @@ interface CartContentProps {
   cart: CartItem[]
   updateQuantity: (itemId: string, delta: number) => void
   removeFromCart: (itemId: string) => void
+  onEditItem: (item: CartItem) => void
   subtotal: number
   deliveryFee: number
   deliveryDistance: number | null
@@ -1596,7 +1798,7 @@ interface CartContentProps {
 }
 
 function CartContent({
-  cart, updateQuantity, removeFromCart, subtotal, deliveryFee, deliveryDistance,
+  cart, updateQuantity, removeFromCart, onEditItem, subtotal, deliveryFee, deliveryDistance,
   deliveryOutOfRange = false, total, earnedPoints, deliveryAddress, setDeliveryAddress,
   openLocationPicker, paymentMethod, setPaymentMethod, orderNotes, setOrderNotes,
   cashTendered, setCashTendered, handlePlaceOrder, isSubmitting, orderType = 'delivery',
@@ -1625,7 +1827,13 @@ function CartContent({
             const variantEntries = item.variantDetails ? Object.entries(item.variantDetails) : []
             const showLegacyVariety = item.selectedVariety && variantEntries.length === 0
             return (
-              <div key={item.id} className="rounded-lg border border-border p-2 space-y-1.5">
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onEditItem(item)}
+                className="w-full text-left rounded-lg border border-border p-2 space-y-1.5 transition hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                aria-label={`Edit ${item.menuItem.name} subvariant`}
+              >
                 {/* Top: item name, variant details, unit price — full width */}
                 <div className="min-w-0">
                   <p className="font-medium text-foreground break-words whitespace-normal">{item.menuItem.name}</p>
@@ -1651,20 +1859,29 @@ function CartContent({
                 {/* Bottom row: qty controls (left) and total price (right) */}
                 <div className="flex min-w-0 items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
-                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" onClick={() => updateQuantity(item.id, -1)}>
+                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" onClick={(event) => {
+                      event.stopPropagation()
+                      updateQuantity(item.id, -1)
+                    }}>
                       <Minus className="h-3 w-3" />
                     </Button>
                     <span className="w-6 sm:w-8 text-center font-medium text-sm text-foreground">{item.quantity}</span>
-                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" onClick={() => updateQuantity(item.id, 1)}>
+                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" onClick={(event) => {
+                      event.stopPropagation()
+                      updateQuantity(item.id, 1)
+                    }}>
                       <Plus className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 text-destructive touch-manipulation px-0" onClick={() => removeFromCart(item.id)}>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 text-destructive touch-manipulation px-0" onClick={(event) => {
+                      event.stopPropagation()
+                      removeFromCart(item.id)
+                    }}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
                   <p className="ml-2 shrink-0 whitespace-nowrap text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>
