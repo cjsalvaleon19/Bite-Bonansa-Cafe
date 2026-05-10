@@ -96,6 +96,35 @@ const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz'])
  * This prevents race conditions where items might be added before the saved cart is restored.
  */
 const CART_LOAD_DELAY_MS = 100
+const DELIVERY_TIMEZONE = 'Asia/Manila'
+const DELIVERY_SCHEDULE_START_MINUTES = 10 * 60 // 10:00 AM
+const DELIVERY_SCHEDULE_END_MINUTES = 17 * 60 // 5:00 PM
+const DELIVERY_SCHEDULE_LABEL = '10:00 AM – 5:00 PM (PH Time, UTC+08:00)'
+
+function getCurrentManilaMinutesOfDay(): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: DELIVERY_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date())
+
+  const hourPart = parts.find((part) => part.type === 'hour')?.value ?? '0'
+  const minutePart = parts.find((part) => part.type === 'minute')?.value ?? '0'
+  const hours = Number.parseInt(hourPart, 10)
+  const minutes = Number.parseInt(minutePart, 10)
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return 0
+  }
+
+  return (hours * 60) + minutes
+}
+
+function isWithinDeliverySchedule(): boolean {
+  const manilaMinutes = getCurrentManilaMinutesOfDay()
+  return manilaMinutes >= DELIVERY_SCHEDULE_START_MINUTES && manilaMinutes <= DELIVERY_SCHEDULE_END_MINUTES
+}
 
 function calcEarnedPoints(subtotal: number): number {
   if (subtotal <= 0) return 0
@@ -551,6 +580,7 @@ function CustomerOrderPage() {
     calculateDeliveryFee(deliveryLat, deliveryLng)
   const appliedDeliveryFee = orderType === 'delivery' ? deliveryFee : 0
   const total = subtotal + appliedDeliveryFee
+  const isDeliveryScheduleOpen = isWithinDeliverySchedule()
   
   // Calculate payment breakdown when using points
   const maxPointsUsable = Math.min(loyaltyBalance, total)
@@ -562,6 +592,10 @@ function CustomerOrderPage() {
     // Check if delivery is disabled but user is trying to order with delivery
     if (orderType === 'delivery' && !deliveryEnabled) {
       toast.error('Delivery is currently unavailable. Please select another order mode.')
+      return
+    }
+    if (orderType === 'delivery' && !isDeliveryScheduleOpen) {
+      toast.error(`Delivery orders are accepted from ${DELIVERY_SCHEDULE_LABEL}.`)
       return
     }
     
@@ -1628,6 +1662,14 @@ function CartContent({
               <MapPin className="mr-2 h-4 w-4" />
               Search &amp; Pin Location on Map
             </Button>
+            <p className="text-xs text-muted-foreground">
+              Delivery schedule: {DELIVERY_SCHEDULE_LABEL}
+            </p>
+            {!isDeliveryScheduleOpen && (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                Delivery is currently closed. Delivery orders are accepted from {DELIVERY_SCHEDULE_LABEL}.
+              </div>
+            )}
             {deliveryOutOfRange && (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <strong>Outside delivery area.</strong> More than 10 km from our store.
@@ -1848,6 +1890,7 @@ function CartContent({
           isSubmitting ||
           cart.length === 0 ||
           (orderType === 'delivery' && !deliveryAddress.trim()) ||
+          (orderType === 'delivery' && !isDeliveryScheduleOpen) ||
           (orderType === 'delivery' && deliveryOutOfRange) ||
           // Cash tendered validation only for delivery and pickup orders
           (paymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (!cashTendered || parseFloat(cashTendered) < total)) ||
