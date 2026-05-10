@@ -48,7 +48,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '@/lib/store'
+import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance, isSundayInManila, PH_TIMEZONE, SUNDAY_CLOSURE_MESSAGE } from '@/lib/store'
 import { supabase } from '@/lib/supabase/client'
 import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
@@ -96,7 +96,6 @@ const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz'])
  * This prevents race conditions where items might be added before the saved cart is restored.
  */
 const CART_LOAD_DELAY_MS = 100
-const DELIVERY_TIMEZONE = 'Asia/Manila'
 const DELIVERY_START_HOUR = 10
 const DELIVERY_END_HOUR = 17
 const DELIVERY_SCHEDULE_START_MINUTES = DELIVERY_START_HOUR * 60
@@ -112,7 +111,7 @@ function formatMinutesTo12Hour(minutesOfDay: number): string {
 
 function getCurrentManilaMinutesOfDay(): number {
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: DELIVERY_TIMEZONE,
+    timeZone: PH_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
@@ -591,6 +590,7 @@ function CustomerOrderPage() {
     calculateDeliveryFee(deliveryLat, deliveryLng)
   const appliedDeliveryFee = orderType === 'delivery' ? deliveryFee : 0
   const total = subtotal + appliedDeliveryFee
+  const isSundayClosed = isSundayInManila()
   const isDeliveryScheduleOpen = isWithinDeliverySchedule()
   
   // Calculate payment breakdown when using points
@@ -600,6 +600,11 @@ function CustomerOrderPage() {
   const earnedPoints = calcEarnedPoints(subtotal)
 
   const handlePlaceOrder = async () => {
+    if (isSundayClosed) {
+      toast.error(SUNDAY_CLOSURE_MESSAGE)
+      return
+    }
+
     // Check if delivery is disabled but user is trying to order with delivery
     if (orderType === 'delivery' && !deliveryEnabled) {
       toast.error('Delivery is currently unavailable. Please select another order mode.')
@@ -919,6 +924,7 @@ function CustomerOrderPage() {
           size="sm"
           onClick={() => setOrderType('dine-in')}
           className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
+          disabled={isSundayClosed}
         >
           <UtensilsCrossed className="h-4 w-4" />
           <span>Dine-in</span>
@@ -928,6 +934,7 @@ function CustomerOrderPage() {
           size="sm"
           onClick={() => setOrderType('take-out')}
           className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
+          disabled={isSundayClosed}
         >
           <Package className="h-4 w-4" />
           <span>Take-out</span>
@@ -937,7 +944,7 @@ function CustomerOrderPage() {
           size="sm"
           onClick={() => setOrderType('delivery')}
           className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
-          disabled={!deliveryEnabled}
+          disabled={isSundayClosed || !deliveryEnabled}
         >
           <Truck className="h-4 w-4" />
           <span>Delivery</span>
@@ -947,11 +954,18 @@ function CustomerOrderPage() {
           size="sm"
           onClick={() => setOrderType('pickup')}
           className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
+          disabled={isSundayClosed}
         >
           <ShoppingBag className="h-4 w-4" />
           <span>Pick-up</span>
         </Button>
       </div>
+
+      {isSundayClosed && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-red-600">
+          <strong>Sunday closure:</strong> {SUNDAY_CLOSURE_MESSAGE}
+        </div>
+      )}
 
       {!deliveryEnabled && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-amber-600">
@@ -1900,6 +1914,7 @@ function CartContent({
         onClick={handlePlaceOrder}
         disabled={
           isSubmitting ||
+          isSundayClosed ||
           cart.length === 0 ||
           (orderType === 'delivery' && !deliveryAddress.trim()) ||
           (orderType === 'delivery' && !isDeliveryScheduleOpen) ||

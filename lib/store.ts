@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase/client'
 
+export const PH_TIMEZONE = 'Asia/Manila'
+export const SUNDAY_CLOSURE_MESSAGE = 'Bite Bonansa Cafe is closed every Sunday (PH Time). Ordering is unavailable today.'
+
 // Store location constants
 export const STORE_LOCATION = {
   name: 'Bite Bonanza',
@@ -17,6 +20,13 @@ export function formatCurrency(amount: number): string {
 // Distance formatter
 export function formatDistance(meters: number): string {
   return meters < 1000 ? `${meters} m` : `${(meters / 1000).toFixed(2)} km`
+}
+
+export function isSundayInManila(date: Date = new Date()): boolean {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: PH_TIMEZONE,
+    weekday: 'long',
+  }).format(date) === 'Sunday'
 }
 
 // Haversine formula to calculate distance between two coordinates
