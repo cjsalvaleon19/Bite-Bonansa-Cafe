@@ -1,5 +1,24 @@
 export const FALLBACK_KITCHEN_DEPARTMENT = 'General Kitchen';
 
+const DEPARTMENT_NAME_PATTERNS = [
+  { pattern: /\bfr(?:y|ied)\b/i, name: 'Fried' },
+  { pattern: /\bpastr(?:y|ies)\b/i, name: 'Pastries' },
+  { pattern: /\bdrinks?\b/i, name: 'Drinks' },
+];
+
+function normalizeDepartmentName(value) {
+  const name = String(value || '').trim();
+  if (!name) return FALLBACK_KITCHEN_DEPARTMENT;
+  for (const { pattern, name: normalizedName } of DEPARTMENT_NAME_PATTERNS) {
+    if (pattern.test(name)) return normalizedName;
+  }
+  return name;
+}
+
+function normalizeDepartmentKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 export function getOrderItems(order) {
   if (Array.isArray(order?.order_items) && order.order_items.length > 0) {
     return order.order_items;
@@ -93,10 +112,11 @@ function normalizeDepartment(item = {}) {
     ? department?.department_code || department?.departmentCode || null
     : null;
   const category = item.category || item.menu_items?.category || item.menuItem?.category || null;
+  const normalizedName = normalizeDepartmentName(name || category || FALLBACK_KITCHEN_DEPARTMENT);
 
   return {
     code: code ? String(code).trim() || null : null,
-    name: String(name || category || FALLBACK_KITCHEN_DEPARTMENT).trim(),
+    name: normalizedName,
   };
 }
 
@@ -118,7 +138,9 @@ export function buildKitchenDepartmentOrders(order) {
 
   for (const item of getOrderItems(order)) {
     const department = normalizeDepartment(item);
-    const key = department.code || department.name;
+    const key = department.code
+      ? `code:${normalizeDepartmentKey(department.code)}`
+      : `name:${normalizeDepartmentKey(department.name)}`;
     if (!grouped.has(key)) {
       grouped.set(key, {
         key,
