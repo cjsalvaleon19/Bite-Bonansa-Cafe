@@ -1,12 +1,17 @@
 export const FALLBACK_KITCHEN_DEPARTMENT = 'General Kitchen';
 
+const DEPARTMENT_NAME_PATTERNS = [
+  { pattern: /\bdrinks?\b/i, name: 'Drinks' },
+  { pattern: /\bfried?\b/i, name: 'Fried' },
+  { pattern: /\bpastr(?:y|ies)\b/i, name: 'Pastries' },
+];
+
 function normalizeDepartmentName(value) {
   const name = String(value || '').trim();
   if (!name) return FALLBACK_KITCHEN_DEPARTMENT;
-  const normalized = name.toLowerCase().replace(/\s+/g, ' ');
-  if (normalized.includes('drink')) return 'Drinks';
-  if (normalized.includes('pastr')) return 'Pastries';
-  if (normalized.includes('fried') || normalized.includes('fry')) return 'Fried';
+  for (const { pattern, name: normalizedName } of DEPARTMENT_NAME_PATTERNS) {
+    if (pattern.test(name)) return normalizedName;
+  }
   return name;
 }
 
