@@ -1,13 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import NotificationBell from '../../components/NotificationBell';
-import VariantSelectionModal from '../../components/VariantSelectionModal';
 import { isSundayInManila, SUNDAY_CLOSURE_MESSAGE } from '../../lib/store';
+import VariantSelectionModal from '../../components/VariantSelectionModal';
 
 const SUNDAY_LOGIN_REMINDER_KEY = 'bite-bonanza-sunday-login-reminder';
+const normalizeQuantity = (value) => Math.max(1, Number(value) || 1);
+
+const generateVariantKey = (variantDetails) => (
+  variantDetails && typeof variantDetails === 'object'
+    ? JSON.stringify(Object.entries(variantDetails).sort(([a], [b]) => a.localeCompare(b)))
+    : 'default'
+);
 
 export default function CustomerDashboard() {
   const router = useRouter();
@@ -15,8 +22,12 @@ export default function CustomerDashboard() {
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showSundayReminder, setShowSundayReminder] = useState(false);
-  const [showVariantModal, setShowVariantModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState(null);
+  const [purchaseSortOrder, setPurchaseSortOrder] = useState('most');
+  const [focusedCardId, setFocusedCardId] = useState(null);
+  const [variantModalItem, setVariantModalItem] = useState(null);
+  const [loadingItemId, setLoadingItemId] = useState(null);
+  const [cartFeedback, setCartFeedback] = useState(null);
+  const cartFeedbackTimerRef = useRef(null);
   const [dashboardData, setDashboardData] = useState({
     loyaltyBalance: 0,
     currentOrder: null,
@@ -25,6 +36,15 @@ export default function CustomerDashboard() {
     pendingOrdersCount: 0,
     publishedReviewsCount: 0
   });
+
+  const sortedMostPurchasedItems = useMemo(
+    () => [...dashboardData.mostPurchasedItems].sort((a, b) => {
+      const left = Number(a?.purchase_count) || 0;
+      const right = Number(b?.purchase_count) || 0;
+      return purchaseSortOrder === 'least' ? left - right : right - left;
+    }),
+    [dashboardData.mostPurchasedItems, purchaseSortOrder]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -166,62 +186,132 @@ export default function CustomerDashboard() {
         totalEarnings = earningsData.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
       }
 
-      // Get most purchased items (all items, sorted by purchase count)
-      const { data: purchasesData, error: purchasesError } = await supabase
-        .from('customer_item_purchases')
+      let mostPurchasedItems = [];
+
+      // Build most purchased data from actual order history to preserve preferred variants and quantity
+      const { data: orderItemsData, error: orderItemsError } = await supabase
+        .from('order_items')
         .select(`
           menu_item_id,
-          purchase_count,
-          menu_items (id, name, price, image_url, category, has_variants)
+          quantity,
+          price,
+          variant_details,
+          orders!inner(customer_id, status, created_at)
         `)
-        .eq('customer_id', userId)
-        .order('purchase_count', { ascending: false });
+        .eq('orders.customer_id', userId)
+        .in('orders.status', ['order_delivered', 'completed']);
 
-      // Handle missing table gracefully
-      let mostPurchasedItems = [];
-      if (purchasesError) {
-        if (purchasesError.code !== 'PGRST116') {
-          console.error('[CustomerDashboard] Error fetching purchase history:', purchasesError.message);
+      if (!orderItemsError && Array.isArray(orderItemsData) && orderItemsData.length > 0) {
+        const historyMap = new Map();
+
+        orderItemsData.forEach((row) => {
+          const menuItemId = row?.menu_item_id;
+          if (!menuItemId) return;
+
+          const quantity = normalizeQuantity(row?.quantity);
+          const unitPrice = Number(row?.price) || 0;
+          const variantDetails = row?.variant_details && typeof row.variant_details === 'object'
+            ? row.variant_details
+            : null;
+          const variantKey = generateVariantKey(variantDetails);
+          const createdAt = row?.orders?.created_at || '';
+
+          if (!historyMap.has(menuItemId)) {
+            historyMap.set(menuItemId, {
+              menu_item_id: menuItemId,
+              purchase_count: 0,
+              selections: new Map(),
+            });
+          }
+
+          const historyEntry = historyMap.get(menuItemId);
+          historyEntry.purchase_count += quantity;
+
+          if (!historyEntry.selections.has(variantKey)) {
+            historyEntry.selections.set(variantKey, {
+              count: 0,
+              quantity,
+              unitPrice,
+              variantDetails,
+              variantKey,
+              lastPurchasedAt: createdAt,
+            });
+          }
+
+          const selection = historyEntry.selections.get(variantKey);
+          selection.count += quantity;
+          if (createdAt && (!selection.lastPurchasedAt || createdAt > selection.lastPurchasedAt)) {
+            selection.lastPurchasedAt = createdAt;
+            selection.quantity = quantity;
+            selection.unitPrice = unitPrice;
+            selection.variantDetails = variantDetails;
+          }
+        });
+
+        const menuItemIds = Array.from(historyMap.keys());
+        const { data: menuItemsData, error: menuItemsError } = await supabase
+          .from('menu_items')
+          .select('id, name, price, image_url, category, has_variants')
+          .in('id', menuItemIds);
+
+        if (!menuItemsError && Array.isArray(menuItemsData)) {
+          const menuItemsById = new Map(menuItemsData.map((item) => [item.id, item]));
+          mostPurchasedItems = Array.from(historyMap.values())
+            .map((entry) => {
+              const item = menuItemsById.get(entry.menu_item_id);
+              if (!item) return null;
+
+              const preferredSelection = Array.from(entry.selections.values()).sort((a, b) => {
+                if (b.count !== a.count) return b.count - a.count;
+                return (b.lastPurchasedAt || '').localeCompare(a.lastPurchasedAt || '');
+              })[0] || {
+                variantDetails: null,
+                quantity: 1,
+                unitPrice: Number(item.price) || 0,
+                variantKey: 'default',
+              };
+
+              return {
+                menu_item_id: entry.menu_item_id,
+                purchase_count: entry.purchase_count,
+                menu_items: item,
+                preferred_variant_details: preferredSelection?.variantDetails || null,
+                preferred_quantity: normalizeQuantity(preferredSelection?.quantity),
+                preferred_unit_price: Number(preferredSelection?.unitPrice) || Number(item.price) || 0,
+                preferred_variant_key: preferredSelection?.variantKey || 'default',
+              };
+            })
+            .filter(Boolean);
         }
-      } else if (purchasesData) {
-        // For items with variants, fetch variant types and options
-        const itemsWithVariants = await Promise.all(
-          purchasesData.map(async (purchase) => {
-            const item = purchase.menu_items;
-            if (!item || !item.has_variants) {
-              return purchase;
-            }
+      } else if (orderItemsError && orderItemsError.code !== 'PGRST116') {
+        console.error('[CustomerDashboard] Error fetching order history items:', orderItemsError.message);
+      }
 
-            // Fetch variant types with options for items that have variants
-            const { data: variantTypes } = await supabase
-              .from('menu_item_variant_types')
-              .select(`
-                id,
-                variant_type_name,
-                is_required,
-                allow_multiple,
-                display_order,
-                options:menu_item_variant_options(
-                  id,
-                  option_name,
-                  price_modifier,
-                  available,
-                  display_order
-                )
-              `)
-              .eq('menu_item_id', item.id)
-              .order('display_order');
+      // Fallback to customer_item_purchases if order_items history is unavailable
+      if (mostPurchasedItems.length === 0) {
+        const { data: purchasesData, error: purchasesError } = await supabase
+          .from('customer_item_purchases')
+          .select(`
+            menu_item_id,
+            purchase_count,
+            menu_items (id, name, price, image_url, category, has_variants)
+          `)
+          .eq('customer_id', userId)
+          .order('purchase_count', { ascending: false });
 
-            return {
-              ...purchase,
-              menu_items: {
-                ...item,
-                variant_types: variantTypes || []
-              }
-            };
-          })
-        );
-        mostPurchasedItems = itemsWithVariants;
+        if (purchasesError) {
+          if (purchasesError.code !== 'PGRST116') {
+            console.error('[CustomerDashboard] Error fetching purchase history:', purchasesError.message);
+          }
+        } else if (purchasesData) {
+          mostPurchasedItems = purchasesData.map((purchase) => ({
+            ...purchase,
+            preferred_variant_details: null,
+            preferred_quantity: 1,
+            preferred_unit_price: Number(purchase?.menu_items?.price) || 0,
+            preferred_variant_key: 'default',
+          }));
+        }
       }
 
       // Get count of published reviews
@@ -264,30 +354,102 @@ export default function CustomerDashboard() {
     router.replace('/login').catch(console.error);
   };
 
-  const handleAddToCart = (item) => {
-    // Check if item has variants
-    if (item.has_variants && item.variant_types && item.variant_types.length > 0) {
-      // Show variant selection modal
-      setSelectedItem(item);
-      setShowVariantModal(true);
-    } else {
-      // Navigate to order page with item ID to add directly
-      router.push(`/customer/order?addItem=${item.id}`).catch(console.error);
+  const handleAddToCart = async (purchase) => {
+    const item = purchase?.menu_items;
+    if (!item?.id) return;
+
+    setLoadingItemId(item.id);
+
+    try {
+      let fullItem = { ...item, variant_types: [] };
+
+      if (item.has_variants) {
+        const { data: variantTypes } = await supabase
+          .from('menu_item_variant_types')
+          .select(`
+            id,
+            variant_type_name,
+            is_required,
+            allow_multiple,
+            display_order,
+            options:menu_item_variant_options(
+              id,
+              option_name,
+              price_modifier,
+              available,
+              display_order
+            )
+          `)
+          .eq('menu_item_id', item.id)
+          .order('display_order');
+
+        fullItem = { ...item, variant_types: variantTypes || [] };
+      }
+
+      setVariantModalItem(fullItem);
+    } catch (err) {
+      console.error('[CustomerDashboard] Failed to load item variants:', err);
+      setVariantModalItem({ ...item, variant_types: [] });
+    } finally {
+      setLoadingItemId(null);
     }
   };
 
-  const handleVariantConfirm = (variantData) => {
-    // Save the variant data to localStorage for the order page to pick up
-    localStorage.setItem('pendingCartItem', JSON.stringify(variantData));
-    setShowVariantModal(false);
-    setSelectedItem(null);
-    // Navigate to order page
-    router.push('/customer/order').catch(console.error);
+  const handleVariantConfirm = (itemWithVariants) => {
+    const { cartKey, finalPrice, quantity, variantDetails } = itemWithVariants;
+
+    const variantSummary =
+      variantDetails && typeof variantDetails === 'object'
+        ? Object.entries(variantDetails)
+            .map(([type, value]) => `${type}: ${value}`)
+            .join(', ')
+        : undefined;
+
+    try {
+      const savedCart = JSON.parse(localStorage.getItem('bite-bonanza-cart') || '[]');
+      const existing = savedCart.find((c) => c.comboKey === cartKey);
+
+      let updatedCart;
+      if (existing) {
+        updatedCart = savedCart.map((c) =>
+          c.comboKey === cartKey
+            ? { ...c, quantity: c.quantity + quantity, price: (c.quantity + quantity) * (c.basePrice + (c.addonPrice || 0)) }
+            : c
+        );
+      } else {
+        updatedCart = [
+          ...savedCart,
+          {
+            id: String(Date.now()),
+            comboKey: cartKey,
+            menuItemId: itemWithVariants.id,
+            menuItem: itemWithVariants,
+            quantity,
+            basePrice: finalPrice,
+            addonPrice: 0,
+            price: finalPrice * quantity,
+            selectedVariety: variantSummary,
+            selectedSize: undefined,
+            selectedAddons: [],
+            variantDetails: variantDetails,
+          },
+        ];
+      }
+
+      localStorage.setItem('bite-bonanza-cart', JSON.stringify(updatedCart));
+    } catch (err) {
+      console.error('[CustomerDashboard] Failed to update cart:', err);
+    }
+
+    setVariantModalItem(null);
+
+    if (cartFeedbackTimerRef.current) clearTimeout(cartFeedbackTimerRef.current);
+    setCartFeedback(`✅ ${itemWithVariants.name} added to cart!`);
+    cartFeedbackTimerRef.current = setTimeout(() => setCartFeedback(null), 3000);
   };
 
   const handleVariantCancel = () => {
-    setShowVariantModal(false);
-    setSelectedItem(null);
+    setVariantModalItem(null);
   };
 
   const getStatusDisplay = (status, orderMode) => {
@@ -410,13 +572,36 @@ export default function CustomerDashboard() {
 
           {/* Most Purchased Items */}
           <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>🔥 Most Purchased Items</h3>
+            <div style={styles.sectionHeader}>
+              <h3 style={styles.sectionTitle}>🔥 Most Purchased Items</h3>
+              <select
+                value={purchaseSortOrder}
+                onChange={(event) => setPurchaseSortOrder(event.target.value)}
+                style={styles.purchaseSortSelect}
+              >
+                <option value="most">Most Purchased to Least Purchased</option>
+                <option value="least">Least Purchased to Most Purchased</option>
+              </select>
+            </div>
             {dashboardData.mostPurchasedItems.length > 0 ? (
               <div style={styles.itemsGrid}>
-                {dashboardData.mostPurchasedItems.map((purchase) => {
+                {sortedMostPurchasedItems.map((purchase) => {
                   const item = purchase.menu_items;
                   return (
-                    <div key={purchase.menu_item_id} style={styles.itemCard}>
+                    <button
+                      key={purchase.menu_item_id}
+                      style={{
+                        ...styles.itemCard,
+                        ...(focusedCardId === purchase.menu_item_id ? styles.itemCardFocused : {}),
+                        opacity: loadingItemId === purchase.menu_item_id ? 0.6 : 1,
+                        pointerEvents: loadingItemId ? 'none' : 'auto',
+                      }}
+                      type="button"
+                      aria-label={`Customize and add ${item?.name || 'item'} to cart`}
+                      onClick={() => handleAddToCart(purchase)}
+                      onFocus={() => setFocusedCardId(purchase.menu_item_id)}
+                      onBlur={() => setFocusedCardId(null)}
+                    >
                       <div style={styles.itemImagePlaceholder}>
                         {item?.image_url ? (
                           <img src={item.image_url} alt={item.name} style={styles.itemImage} />
@@ -429,13 +614,10 @@ export default function CustomerDashboard() {
                       <p style={styles.itemPurchaseCount}>
                         Ordered {purchase.purchase_count} {purchase.purchase_count === 1 ? 'time' : 'times'}
                       </p>
-                      <button
-                        style={styles.addToCartBtn}
-                        onClick={() => handleAddToCart(item)}
-                      >
-                        🛒 Add to Cart
-                      </button>
-                    </div>
+                      <div style={styles.addToCartBtn}>
+                        {loadingItemId === purchase.menu_item_id ? '⏳ Loading…' : '🛒 Add to Cart'}
+                      </div>
+                    </button>
                   );
                 })}
               </div>
@@ -449,15 +631,6 @@ export default function CustomerDashboard() {
           </div>
         </main>
 
-        {/* Variant Selection Modal */}
-        {showVariantModal && selectedItem && (
-          <VariantSelectionModal
-            item={selectedItem}
-            onConfirm={handleVariantConfirm}
-            onCancel={handleVariantCancel}
-          />
-        )}
-
         {showSundayReminder && (
           <div style={styles.modalOverlay}>
             <div style={styles.modalCard}>
@@ -467,6 +640,22 @@ export default function CustomerDashboard() {
                 OK
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Subvariant selection modal for Most Purchased items */}
+        {variantModalItem && (
+          <VariantSelectionModal
+            item={variantModalItem}
+            onConfirm={handleVariantConfirm}
+            onCancel={handleVariantCancel}
+          />
+        )}
+
+        {/* Cart feedback toast */}
+        {cartFeedback && (
+          <div style={styles.cartToast} role="status" aria-live="polite">
+            {cartFeedback}
           </div>
         )}
       </div>
@@ -633,11 +822,28 @@ const styles = {
   section: {
     marginTop: '40px',
   },
+  sectionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '12px',
+    flexWrap: 'wrap',
+    marginBottom: '24px',
+  },
   sectionTitle: {
     fontSize: '24px',
     fontFamily: "'Playfair Display', serif",
     color: '#ffc107',
-    marginBottom: '24px',
+    margin: 0,
+  },
+  purchaseSortSelect: {
+    backgroundColor: '#2a2a2a',
+    color: '#fff',
+    border: '1px solid #ffc107',
+    borderRadius: '8px',
+    padding: '8px 12px',
+    fontSize: '13px',
+    fontFamily: "'Poppins', sans-serif",
   },
   itemsGrid: {
     display: 'grid',
@@ -650,6 +856,12 @@ const styles = {
     padding: '16px',
     border: '1px solid #444',
     textAlign: 'center',
+    color: '#fff',
+    width: '100%',
+    cursor: 'pointer',
+  },
+  itemCardFocused: {
+    boxShadow: '0 0 0 2px #ffc107',
   },
   itemImagePlaceholder: {
     width: '100%',
@@ -697,7 +909,6 @@ const styles = {
     borderRadius: '6px',
     fontSize: '14px',
     fontWeight: 'bold',
-    cursor: 'pointer',
     fontFamily: "'Poppins', sans-serif",
   },
   emptyState: {
@@ -771,5 +982,22 @@ const styles = {
     fontWeight: '600',
     fontSize: '14px',
     fontFamily: "'Poppins', sans-serif",
+  },
+  cartToast: {
+    position: 'fixed',
+    bottom: '24px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    backgroundColor: '#1a1a1a',
+    border: '1px solid #4caf50',
+    color: '#4caf50',
+    padding: '12px 24px',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
+    fontWeight: '600',
+    zIndex: 2000,
+    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+    whiteSpace: 'nowrap',
   },
 };

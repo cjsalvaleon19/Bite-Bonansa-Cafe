@@ -1,8 +1,24 @@
 import React, { useState, useEffect } from 'react';
 
-export default function VariantSelectionModal({ item, onConfirm, onCancel }) {
+export default function VariantSelectionModal({
+  item,
+  onConfirm,
+  onCancel,
+  initialSelectedVariants = null,
+  initialQuantity = 1,
+  confirmLabel = 'Add to Cart'
+}) {
   const [selectedVariants, setSelectedVariants] = useState({});
   const [quantity, setQuantity] = useState(1);
+
+  useEffect(() => {
+    setSelectedVariants(
+      initialSelectedVariants && typeof initialSelectedVariants === 'object'
+        ? initialSelectedVariants
+        : {}
+    );
+    setQuantity(Math.max(1, Number(initialQuantity) || 1));
+  }, [item?.id, initialSelectedVariants, initialQuantity]);
 
   // Handle variant selection
   const handleVariantSelect = (typeId, optionId, optionName, priceModifier, allowMultiple) => {
@@ -220,7 +236,7 @@ export default function VariantSelectionModal({ item, onConfirm, onCancel }) {
               ...(isValid() ? {} : styles.confirmBtnDisabled)
             }}
           >
-            Add to Cart
+            {confirmLabel}
           </button>
         </div>
       </div>
