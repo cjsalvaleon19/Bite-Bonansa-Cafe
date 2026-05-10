@@ -36,6 +36,7 @@ export default function CashierPOS() {
   const [selectedItem, setSelectedItem] = useState(null); // For variant selection
   const [showVariantModal, setShowVariantModal] = useState(false);
   const [editingCartKey, setEditingCartKey] = useState(null);
+  const [focusedCartItemKey, setFocusedCartItemKey] = useState(null);
   
   // Order details
   const [orderMode, setOrderMode] = useState('dine-in');
@@ -1220,6 +1221,7 @@ export default function CashierPOS() {
                     const totalItemPrice = itemPrice * item.quantity;
                     const itemKey = item.cartKey || item.id;
                     const variantSummary = formatVariantSummary(item.variantDetails);
+                    const canEditVariants = item.variant_types && item.variant_types.length > 0;
 
                     return (
                       <li key={itemKey} style={styles.cartItem}>
@@ -1228,9 +1230,14 @@ export default function CashierPOS() {
                             type="button"
                             style={{
                               ...styles.cartItemNameBtn,
-                              cursor: item.variant_types && item.variant_types.length > 0 ? 'pointer' : 'default'
+                              ...(canEditVariants ? {} : styles.cartItemNameBtnDisabled),
+                              ...(focusedCartItemKey === itemKey ? styles.cartItemNameBtnFocused : {}),
+                              cursor: canEditVariants ? 'pointer' : 'default'
                             }}
+                            disabled={!canEditVariants}
                             onClick={() => handleEditCartItem(item, itemKey)}
+                            onFocus={() => setFocusedCartItemKey(itemKey)}
+                            onBlur={() => setFocusedCartItemKey(null)}
                           >
                             <span style={styles.cartItemName}>{item.name}</span>
                             {variantSummary && (
@@ -1359,7 +1366,9 @@ const styles = {
   cartList: { listStyle: 'none', padding: 0, margin: '0 0 16px 0', maxHeight: '300px', overflowY: 'auto' },
   cartItem: { display: 'flex', flexDirection: 'column', padding: '12px 0', borderBottom: '1px solid #2a2a2a', gap: '8px' },
   cartItemHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%', gap: '8px' },
-  cartItemNameBtn: { background: 'none', border: 'none', padding: 0, margin: 0, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 },
+  cartItemNameBtn: { background: 'none', border: '1px solid transparent', borderRadius: '6px', padding: '2px 4px', margin: 0, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0, transition: 'border-color 0.2s, background-color 0.2s' },
+  cartItemNameBtnDisabled: { opacity: 0.85 },
+  cartItemNameBtnFocused: { borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.08)' },
   cartItemName: { fontSize: '13px', color: '#fff', flex: 1, minWidth: 0, wordWrap: 'break-word', whiteSpace: 'normal' },
   cartItemVariant: { fontSize: '11px', color: '#aaa', wordWrap: 'break-word', whiteSpace: 'normal' },
   cartControls: { display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 },
