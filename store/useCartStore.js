@@ -22,6 +22,25 @@ const useCartStore = create((set, get) => ({
   removeItem: (id) =>
     set((state) => ({ items: state.items.filter((i) => (i.cartKey || i.id) !== id) })),
 
+  replaceItem: (oldId, item) =>
+    set((state) => {
+      const newCartKey = item.cartKey || item.id;
+      const baseItems = state.items.filter((i) => (i.cartKey || i.id) !== oldId);
+      const existingIndex = baseItems.findIndex((i) => (i.cartKey || i.id) === newCartKey);
+      const nextQuantity = Math.max(1, Number(item.quantity) || 1);
+
+      if (existingIndex >= 0) {
+        const existing = baseItems[existingIndex];
+        baseItems[existingIndex] = {
+          ...existing,
+          quantity: existing.quantity + nextQuantity,
+        };
+        return { items: baseItems };
+      }
+
+      return { items: [...baseItems, { ...item, cartKey: newCartKey, quantity: nextQuantity }] };
+    }),
+
   updateQuantity: (id, quantity) =>
     set((state) => ({
       items:

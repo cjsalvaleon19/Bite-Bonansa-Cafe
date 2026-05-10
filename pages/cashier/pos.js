@@ -35,6 +35,8 @@ export default function CashierPOS() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null); // For variant selection
   const [showVariantModal, setShowVariantModal] = useState(false);
+  const [editingCartKey, setEditingCartKey] = useState(null);
+  const [focusedCartItemKey, setFocusedCartItemKey] = useState(null);
   
   // Order details
   const [orderMode, setOrderMode] = useState('dine-in');
@@ -61,7 +63,7 @@ export default function CashierPOS() {
   const [combinedPayment, setCombinedPayment] = useState(false); // For points + cash/gcash
   const [lastPrintedOrder, setLastPrintedOrder] = useState(null); // For BT re-print
 
-  const { items, addItem, removeItem, updateQuantity, clearCart, getTotalPrice } =
+  const { items, addItem, replaceItem, removeItem, updateQuantity, clearCart, getTotalPrice } =
     useCartStore();
 
   useEffect(() => {
@@ -257,9 +259,28 @@ export default function CashierPOS() {
   };
 
   const handleVariantConfirm = (itemWithVariants) => {
-    addItem(itemWithVariants);
+    if (editingCartKey) {
+      replaceItem(editingCartKey, itemWithVariants);
+      setEditingCartKey(null);
+    } else {
+      addItem(itemWithVariants);
+    }
     setShowVariantModal(false);
     setSelectedItem(null);
+  };
+
+  const handleEditCartItem = (item, itemKey) => {
+    if (!item.variant_types || item.variant_types.length === 0) return;
+    setSelectedItem(item);
+    setEditingCartKey(itemKey);
+    setShowVariantModal(true);
+  };
+
+  const formatVariantSummary = (variantDetails) => {
+    if (!variantDetails || typeof variantDetails !== 'object') return '';
+    const entries = Object.entries(variantDetails).filter(([, value]) => value);
+    if (entries.length === 0) return '';
+    return entries.map(([type, value]) => `${type}: ${value}`).join(' • ');
   };
 
   const fetchCustomerData = async (customerId) => {
@@ -1199,11 +1220,29 @@ export default function CashierPOS() {
                     const itemPrice = item.finalPrice || item.price || item.base_price || 0;
                     const totalItemPrice = itemPrice * item.quantity;
                     const itemKey = item.cartKey || item.id;
+                    const variantSummary = formatVariantSummary(item.variantDetails);
+                    const canEditVariants = item.variant_types && item.variant_types.length > 0;
 
                     return (
                       <li key={itemKey} style={styles.cartItem}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
-                          <span style={styles.cartItemName}>{item.name}</span>
+                        <div style={styles.cartItemHeader}>
+                          <button
+                            type="button"
+                            style={{
+                              ...styles.cartItemNameBtn,
+                              ...(!canEditVariants && styles.cartItemNameBtnDisabled),
+                              ...(focusedCartItemKey === itemKey && styles.cartItemNameBtnFocused)
+                            }}
+                            disabled={!canEditVariants}
+                            onClick={() => handleEditCartItem(item, itemKey)}
+                            onFocus={() => setFocusedCartItemKey(itemKey)}
+                            onBlur={() => setFocusedCartItemKey(null)}
+                          >
+                            <span style={styles.cartItemName}>{item.name}</span>
+                            {variantSummary && (
+                              <span style={styles.cartItemVariant}>{variantSummary}</span>
+                            )}
+                          </button>
                           <button style={styles.removeBtn} onClick={() => removeItem(itemKey)}>✕</button>
                         </div>
                         <div style={styles.cartControls}>
@@ -1276,15 +1315,19 @@ export default function CashierPOS() {
 
         {/* Variant Selection Modal */}
         {showVariantModal && selectedItem && (
-          <VariantSelectionModal
-            item={selectedItem}
-            onConfirm={handleVariantConfirm}
-            onCancel={() => {
-              setShowVariantModal(false);
-              setSelectedItem(null);
-            }}
-          />
-        )}
+            <VariantSelectionModal
+              item={selectedItem}
+              onConfirm={handleVariantConfirm}
+              initialSelectedVariants={editingCartKey ? selectedItem.selectedVariants : null}
+              initialQuantity={editingCartKey ? selectedItem.quantity : 1}
+              confirmLabel={editingCartKey ? 'Update Item' : 'Add to Cart'}
+              onCancel={() => {
+                setShowVariantModal(false);
+                setSelectedItem(null);
+                setEditingCartKey(null);
+              }}
+            />
+          )}
       </div>
     </>
   );
@@ -1321,7 +1364,12 @@ const styles = {
   cartTitle: { fontSize: '14px', color: '#ffc107', margin: '0 0 12px 0' },
   cartList: { listStyle: 'none', padding: 0, margin: '0 0 16px 0', maxHeight: '300px', overflowY: 'auto' },
   cartItem: { display: 'flex', flexDirection: 'column', padding: '12px 0', borderBottom: '1px solid #2a2a2a', gap: '8px' },
+  cartItemHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%', gap: '8px' },
+  cartItemNameBtn: { background: 'none', border: '1px solid transparent', borderRadius: '6px', padding: '2px 4px', margin: 0, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0, transition: 'border-color 0.2s, background-color 0.2s', cursor: 'pointer' },
+  cartItemNameBtnDisabled: { opacity: 0.85, cursor: 'default' },
+  cartItemNameBtnFocused: { borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.08)' },
   cartItemName: { fontSize: '13px', color: '#fff', flex: 1, minWidth: 0, wordWrap: 'break-word', whiteSpace: 'normal' },
+  cartItemVariant: { fontSize: '11px', color: '#aaa', wordWrap: 'break-word', whiteSpace: 'normal' },
   cartControls: { display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 },
   qtyBtn: { width: '24px', height: '24px', backgroundColor: '#2a2a2a', color: '#ffc107', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', lineHeight: 1, padding: 0 },
   qtyValue: { fontSize: '13px', color: '#fff', minWidth: '20px', textAlign: 'center' },
