@@ -1604,6 +1604,7 @@ function CartContent({
   maxPointsUsable, actualPointsToUse, remainingBalance,
 }: CartContentProps) {
   const change = paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
+  const isSundayClosed = isSundayInManila()
   const isDeliveryScheduleOpen = isWithinDeliverySchedule()
 
   if (cart.length === 0) {
@@ -1874,6 +1875,12 @@ function CartContent({
             rows={2}
           />
         </div>
+
+        {isSundayClosed && (
+          <div className="mt-4 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {SUNDAY_CLOSURE_MESSAGE}
+          </div>
+        )}
       </ScrollArea>
 
       <div className="mt-4 space-y-2 border-t border-border pt-4">
