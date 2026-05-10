@@ -1230,8 +1230,8 @@ export default function CashierPOS() {
                             type="button"
                             style={{
                               ...styles.cartItemNameBtn,
-                              ...(canEditVariants ? {} : styles.cartItemNameBtnDisabled),
-                              ...(focusedCartItemKey === itemKey ? styles.cartItemNameBtnFocused : {}),
+                              ...(canEditVariants ? null : styles.cartItemNameBtnDisabled),
+                              ...(focusedCartItemKey === itemKey ? styles.cartItemNameBtnFocused : null),
                               cursor: canEditVariants ? 'pointer' : 'default'
                             }}
                             disabled={!canEditVariants}
