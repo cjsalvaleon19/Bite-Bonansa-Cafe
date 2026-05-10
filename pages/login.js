@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../utils/supabaseClient';
 import { getRoleForEmail } from '../utils/roleMapping';
+import { isSundayInManila } from '../lib/store';
+
+const SUNDAY_LOGIN_REMINDER_KEY = 'bite-bonanza-sunday-login-reminder';
 
 const Login = () => {
   const router = useRouter();
@@ -117,12 +120,20 @@ const Login = () => {
 
       // Role-based redirect
       if (role === 'customer') {
+        if (isSundayInManila()) {
+          sessionStorage.setItem(SUNDAY_LOGIN_REMINDER_KEY, 'true');
+        } else {
+          sessionStorage.removeItem(SUNDAY_LOGIN_REMINDER_KEY);
+        }
         await router.push('/customer/dashboard');
       } else if (role === 'cashier') {
+        sessionStorage.removeItem(SUNDAY_LOGIN_REMINDER_KEY);
         await router.push('/cashier');
       } else if (role === 'rider') {
+        sessionStorage.removeItem(SUNDAY_LOGIN_REMINDER_KEY);
         await router.push('/rider/dashboard');
       } else if (role === 'admin') {
+        sessionStorage.removeItem(SUNDAY_LOGIN_REMINDER_KEY);
         await router.push('/dashboard');
       } else {
         // Unrecognized role - prevent access

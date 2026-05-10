@@ -48,7 +48,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance } from '@/lib/store'
+import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance, isSundayInManila, PH_TIMEZONE, SUNDAY_CLOSURE_MESSAGE } from '@/lib/store'
 import { supabase } from '@/lib/supabase/client'
 import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
@@ -96,6 +96,45 @@ const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz'])
  * This prevents race conditions where items might be added before the saved cart is restored.
  */
 const CART_LOAD_DELAY_MS = 100
+const DELIVERY_START_HOUR = 10
+const DELIVERY_END_HOUR = 17
+const DELIVERY_SCHEDULE_START_MINUTES = DELIVERY_START_HOUR * 60
+const DELIVERY_SCHEDULE_END_MINUTES = DELIVERY_END_HOUR * 60
+
+function formatMinutesTo12Hour(minutesOfDay: number): string {
+  const hours24 = Math.floor(minutesOfDay / 60)
+  const minutes = minutesOfDay % 60
+  const suffix = hours24 >= 12 ? 'PM' : 'AM'
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12
+  return `${hours12}:${String(minutes).padStart(2, '0')} ${suffix}`
+}
+
+function getCurrentManilaMinutesOfDay(): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: PH_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date())
+
+  const hourPart = parts.find((part) => part.type === 'hour')?.value ?? '0'
+  const minutePart = parts.find((part) => part.type === 'minute')?.value ?? '0'
+  const hours = Number.parseInt(hourPart, 10)
+  const minutes = Number.parseInt(minutePart, 10)
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return -1
+  }
+
+  return (hours * 60) + minutes
+}
+
+function isWithinDeliverySchedule(): boolean {
+  const manilaMinutes = getCurrentManilaMinutesOfDay()
+  return manilaMinutes >= DELIVERY_SCHEDULE_START_MINUTES && manilaMinutes <= DELIVERY_SCHEDULE_END_MINUTES
+}
+
+const DELIVERY_SCHEDULE_LABEL = `${formatMinutesTo12Hour(DELIVERY_SCHEDULE_START_MINUTES)} - ${formatMinutesTo12Hour(DELIVERY_SCHEDULE_END_MINUTES)} (PH Time, UTC+08:00)`
 
 function calcEarnedPoints(subtotal: number): number {
   if (subtotal <= 0) return 0
@@ -551,6 +590,8 @@ function CustomerOrderPage() {
     calculateDeliveryFee(deliveryLat, deliveryLng)
   const appliedDeliveryFee = orderType === 'delivery' ? deliveryFee : 0
   const total = subtotal + appliedDeliveryFee
+  const isSundayClosed = isSundayInManila()
+  const isDeliveryScheduleOpen = isWithinDeliverySchedule()
   
   // Calculate payment breakdown when using points
   const maxPointsUsable = Math.min(loyaltyBalance, total)
@@ -559,9 +600,18 @@ function CustomerOrderPage() {
   const earnedPoints = calcEarnedPoints(subtotal)
 
   const handlePlaceOrder = async () => {
+    if (isSundayClosed) {
+      toast.error(SUNDAY_CLOSURE_MESSAGE)
+      return
+    }
+
     // Check if delivery is disabled but user is trying to order with delivery
     if (orderType === 'delivery' && !deliveryEnabled) {
       toast.error('Delivery is currently unavailable. Please select another order mode.')
+      return
+    }
+    if (orderType === 'delivery' && !isDeliveryScheduleOpen) {
+      toast.error(`Delivery orders are accepted from ${DELIVERY_SCHEDULE_LABEL}.`)
       return
     }
     
@@ -874,6 +924,7 @@ function CustomerOrderPage() {
           size="sm"
           onClick={() => setOrderType('dine-in')}
           className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
+          disabled={isSundayClosed}
         >
           <UtensilsCrossed className="h-4 w-4" />
           <span>Dine-in</span>
@@ -883,6 +934,7 @@ function CustomerOrderPage() {
           size="sm"
           onClick={() => setOrderType('take-out')}
           className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
+          disabled={isSundayClosed}
         >
           <Package className="h-4 w-4" />
           <span>Take-out</span>
@@ -892,7 +944,7 @@ function CustomerOrderPage() {
           size="sm"
           onClick={() => setOrderType('delivery')}
           className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
-          disabled={!deliveryEnabled}
+          disabled={isSundayClosed || !deliveryEnabled}
         >
           <Truck className="h-4 w-4" />
           <span>Delivery</span>
@@ -902,11 +954,18 @@ function CustomerOrderPage() {
           size="sm"
           onClick={() => setOrderType('pickup')}
           className="gap-2 flex-1 sm:flex-initial touch-manipulation min-h-[44px]"
+          disabled={isSundayClosed}
         >
           <ShoppingBag className="h-4 w-4" />
           <span>Pick-up</span>
         </Button>
       </div>
+
+      {isSundayClosed && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-red-600">
+          <strong>Sunday closure:</strong> {SUNDAY_CLOSURE_MESSAGE}
+        </div>
+      )}
 
       {!deliveryEnabled && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-amber-600">
@@ -1545,6 +1604,8 @@ function CartContent({
   maxPointsUsable, actualPointsToUse, remainingBalance,
 }: CartContentProps) {
   const change = paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
+  const isSundayClosed = isSundayInManila()
+  const isDeliveryScheduleOpen = isWithinDeliverySchedule()
 
   if (cart.length === 0) {
     return (
@@ -1628,6 +1689,16 @@ function CartContent({
               <MapPin className="mr-2 h-4 w-4" />
               Search &amp; Pin Location on Map
             </Button>
+            {!isSundayClosed && (
+              <p className="text-xs text-muted-foreground">
+                Delivery schedule: {DELIVERY_SCHEDULE_LABEL}
+              </p>
+            )}
+            {!isSundayClosed && !isDeliveryScheduleOpen && (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                Delivery is currently closed. Delivery orders are accepted from {DELIVERY_SCHEDULE_LABEL}.
+              </div>
+            )}
             {deliveryOutOfRange && (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <strong>Outside delivery area.</strong> More than 10 km from our store.
@@ -1806,6 +1877,12 @@ function CartContent({
             rows={2}
           />
         </div>
+
+        {isSundayClosed && (
+          <div className="mt-4 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {SUNDAY_CLOSURE_MESSAGE}
+          </div>
+        )}
       </ScrollArea>
 
       <div className="mt-4 space-y-2 border-t border-border pt-4">
@@ -1846,8 +1923,10 @@ function CartContent({
         onClick={handlePlaceOrder}
         disabled={
           isSubmitting ||
+          isSundayClosed ||
           cart.length === 0 ||
           (orderType === 'delivery' && !deliveryAddress.trim()) ||
+          (orderType === 'delivery' && !isDeliveryScheduleOpen) ||
           (orderType === 'delivery' && deliveryOutOfRange) ||
           // Cash tendered validation only for delivery and pickup orders
           (paymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (!cashTendered || parseFloat(cashTendered) < total)) ||

@@ -5,12 +5,16 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import NotificationBell from '../../components/NotificationBell';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
+import { isSundayInManila, SUNDAY_CLOSURE_MESSAGE } from '../../lib/store';
+
+const SUNDAY_LOGIN_REMINDER_KEY = 'bite-bonanza-sunday-login-reminder';
 
 export default function CustomerDashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showSundayReminder, setShowSundayReminder] = useState(false);
   const [showVariantModal, setShowVariantModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [dashboardData, setDashboardData] = useState({
@@ -74,6 +78,11 @@ export default function CustomerDashboard() {
             router.replace('/rider/dashboard').catch(console.error);
           }
           return;
+        }
+
+        if (isSundayInManila() && sessionStorage.getItem(SUNDAY_LOGIN_REMINDER_KEY) === 'true') {
+          setShowSundayReminder(true);
+          sessionStorage.removeItem(SUNDAY_LOGIN_REMINDER_KEY);
         }
 
         // Fetch dashboard data
@@ -342,6 +351,12 @@ export default function CustomerDashboard() {
 
         <main style={styles.main}>
           <h2 style={styles.title}>🏠 Customer Dashboard</h2>
+
+          {isSundayInManila() && (
+            <div style={styles.closedBanner}>
+              <strong>Sunday closure:</strong> {SUNDAY_CLOSURE_MESSAGE}
+            </div>
+          )}
           
           {/* Total Points Earned */}
           <div style={styles.pointsCard}>
@@ -442,6 +457,18 @@ export default function CustomerDashboard() {
             onCancel={handleVariantCancel}
           />
         )}
+
+        {showSundayReminder && (
+          <div style={styles.modalOverlay}>
+            <div style={styles.modalCard}>
+              <h3 style={styles.modalTitle}>Sunday Closure Notice</h3>
+              <p style={styles.modalText}>{SUNDAY_CLOSURE_MESSAGE}</p>
+              <button style={styles.modalButton} onClick={() => setShowSundayReminder(false)}>
+                OK
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
@@ -519,6 +546,16 @@ const styles = {
     color: '#ffc107',
     marginBottom: '32px',
     textAlign: 'center',
+  },
+  closedBanner: {
+    marginBottom: '24px',
+    padding: '14px 16px',
+    borderRadius: '10px',
+    border: '1px solid #ff9800',
+    backgroundColor: 'rgba(255, 152, 0, 0.14)',
+    color: '#ffd180',
+    fontSize: '14px',
+    lineHeight: 1.5,
   },
   pointsCard: {
     display: 'flex',
@@ -691,5 +728,48 @@ const styles = {
     color: '#999',
     marginTop: '-16px',
     marginBottom: '24px',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '16px',
+    zIndex: 1000,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: '420px',
+    backgroundColor: '#1a1a1a',
+    border: '1px solid #ffc107',
+    borderRadius: '12px',
+    padding: '24px',
+    boxShadow: '0 15px 50px rgba(255, 193, 7, 0.15)',
+  },
+  modalTitle: {
+    margin: '0 0 12px',
+    color: '#ffc107',
+    fontSize: '24px',
+    fontFamily: "'Playfair Display', serif",
+  },
+  modalText: {
+    margin: '0 0 20px',
+    color: '#f5f5f5',
+    fontSize: '14px',
+    lineHeight: 1.6,
+  },
+  modalButton: {
+    width: '100%',
+    padding: '12px 16px',
+    backgroundColor: '#ffc107',
+    color: '#1a1a1a',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '600',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
   },
 };
