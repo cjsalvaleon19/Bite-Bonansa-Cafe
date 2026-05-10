@@ -1231,8 +1231,7 @@ export default function CashierPOS() {
                             style={{
                               ...styles.cartItemNameBtn,
                               ...(!canEditVariants && styles.cartItemNameBtnDisabled),
-                              ...(focusedCartItemKey === itemKey && styles.cartItemNameBtnFocused),
-                              cursor: canEditVariants ? 'pointer' : 'default'
+                              ...(focusedCartItemKey === itemKey && styles.cartItemNameBtnFocused)
                             }}
                             disabled={!canEditVariants}
                             onClick={() => handleEditCartItem(item, itemKey)}
@@ -1366,8 +1365,8 @@ const styles = {
   cartList: { listStyle: 'none', padding: 0, margin: '0 0 16px 0', maxHeight: '300px', overflowY: 'auto' },
   cartItem: { display: 'flex', flexDirection: 'column', padding: '12px 0', borderBottom: '1px solid #2a2a2a', gap: '8px' },
   cartItemHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%', gap: '8px' },
-  cartItemNameBtn: { background: 'none', border: '1px solid transparent', borderRadius: '6px', padding: '2px 4px', margin: 0, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0, transition: 'border-color 0.2s, background-color 0.2s' },
-  cartItemNameBtnDisabled: { opacity: 0.85 },
+  cartItemNameBtn: { background: 'none', border: '1px solid transparent', borderRadius: '6px', padding: '2px 4px', margin: 0, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0, transition: 'border-color 0.2s, background-color 0.2s', cursor: 'pointer' },
+  cartItemNameBtnDisabled: { opacity: 0.85, cursor: 'default' },
   cartItemNameBtnFocused: { borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.08)' },
   cartItemName: { fontSize: '13px', color: '#fff', flex: 1, minWidth: 0, wordWrap: 'break-word', whiteSpace: 'normal' },
   cartItemVariant: { fontSize: '11px', color: '#aaa', wordWrap: 'break-word', whiteSpace: 'normal' },
