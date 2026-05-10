@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense, type ComponentType } from 'react'
 import dynamic from 'next/dynamic'
 import {
   Search,
@@ -66,7 +66,10 @@ interface VariantSelectionModalProps {
 
 // Dynamically import VariantSelectionModal for variant selection
 const VariantSelectionModal = dynamic<VariantSelectionModalProps>(
-  () => import('../../../components/VariantSelectionModal') as any,
+  () =>
+    import('../../../components/VariantSelectionModal').then(
+      (mod) => mod.default as ComponentType<VariantSelectionModalProps>
+    ),
   { ssr: false }
 )
 
