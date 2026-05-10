@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabase/client'
 
 export const PH_TIMEZONE = 'Asia/Manila'
-export const SUNDAY_CLOSURE_MESSAGE = 'Bite Bonansa Cafe is closed every Sunday (PH Time). Ordering is unavailable today.'
+export const SUNDAY_CLOSURE_MESSAGE = "Hey there, Biter! We're taking a little Sunday breather, but we'll be back and ready to satisfy those cravings Monday through Saturday! Can't wait to serve you soon! 😊"
 
 // Store location constants
 export const STORE_LOCATION = {
