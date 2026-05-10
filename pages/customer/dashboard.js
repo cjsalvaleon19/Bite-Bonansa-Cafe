@@ -413,7 +413,7 @@ export default function CustomerDashboard() {
       if (existing) {
         updatedCart = savedCart.map((c) =>
           c.comboKey === cartKey
-            ? { ...c, quantity: c.quantity + quantity, price: (c.quantity + quantity) * finalPrice }
+            ? { ...c, quantity: c.quantity + quantity, price: (c.quantity + quantity) * (c.basePrice + (c.addonPrice || 0)) }
             : c
         );
       } else {

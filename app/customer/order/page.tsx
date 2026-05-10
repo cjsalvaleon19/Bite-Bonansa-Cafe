@@ -1862,7 +1862,7 @@ function CartContent({
                 {/* Bottom row: qty controls (left) and total price (right) */}
                 <div className="flex min-w-0 items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
-                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" aria-label={`Decrease quantity for ${item.menuItem.name}`} onClick={(event) => {
+                    <Button variant="outline" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 touch-manipulation px-0" aria-label={`Decrease quantity for ${item.menuItem.name}`} disabled={item.quantity <= 1} onClick={(event) => {
                       event.stopPropagation()
                       updateQuantity(item.id, -1)
                     }}>
