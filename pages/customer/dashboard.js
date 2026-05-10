@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -8,6 +8,14 @@ import { isSundayInManila, SUNDAY_CLOSURE_MESSAGE } from '../../lib/store';
 
 const SUNDAY_LOGIN_REMINDER_KEY = 'bite-bonanza-sunday-login-reminder';
 
+const normalizeQuantity = (value) => Math.max(1, Number(value) || 1);
+
+const generateVariantKey = (variantDetails) => (
+  variantDetails && typeof variantDetails === 'object'
+    ? JSON.stringify(Object.entries(variantDetails).sort(([a], [b]) => a.localeCompare(b)))
+    : 'default'
+);
+
 export default function CustomerDashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -15,6 +23,7 @@ export default function CustomerDashboard() {
   const [loading, setLoading] = useState(true);
   const [showSundayReminder, setShowSundayReminder] = useState(false);
   const [purchaseSortOrder, setPurchaseSortOrder] = useState('most');
+  const [focusedCardId, setFocusedCardId] = useState(null);
   const [dashboardData, setDashboardData] = useState({
     loyaltyBalance: 0,
     currentOrder: null,
@@ -24,11 +33,14 @@ export default function CustomerDashboard() {
     publishedReviewsCount: 0
   });
 
-  const sortedMostPurchasedItems = [...dashboardData.mostPurchasedItems].sort((a, b) => {
-    const left = Number(a?.purchase_count) || 0;
-    const right = Number(b?.purchase_count) || 0;
-    return purchaseSortOrder === 'least' ? left - right : right - left;
-  });
+  const sortedMostPurchasedItems = useMemo(
+    () => [...dashboardData.mostPurchasedItems].sort((a, b) => {
+      const left = Number(a?.purchase_count) || 0;
+      const right = Number(b?.purchase_count) || 0;
+      return purchaseSortOrder === 'least' ? left - right : right - left;
+    }),
+    [dashboardData.mostPurchasedItems, purchaseSortOrder]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -192,14 +204,12 @@ export default function CustomerDashboard() {
           const menuItemId = row?.menu_item_id;
           if (!menuItemId) return;
 
-          const quantity = Math.max(1, Number(row?.quantity) || 1);
+          const quantity = normalizeQuantity(row?.quantity);
           const unitPrice = Number(row?.price) || 0;
           const variantDetails = row?.variant_details && typeof row.variant_details === 'object'
             ? row.variant_details
             : null;
-          const variantKey = variantDetails
-            ? JSON.stringify(Object.entries(variantDetails).sort(([a], [b]) => a.localeCompare(b)))
-            : 'default';
+          const variantKey = generateVariantKey(variantDetails);
           const createdAt = row?.orders?.created_at || '';
 
           if (!historyMap.has(menuItemId)) {
@@ -257,7 +267,7 @@ export default function CustomerDashboard() {
                 purchase_count: entry.purchase_count,
                 menu_items: item,
                 preferred_variant_details: preferredSelection?.variantDetails || null,
-                preferred_quantity: Math.max(1, Number(preferredSelection?.quantity) || 1),
+                preferred_quantity: normalizeQuantity(preferredSelection?.quantity),
                 preferred_unit_price: Number(preferredSelection?.unitPrice) || Number(item.price) || 0,
                 preferred_variant_key: preferredSelection?.variantKey || 'default',
               };
@@ -339,13 +349,13 @@ export default function CustomerDashboard() {
     const item = purchase?.menu_items;
     if (!item?.id) return;
 
-    const preferredQuantity = Math.max(1, Number(purchase?.preferred_quantity) || 1);
+    const preferredQuantity = normalizeQuantity(purchase?.preferred_quantity);
     const preferredVariantDetails =
       purchase?.preferred_variant_details && typeof purchase.preferred_variant_details === 'object'
         ? purchase.preferred_variant_details
         : null;
     const preferredUnitPrice = Number(purchase?.preferred_unit_price) || Number(item.price) || 0;
-    const preferredVariantKey = purchase?.preferred_variant_key || 'default';
+    const preferredVariantKey = purchase?.preferred_variant_key || generateVariantKey(preferredVariantDetails);
 
     localStorage.setItem(
       'pendingCartItem',
@@ -495,13 +505,19 @@ export default function CustomerDashboard() {
               <div style={styles.itemsGrid}>
                 {sortedMostPurchasedItems.map((purchase) => {
                   const item = purchase.menu_items;
-                  const quantity = Math.max(1, Number(purchase.preferred_quantity) || 1);
+                  const quantity = normalizeQuantity(purchase.preferred_quantity);
                   return (
                     <button
                       key={purchase.menu_item_id}
-                      style={styles.itemCard}
+                      style={{
+                        ...styles.itemCard,
+                        ...(focusedCardId === purchase.menu_item_id ? styles.itemCardFocused : {})
+                      }}
                       type="button"
+                      aria-label={`Add ${item?.name || 'item'} to cart`}
                       onClick={() => handleAddToCart(purchase)}
+                      onFocus={() => setFocusedCardId(purchase.menu_item_id)}
+                      onBlur={() => setFocusedCardId(null)}
                     >
                       <div style={styles.itemImagePlaceholder}>
                         {item?.image_url ? (
@@ -744,6 +760,10 @@ const styles = {
     color: '#fff',
     width: '100%',
     cursor: 'pointer',
+    outline: 'none',
+  },
+  itemCardFocused: {
+    boxShadow: '0 0 0 2px #ffc107',
   },
   itemImagePlaceholder: {
     width: '100%',
