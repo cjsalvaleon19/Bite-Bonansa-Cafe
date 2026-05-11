@@ -28,6 +28,7 @@ export default function CustomerDashboard() {
   const [loadingItemId, setLoadingItemId] = useState(null);
   const [cartFeedback, setCartFeedback] = useState(null);
   const cartFeedbackTimerRef = useRef(null);
+  const [showDeliveryNoticePopup, setShowDeliveryNoticePopup] = useState(false);
   const [dashboardData, setDashboardData] = useState({
     loyaltyBalance: 0,
     currentOrder: null,
@@ -498,7 +499,10 @@ export default function CustomerDashboard() {
           <h1 style={styles.logo}>☕ Bite Bonansa Cafe</h1>
           <nav style={styles.nav}>
             <Link href="/customer/dashboard" style={styles.navLink}>Dashboard</Link>
-            <Link href="/customer/order" style={styles.navLink}>Order Portal</Link>
+            <button
+              style={{ ...styles.navLink, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              onClick={() => setShowDeliveryNoticePopup(true)}
+            >Order Portal</button>
             <Link href="/customer/order-tracking" style={styles.navLink}>Order Tracking</Link>
             <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
             <Link href="/customer/reviews" style={styles.navLink}>Share Review</Link>
@@ -533,11 +537,14 @@ export default function CustomerDashboard() {
           {/* Quick Action Cards */}
           <div style={styles.cardsGrid}>
             {/* Order Now */}
-            <Link href="/customer/order" style={styles.actionCard}>
+            <button
+              style={{ ...styles.actionCard, background: 'none', border: '1px solid rgba(255,193,7,0.2)', cursor: 'pointer', textAlign: 'left' }}
+              onClick={() => setShowDeliveryNoticePopup(true)}
+            >
               <span style={styles.cardIcon}>🍽️</span>
               <h3 style={styles.cardTitle}>Order Now</h3>
               <p style={styles.cardDesc}>Browse menu and place order</p>
-            </Link>
+            </button>
 
             {/* Order Status */}
             <Link href="/customer/order-tracking" style={styles.actionCard}>
@@ -639,6 +646,31 @@ export default function CustomerDashboard() {
               <button style={styles.modalButton} onClick={() => setShowSundayReminder(false)}>
                 OK
               </button>
+            </div>
+          </div>
+        )}
+
+        {showDeliveryNoticePopup && (
+          <div style={styles.modalOverlay}>
+            <div style={styles.modalCard}>
+              <h3 style={styles.modalTitle}>🚫🛵 Delivery on Break</h3>
+              <p style={styles.modalText}>
+                Oops! Delivery is taking a little break for now 🚫🛵 — but the good news? Your cravings can still be satisfied! Visit us for a cozy Dine-in experience or grab your favorites through Pick-up. We can't wait to serve you!
+              </p>
+              <div style={{ display: 'flex', gap: '12px', flexDirection: 'column' }}>
+                <button
+                  style={styles.modalButton}
+                  onClick={() => { setShowDeliveryNoticePopup(false); router.push('/customer/order'); }}
+                >
+                  Got it! Proceed to Order 🍽️
+                </button>
+                <button
+                  style={{ ...styles.modalButton, backgroundColor: 'transparent', color: '#ffc107', border: '1px solid #ffc107' }}
+                  onClick={() => setShowDeliveryNoticePopup(false)}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         )}
