@@ -353,6 +353,8 @@ export default function AdminPage() {
   });
   // Track which budget cell is being edited (for formatted display)
   const [budgetEditKey, setBudgetEditKey] = useState(null);
+  // Lock state for Budget Variance report (per month) — loaded by the finDateFrom/finSubTab effect
+  const [budgetLocked, setBudgetLocked] = useState(false);
 
   // ── Bills state ───────────────────────────────────────────────────────────
   const [billsList, setBillsList] = useState([]);
@@ -421,6 +423,8 @@ export default function AdminPage() {
     amount: '',
     notes: '',
   });
+  // Lock state for Attendance Sheet (per payroll cycle) — loaded by loadPayrollState
+  const [attendanceLocked, setAttendanceLocked] = useState(false);
 
   // ── My Profile state ──────────────────────────────────────────────────────
   const [profileData, setProfileData] = useState(null);
@@ -2267,6 +2271,8 @@ export default function AdminPage() {
         const prevStored = localStorage.getItem(`bbc_budget_${prevMonth}`);
         setBudgetValues(prevStored ? JSON.parse(prevStored) : {});
       }
+      // Load lock state for this month
+      setBudgetLocked(localStorage.getItem(`bbc_budget_locked_${month}`) === 'true');
     } catch { /* noop */ }
   }, [finDateFrom, finSubTab]);
 
@@ -2316,6 +2322,9 @@ export default function AdminPage() {
     [payrollData.cycleStart, payrollData.submittedReports],
   );
   const payrollCanEdit = !payrollHasProcessedDeduction && !payrollIsPaid;
+  // payrollDataEditable further restricts data edits (attendance toggles, employee CRUD)
+  // when the admin has explicitly saved/locked the report.
+  const payrollDataEditable = payrollCanEdit && !attendanceLocked;
   const payrollPeriodMeta = useMemo(
     () => getPayrollPeriodMeta(payrollData.cycleStart),
     [payrollData.cycleStart],
@@ -2333,6 +2342,11 @@ export default function AdminPage() {
     const loaded = loadPayrollData();
     setPayrollData(loaded);
     setPayrollCycleDays(getPayrollCycleDays(loaded.cycleStart));
+    try {
+      if (typeof window !== 'undefined') {
+        setAttendanceLocked(localStorage.getItem(`bbc_attendance_locked_${loaded.cycleStart}`) === 'true');
+      }
+    } catch { /* noop */ }
   }, []);
 
   useEffect(() => {
@@ -2469,10 +2483,16 @@ export default function AdminPage() {
     }
     const nextCycleStart = getPayrollCycleStartForPeriod(monthValue, cycleType);
     syncPayrollState({ ...payrollData, cycleStart: nextCycleStart }, 'Payroll period updated (auto-saved).');
+    // Load the lock state for the new cycle
+    try {
+      if (typeof window !== 'undefined') {
+        setAttendanceLocked(localStorage.getItem(`bbc_attendance_locked_${nextCycleStart}`) === 'true');
+      }
+    } catch { /* noop */ }
   };
 
   const addPayrollEmployee = () => {
-    if (!payrollCanEdit) return;
+    if (!payrollDataEditable) return;
     const name = newPayrollEmployeeName.trim();
     if (!name) return;
     const alreadyExists = (payrollData.employees || []).some(
@@ -2502,7 +2522,7 @@ export default function AdminPage() {
   };
 
   const deletePayrollEmployee = (employeeId) => {
-    if (!payrollCanEdit) return;
+    if (!payrollDataEditable) return;
     syncPayrollState(
       {
         ...payrollData,
@@ -2514,7 +2534,7 @@ export default function AdminPage() {
   };
 
   const toggleAttendance = (employeeId, dayIndex) => {
-    if (!payrollCanEdit) return;
+    if (!payrollDataEditable) return;
     if (payrollCycleDays[dayIndex]?.isSunday) return;
     if (payrollCycleDays[dayIndex]?.isFuture) return;
     syncPayrollState({
@@ -2529,7 +2549,7 @@ export default function AdminPage() {
   };
 
   const updateMonthlyPay = (employeeId, rawValue) => {
-    if (!payrollCanEdit) return;
+    if (!payrollDataEditable) return;
     const value = roundToCurrency(rawValue);
     syncPayrollState({
       ...payrollData,
@@ -2565,7 +2585,7 @@ export default function AdminPage() {
   };
 
   const saveDeductionEntry = () => {
-    if (!selectedDeductionEmployee || !payrollCanEdit) return;
+    if (!selectedDeductionEmployee || !payrollDataEditable) return;
     const amount = roundToCurrency(deductionForm.amount);
     if (amount <= 0) {
       setPayrollMessage('Deduction amount must be greater than zero.');
@@ -2603,7 +2623,7 @@ export default function AdminPage() {
   };
 
   const deleteDeductionEntry = (deductionId) => {
-    if (!selectedDeductionEmployee || !payrollCanEdit) return;
+    if (!selectedDeductionEmployee || !payrollDataEditable) return;
     syncPayrollState({
       ...payrollData,
       employees: (payrollData.employees || []).map((employee) => {
@@ -5616,12 +5636,50 @@ export default function AdminPage() {
               {/* Budget Variance — follows P&L structure with editable budget rows */}
               {finSubTab === 'budget' && finData?.type === 'budget' && (
                 <div style={{ ...styles.card, width: '100%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
                     <h3 style={styles.cardTitle}>Budget Variance Report</h3>
-                    <span style={{ color: '#4caf50', fontSize: 11, border: '1px solid #2e7d32', borderRadius: 12, padding: '4px 10px' }}>Auto-saved</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {budgetLocked ? (
+                        <>
+                          <span style={{ color: '#1565c0', fontSize: 11, border: '1px solid #1565c0', borderRadius: 12, padding: '4px 10px' }}>Saved (Locked)</span>
+                          <button
+                            type="button"
+                            style={{ ...styles.actionBtn, color: '#ffc107', borderColor: '#ffc107' }}
+                            onClick={() => {
+                              try {
+                                const month = (finDateFrom || '').slice(0, 7);
+                                if (typeof window !== 'undefined') localStorage.setItem(`bbc_budget_locked_${month}`, 'false');
+                              } catch { /* noop */ }
+                              setBudgetLocked(false);
+                            }}
+                          >
+                            Edit
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          style={{ ...styles.primaryBtn, background: '#1565c0', color: '#fff' }}
+                          onClick={() => {
+                            try {
+                              const month = (finDateFrom || '').slice(0, 7);
+                              if (typeof window !== 'undefined') {
+                                localStorage.setItem(`bbc_budget_${month}`, JSON.stringify(budgetValues));
+                                localStorage.setItem(`bbc_budget_locked_${month}`, 'true');
+                              }
+                            } catch { /* noop */ }
+                            setBudgetLocked(true);
+                          }}
+                        >
+                          Save
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <p style={{ color: '#888', fontSize: 11, marginBottom: 12 }}>
-                    Budget column is editable and auto-saved monthly. If a month has no saved budget yet, it automatically carries over the previous month as the starting forecast.
+                    {budgetLocked
+                      ? 'This report is saved and locked. Click "Edit" to make changes.'
+                      : 'Budget column is editable. Click "Save" to lock the report. If a month has no saved budget yet, it automatically carries over the previous month as the starting forecast.'}
                   </p>
                   {(() => {
                     const bv = budgetValues;
@@ -5640,6 +5698,7 @@ export default function AdminPage() {
                           style={{ ...styles.input, width: 110, padding: '4px 8px', fontSize: 12, textAlign: 'right' }}
                           value={isEditing ? rawVal : formattedVal}
                           placeholder="0.00"
+                          disabled={budgetLocked}
                           onFocus={() => setBudgetEditKey(key)}
                           onBlur={(e) => {
                             setBudgetEditKey(null);
@@ -5941,16 +6000,59 @@ export default function AdminPage() {
                       value={newPayrollEmployeeName}
                       onChange={(e) => setNewPayrollEmployeeName(e.target.value)}
                       style={{ ...styles.input, maxWidth: 240 }}
-                      disabled={!payrollCanEdit}
+                      disabled={!payrollDataEditable}
                     />
-                    <button type="button" style={styles.primaryBtn} onClick={addPayrollEmployee} disabled={!payrollCanEdit}>
+                    <button type="button" style={styles.primaryBtn} onClick={addPayrollEmployee} disabled={!payrollDataEditable}>
                       + Add Employee
                     </button>
                   </div>
                 </div>
-                <p style={{ color: '#888', margin: '8px 0 0 0', fontSize: 12 }}>
-                  Auto-save is enabled. Changes are saved immediately.
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+                  {payrollDataEditable ? (
+                    <button
+                      type="button"
+                      style={{ ...styles.primaryBtn, background: '#1565c0', color: '#fff' }}
+                      onClick={() => {
+                        try {
+                          savePayrollData(payrollData);
+                          if (typeof window !== 'undefined') {
+                            localStorage.setItem(`bbc_attendance_locked_${payrollData.cycleStart}`, 'true');
+                          }
+                        } catch { /* noop */ }
+                        setAttendanceLocked(true);
+                        setPayrollMessage('Attendance report saved and locked.');
+                      }}
+                    >
+                      Save
+                    </button>
+                  ) : (
+                    attendanceLocked && payrollCanEdit && (
+                      <button
+                        type="button"
+                        style={{ ...styles.actionBtn, color: '#ffc107', borderColor: '#ffc107' }}
+                        onClick={() => {
+                          try {
+                            if (typeof window !== 'undefined') {
+                              localStorage.setItem(`bbc_attendance_locked_${payrollData.cycleStart}`, 'false');
+                            }
+                          } catch { /* noop */ }
+                          setAttendanceLocked(false);
+                          setPayrollMessage('Attendance report unlocked for editing.');
+                        }}
+                      >
+                        Edit
+                      </button>
+                    )
+                  )}
+                  {attendanceLocked && (
+                    <span style={{ color: '#1565c0', fontSize: 11, border: '1px solid #1565c0', borderRadius: 12, padding: '4px 10px' }}>
+                      Saved (Locked)
+                    </span>
+                  )}
+                  {!attendanceLocked && payrollCanEdit && (
+                    <span style={{ color: '#888', fontSize: 11 }}>Unsaved changes are auto-saved locally.</span>
+                  )}
+                </div>
                 {payrollData.submitted && (
                   <p style={{ color: '#4caf50', margin: '8px 0 0 0', fontSize: 12 }}>
                     Submitted: {new Date(payrollData.submittedAt || Date.now()).toLocaleString('en-PH')}
@@ -6030,7 +6132,7 @@ export default function AdminPage() {
                                       background: day.isSunday ? '#274130' : (day.isToday ? '#3a3a3a' : '#222'),
                                     }}
                                     onClick={() => toggleAttendance(emp.id, dayIndex)}
-                                    disabled={!payrollCanEdit || day.isSunday || day.isFuture}
+                                    disabled={!payrollDataEditable || day.isSunday || day.isFuture}
                                     title={day.isSunday ? 'Sunday (rest day – default present)' : day.isFuture ? 'Future date – not yet editable' : 'Toggle present / absent'}
                                   >
                                     {isPresent ? '✔' : (isAbsent ? 'X' : '')}
@@ -6070,7 +6172,7 @@ export default function AdminPage() {
                                     type="number"
                                     min="0"
                                     step="0.01"
-                                    disabled={!payrollCanEdit}
+                                    disabled={!payrollDataEditable}
                                     value={emp.monthlyPay || ''}
                                     onChange={(e) => updateMonthlyPay(emp.id, e.target.value)}
                                     style={{
@@ -6185,7 +6287,7 @@ export default function AdminPage() {
                       type="button"
                       style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
                       onClick={() => payrollSelectedEmployeeId && deletePayrollEmployee(payrollSelectedEmployeeId)}
-                      disabled={!payrollCanEdit || !payrollSelectedEmployeeId}
+                      disabled={!payrollDataEditable || !payrollSelectedEmployeeId}
                     >
                       Delete Employee
                     </button>
@@ -6221,14 +6323,14 @@ export default function AdminPage() {
                         style={styles.input}
                         value={deductionForm.date}
                         onChange={(e) => setDeductionForm((prev) => ({ ...prev, date: e.target.value }))}
-                        disabled={!payrollCanEdit}
+                        disabled={!payrollDataEditable}
                       />
                       <label style={styles.label}>Transaction Type</label>
                       <select
                         style={styles.input}
                         value={deductionForm.type}
                         onChange={(e) => setDeductionForm((prev) => ({ ...prev, type: e.target.value }))}
-                        disabled={!payrollCanEdit}
+                        disabled={!payrollDataEditable}
                       >
                         <option value="Cash Advance">Cash Advance</option>
                         <option value="Others">Others</option>
@@ -6240,7 +6342,7 @@ export default function AdminPage() {
                         style={styles.input}
                         value={deductionForm.amount}
                         onChange={(e) => setDeductionForm((prev) => ({ ...prev, amount: e.target.value }))}
-                        disabled={!payrollCanEdit}
+                        disabled={!payrollDataEditable}
                       />
                       <label style={styles.label}>Notes</label>
                       <input
@@ -6249,7 +6351,7 @@ export default function AdminPage() {
                         value={deductionForm.notes}
                         onChange={(e) => setDeductionForm((prev) => ({ ...prev, notes: e.target.value }))}
                         placeholder="Optional notes"
-                        disabled={!payrollCanEdit}
+                        disabled={!payrollDataEditable}
                       />
                     </div>
 
@@ -6257,7 +6359,7 @@ export default function AdminPage() {
                       <button type="button" style={styles.actionBtn} onClick={() => setDeductionForm((prev) => ({ ...prev, id: null, amount: '', notes: '' }))}>
                         Clear
                       </button>
-                      <button type="button" style={styles.primaryBtn} onClick={saveDeductionEntry} disabled={!payrollCanEdit}>
+                      <button type="button" style={styles.primaryBtn} onClick={saveDeductionEntry} disabled={!payrollDataEditable}>
                         Save
                       </button>
                     </div>
@@ -6277,12 +6379,12 @@ export default function AdminPage() {
                               <td style={{ ...styles.td, textAlign: 'right', color: '#f44336' }}>{fmt(deduction.amount || 0)}</td>
                               <td style={styles.td}>{deduction.source === SALARY_DEDUCTION_SOURCE ? 'Cashier' : 'Manual'}</td>
                               <td style={styles.td}>
-                                <button type="button" style={styles.actionBtn} onClick={() => editDeduction(deduction)} disabled={!payrollCanEdit}>Edit</button>
+                                <button type="button" style={styles.actionBtn} onClick={() => editDeduction(deduction)} disabled={!payrollDataEditable}>Edit</button>
                                 <button
                                   type="button"
                                   style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}
                                   onClick={() => deleteDeductionEntry(deduction.id)}
-                                  disabled={!payrollCanEdit || deduction.source === SALARY_DEDUCTION_SOURCE}
+                                  disabled={!payrollDataEditable || deduction.source === SALARY_DEDUCTION_SOURCE}
                                 >
                                   Delete
                                 </button>
