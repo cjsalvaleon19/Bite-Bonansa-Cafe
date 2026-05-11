@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
-import { calculateSalesBreakdown } from '../../utils/salesCalculations';
+import { calculateSalesBreakdown, UNACCEPTED_ORDER_STATUSES } from '../../utils/salesCalculations';
 import {
   getOutstandingPayrollSubmissions,
   markPayrollSubmissionPaid,
@@ -199,7 +199,8 @@ export default function CashDrawer() {
         .from('orders')
         .select('subtotal, total_amount, payment_method, points_used')
         .gte('created_at', today.toISOString())
-        .lt('created_at', tomorrow.toISOString());
+        .lt('created_at', tomorrow.toISOString())
+        .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`);
 
       const { cashSales } = calculateSalesBreakdown(ordersData || []);
 
@@ -299,7 +300,8 @@ export default function CashDrawer() {
         .from('orders')
         .select('subtotal, total_amount, payment_method, points_used')
         .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString());
+        .lte('created_at', endDate.toISOString())
+        .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`);
 
       if (ordersError) console.error('[CashDrawer] Orders fetch error:', ordersError.message);
 
