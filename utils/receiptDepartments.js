@@ -138,9 +138,10 @@ export function buildKitchenDepartmentOrders(order) {
 
   for (const item of getOrderItems(order)) {
     const department = normalizeDepartment(item);
-    const key = department.code
-      ? `code:${normalizeDepartmentKey(department.code)}`
-      : `name:${normalizeDepartmentKey(department.name)}`;
+    // Always group by the normalized department name so that all items belonging
+    // to the same kitchen department (e.g. "Drinks") end up on a single order
+    // slip, regardless of whether individual items carry a department code.
+    const key = normalizeDepartmentKey(department.name);
     if (!grouped.has(key)) {
       grouped.set(key, {
         key,

@@ -1005,6 +1005,29 @@ function CustomerOrderPage() {
         }
       }
       
+      // Notify cashiers of the new online order (non-blocking — never fail the order)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (token) {
+          fetch('/api/customer/notify-cashiers', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              order_id: (order as any).id,
+              order_number: (order as any).order_number,
+              customer_name: customerFullName || 'Customer',
+              order_mode: orderType,
+            }),
+          }).catch((err) => console.warn('[Order] Failed to notify cashiers:', err))
+        }
+      } catch (notifyErr) {
+        console.warn('[Order] Notify cashiers error (ignored):', notifyErr)
+      }
+
       toast.success(`Order ${(order as any).order_number} placed successfully!`, {
         description: 'You can track your order in the Track Orders page.',
       })
