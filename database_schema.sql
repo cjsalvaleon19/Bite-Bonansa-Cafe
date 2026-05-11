@@ -221,22 +221,16 @@ CREATE POLICY "Customers can view their own orders" ON orders
 CREATE POLICY "Customers can create their own orders" ON orders
   FOR INSERT WITH CHECK (auth.uid() = customer_id);
 
+-- NOTE: Uses get_auth_user_role() (SECURITY DEFINER) to avoid infinite RLS
+-- recursion chain: orders → users RLS → profiles RLS → profiles RLS
 CREATE POLICY "Staff can view all orders" ON orders
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'cashier', 'rider')
-    )
+    public.get_auth_user_role() IN ('admin', 'cashier', 'rider')
   );
 
 CREATE POLICY "Staff can update orders" ON orders
   FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'cashier', 'rider')
-    )
+    public.get_auth_user_role() IN ('admin', 'cashier', 'rider')
   );
 
 -- Customer purchases policies
@@ -255,20 +249,12 @@ CREATE POLICY "Customers can update their own reviews" ON customer_reviews
 
 CREATE POLICY "Staff can view all reviews" ON customer_reviews
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'cashier')
-    )
+    public.get_auth_user_role() IN ('admin', 'cashier')
   );
 
 CREATE POLICY "Staff can update review status" ON customer_reviews
   FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role = 'admin'
-    )
+    public.get_auth_user_role() = 'admin'
   );
 
 -- Loyalty transactions policies
@@ -277,11 +263,7 @@ CREATE POLICY "Customers can view their own transactions" ON loyalty_transaction
 
 CREATE POLICY "Staff can view all transactions" ON loyalty_transactions
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'cashier')
-    )
+    public.get_auth_user_role() IN ('admin', 'cashier')
   );
 
 -- ============================================================================
@@ -463,20 +445,12 @@ CREATE POLICY "Riders can update their own profile" ON riders
 
 CREATE POLICY "Staff can view all rider profiles" ON riders
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'cashier')
-    )
+    public.get_auth_user_role() IN ('admin', 'cashier')
   );
 
 CREATE POLICY "Admin can manage riders" ON riders
   FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role = 'admin'
-    )
+    public.get_auth_user_role() = 'admin'
   );
 
 -- Deliveries table policies
@@ -491,20 +465,12 @@ CREATE POLICY "Riders can update their own deliveries" ON deliveries
 
 CREATE POLICY "Staff can view all deliveries" ON deliveries
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'cashier')
-    )
+    public.get_auth_user_role() IN ('admin', 'cashier')
   );
 
 CREATE POLICY "Staff can manage deliveries" ON deliveries
   FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'cashier')
-    )
+    public.get_auth_user_role() IN ('admin', 'cashier')
   );
 
 -- Delivery reports table policies
@@ -522,20 +488,12 @@ CREATE POLICY "Riders cannot update paid reports" ON delivery_reports
 
 CREATE POLICY "Staff can view all reports" ON delivery_reports
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'cashier')
-    )
+    public.get_auth_user_role() IN ('admin', 'cashier')
   );
 
 CREATE POLICY "Cashier can update report status" ON delivery_reports
   FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM users 
-      WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'cashier')
-    )
+    public.get_auth_user_role() IN ('admin', 'cashier')
   );
 
 -- 21. Notifications table for cashier alerts
