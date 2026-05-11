@@ -12,6 +12,7 @@ import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItem
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
 const STATS_REFRESH_DEBOUNCE_MS = 2000; // Debounce stats refresh by 2 seconds
+const ONLINE_ORDER_MODES = ['delivery', 'pickup', 'pick-up', 'dine-in', 'take-out'];
 
 export default function CashierDashboard() {
   const router = useRouter();
@@ -111,7 +112,7 @@ export default function CashierDashboard() {
           debouncedStatsRefresh();
           
           // Handle online order notifications
-          if (newOrder.status === 'pending' && (newOrder.order_mode === 'delivery' || newOrder.order_mode === 'pick-up' || newOrder.order_mode === 'dine-in' || newOrder.order_mode === 'take-out')) {
+          if (newOrder.status === 'pending' && ONLINE_ORDER_MODES.includes(newOrder.order_mode)) {
             setHasNewOrders(true);
             // Play notification sound
             if (notificationAudio) {
@@ -223,7 +224,7 @@ export default function CashierDashboard() {
         const orderMode = order.order_mode || '';
         if (orderMode === 'dine-in') dineInCount++;
         else if (orderMode === 'take-out') takeOutCount++;
-        else if (orderMode === 'pick-up') pickUpCount++;
+        else if (orderMode === 'pick-up' || orderMode === 'pickup') pickUpCount++;
         else if (orderMode === 'delivery') deliveryCount++;
       });
 
@@ -297,7 +298,7 @@ export default function CashierDashboard() {
             phone
           )
         `)
-        .in('order_mode', ['delivery', 'pick-up', 'dine-in', 'take-out'])
+        .in('order_mode', ONLINE_ORDER_MODES)
         .eq('status', 'pending')
         .order('created_at', { ascending: true });
 
@@ -1263,7 +1264,7 @@ export default function CashierDashboard() {
                         </div>
                         <div style={styles.orderModeBadge}>
                           {order.order_mode === 'delivery' && '🚚 Delivery'}
-                          {order.order_mode === 'pick-up' && '📦 Pick-up'}
+                          {(order.order_mode === 'pick-up' || order.order_mode === 'pickup') && '📦 Pick-up'}
                           {order.order_mode === 'dine-in' && '🍽️ Dine-in'}
                           {order.order_mode === 'take-out' && '🥡 Take-out'}
                         </div>
@@ -1329,7 +1330,7 @@ export default function CashierDashboard() {
                   <strong>Order Mode:</strong>
                   <span>
                     {selectedOrderToView.order_mode === 'delivery' && '🚚 Delivery'}
-                    {selectedOrderToView.order_mode === 'pick-up' && '📦 Pick-up'}
+                    {(selectedOrderToView.order_mode === 'pick-up' || selectedOrderToView.order_mode === 'pickup') && '📦 Pick-up'}
                     {selectedOrderToView.order_mode === 'dine-in' && '🍽️ Dine-in'}
                     {selectedOrderToView.order_mode === 'take-out' && '🥡 Take-out'}
                   </span>
