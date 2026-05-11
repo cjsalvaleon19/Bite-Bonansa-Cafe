@@ -11,6 +11,8 @@ import { createClient } from '@supabase/supabase-js';
 import { ONLINE_ORDER_MODES, UNACCEPTED_ORDER_STATUSES } from '../../../utils/salesCalculations';
 
 function normalizeOrderMode(value) {
+  // Canonicalize known online mode variants:
+  // pickup / pick-up / pick up -> pickup, dine-in / dine in -> dinein, etc.
   return String(value ?? '')
     .trim()
     .toLowerCase()
@@ -18,6 +20,8 @@ function normalizeOrderMode(value) {
 }
 
 function normalizeOrderStatus(value) {
+  // Canonicalize unaccepted status variants:
+  // order_in_queue / order-in-queue / order in queue -> order_in_queue.
   return String(value ?? '')
     .trim()
     .toLowerCase()
