@@ -39,6 +39,7 @@ export default function CashierDashboard() {
   const [showRiderModal, setShowRiderModal] = useState(false);
   const [hasNewOrders, setHasNewOrders] = useState(false);
   const [notificationAudio, setNotificationAudio] = useState(null);
+  const [newOrderPopup, setNewOrderPopup] = useState(null); // { order_number, order_mode, customer_name }
   const [showPrintReceiptModal, setShowPrintReceiptModal] = useState(false);
   const [acceptedOrder, setAcceptedOrder] = useState(null);
   const [viewOrderModal, setViewOrderModal] = useState(false);
@@ -113,6 +114,12 @@ export default function CashierDashboard() {
           // Handle online order notifications
           if (UNACCEPTED_ORDER_STATUSES.includes(newOrder.status) && ONLINE_ORDER_MODES.includes(newOrder.order_mode)) {
             setHasNewOrders(true);
+            // Show in-app popup notification
+            setNewOrderPopup({
+              order_number: newOrder.order_number || newOrder.id?.slice(0, 8),
+              order_mode: newOrder.order_mode,
+              customer_name: newOrder.customer_name || null,
+            });
             // Play notification sound
             if (notificationAudio) {
               notificationAudio.play().catch(err => console.log('Audio play failed:', err));
@@ -1579,6 +1586,55 @@ export default function CashierDashboard() {
           </div>
         )}
       </div>
+
+      {/* New Order Popup Notification */}
+      {newOrderPopup && (
+        <div style={styles.newOrderOverlay}>
+          <div style={styles.newOrderPopup}>
+            <div style={styles.newOrderIcon}>🔔</div>
+            <h3 style={styles.newOrderTitle}>New Order Received!</h3>
+            <p style={styles.newOrderDetail}>
+              Order <strong>#{newOrderPopup.order_number}</strong>
+            </p>
+            {newOrderPopup.customer_name && (
+              <p style={styles.newOrderDetail}>
+                Customer: <strong>{newOrderPopup.customer_name}</strong>
+              </p>
+            )}
+            <p style={styles.newOrderDetail}>
+              Type:&nbsp;
+              <strong>
+                {newOrderPopup.order_mode === 'delivery' && '🚚 Delivery'}
+                {(newOrderPopup.order_mode === 'pick-up' || newOrderPopup.order_mode === 'pickup') && '📦 Pick-up'}
+                {newOrderPopup.order_mode === 'dine-in' && '🍽️ Dine-in'}
+                {newOrderPopup.order_mode === 'take-out' && '🥡 Take-out'}
+                {!['delivery','pick-up','pickup','dine-in','take-out'].includes(newOrderPopup.order_mode) && newOrderPopup.order_mode}
+              </strong>
+            </p>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <button
+                type="button"
+                style={styles.newOrderViewBtn}
+                onClick={() => {
+                  setNewOrderPopup(null);
+                  setActiveTab('pending');
+                  setHasNewOrders(false);
+                  fetchPendingOnlineOrders();
+                }}
+              >
+                View Orders
+              </button>
+              <button
+                type="button"
+                style={styles.newOrderDismissBtn}
+                onClick={() => setNewOrderPopup(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -2291,5 +2347,65 @@ const styles = {
     maxHeight: '55vh',
     objectFit: 'contain',
     borderRadius: '6px',
+  },
+  newOrderOverlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2000,
+    padding: '16px',
+  },
+  newOrderPopup: {
+    backgroundColor: '#1a1a1a',
+    border: '2px solid #ffc107',
+    borderRadius: '16px',
+    padding: '32px 28px',
+    maxWidth: '400px',
+    width: '100%',
+    textAlign: 'center',
+    boxShadow: '0 0 40px rgba(255, 193, 7, 0.3)',
+    animation: 'pulse 1.5s ease-in-out',
+  },
+  newOrderIcon: {
+    fontSize: '48px',
+    marginBottom: '12px',
+  },
+  newOrderTitle: {
+    margin: '0 0 16px',
+    color: '#ffc107',
+    fontSize: '22px',
+    fontFamily: "'Playfair Display', serif",
+  },
+  newOrderDetail: {
+    margin: '4px 0',
+    color: '#f5f5f5',
+    fontSize: '15px',
+  },
+  newOrderViewBtn: {
+    flex: 1,
+    padding: '12px 16px',
+    backgroundColor: '#ffc107',
+    color: '#1a1a1a',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '700',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  newOrderDismissBtn: {
+    flex: 1,
+    padding: '12px 16px',
+    backgroundColor: 'transparent',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '600',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
   },
 };
