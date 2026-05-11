@@ -12,6 +12,7 @@ import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItem
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
 const STATS_REFRESH_DEBOUNCE_MS = 2000; // Debounce stats refresh by 2 seconds
+// Support both `pickup` (current customer checkout) and `pick-up` (legacy records).
 const ONLINE_ORDER_MODES = ['delivery', 'pickup', 'pick-up', 'dine-in', 'take-out'];
 
 export default function CashierDashboard() {
