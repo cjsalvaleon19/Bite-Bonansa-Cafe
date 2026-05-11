@@ -5,15 +5,13 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
-import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount } from '../../utils/salesCalculations';
+import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount, UNACCEPTED_ORDER_STATUSES, ONLINE_ORDER_MODES } from '../../utils/salesCalculations';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
 const STATS_REFRESH_DEBOUNCE_MS = 2000; // Debounce stats refresh by 2 seconds
-// Support both `pickup` (current customer checkout) and `pick-up` (legacy records).
-const ONLINE_ORDER_MODES = ['delivery', 'pickup', 'pick-up', 'dine-in', 'take-out'];
 
 export default function CashierDashboard() {
   const router = useRouter();
@@ -113,7 +111,7 @@ export default function CashierDashboard() {
           debouncedStatsRefresh();
           
           // Handle online order notifications
-          if (newOrder.status === 'pending' && ONLINE_ORDER_MODES.includes(newOrder.order_mode)) {
+          if (UNACCEPTED_ORDER_STATUSES.includes(newOrder.status) && ONLINE_ORDER_MODES.includes(newOrder.order_mode)) {
             setHasNewOrders(true);
             // Play notification sound
             if (notificationAudio) {
@@ -203,12 +201,14 @@ export default function CashierDashboard() {
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      // Fetch orders for today
+      // Fetch orders for today — exclude unaccepted customer orders (pending / order_in_queue)
+      // so that Today's Stats only reflects orders the cashier has already accepted and processed
       const { data: orders, error } = await supabase
         .from('orders')
         .select('*')
         .gte('created_at', today.toISOString())
-        .lt('created_at', tomorrow.toISOString());
+        .lt('created_at', tomorrow.toISOString())
+        .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`);
 
       if (error) throw error;
 
@@ -272,39 +272,26 @@ export default function CashierDashboard() {
     if (!supabase) return;
 
     try {
-      // Fetch pending online orders (all order modes from customer portal, status: pending)
-      const { data: orders, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          order_items (
-            id,
-            menu_item_id,
-            name,
-            price,
-            quantity,
-            subtotal,
-            notes,
-            variant_details,
-            menu_items:menu_item_id (
-              category,
-              kitchen_departments:kitchen_department_id (
-                department_name,
-                department_code
-              )
-            )
-          ),
-          users:customer_id (
-            customer_id,
-            phone
-          )
-        `)
-        .in('order_mode', ONLINE_ORDER_MODES)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: true });
+      // Use the server-side API route which runs with the service-role client,
+      // bypassing the RLS infinite-recursion bug on the orders table.
+      // The route still enforces that the caller is an authenticated cashier/admin.
+      const session = (await supabase.auth.getSession())?.data?.session;
+      const token = session?.access_token;
+      if (!token) {
+        console.warn('[CashierDashboard] No auth token — skipping pending orders fetch');
+        return;
+      }
 
-      if (error) throw error;
+      const res = await fetch('/api/cashier/pending-orders', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? `HTTP ${res.status}`);
+      }
+
+      const { orders } = await res.json();
       setPendingOrders(orders || []);
     } catch (err) {
       console.error('[CashierDashboard] Failed to fetch pending orders:', err?.message ?? err);
