@@ -370,34 +370,38 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   b.push(...CMD.INIT);
 
   if (isKitchen) {
-    b.push(...CMD.ALIGN_CENTER, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
+    // Header "ORDER SLIP": normal size bold (≈18 px equivalent)
+    b.push(...CMD.ALIGN_CENTER, ...CMD.BOLD_ON);
     b.push(...encodeText(`${kitchenTitle}\n`));
-    if (kitchenDepartment) {
-      b.push(...encodeText(`${kitchenDepartment}\n`));
-    }
-    b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
+    b.push(...CMD.BOLD_OFF);
+    // Department name omitted per spec
     b.push(...encodeText(divider('=', paperWidth)));
 
-    // Order Slip # and mode of order on one line (1.3)
-    b.push(...CMD.ALIGN_LEFT, ...CMD.BOLD_ON);
-    b.push(...encodeText(`#${getOrderSlipNumber(order)}  ${formatOrderModeLabel(order.order_mode)}\n`));
-    b.push(...CMD.BOLD_OFF);
+    // OS # and order mode: double size bold (≈35 px equivalent)
+    const wideWidth = Math.floor(paperWidth / 2);
+    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
+    for (const line of wrapText(`#${getOrderSlipNumber(order)}  ${formatOrderModeLabel(order.order_mode)}`, wideWidth)) {
+      b.push(...encodeText(line + '\n'));
+    }
+    b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
 
-    // Item details and subvariants in normal size (1.1 & 1.2)
+    // Item name + subvariants + qty: double size (≈35 px equivalent)
     for (const item of orderItems) {
       const qty = item.quantity || 1;
       const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
       const itemLabel = `${qty} x ${mainLine}`;
-      for (const line of wrapText(itemLabel, paperWidth)) {
+      b.push(...CMD.SIZE_2X);
+      for (const line of wrapText(itemLabel, wideWidth)) {
         b.push(...encodeText(line + '\n'));
       }
       for (const subvariant of subvariantLines) {
-        for (const line of wrapText(`  - ${subvariant}`, paperWidth)) {
+        for (const line of wrapText(`  - ${subvariant}`, wideWidth)) {
           b.push(...encodeText(line + '\n'));
         }
       }
+      b.push(...CMD.SIZE_NORMAL);
     }
     b.push(...CMD.FEED_1CM);
     b.push(...CMD.CUT);
