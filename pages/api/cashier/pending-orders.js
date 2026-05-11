@@ -110,7 +110,8 @@ export default async function handler(req, res) {
         quantity,
         subtotal,
         notes,
-        variant_details
+        variant_details,
+        kitchen_department
       ),
       users:customer_id (
         customer_id,

@@ -97,7 +97,8 @@ export default function EndOfDayReport() {
             quantity,
             subtotal,
             notes,
-            variant_details
+            variant_details,
+            kitchen_department
           ),
           users:customer_id (
             customer_id,
@@ -309,7 +310,7 @@ export default function EndOfDayReport() {
     previewWindow.document.close();
   };
 
-  const printOrderSlip = (order) => {
+  const printOrderSlip = (order, departmentName = '') => {
     const slipWindow = window.open('', '_blank');
     if (!slipWindow) return;
 
@@ -335,6 +336,7 @@ export default function EndOfDayReport() {
         <body>
           <div class="section" style="text-align: center;">
             <p style="font-size: 15px; font-weight: bold;">ORDER SLIP</p>
+            ${departmentName ? `<p style="font-size: 18px; font-weight: bold;">${departmentName}</p>` : ''}
           </div>
           <div class="section">
             <p style="font-size: 25px; font-weight: bold;">Order Slip #: ${getOrderSlipNumber(order)}</p>
@@ -388,7 +390,7 @@ export default function EndOfDayReport() {
       if (i > 0) {
         await new Promise((resolve) => setTimeout(resolve, 300));
       }
-      printOrderSlip(kitchenOrders[i].order);
+      printOrderSlip(kitchenOrders[i].order, kitchenOrders[i].name);
     }
   };
 

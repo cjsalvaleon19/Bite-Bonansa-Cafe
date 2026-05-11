@@ -978,6 +978,7 @@ function CustomerOrderPage() {
           quantity: item.quantity,
           subtotal: item.price,
           variant_details: item.variantDetails || null,
+          kitchen_department: item.menuItem.kitchenDepartment || null,
         }
       })
       const { error: itemsError } = await supabase.from('order_items').insert(orderItems as any)
