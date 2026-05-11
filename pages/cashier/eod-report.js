@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
-import { calculateSalesBreakdown, calculateAdjustmentDeductions, UNACCEPTED_ORDER_STATUSES } from '../../utils/salesCalculations';
+import { calculateSalesBreakdown, calculateAdjustmentDeductions } from '../../utils/salesCalculations';
 import { printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
@@ -107,8 +107,6 @@ export default function EndOfDayReport() {
         `)
         .gte('created_at', startDate.toISOString())
         .lte('created_at', endDate.toISOString())
-        // Exclude orders not yet accepted by the cashier — they have no sales revenue yet
-        .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
