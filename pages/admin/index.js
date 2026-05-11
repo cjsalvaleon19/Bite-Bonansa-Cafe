@@ -2901,8 +2901,7 @@ export default function AdminPage() {
     });
   };
 
-  const buildRRLineItemPayloads = (lineItems, rrId) => lineItems.map((li) => ({
-    receiving_report_id: rrId,
+  const buildRRLineItemPayloads = (lineItems) => lineItems.map((li) => ({
     inventory_item_id: li.inventory_item_id || null,
     inventory_name: li.inventory_name || li.inventory_code || '(unnamed item)',
     inventory_code: li.inventory_code || null,
@@ -3222,8 +3221,8 @@ export default function AdminPage() {
       if (!rrForm.vendor_id) { setRrSaveError('Please select a vendor (Contact) before saving.'); return; }
       const emptyName = rrLineItems.find((li) => !li.inventory_name);
       if (emptyName) { setRrSaveError('Please select an inventory item for every line before saving.'); return; }
-      const invalidQty = rrLineItems.find((li) => (Number(li.qty) || 0) <= 0);
-      if (invalidQty) { setRrSaveError('Quantity must be greater than zero for every line item.'); return; }
+      const lineWithInvalidQty = rrLineItems.find((li) => (Number(li.qty) || 0) <= 0);
+      if (lineWithInvalidQty) { setRrSaveError('Quantity must be greater than zero for every line item.'); return; }
       const totalLC = roundToCurrency(rrLineItems.reduce((s, i) => s + (Number(i.total_landed_cost) || 0), 0));
       const nextStatus = rrEditItem?.status || 'draft';
       const rrPayload = {
@@ -3236,7 +3235,7 @@ export default function AdminPage() {
         total_landed_cost: totalLC,
         status: nextStatus,
       };
-      const nextLinePayloads = buildRRLineItemPayloads(rrLineItems, rrEditItem?.id);
+      const nextLinePayloads = buildRRLineItemPayloads(rrLineItems);
       let rrId;
       if (rrEditItem) {
         const { data: oldLineItems, error: oldItemsErr } = await supabase
