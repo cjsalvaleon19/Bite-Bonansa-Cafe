@@ -124,6 +124,8 @@ export default function NotificationBell({ user }) {
       anniversary: '🎉',
       announcement: '📢',
       new_menu_item: '🍕',
+      new_online_order: '🛒',
+      delivery_assignment: '🚚',
       default: '🔔'
     };
     return icons[type] || icons.default;
