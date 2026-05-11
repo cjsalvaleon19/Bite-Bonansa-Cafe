@@ -6,6 +6,13 @@
  */
 
 /**
+ * Order statuses that mean "not yet accepted by the cashier".
+ * Orders in these statuses should be excluded from sales totals and EOD reports
+ * and should appear in the Pending Online Orders review queue instead.
+ */
+export const UNACCEPTED_ORDER_STATUSES = ['pending', 'order_in_queue'];
+
+/**
  * Calculate sales breakdown by payment method from a list of orders
  * 
  * @param {Array} orders - Array of order objects

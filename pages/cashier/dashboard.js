@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
-import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount } from '../../utils/salesCalculations';
+import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount, UNACCEPTED_ORDER_STATUSES } from '../../utils/salesCalculations';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
@@ -14,7 +14,6 @@ const NOTIFICATION_AUDIO_VOLUME = 0.5;
 const STATS_REFRESH_DEBOUNCE_MS = 2000; // Debounce stats refresh by 2 seconds
 // Support both `pickup` (current customer checkout) and `pick-up` (legacy records).
 const ONLINE_ORDER_MODES = ['delivery', 'pickup', 'pick-up', 'dine-in', 'take-out'];
-const PENDING_REVIEW_STATUSES = ['pending', 'order_in_queue'];
 
 export default function CashierDashboard() {
   const router = useRouter();
@@ -114,7 +113,7 @@ export default function CashierDashboard() {
           debouncedStatsRefresh();
           
           // Handle online order notifications
-          if (PENDING_REVIEW_STATUSES.includes(newOrder.status) && ONLINE_ORDER_MODES.includes(newOrder.order_mode)) {
+          if (UNACCEPTED_ORDER_STATUSES.includes(newOrder.status) && ONLINE_ORDER_MODES.includes(newOrder.order_mode)) {
             setHasNewOrders(true);
             // Play notification sound
             if (notificationAudio) {
@@ -204,12 +203,14 @@ export default function CashierDashboard() {
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      // Fetch orders for today
+      // Fetch orders for today — exclude unaccepted customer orders (pending / order_in_queue)
+      // so that Today's Stats only reflects orders the cashier has already accepted and processed
       const { data: orders, error } = await supabase
         .from('orders')
         .select('*')
         .gte('created_at', today.toISOString())
-        .lt('created_at', tomorrow.toISOString());
+        .lt('created_at', tomorrow.toISOString())
+        .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`);
 
       if (error) throw error;
 
@@ -301,7 +302,7 @@ export default function CashierDashboard() {
           )
         `)
         .in('order_mode', ONLINE_ORDER_MODES)
-        .in('status', PENDING_REVIEW_STATUSES)
+        .in('status', UNACCEPTED_ORDER_STATUSES)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
