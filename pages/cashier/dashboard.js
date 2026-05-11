@@ -1613,6 +1613,7 @@ export default function CashierDashboard() {
             </p>
             <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
               <button
+                type="button"
                 style={styles.newOrderViewBtn}
                 onClick={() => {
                   setNewOrderPopup(null);
@@ -1624,6 +1625,7 @@ export default function CashierDashboard() {
                 View Orders
               </button>
               <button
+                type="button"
                 style={styles.newOrderDismissBtn}
                 onClick={() => setNewOrderPopup(null)}
               >

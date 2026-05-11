@@ -500,6 +500,7 @@ export default function CustomerDashboard() {
           <nav style={styles.nav}>
             <Link href="/customer/dashboard" style={styles.navLink}>Dashboard</Link>
             <button
+              type="button"
               style={{ ...styles.navLink, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
               onClick={() => setShowDeliveryNoticePopup(true)}
             >Order Portal</button>
@@ -538,6 +539,7 @@ export default function CustomerDashboard() {
           <div style={styles.cardsGrid}>
             {/* Order Now */}
             <button
+              type="button"
               style={{ ...styles.actionCard, background: 'none', border: '1px solid rgba(255,193,7,0.2)', cursor: 'pointer', textAlign: 'left' }}
               onClick={() => setShowDeliveryNoticePopup(true)}
             >
@@ -659,12 +661,14 @@ export default function CustomerDashboard() {
               </p>
               <div style={{ display: 'flex', gap: '12px', flexDirection: 'column' }}>
                 <button
+                  type="button"
                   style={styles.modalButton}
                   onClick={() => { setShowDeliveryNoticePopup(false); router.push('/customer/order'); }}
                 >
                   Got it! Proceed to Order 🍽️
                 </button>
                 <button
+                  type="button"
                   style={{ ...styles.modalButton, backgroundColor: 'transparent', color: '#ffc107', border: '1px solid #ffc107' }}
                   onClick={() => setShowDeliveryNoticePopup(false)}
                 >
