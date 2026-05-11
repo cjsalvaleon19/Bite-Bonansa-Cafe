@@ -86,6 +86,10 @@ function parseAddonValues(rawValue) {
     .filter(Boolean);
 }
 
+const ORDER_REVENUE_ACCOUNTS = new Set(['Revenue', 'Sales Revenue']);
+const ORDER_COGS_ACCOUNT = 'Cost of Goods Sold';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export default function AdminPage() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('admin');
@@ -726,8 +730,8 @@ export default function AdminPage() {
         const ref = String(row.reference || '').trim();
         if (!ref) return;
         if (!recognizedMap[ref]) recognizedMap[ref] = { revenue: false, cogs: false };
-        if (['Revenue', 'Sales Revenue'].includes(row.credit_account)) recognizedMap[ref].revenue = true;
-        if (row.debit_account === 'Cost of Goods Sold') recognizedMap[ref].cogs = true;
+        if (ORDER_REVENUE_ACCOUNTS.has(row.credit_account)) recognizedMap[ref].revenue = true;
+        if (row.debit_account === ORDER_COGS_ACCOUNT) recognizedMap[ref].cogs = true;
       });
       const recognizedRefs = Object.entries(recognizedMap)
         .filter(([, flags]) => flags.revenue && flags.cogs)
@@ -747,7 +751,7 @@ export default function AdminPage() {
         });
       });
 
-      const uuidRefs = recognizedRefs.filter((ref) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ref));
+      const uuidRefs = recognizedRefs.filter((ref) => UUID_PATTERN.test(ref));
 
       const [ordersByNumberRes, ordersByIdRes] = await Promise.all([
         recognizedRefs.length > 0
@@ -785,15 +789,18 @@ export default function AdminPage() {
           if (qtyOrdered <= 0) return;
 
           const variantEntries = Object.entries(oi.variant_details || {});
-          const nonAddonVariants = variantEntries.filter(([key]) => {
-            const normalized = normalizeVariantKey(key);
+          const nonAddonVariants = variantEntries.map(([key, value]) => ({
+            key,
+            value,
+            normalized: normalizeVariantKey(key),
+          })).filter(({ normalized }) => {
             return normalized !== 'addon' && normalized !== 'addons';
           });
 
           const baseCandidates = [
             ...nonAddonVariants
-              .sort(([a], [b]) => (normalizeVariantKey(a) === 'size' ? -1 : normalizeVariantKey(b) === 'size' ? 1 : 0))
-              .map(([, value]) => `${oi.name} - ${value}`),
+              .sort((a, b) => (a.normalized === 'size' ? -1 : b.normalized === 'size' ? 1 : 0))
+              .map(({ value }) => `${oi.name} - ${value}`),
             oi.name,
           ];
           const baseHeader = baseCandidates.find((candidate) => costingMap[candidate]);
