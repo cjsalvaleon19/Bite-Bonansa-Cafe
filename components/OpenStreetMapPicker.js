@@ -106,7 +106,11 @@ export default function OpenStreetMapPicker({
   const [mapCenter, setMapCenter] = useState(position);
   const searchTimeoutRef = useRef(null);
 
-  // Nominatim search function
+  // T'Boli, South Cotabato bounding box for restricting search suggestions
+  // viewbox format: left(min_lon),top(max_lat),right(max_lon),bottom(min_lat)
+  const TBOLI_VIEWBOX = '124.4,6.5,125.1,5.9';
+
+  // Nominatim search function – restricted to T'Boli, South Cotabato area
   const searchLocation = async (query) => {
     if (!query || query.trim().length < 3) {
       setSearchResults([]);
@@ -116,7 +120,7 @@ export default function OpenStreetMapPicker({
     setSearching(true);
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=ph&limit=5`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=ph&limit=5&viewbox=${TBOLI_VIEWBOX}&bounded=1`,
         {
           headers: {
             'Accept': 'application/json',
@@ -157,7 +161,7 @@ export default function OpenStreetMapPicker({
     };
   }, [searchQuery]);
 
-  // Reverse geocoding to get address from coordinates
+  // Reverse geocoding to get address and address components from coordinates
   const reverseGeocode = async (lat, lng) => {
     try {
       const response = await fetch(
@@ -172,20 +176,26 @@ export default function OpenStreetMapPicker({
       
       if (response.ok) {
         const data = await response.json();
-        return data.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        return {
+          displayName: data.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+          addressComponents: data.address || {},
+        };
       }
     } catch (error) {
       console.error('Reverse geocoding error:', error);
     }
-    return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    return {
+      displayName: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+      addressComponents: {},
+    };
   };
 
   const handleLocationSelect = async (lat, lng) => {
     setPosition({ lat, lng });
     setMapCenter({ lat, lng });
     
-    const address = await reverseGeocode(lat, lng);
-    onLocationChange(lat, lng, address);
+    const { displayName, addressComponents } = await reverseGeocode(lat, lng);
+    onLocationChange(lat, lng, displayName, addressComponents);
   };
 
   const handleSearchResultClick = (result) => {
