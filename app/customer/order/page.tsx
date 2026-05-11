@@ -192,7 +192,8 @@ function normalizeVariantValues(rawValue: unknown): string[] {
 function isGenericTboliAddress(address: string): boolean {
   if (!address) return false
   const firstPart = address.split(',')[0].trim().toLowerCase()
-  return firstPart === "t'boli" || firstPart === "tboli" || firstPart === "t'boli municipality"
+  const genericNames = new Set(["t'boli", "tboli", "t'boli municipality"])
+  return genericNames.has(firstPart)
 }
 
 function CustomerOrderPage() {
