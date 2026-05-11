@@ -14,6 +14,7 @@ const NOTIFICATION_AUDIO_VOLUME = 0.5;
 const STATS_REFRESH_DEBOUNCE_MS = 2000; // Debounce stats refresh by 2 seconds
 // Support both `pickup` (current customer checkout) and `pick-up` (legacy records).
 const ONLINE_ORDER_MODES = ['delivery', 'pickup', 'pick-up', 'dine-in', 'take-out'];
+const PENDING_REVIEW_STATUSES = ['pending', 'order_in_queue'];
 
 export default function CashierDashboard() {
   const router = useRouter();
@@ -113,7 +114,7 @@ export default function CashierDashboard() {
           debouncedStatsRefresh();
           
           // Handle online order notifications
-          if (newOrder.status === 'pending' && ONLINE_ORDER_MODES.includes(newOrder.order_mode)) {
+          if (PENDING_REVIEW_STATUSES.includes(newOrder.status) && ONLINE_ORDER_MODES.includes(newOrder.order_mode)) {
             setHasNewOrders(true);
             // Play notification sound
             if (notificationAudio) {
@@ -272,7 +273,7 @@ export default function CashierDashboard() {
     if (!supabase) return;
 
     try {
-      // Fetch pending online orders (all order modes from customer portal, status: pending)
+      // Fetch online orders awaiting cashier review (supports both current and legacy pending statuses)
       const { data: orders, error } = await supabase
         .from('orders')
         .select(`
@@ -300,7 +301,7 @@ export default function CashierDashboard() {
           )
         `)
         .in('order_mode', ONLINE_ORDER_MODES)
-        .eq('status', 'pending')
+        .in('status', PENDING_REVIEW_STATUSES)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
