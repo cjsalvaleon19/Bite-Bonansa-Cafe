@@ -591,7 +591,7 @@ export default function CashierDashboard() {
           <p>Date  : ${new Date(order.created_at).toLocaleString()}</p>
           <p>Type  : ${order.order_mode || 'N/A'}</p>
           ${isKitchenCopy && departmentName ? `<p><strong>Kitchen Department:</strong> ${departmentName}</p>` : ''}
-          <p>Name  : ${order.customer_name || 'Walk-in'}</p>
+          <p>Name  : ${order.customer_name || order.users?.full_name || 'Walk-in'}</p>
           ${receiptPhone ? `<p>Phone : ${receiptPhone}</p>` : ''}
           ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
           ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
@@ -1258,9 +1258,9 @@ export default function CashierDashboard() {
                         </div>
                       </div>
 
-                      {order.customer_name && (
+                      {(order.customer_name || order.users?.full_name) && (
                         <div style={styles.orderCustomer}>
-                          👤 {order.customer_name}
+                          👤 {order.customer_name || order.users?.full_name}
                           {order.contact_number && ` • ${order.contact_number}`}
                         </div>
                       )}
@@ -1327,10 +1327,10 @@ export default function CashierDashboard() {
                   <strong>Order Time:</strong>
                   <span>{new Date(selectedOrderToView.created_at).toLocaleString()}</span>
                 </div>
-                {selectedOrderToView.customer_name && (
+                {(selectedOrderToView.customer_name || selectedOrderToView.users?.full_name) && (
                   <div style={styles.viewOrderRow}>
                     <strong>Customer:</strong>
-                    <span>{selectedOrderToView.customer_name}</span>
+                    <span>{selectedOrderToView.customer_name || selectedOrderToView.users?.full_name}</span>
                   </div>
                 )}
                 {selectedOrderToView.contact_number && (

@@ -114,13 +114,17 @@ export default async function handler(req, res) {
       ),
       users:customer_id (
         customer_id,
+        full_name,
         phone
       )
     `)
     // Pending online orders are, by definition, not yet accepted by staff.
     // Filter by accepted_at first, then normalize mode/status in JS to handle
     // legacy formatting variants (e.g. pickup/pick-up, pending/Pending).
+    // Require customer_id to be set so that POS walk-in orders (customer_id=null,
+    // customer_name='Walk-in') are excluded from the online orders queue.
     .is('accepted_at', null)
+    .not('customer_id', 'is', null)
     .order('created_at', { ascending: true });
 
   if (error) {
