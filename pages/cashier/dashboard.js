@@ -450,7 +450,7 @@ export default function CashierDashboard() {
               <div style="font-size: 35px;">${mainLine}</div>
               ${subvariantHtml}
             </td>
-            <td style="padding: 4px 0; font-size: 24px; text-align: right;">${item.quantity || 1}</td>
+            <td style="padding: 4px 0; font-size: 35px; text-align: right;">${item.quantity || 1}</td>
           </tr>
         `;
       }).join('');
@@ -468,7 +468,7 @@ export default function CashierDashboard() {
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
             body {
               font-family: 'Courier New', monospace;
-              font-size: 12px;
+              font-size: 18px;
               line-height: 1.45;
               padding: 0 12px;
               max-width: 350px;
@@ -485,7 +485,6 @@ export default function CashierDashboard() {
         <body>
           <div class="section">
             <p style="font-size: 18px; font-weight: bold; text-align: center;">ORDER SLIP</p>
-            ${departmentName ? `<p style="font-size: 22px; font-weight: bold; text-align: center; margin-top: 6px;">${departmentName}</p>` : ''}
           </div>
           <div class="section">
             <p style="font-size: 35px; font-weight: bold;">OS #${getOrderSlipNumber(order)} — ${formatOrderModeLabel(order.order_mode)}</p>

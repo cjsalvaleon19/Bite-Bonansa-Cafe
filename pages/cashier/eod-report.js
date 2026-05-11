@@ -326,7 +326,7 @@ export default function EndOfDayReport() {
           <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 300); });</script>
           <style>
             @page { size: 80mm auto; margin: 0 0 1cm 0; }
-            body { font-family: monospace; font-size: 10.5px; line-height: 1.3; padding: 20px 20px 0; margin: 0; }
+            body { font-family: monospace; font-size: 18px; line-height: 1.3; padding: 20px 20px 0; margin: 0; }
             .section { margin: 12px 0; }
             table { width: 100%; border-collapse: collapse; }
             @media print { button { display: none; } }
@@ -334,8 +334,7 @@ export default function EndOfDayReport() {
         </head>
         <body>
           <div class="section" style="text-align: center;">
-            <p style="font-size: 15px; font-weight: bold;">ORDER SLIP</p>
-            ${departmentName ? `<p style="font-size: 18px; font-weight: bold;">${departmentName}</p>` : ''}
+            <p style="font-size: 18px; font-weight: bold;">ORDER SLIP</p>
           </div>
           <div class="section">
             <p style="font-size: 35px; font-weight: bold;">OS #${getOrderSlipNumber(order)}</p>
@@ -361,7 +360,7 @@ export default function EndOfDayReport() {
                         <div style="font-size: 35px;">${mainLine}</div>
                         ${subvariantHtml}
                       </td>
-                      <td style="padding: 4px 0; font-size: 21px; text-align: right;">${item.quantity || 1}</td>
+                      <td style="padding: 4px 0; font-size: 35px; text-align: right;">${item.quantity || 1}</td>
                     </tr>
                   `;
                 }).join('')}
