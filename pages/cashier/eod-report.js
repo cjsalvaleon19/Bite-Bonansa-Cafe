@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -18,11 +18,28 @@ export default function EndOfDayReport() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
+  const refreshTimerRef = useRef(null);
+
   useEffect(() => {
     if (!authLoading) {
       fetchUser();
       fetchOrders();
       fetchAdjustments();
+
+      // Auto-refresh when orders change (e.g. receipt printed from POS).
+      // Debounce rapid events to avoid excessive refetches.
+      const subscription = supabase
+        ?.channel('eod_orders_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+          clearTimeout(refreshTimerRef.current);
+          refreshTimerRef.current = setTimeout(() => fetchOrders(), 500);
+        })
+        .subscribe();
+
+      return () => {
+        clearTimeout(refreshTimerRef.current);
+        subscription?.unsubscribe();
+      };
     }
   }, [authLoading, selectedDate]);
 
@@ -277,6 +294,7 @@ export default function EndOfDayReport() {
                 <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
                 <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
                 <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
+                <p style="margin: 4px 0; font-size: 12px; font-weight: bold;">Slip#: ${getOrderSlipNumber(order)}</p>
               </div>
             </div>
           </div>
@@ -319,8 +337,8 @@ export default function EndOfDayReport() {
             <p style="font-size: 15px; font-weight: bold;">ORDER SLIP</p>
           </div>
           <div class="section">
-            <p style="font-size: 21px; font-weight: bold;">Order Slip #: ${getOrderSlipNumber(order)}</p>
-            <p style="font-size: 21px; font-weight: bold;">${modeLabel}</p>
+            <p style="font-size: 15px; font-weight: bold;">Order Slip #: ${getOrderSlipNumber(order)}</p>
+            <p style="font-size: 15px; font-weight: bold;">${modeLabel}</p>
           </div>
           <div class="section">
             <table>
@@ -334,12 +352,12 @@ export default function EndOfDayReport() {
                 ${orderItems.map((item) => {
                   const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
                   const subvariantHtml = subvariantLines
-                    .map((line) => `<div style="font-size: 15.75px; padding-top: 2px; padding-left: 10px;">${line}</div>`)
+                    .map((line) => `<div style="font-size: 15px; padding-top: 2px; padding-left: 10px;">${line}</div>`)
                     .join('');
                   return `
                     <tr>
                       <td style="padding: 4px 0;">
-                        <div style="font-size: 15.75px;">${mainLine}</div>
+                        <div style="font-size: 15px;">${mainLine}</div>
                         ${subvariantHtml}
                       </td>
                       <td style="padding: 4px 0; font-size: 21px; text-align: right;">${item.quantity || 1}</td>
@@ -554,6 +572,7 @@ export default function EndOfDayReport() {
               <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
               <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
               <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
+              <p style="margin: 4px 0; font-size: 12px; font-weight: bold;">Slip#: ${getOrderSlipNumber(order)}</p>
             </div>
           </div>
         </body>
