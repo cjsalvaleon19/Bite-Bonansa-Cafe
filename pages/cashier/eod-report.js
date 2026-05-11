@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -18,21 +18,26 @@ export default function EndOfDayReport() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
+  const refreshTimerRef = useRef(null);
+
   useEffect(() => {
     if (!authLoading) {
       fetchUser();
       fetchOrders();
       fetchAdjustments();
 
-      // Auto-refresh when orders change (e.g. receipt printed from POS)
+      // Auto-refresh when orders change (e.g. receipt printed from POS).
+      // Debounce rapid events to avoid excessive refetches.
       const subscription = supabase
         ?.channel('eod_orders_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-          fetchOrders();
+          clearTimeout(refreshTimerRef.current);
+          refreshTimerRef.current = setTimeout(() => fetchOrders(), 500);
         })
         .subscribe();
 
       return () => {
+        clearTimeout(refreshTimerRef.current);
         subscription?.unsubscribe();
       };
     }
