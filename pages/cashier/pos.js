@@ -21,6 +21,7 @@ const OpenStreetMapPicker = dynamic(
 
 const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
+const MAX_DELIVERY_DISTANCE = 5000; // 5 km in meters
 
 export default function CashierPOS() {
   const router = useRouter();
@@ -58,10 +59,13 @@ export default function CashierPOS() {
   const [customerPointsBalance, setCustomerPointsBalance] = useState(0);
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryCoordinates, setDeliveryCoordinates] = useState({ lat: null, lng: null });
+  const [deliveryOutOfRange, setDeliveryOutOfRange] = useState(false);
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [combinedPayment, setCombinedPayment] = useState(false); // For points + cash/gcash
   const [lastPrintedOrder, setLastPrintedOrder] = useState(null); // For BT re-print
+  const [showChangeAmountPopup, setShowChangeAmountPopup] = useState(false);
+  const [changeAmountToPrepare, setChangeAmountToPrepare] = useState(0);
 
   const { items, addItem, replaceItem, removeItem, updateQuantity, clearCart, getTotalPrice } =
     useCartStore();
@@ -88,10 +92,12 @@ export default function CashierPOS() {
       // Only use default if coordinates are not set
       if (!deliveryCoordinates.lat || !deliveryCoordinates.lng) {
         setDeliveryFee(DELIVERY_FEE_DEFAULT);
+        setDeliveryOutOfRange(false);
       }
     } else {
       setDeliveryFee(0);
       setDeliveryCoordinates({ lat: null, lng: null });
+      setDeliveryOutOfRange(false);
     }
   }, [orderMode]);
 
@@ -104,6 +110,12 @@ export default function CashierPOS() {
         deliveryCoordinates.lat,
         deliveryCoordinates.lng
       );
+      const isOutOfRange = distanceInMeters > MAX_DELIVERY_DISTANCE;
+      setDeliveryOutOfRange(isOutOfRange);
+      if (isOutOfRange) {
+        setDeliveryFee(0);
+        return;
+      }
       const calculatedFee = calculateDeliveryFee(distanceInMeters);
       setDeliveryFee(calculatedFee);
     }
@@ -395,6 +407,10 @@ export default function CashierPOS() {
       alert('Please add items to the cart');
       return;
     }
+    if (orderMode === 'delivery' && deliveryOutOfRange) {
+      alert('Delivery is only available within T\'boli, South Cotabato (max 5 km from our store).');
+      return;
+    }
     if (paymentMethod === 'salary_deduction' && !selectedPayrollEmployee) {
       alert('Please select an employee to proceed with salary deduction checkout.');
       return;
@@ -451,6 +467,10 @@ export default function CashierPOS() {
         return;
       }
     }
+
+    const changeAmountForPopup = (paymentMethod === 'cash' || (combinedPayment && paymentMethod === 'cash'))
+      ? Math.max(0, parseFloat(paymentDetails.cashTendered || 0) - remainingAmount)
+      : 0;
 
     const printerWarmup = connectPrinter().catch((err) => {
       console.warn('[POS] Bluetooth pre-connect skipped:', err?.message ?? err);
@@ -603,6 +623,8 @@ export default function CashierPOS() {
       setSalaryDeductionEmployeeId('');
 
       setOrderStatus('success');
+      setChangeAmountToPrepare(changeAmountForPopup);
+      setShowChangeAmountPopup(true);
       setTimeout(() => setOrderStatus(null), 3000);
     } catch (err) {
       console.error('[POS] Checkout failed:', err?.message ?? err);
@@ -1099,6 +1121,11 @@ export default function CashierPOS() {
                       <p style={styles.deliveryInfoText}>
                         💰 Delivery Fee: ₱{deliveryFee.toFixed(2)}
                       </p>
+                      {deliveryOutOfRange && (
+                        <p style={styles.errorText}>
+                          Delivery is only available within T&apos;boli, South Cotabato (max 5 km from our store).
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1303,15 +1330,25 @@ export default function CashierPOS() {
             <div style={styles.cartActions}>
               <button style={styles.clearBtn} onClick={clearCart} disabled={items.length === 0}>Clear</button>
               <button
-                style={{ ...styles.checkoutBtn, opacity: items.length === 0 || checkoutLoading || salaryDeductionMissingMatch ? 0.6 : 1 }}
+                style={{ ...styles.checkoutBtn, opacity: items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange) ? 0.6 : 1 }}
                 onClick={handleCheckout}
-                disabled={items.length === 0 || checkoutLoading || salaryDeductionMissingMatch}
+                disabled={items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange)}
               >
                 {checkoutLoading ? '⏳ Processing…' : '✔ Checkout'}
               </button>
             </div>
           </section>
         </div>
+
+        {showChangeAmountPopup && (
+          <div style={styles.changeAmountOverlay} onClick={() => setShowChangeAmountPopup(false)}>
+            <div style={styles.changeAmountPopup}>
+              <p style={styles.changeAmountTitle}>Change Amount</p>
+              <p style={styles.changeAmountValue}>₱{changeAmountToPrepare.toFixed(2)}</p>
+              <p style={styles.changeAmountHint}>Tap anywhere to close</p>
+            </div>
+          </div>
+        )}
 
         {/* Variant Selection Modal */}
         {showVariantModal && selectedItem && (
@@ -1419,5 +1456,43 @@ const styles = {
     fontSize: '13px',
     color: '#ccc',
     margin: '4px 0',
+  },
+  changeAmountOverlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2000,
+    padding: '16px',
+  },
+  changeAmountPopup: {
+    width: '100%',
+    maxWidth: '320px',
+    backgroundColor: '#1a1a1a',
+    border: '1px solid #ffc107',
+    borderRadius: '12px',
+    padding: '20px',
+    textAlign: 'center',
+  },
+  changeAmountTitle: {
+    margin: 0,
+    color: '#ccc',
+    fontSize: '13px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+  },
+  changeAmountValue: {
+    margin: '10px 0 0 0',
+    color: '#ffc107',
+    fontSize: '36px',
+    fontWeight: '700',
+    lineHeight: 1.1,
+  },
+  changeAmountHint: {
+    margin: '10px 0 0 0',
+    color: '#888',
+    fontSize: '12px',
   },
 };

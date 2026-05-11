@@ -90,7 +90,7 @@ export function calculateDeliveryFee(
     lng
   )
 
-  const MAX_DELIVERY_DISTANCE = 10000 // 10 km in meters
+  const MAX_DELIVERY_DISTANCE = 5000 // 5 km in meters
   const outOfRange = distance > MAX_DELIVERY_DISTANCE
 
   const fee = outOfRange ? 0 : calculateDeliveryFeeFromDistance(distance)

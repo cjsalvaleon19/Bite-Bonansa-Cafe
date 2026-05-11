@@ -193,6 +193,7 @@ function CustomerOrderPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [cart, setCart] = useState<CartItem[]>([])
   const [deliveryAddress, setDeliveryAddress] = useState(user?.address || '')
+  const [deliveryLandmark, setDeliveryLandmark] = useState('')
   const [deliveryLat, setDeliveryLat] = useState<number | null>(null)
   const [deliveryLng, setDeliveryLng] = useState<number | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('gcash')
@@ -204,6 +205,7 @@ function CustomerOrderPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showGcashDialog, setShowGcashDialog] = useState(false)
   const [showLocationPicker, setShowLocationPicker] = useState(false)
+  const [showLandmarkRequiredDialog, setShowLandmarkRequiredDialog] = useState(false)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
   const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine-in' | 'take-out'>('delivery')
@@ -795,11 +797,19 @@ function CustomerOrderPage() {
     }
     
     if (orderType === 'delivery' && !deliveryAddress.trim()) {
-      toast.error('Please enter a delivery address')
+      toast.error('Please pin your delivery location first')
+      return
+    }
+    if (orderType === 'delivery' && (deliveryLat === null || deliveryLng === null)) {
+      toast.error('Please pin your delivery location first')
+      return
+    }
+    if (orderType === 'delivery' && !deliveryLandmark.trim()) {
+      setShowLandmarkRequiredDialog(true)
       return
     }
     if (orderType === 'delivery' && deliveryOutOfRange) {
-      toast.error('Delivery is only available within T\'boli, South Cotabato (max 10 km from our store).')
+      toast.error('Delivery is only available within T\'boli, South Cotabato (max 5 km from our store).')
       return
     }
     
@@ -901,6 +911,9 @@ function CustomerOrderPage() {
       if (paymentMethod === 'cash' && cashTendered) {
         notesStr += ` | Cash tendered: ${formatCurrency(parseFloat(cashTendered))}`
       }
+      if (isDelivery && deliveryLandmark.trim()) {
+        notesStr += ` | Landmark: ${deliveryLandmark.trim()}`
+      }
       if (paymentMethod === 'gcash' && gcashRef) {
         notesStr += ` | GCash ref: ${gcashRef}`
       }
@@ -998,6 +1011,7 @@ function CustomerOrderPage() {
       setCart([])
       localStorage.removeItem('bite-bonanza-cart')
       setOrderNotes('')
+      setDeliveryLandmark('')
       setCashTendered('')
       setGcashRef('')
       // Clean up object URL before resetting
@@ -1016,12 +1030,13 @@ function CustomerOrderPage() {
   }
 
   const handleLocationSelect = (address: string, lat: number, lng: number) => {
-    setDeliveryAddress(address)
+    const resolvedAddress = address?.trim() || `Pinned location (${lat.toFixed(6)}, ${lng.toFixed(6)})`
+    setDeliveryAddress(resolvedAddress)
     setDeliveryLat(lat)
     setDeliveryLng(lng)
     const { fee, distance, outOfRange } = calculateDeliveryFee(lat, lng)
     if (outOfRange) {
-      toast.error('Delivery is only available within T\'boli, South Cotabato (max 10 km from our store).')
+      toast.error('Delivery is only available within T\'boli, South Cotabato (max 5 km from our store).')
     } else {
       toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance ?? 0)})`)
     }
@@ -1074,7 +1089,9 @@ function CustomerOrderPage() {
               total={total}
               earnedPoints={earnedPoints}
               deliveryAddress={deliveryAddress}
-              setDeliveryAddress={setDeliveryAddress}
+              deliveryLandmark={deliveryLandmark}
+              setDeliveryLandmark={setDeliveryLandmark}
+              hasPinnedLocation={deliveryLat !== null && deliveryLng !== null}
               openLocationPicker={() => setShowLocationPicker(true)}
               paymentMethod={paymentMethod}
               setPaymentMethod={setPaymentMethod}
@@ -1326,7 +1343,9 @@ function CustomerOrderPage() {
                 total={total}
                 earnedPoints={earnedPoints}
                 deliveryAddress={deliveryAddress}
-                setDeliveryAddress={setDeliveryAddress}
+                deliveryLandmark={deliveryLandmark}
+                setDeliveryLandmark={setDeliveryLandmark}
+                hasPinnedLocation={deliveryLat !== null && deliveryLng !== null}
                 openLocationPicker={() => setShowLocationPicker(true)}
                 paymentMethod={paymentMethod}
                 setPaymentMethod={setPaymentMethod}
@@ -1398,6 +1417,18 @@ function CustomerOrderPage() {
         onConfirm={submitOrder}
         isSubmitting={isSubmitting}
       />
+
+      <Dialog open={showLandmarkRequiredDialog} onOpenChange={setShowLandmarkRequiredDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Landmark is required</DialogTitle>
+            <DialogDescription>
+              Please provide landmark details so our rider can find your location before checkout.
+            </DialogDescription>
+          </DialogHeader>
+          <Button onClick={() => setShowLandmarkRequiredDialog(false)}>OK</Button>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1779,7 +1810,9 @@ interface CartContentProps {
   total: number
   earnedPoints: number
   deliveryAddress: string
-  setDeliveryAddress: (address: string) => void
+  deliveryLandmark: string
+  setDeliveryLandmark: (landmark: string) => void
+  hasPinnedLocation: boolean
   openLocationPicker: () => void
   paymentMethod: PaymentMethod
   setPaymentMethod: (method: PaymentMethod) => void
@@ -1802,7 +1835,7 @@ interface CartContentProps {
 
 function CartContent({
   cart, updateQuantity, removeFromCart, onEditItem, subtotal, deliveryFee, deliveryDistance,
-  deliveryOutOfRange = false, total, earnedPoints, deliveryAddress, setDeliveryAddress,
+  deliveryOutOfRange = false, total, earnedPoints, deliveryAddress, deliveryLandmark, setDeliveryLandmark, hasPinnedLocation,
   openLocationPicker, paymentMethod, setPaymentMethod, orderNotes, setOrderNotes,
   cashTendered, setCashTendered, handlePlaceOrder, isSubmitting, orderType = 'delivery',
   loyaltyBalance, pointsToUse, setPointsToUse, secondaryPaymentMethod, setSecondaryPaymentMethod,
@@ -1899,9 +1932,9 @@ function CartContent({
             </Label>
             <Textarea
               id="address"
-              placeholder="Enter your delivery address"
+              placeholder="Pin your location to fill delivery address"
               value={deliveryAddress}
-              onChange={(e) => setDeliveryAddress(e.target.value)}
+              readOnly
               className="resize-none"
               rows={2}
             />
@@ -1909,6 +1942,20 @@ function CartContent({
               <MapPin className="mr-2 h-4 w-4" />
               Search &amp; Pin Location on Map
             </Button>
+            {!hasPinnedLocation && (
+              <p className="text-xs text-muted-foreground">
+                Please pin your location to continue with delivery checkout.
+              </p>
+            )}
+            <Label htmlFor="landmark" className="text-primary">Landmark</Label>
+            <Textarea
+              id="landmark"
+              placeholder="Enter nearest landmark (required)"
+              value={deliveryLandmark}
+              onChange={(e) => setDeliveryLandmark(e.target.value)}
+              className="resize-none"
+              rows={2}
+            />
             {!isSundayClosed && (
               <p className="text-xs text-muted-foreground">
                 Delivery schedule: {DELIVERY_SCHEDULE_LABEL}
@@ -1921,7 +1968,7 @@ function CartContent({
             )}
             {deliveryOutOfRange && (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <strong>Outside delivery area.</strong> More than 10 km from our store.
+                <strong>Outside delivery area.</strong> More than 5 km from our store.
               </div>
             )}
           </div>
@@ -2145,7 +2192,6 @@ function CartContent({
           isSubmitting ||
           isSundayClosed ||
           cart.length === 0 ||
-          (orderType === 'delivery' && !deliveryAddress.trim()) ||
           (orderType === 'delivery' && !isDeliveryScheduleOpen) ||
           (orderType === 'delivery' && deliveryOutOfRange) ||
           // Cash tendered validation only for delivery and pickup orders
