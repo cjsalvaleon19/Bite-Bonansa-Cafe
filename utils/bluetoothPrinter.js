@@ -335,6 +335,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   const isKitchen = receiptType === 'kitchen';
   const title     = isKitchen ? 'ORDER SLIP' : 'SALES INVOICE';
   const kitchenTitle = title;
+  const kitchenDepartment = String(opts.departmentName || '').trim();
   const paperWidth = getPaperWidth(opts);
 
   // Support both order_items (DB joined) and items (JSONB / cart) shapes
@@ -371,6 +372,9 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   if (isKitchen) {
     b.push(...CMD.ALIGN_CENTER, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
     b.push(...encodeText(`${kitchenTitle}\n`));
+    if (kitchenDepartment) {
+      b.push(...encodeText(`${kitchenDepartment}\n`));
+    }
     b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('=', paperWidth)));
 

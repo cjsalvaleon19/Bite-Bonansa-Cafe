@@ -485,6 +485,7 @@ export default function CashierDashboard() {
         <body>
           <div class="section">
             <p style="font-size: 18px; font-weight: bold; text-align: center;">ORDER SLIP</p>
+            ${departmentName ? `<p style="font-size: 22px; font-weight: bold; text-align: center; margin-top: 6px;">${departmentName}</p>` : ''}
           </div>
           <div class="section">
             <p style="font-size: 25px; font-weight: bold;">Order Slip #: ${getOrderSlipNumber(order)} — ${formatOrderModeLabel(order.order_mode)}</p>

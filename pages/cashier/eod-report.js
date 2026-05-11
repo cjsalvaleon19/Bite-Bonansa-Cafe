@@ -605,7 +605,9 @@ export default function EndOfDayReport() {
         omitFooterMeta: true,
       });
       for (const group of buildKitchenDepartmentOrders(order)) {
-        await printToBluetoothPrinter(group.order, 'kitchen');
+        await printToBluetoothPrinter(group.order, 'kitchen', {
+          departmentName: group.name,
+        });
       }
     } catch (err) {
       alert('Bluetooth print failed: ' + (err.message || 'Unknown error'));
