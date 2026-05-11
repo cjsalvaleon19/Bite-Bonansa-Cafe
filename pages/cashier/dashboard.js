@@ -546,6 +546,13 @@ export default function CashierDashboard() {
     
     const receiptPhone = (order.users && order.users.phone) || order.customer_phone || order.contact_number || '';
 
+    // Extract the last 3-digit sequence from the order number (e.g. ORD-YYMMDD-### → ###)
+    const orderShortNumber = (() => {
+      const num = order.order_number || '';
+      const parts = num.split('-');
+      return parts.length >= 3 ? parts[parts.length - 1] : (num.slice(-3) || num);
+    })();
+
     const receiptHtml = `
       <!DOCTYPE html>
       <html>
@@ -676,6 +683,7 @@ export default function CashierDashboard() {
         <div class="footer">
           <p>Thank you for your order, Biter!</p>
           ${!isKitchenCopy ? `<div style="margin-top: 12px; text-align: center;">
+            <p style="font-size: 18px; font-weight: bold; letter-spacing: 1px; margin-bottom: 6px;">ORDER #${orderShortNumber}</p>
             <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
             <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
             <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>

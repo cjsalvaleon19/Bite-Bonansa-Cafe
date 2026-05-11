@@ -8,7 +8,7 @@
  * that the caller is an authenticated cashier or admin before returning data.
  */
 import { createClient } from '@supabase/supabase-js';
-import { ONLINE_ORDER_MODES, UNACCEPTED_ORDER_STATUSES } from '../../../utils/salesCalculations';
+import { ONLINE_ORDER_MODES } from '../../../utils/salesCalculations';
 
 function normalizeOrderMode(value) {
   // Canonicalize known online mode variants:
@@ -129,11 +129,12 @@ export default async function handler(req, res) {
   }
 
   const allowedModes = new Set(ONLINE_ORDER_MODES.map(normalizeOrderMode));
-  const allowedStatuses = new Set(UNACCEPTED_ORDER_STATUSES.map(normalizeOrderStatus));
+  // Only show orders placed by customers (status 'pending').
+  // Cashier POS orders are created with status 'order_in_queue' and must NOT appear here.
   const pendingOnlineOrders = (orders || []).filter((order) => {
     const normalizedMode = normalizeOrderMode(order?.order_mode);
     const normalizedStatus = normalizeOrderStatus(order?.status);
-    return allowedModes.has(normalizedMode) && allowedStatuses.has(normalizedStatus);
+    return allowedModes.has(normalizedMode) && normalizedStatus === 'pending';
   });
 
   return res.status(200).json({ orders: pendingOnlineOrders });
