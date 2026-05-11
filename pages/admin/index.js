@@ -778,9 +778,9 @@ export default function AdminPage() {
       const uniqueOrders = Array.from(new Map(orders.map((o) => [o.id, o])).values());
 
       const soldMap = {};
-      const addInventoryUsage = (headerName, multiplier) => {
+      const addInventoryUsage = (headerName, orderQuantity) => {
         (costingMap[headerName] || []).forEach(({ inventory_item_id, qty }) => {
-          soldMap[inventory_item_id] = (soldMap[inventory_item_id] || 0) + (Number(multiplier) || 0) * (Number(qty) || 0);
+          soldMap[inventory_item_id] = (soldMap[inventory_item_id] || 0) + (Number(orderQuantity) || 0) * (Number(qty) || 0);
         });
       };
 
@@ -999,6 +999,8 @@ export default function AdminPage() {
         : paymentMode === 'spaylater' ? 'Spaylater Payable'
           : 'Cash on Hand'
   ), []);
+
+  const formatPaymentModeLabel = useCallback((paymentMode) => String(paymentMode || 'cash_on_hand').replace(/_/g, ' '), []);
 
   const generateBillsPaymentNumber = useCallback(async () => {
     if (!supabase) return;
@@ -2971,7 +2973,7 @@ export default function AdminPage() {
       const currentValue = currentStock * (Number(current.cost_per_unit) || 0);
       const updatedStock = currentStock + deltaQty;
       if (updatedStock < 0) {
-        throw new Error(`Editing RR ${rrId} would make inventory stock negative for ${current.name}.`);
+        throw new Error(`Editing RR ${rrId} would make ${current.name} stock negative (current: ${currentStock}, change: ${deltaQty}, result: ${updatedStock}).`);
       }
       const updatedValue = currentValue + deltaValue;
       const updatedCost = updatedStock > 0 ? roundToCurrency(updatedValue / updatedStock) : 0;
@@ -3042,7 +3044,7 @@ export default function AdminPage() {
 
       const paymentPayload = {
         date: payment.payment_date,
-        description: `RR Payment: ${rrRecord.rr_number} (${String(payment.payment_mode || 'cash_on_hand').replace(/_/g, ' ')})`,
+        description: `RR Payment: ${rrRecord.rr_number} (${formatPaymentModeLabel(payment.payment_mode)})`,
         debit_account: 'Accounts Payable',
         credit_account: getCreditAccountForPaymentMode(payment.payment_mode),
         amount: paymentAmount,
@@ -3070,7 +3072,7 @@ export default function AdminPage() {
         if (paymentJeInsErr) throw new Error(`Failed to create RR payment journal entry: ${paymentJeInsErr.message}`);
       }
     }
-  }, [getCreditAccountForPaymentMode, supabase]);
+  }, [formatPaymentModeLabel, getCreditAccountForPaymentMode, supabase]);
 
   const openRRDialog = async (item = null) => {
     setRrEditItem(item);
@@ -3222,7 +3224,10 @@ export default function AdminPage() {
       const emptyName = rrLineItems.find((li) => !li.inventory_name);
       if (emptyName) { setRrSaveError('Please select an inventory item for every line before saving.'); return; }
       const lineWithInvalidQty = rrLineItems.find((li) => (Number(li.qty) || 0) <= 0);
-      if (lineWithInvalidQty) { setRrSaveError('Quantity must be greater than zero for every line item.'); return; }
+      if (lineWithInvalidQty) {
+        setRrSaveError(`Quantity must be greater than zero for ${lineWithInvalidQty.inventory_name || 'the selected item'}.`);
+        return;
+      }
       const totalLC = roundToCurrency(rrLineItems.reduce((s, i) => s + (Number(i.total_landed_cost) || 0), 0));
       const nextStatus = rrEditItem?.status || 'draft';
       const rrPayload = {
@@ -4989,7 +4994,7 @@ export default function AdminPage() {
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
                       <button onClick={saveRR} style={styles.primaryBtn} disabled={savingRR} aria-disabled={savingRR} aria-busy={savingRR}>
-                        {savingRR ? 'Saving…' : rrEditItem ? 'Save Changes' : 'Save Draft'}
+                        {savingRR ? 'Saving…' : (rrEditItem ? 'Save Changes' : 'Save Draft')}
                       </button>
                     </div>
                   </Dialog.Content>
