@@ -184,6 +184,18 @@ function normalizeVariantValues(rawValue: unknown): string[] {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+/**
+ * Returns true when the address is only municipality-level (no barangay/road detail).
+ * Nominatim display_name lists parts from most-specific to least-specific separated by commas.
+ * If the first segment is just "T'Boli" (or variant spellings), it lacks barangay detail.
+ */
+function isGenericTboliAddress(address: string): boolean {
+  if (!address) return false
+  const firstPart = address.split(',')[0].trim().toLowerCase()
+  const genericNames = new Set(["t'boli", "tboli", "t'boli municipality"])
+  return genericNames.has(firstPart)
+}
+
 function CustomerOrderPage() {
   const { user } = useAuth()
   const router = useRouter()
@@ -802,6 +814,14 @@ function CustomerOrderPage() {
     }
     if (orderType === 'delivery' && (deliveryLat === null || deliveryLng === null)) {
       toast.error('Please pin your delivery location first')
+      return
+    }
+    if (orderType === 'delivery' && appliedDeliveryFee === 0) {
+      toast.error('Please pin a valid delivery location to calculate the delivery fee.')
+      return
+    }
+    if (orderType === 'delivery' && isGenericTboliAddress(deliveryAddress)) {
+      toast.error("Please select a specific barangay address within T'Boli, South Cotabato.")
       return
     }
     if (orderType === 'delivery' && !deliveryLandmark.trim()) {
@@ -2217,7 +2237,10 @@ function CartContent({
           isSundayClosed ||
           cart.length === 0 ||
           (orderType === 'delivery' && !isDeliveryScheduleOpen) ||
+          (orderType === 'delivery' && !hasPinnedLocation) ||
+          (orderType === 'delivery' && deliveryFee === 0) ||
           (orderType === 'delivery' && deliveryOutOfRange) ||
+          (orderType === 'delivery' && isGenericTboliAddress(deliveryAddress)) ||
           // Cash tendered validation only for delivery and pickup orders
           (paymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (!cashTendered || parseFloat(cashTendered) < total)) ||
           (paymentMethod === 'points' && (
