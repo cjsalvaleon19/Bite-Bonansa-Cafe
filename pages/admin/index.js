@@ -182,6 +182,7 @@ export default function AdminPage() {
   const [rrEditItem, setRrEditItem] = useState(null);
   const [rrForm, setRrForm] = useState({
     rr_number: '',
+    reference_number: '',
     vendor_id: '',
     vendor_name: '',
     vendor_address: '',
@@ -2900,6 +2901,178 @@ export default function AdminPage() {
     });
   };
 
+  const buildRRLineItemPayloads = (lineItems, rrId) => lineItems.map((li) => ({
+    receiving_report_id: rrId,
+    inventory_item_id: li.inventory_item_id || null,
+    inventory_name: li.inventory_name || li.inventory_code || '(unnamed item)',
+    inventory_code: li.inventory_code || null,
+    uom: li.uom || 'pcs',
+    qty: Number(li.qty) || 0,
+    cost: roundToCurrency(li.cost),
+    freight_allocated: roundToCurrency(li.freight_allocated),
+  }));
+
+  const syncRRInventoryFromEdit = useCallback(async (rrId, oldLineItems, nextLineItems, wasApplied) => {
+    if (!supabase) return;
+
+    const { data: inventoryRows, error: invErr } = await supabase
+      .from('admin_inventory_items')
+      .select('id, name, current_stock, cost_per_unit');
+    if (invErr) throw new Error(`Failed to load inventory balances: ${invErr.message}`);
+
+    const nameToInventory = {};
+    const inventoryById = {};
+    (inventoryRows || []).forEach((row) => {
+      inventoryById[row.id] = row;
+      nameToInventory[(row.name || '').trim().toLowerCase()] = row;
+    });
+
+    const normalizeLine = (line) => {
+      const matchedInventory = line.inventory_item_id
+        ? inventoryById[line.inventory_item_id]
+        : nameToInventory[(line.inventory_name || '').trim().toLowerCase()];
+      const resolvedId = line.inventory_item_id || matchedInventory?.id || null;
+      if (!resolvedId) return null;
+      return {
+        inventory_item_id: resolvedId,
+        qty: Number(line.qty) || 0,
+        value: (Number(line.qty) || 0) * (Number(line.cost) || 0),
+      };
+    };
+
+    const aggregateLines = (lines) => {
+      const summary = {};
+      lines.forEach((line) => {
+        const normalized = normalizeLine(line);
+        if (!normalized) return;
+        if (!summary[normalized.inventory_item_id]) {
+          summary[normalized.inventory_item_id] = { qty: 0, value: 0 };
+        }
+        summary[normalized.inventory_item_id].qty += normalized.qty;
+        summary[normalized.inventory_item_id].value += normalized.value;
+      });
+      return summary;
+    };
+
+    const oldSummary = wasApplied ? aggregateLines(oldLineItems) : {};
+    const nextSummary = aggregateLines(nextLineItems);
+    const affectedIds = Array.from(new Set([
+      ...Object.keys(oldSummary),
+      ...Object.keys(nextSummary),
+    ]));
+
+    for (const inventoryId of affectedIds) {
+      const current = inventoryById[inventoryId];
+      if (!current) continue;
+      const oldData = oldSummary[inventoryId] || { qty: 0, value: 0 };
+      const nextData = nextSummary[inventoryId] || { qty: 0, value: 0 };
+      const deltaQty = nextData.qty - oldData.qty;
+      const deltaValue = nextData.value - oldData.value;
+      const currentStock = Number(current.current_stock) || 0;
+      const currentValue = currentStock * (Number(current.cost_per_unit) || 0);
+      const updatedStock = currentStock + deltaQty;
+      if (updatedStock < 0) {
+        throw new Error(`Editing RR ${rrId} would make inventory stock negative for ${current.name}.`);
+      }
+      const updatedValue = currentValue + deltaValue;
+      const updatedCost = updatedStock > 0 ? roundToCurrency(updatedValue / updatedStock) : 0;
+      const { error: updErr } = await supabase
+        .from('admin_inventory_items')
+        .update({
+          current_stock: updatedStock,
+          cost_per_unit: updatedCost,
+        })
+        .eq('id', inventoryId);
+      if (updErr) throw new Error(`Failed to update stock for ${current.name}: ${updErr.message}`);
+    }
+  }, [supabase]);
+
+  const syncRRJournalEntriesFromEdit = useCallback(async (rrRecord, vendorName, totalLandedCost) => {
+    if (!supabase) return;
+
+    const roundedTotal = roundToCurrency(totalLandedCost);
+    const approvalPayload = {
+      date: rrRecord.date,
+      description: `RR Approval: ${rrRecord.rr_number}`,
+      debit_account: 'Inventory',
+      credit_account: 'Accounts Payable',
+      amount: roundedTotal,
+      reference_id: rrRecord.id,
+      reference_type: 'receiving_report',
+      name: vendorName || '',
+    };
+
+    const { data: approvalEntries, error: approvalLoadErr } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('reference_type', 'receiving_report')
+      .eq('reference_id', rrRecord.id);
+    if (approvalLoadErr) throw new Error(`Failed to load RR approval journal entry: ${approvalLoadErr.message}`);
+
+    if ((approvalEntries || []).length > 0) {
+      const { error: approvalUpdErr } = await supabase
+        .from('journal_entries')
+        .update(approvalPayload)
+        .eq('reference_type', 'receiving_report')
+        .eq('reference_id', rrRecord.id);
+      if (approvalUpdErr) throw new Error(`Failed to update RR approval journal entry: ${approvalUpdErr.message}`);
+    } else if (roundedTotal > 0) {
+      const { error: approvalInsErr } = await supabase.from('journal_entries').insert(approvalPayload);
+      if (approvalInsErr) throw new Error(`Failed to create RR approval journal entry: ${approvalInsErr.message}`);
+    }
+
+    if (rrRecord.status !== 'paid') return;
+
+    const { data: paymentRows, error: paymentLoadErr } = await supabase
+      .from('rr_payments')
+      .select('id, payment_date, amount, payment_mode')
+      .eq('receiving_report_id', rrRecord.id)
+      .order('created_at', { ascending: true });
+    if (paymentLoadErr) throw new Error(`Failed to load RR payment records: ${paymentLoadErr.message}`);
+
+    const shouldSyncSinglePaymentAmount = (paymentRows || []).length === 1;
+    for (const payment of paymentRows || []) {
+      const paymentAmount = shouldSyncSinglePaymentAmount ? roundedTotal : roundToCurrency(payment.amount);
+      if (shouldSyncSinglePaymentAmount) {
+        const { error: payUpdErr } = await supabase
+          .from('rr_payments')
+          .update({ amount: paymentAmount })
+          .eq('id', payment.id);
+        if (payUpdErr) throw new Error(`Failed to update RR payment amount: ${payUpdErr.message}`);
+      }
+
+      const paymentPayload = {
+        date: payment.payment_date,
+        description: `RR Payment: ${rrRecord.rr_number} (${String(payment.payment_mode || 'cash_on_hand').replace(/_/g, ' ')})`,
+        debit_account: 'Accounts Payable',
+        credit_account: getCreditAccountForPaymentMode(payment.payment_mode),
+        amount: paymentAmount,
+        reference_id: payment.id,
+        reference_type: 'rr_payment',
+        name: vendorName || '',
+      };
+
+      const { data: paymentEntries, error: paymentJeLoadErr } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('reference_type', 'rr_payment')
+        .eq('reference_id', payment.id);
+      if (paymentJeLoadErr) throw new Error(`Failed to load RR payment journal entry: ${paymentJeLoadErr.message}`);
+
+      if ((paymentEntries || []).length > 0) {
+        const { error: paymentJeUpdErr } = await supabase
+          .from('journal_entries')
+          .update(paymentPayload)
+          .eq('reference_type', 'rr_payment')
+          .eq('reference_id', payment.id);
+        if (paymentJeUpdErr) throw new Error(`Failed to update RR payment journal entry: ${paymentJeUpdErr.message}`);
+      } else {
+        const { error: paymentJeInsErr } = await supabase.from('journal_entries').insert(paymentPayload);
+        if (paymentJeInsErr) throw new Error(`Failed to create RR payment journal entry: ${paymentJeInsErr.message}`);
+      }
+    }
+  }, [getCreditAccountForPaymentMode, supabase]);
+
   const openRRDialog = async (item = null) => {
     setRrEditItem(item);
     // Reset line items immediately so stale data from a previous edit never
@@ -2920,6 +3093,7 @@ export default function AdminPage() {
       }
       setRrForm({
         rr_number: item.rr_number || '',
+        reference_number: item.reference_number || '',
         vendor_id: item.vendor_id || '',
         vendor_name: item.vendor?.name || '',
         vendor_address: vendorAddress,
@@ -2969,6 +3143,7 @@ export default function AdminPage() {
       }
       setRrForm({
         rr_number: rrNum,
+        reference_number: '',
         vendor_id: '',
         vendor_name: '',
         vendor_address: '',
@@ -3004,7 +3179,19 @@ export default function AdminPage() {
 
   const updateRRLineItem = (idx, field, value) => {
     setRrLineItems((prev) => {
-      const updated = prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item));
+      const updated = prev.map((item, i) => {
+        if (i !== idx) return item;
+        if (field === 'total_cost') {
+          const qty = Number(item.qty) || 0;
+          const totalCost = Number(value) || 0;
+          return {
+            ...item,
+            cost: qty > 0 ? String(roundToCurrency(totalCost / qty)) : item.cost,
+            total_cost: totalCost,
+          };
+        }
+        return { ...item, [field]: value };
+      });
       return calcFreight(updated, rrForm.freight_in);
     });
   };
@@ -3035,41 +3222,60 @@ export default function AdminPage() {
       if (!rrForm.vendor_id) { setRrSaveError('Please select a vendor (Contact) before saving.'); return; }
       const emptyName = rrLineItems.find((li) => !li.inventory_name);
       if (emptyName) { setRrSaveError('Please select an inventory item for every line before saving.'); return; }
-      const totalLC = rrLineItems.reduce((s, i) => s + (i.total_landed_cost || 0), 0);
+      const invalidQty = rrLineItems.find((li) => (Number(li.qty) || 0) <= 0);
+      if (invalidQty) { setRrSaveError('Quantity must be greater than zero for every line item.'); return; }
+      const totalLC = roundToCurrency(rrLineItems.reduce((s, i) => s + (Number(i.total_landed_cost) || 0), 0));
+      const nextStatus = rrEditItem?.status || 'draft';
       const rrPayload = {
         rr_number: rrForm.rr_number,
+        reference_number: rrForm.reference_number?.trim() || null,
         vendor_id: rrForm.vendor_id || null,
         date: rrForm.date,
         terms: rrForm.terms !== '' ? parseInt(rrForm.terms, 10) : null,
         freight_in: Number(rrForm.freight_in),
         total_landed_cost: totalLC,
-        status: 'draft',
+        status: nextStatus,
       };
+      const nextLinePayloads = buildRRLineItemPayloads(rrLineItems, rrEditItem?.id);
       let rrId;
       if (rrEditItem) {
+        const { data: oldLineItems, error: oldItemsErr } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, inventory_name, qty, cost')
+          .eq('receiving_report_id', rrEditItem.id);
+        if (oldItemsErr) throw oldItemsErr;
         const { error: updErr } = await supabase.from('receiving_reports').update(rrPayload).eq('id', rrEditItem.id);
         if (updErr) throw updErr;
         rrId = rrEditItem.id;
-        await supabase.from('receiving_report_items').delete().eq('receiving_report_id', rrId);
+        const { error: deleteErr } = await supabase.from('receiving_report_items').delete().eq('receiving_report_id', rrId);
+        if (deleteErr) throw deleteErr;
+        if (nextLinePayloads.length > 0) {
+          const { error: liErr } = await supabase.from('receiving_report_items').insert(nextLinePayloads.map((li) => ({ ...li, receiving_report_id: rrId })));
+          if (liErr) throw liErr;
+        }
+
+        if (['approved', 'paid'].includes(nextStatus)) {
+          await syncRRInventoryFromEdit(rrId, oldLineItems || [], nextLinePayloads, Boolean(rrEditItem.inventory_update_applied));
+          const { error: rrSyncErr } = await supabase
+            .from('receiving_reports')
+            .update({ inventory_update_applied: true, total_landed_cost: totalLC })
+            .eq('id', rrId);
+          if (rrSyncErr) throw rrSyncErr;
+          await syncRRJournalEntriesFromEdit({
+            id: rrId,
+            rr_number: rrForm.rr_number,
+            date: rrForm.date,
+            status: nextStatus,
+          }, rrForm.vendor_name, totalLC);
+        }
       } else {
         const { data: inserted, error: insErr } = await supabase.from('receiving_reports').insert(rrPayload).select().single();
         if (insErr) throw insErr;
         rrId = inserted.id;
-      }
-      if (rrLineItems.length > 0) {
-        const linePayloads = rrLineItems.map((li) => ({
-          receiving_report_id: rrId,
-          inventory_item_id: li.inventory_item_id || null,
-          inventory_name: li.inventory_name || li.inventory_code || '(unnamed item)',
-          inventory_code: li.inventory_code || null,
-          uom: li.uom || 'pcs',
-          qty: Number(li.qty),
-          cost: Number(li.cost),
-          freight_allocated: li.freight_allocated,
-        }));
-        // Throw so the error surfaces in the UI instead of silently losing items.
-        const { error: liErr } = await supabase.from('receiving_report_items').insert(linePayloads);
-        if (liErr) throw liErr;
+        if (nextLinePayloads.length > 0) {
+          const { error: liErr } = await supabase.from('receiving_report_items').insert(nextLinePayloads.map((li) => ({ ...li, receiving_report_id: rrId })));
+          if (liErr) throw liErr;
+        }
       }
       setRrDialogOpen(false);
       fetchRR();
@@ -4482,7 +4688,10 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rrList.filter((rr) => !rrSearch || (rr.rr_number || '').toLowerCase().includes(rrSearch.toLowerCase()) || (rr.vendor?.name || '').toLowerCase().includes(rrSearch.toLowerCase())).map((rr, idx) => (
+                    {rrList.filter((rr) => !rrSearch
+                      || (rr.rr_number || '').toLowerCase().includes(rrSearch.toLowerCase())
+                      || (rr.reference_number || '').toLowerCase().includes(rrSearch.toLowerCase())
+                      || (rr.vendor?.name || '').toLowerCase().includes(rrSearch.toLowerCase())).map((rr, idx) => (
                       <tr key={rr.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{rr.rr_number}</td>
                         <td style={styles.td}>{rr.vendor?.name || '—'}</td>
@@ -4500,15 +4709,10 @@ export default function AdminPage() {
                           </span>
                         </td>
                         <td style={styles.td}>
+                          <button onClick={() => openRRView(rr)} style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}>View</button>
+                          <button onClick={() => openRRDialog(rr)} style={styles.actionBtn}>Edit</button>
                           {rr.status !== 'paid' && (
-                            <>
-                              <button onClick={() => openRRView(rr)} style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}>View</button>
-                              <button onClick={() => openRRDialog(rr)} style={styles.actionBtn}>Edit</button>
-                              <button onClick={() => setRrDeleteConfirm(rr)} style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}>Delete</button>
-                            </>
-                          )}
-                          {rr.status === 'paid' && (
-                            <button onClick={() => openRRView(rr)} style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}>View</button>
+                            <button onClick={() => setRrDeleteConfirm(rr)} style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}>Delete</button>
                           )}
                           {rr.status === 'draft' && (
                             <button onClick={() => approveRR(rr)} style={{ ...styles.actionBtn, color: '#4caf50', borderColor: '#4caf50' }}>Approve</button>
@@ -4561,6 +4765,10 @@ export default function AdminPage() {
                       <div>
                         <label style={styles.label}>Vendor</label>
                         <input style={{ ...styles.input, background: '#111', color: '#ccc' }} readOnly value={rrViewItem?.vendor?.name || '—'} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Reference Number</label>
+                        <input style={{ ...styles.input, background: '#111', color: '#ccc' }} readOnly value={rrViewItem?.reference_number || '—'} />
                       </div>
                       <div>
                         <label style={styles.label}>Terms</label>
@@ -4644,6 +4852,15 @@ export default function AdminPage() {
                           type="date"
                           value={rrForm.date}
                           onChange={(e) => setRrForm((p) => ({ ...p, date: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Reference Number</label>
+                        <input
+                          style={styles.input}
+                          value={rrForm.reference_number}
+                          onChange={(e) => setRrForm((p) => ({ ...p, reference_number: e.target.value }))}
+                          placeholder="Invoice / delivery reference no."
                         />
                       </div>
                       <div>
@@ -4738,7 +4955,14 @@ export default function AdminPage() {
                                     onChange={(e) => updateRRLineItem(idx, 'cost', e.target.value)}
                                   />
                                 </td>
-                                <td style={styles.td}><span style={{ fontSize: 11 }}>{fmt(li.total_cost || 0)}</span></td>
+                                <td style={styles.td}>
+                                  <input
+                                    style={{ ...styles.input, width: 100, padding: '4px 8px', fontSize: 12 }}
+                                    type="number"
+                                    value={li.total_cost || 0}
+                                    onChange={(e) => updateRRLineItem(idx, 'total_cost', e.target.value)}
+                                  />
+                                </td>
                                 <td style={styles.td}><span style={{ fontSize: 11 }}>{fmt(li.freight_allocated || 0)}</span></td>
                                 <td style={styles.td}><span style={{ fontSize: 11, color: '#ffc107' }}>{fmt(li.total_landed_cost || 0)}</span></td>
                                 <td style={styles.td}>
@@ -4766,7 +4990,7 @@ export default function AdminPage() {
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
                       <button onClick={saveRR} style={styles.primaryBtn} disabled={savingRR} aria-disabled={savingRR} aria-busy={savingRR}>
-                        {savingRR ? 'Saving…' : 'Save Draft'}
+                        {savingRR ? 'Saving…' : rrEditItem ? 'Save Changes' : 'Save Draft'}
                       </button>
                     </div>
                   </Dialog.Content>
