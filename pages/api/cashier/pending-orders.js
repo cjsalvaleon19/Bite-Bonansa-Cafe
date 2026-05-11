@@ -92,6 +92,12 @@ export default async function handler(req, res) {
   }
 
   // --- Fetch pending online orders ---
+  // NOTE: We intentionally do NOT join order_items → menu_items here.
+  // PostgREST returns a 500 "relationship not found" error when that FK is
+  // missing from its schema cache, which prevents any orders from loading.
+  // The kitchen-department data is only used for grouping kitchen print
+  // slips; normalizeDepartment() in receiptDepartments.js already falls
+  // back gracefully to 'General Kitchen' when that data is absent.
   const { data: orders, error } = await supabaseAdmin
     .from('orders')
     .select(`
@@ -104,14 +110,7 @@ export default async function handler(req, res) {
         quantity,
         subtotal,
         notes,
-        variant_details,
-        menu_items:menu_item_id (
-          category,
-          kitchen_departments:kitchen_department_id (
-            department_name,
-            department_code
-          )
-        )
+        variant_details
       ),
       users:customer_id (
         customer_id,
