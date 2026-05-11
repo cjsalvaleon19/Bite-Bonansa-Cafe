@@ -10,6 +10,20 @@
 import { createClient } from '@supabase/supabase-js';
 import { ONLINE_ORDER_MODES, UNACCEPTED_ORDER_STATUSES } from '../../../utils/salesCalculations';
 
+function normalizeOrderMode(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '');
+}
+
+function normalizeOrderStatus(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+}
+
 function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -100,8 +114,10 @@ export default async function handler(req, res) {
         phone
       )
     `)
-    .in('order_mode', ONLINE_ORDER_MODES)
-    .in('status', UNACCEPTED_ORDER_STATUSES)
+    // Pending online orders are, by definition, not yet accepted by staff.
+    // Filter by accepted_at first, then normalize mode/status in JS to handle
+    // legacy formatting variants (e.g. pickup/pick-up, pending/Pending).
+    .is('accepted_at', null)
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -109,5 +125,13 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: error.message });
   }
 
-  return res.status(200).json({ orders: orders || [] });
+  const allowedModes = new Set(ONLINE_ORDER_MODES.map(normalizeOrderMode));
+  const allowedStatuses = new Set(UNACCEPTED_ORDER_STATUSES.map(normalizeOrderStatus));
+  const pendingOnlineOrders = (orders || []).filter((order) => {
+    const normalizedMode = normalizeOrderMode(order?.order_mode);
+    const normalizedStatus = normalizeOrderStatus(order?.status);
+    return allowedModes.has(normalizedMode) && allowedStatuses.has(normalizedStatus);
+  });
+
+  return res.status(200).json({ orders: pendingOnlineOrders });
 }
