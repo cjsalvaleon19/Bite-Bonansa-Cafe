@@ -64,7 +64,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, count: 0 });
     }
 
-    const displayNumber = order_number || order_id.slice(0, 8);
+    const displayNumber = order_number || String(order_id).slice(0, 8);
     const modeLabel = order_mode ? ` (${order_mode})` : '';
     const title = 'New Online Order';
     const message = `Order #${displayNumber}${modeLabel} from ${customer_name || 'a customer'} is waiting for your review.`;
