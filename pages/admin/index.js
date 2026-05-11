@@ -3214,9 +3214,9 @@ export default function AdminPage() {
       if (!rrForm.vendor_id) { setRrSaveError('Please select a vendor (Contact) before saving.'); return; }
       const emptyName = rrLineItems.find((li) => !li.inventory_name);
       if (emptyName) { setRrSaveError('Please select an inventory item for every line before saving.'); return; }
-      const lineWithInvalidQty = rrLineItems.find((li) => (Number(li.qty) || 0) <= 0);
-      if (lineWithInvalidQty) {
-        setRrSaveError(`Quantity must be greater than zero for ${lineWithInvalidQty.inventory_name || 'the selected item'}.`);
+      const invalidQtyLine = rrLineItems.find((li) => (Number(li.qty) || 0) <= 0);
+      if (invalidQtyLine) {
+        setRrSaveError(`Quantity must be greater than zero for ${invalidQtyLine.inventory_name || 'the selected item'}.`);
         return;
       }
       const totalLC = roundToCurrency(rrLineItems.reduce((s, i) => s + (Number(i.total_landed_cost) || 0), 0));
