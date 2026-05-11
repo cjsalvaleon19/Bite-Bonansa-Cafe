@@ -353,14 +353,8 @@ export default function AdminPage() {
   });
   // Track which budget cell is being edited (for formatted display)
   const [budgetEditKey, setBudgetEditKey] = useState(null);
-  // Lock state for Budget Variance report (per month)
-  const [budgetLocked, setBudgetLocked] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return false;
-      const currentMonth = new Date().toISOString().slice(0, 7);
-      return localStorage.getItem(`bbc_budget_locked_${currentMonth}`) === 'true';
-    } catch { return false; }
-  });
+  // Lock state for Budget Variance report (per month) — loaded by the finDateFrom/finSubTab effect
+  const [budgetLocked, setBudgetLocked] = useState(false);
 
   // ── Bills state ───────────────────────────────────────────────────────────
   const [billsList, setBillsList] = useState([]);
@@ -429,15 +423,8 @@ export default function AdminPage() {
     amount: '',
     notes: '',
   });
-  // Lock state for Attendance Sheet (per payroll cycle)
-  const [attendanceLocked, setAttendanceLocked] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return false;
-      const data = loadPayrollData();
-      const cycleStart = data.cycleStart || '';
-      return localStorage.getItem(`bbc_attendance_locked_${cycleStart}`) === 'true';
-    } catch { return false; }
-  });
+  // Lock state for Attendance Sheet (per payroll cycle) — loaded by loadPayrollState
+  const [attendanceLocked, setAttendanceLocked] = useState(false);
 
   // ── My Profile state ──────────────────────────────────────────────────────
   const [profileData, setProfileData] = useState(null);
@@ -5708,7 +5695,7 @@ export default function AdminPage() {
                       return (
                         <input
                           type="text"
-                          style={{ ...styles.input, width: 110, padding: '4px 8px', fontSize: 12, textAlign: 'right', opacity: budgetLocked ? 0.6 : 1 }}
+                          style={{ ...styles.input, width: 110, padding: '4px 8px', fontSize: 12, textAlign: 'right' }}
                           value={isEditing ? rawVal : formattedVal}
                           placeholder="0.00"
                           disabled={budgetLocked}
@@ -6021,7 +6008,7 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-                  {!attendanceLocked && payrollCanEdit ? (
+                  {payrollDataEditable ? (
                     <button
                       type="button"
                       style={{ ...styles.primaryBtn, background: '#1565c0', color: '#fff' }}
