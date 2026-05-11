@@ -75,6 +75,17 @@ function formatFinancialCoverageLabel(fromDate, toDate, unit) {
   return `${formatShortMonth(to)}${yy}`;
 }
 
+function normalizeVariantKey(key) {
+  return String(key || '').toLowerCase().replace(/[-\s]/g, '');
+}
+
+function parseAddonValues(rawValue) {
+  return String(rawValue || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('admin');
@@ -91,6 +102,20 @@ export default function AdminPage() {
 
   // ── Active tab ────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const applyLayout = () => {
+      const mobile = window.innerWidth <= 1024;
+      setIsMobileLayout(mobile);
+      if (!mobile) setMobileNavOpen(false);
+    };
+    applyLayout();
+    window.addEventListener('resize', applyLayout);
+    return () => window.removeEventListener('resize', applyLayout);
+  }, []);
 
   // ── Global loading/error ──────────────────────────────────────────────────
   const [loading, setLoading] = useState(false);
@@ -682,36 +707,102 @@ export default function AdminPage() {
         allPeriodItems = allPeriodItemsRaw || [];
       }
 
-      // 4. Price costing map (menu_item_name → inventory usage)
+      // 4. Price costing map (menu/header name → ingredient usage)
       const { data: costings } = await supabase
-        .from('price_costing_items')
-        .select('inventory_item_id, menu_item_name, qty');
+        .from('price_costing_headers')
+        .select('menu_item_name, lines:price_costing_items(inventory_item_id, qty)');
 
-      // 5. Delivered/completed orders with items in date range
-      // 1.5: Sold = "order_delivered" + "completed" statuses
-      const fromISO = new Date(invDateFrom + 'T00:00:00').toISOString();
-      const toISO = new Date(invDateTo + 'T23:59:59.999').toISOString();
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('id, order_items(name, quantity)')
-        .in('status', ['order_delivered', 'completed'])
-        .gte('created_at', fromISO)
-        .lte('created_at', toISO);
+      // 5. Sold recognition basis: only orders recognized in Journal Entries
+      // within selected date coverage (Revenue + Cost of Goods Sold).
+      const { data: recognizedJE } = await supabase
+        .from('journal_entries')
+        .select('reference, debit_account, credit_account')
+        .eq('reference_type', 'order')
+        .gte('date', invDateFrom)
+        .lte('date', invDateTo);
 
-      // Build costing map: menu_item_name -> [{ inventory_item_id, qty }]
+      const recognizedMap = {};
+      (recognizedJE || []).forEach((row) => {
+        const ref = String(row.reference || '').trim();
+        if (!ref) return;
+        if (!recognizedMap[ref]) recognizedMap[ref] = { revenue: false, cogs: false };
+        if (['Revenue', 'Sales Revenue'].includes(row.credit_account)) recognizedMap[ref].revenue = true;
+        if (row.debit_account === 'Cost of Goods Sold') recognizedMap[ref].cogs = true;
+      });
+      const recognizedRefs = Object.entries(recognizedMap)
+        .filter(([, flags]) => flags.revenue && flags.cogs)
+        .map(([ref]) => ref);
+
       const costingMap = {};
-      (costings || []).forEach((c) => {
-        if (!c.inventory_item_id) return;
-        if (!costingMap[c.menu_item_name]) costingMap[c.menu_item_name] = [];
-        costingMap[c.menu_item_name].push({ inventory_item_id: c.inventory_item_id, qty: Number(c.qty) || 0 });
+      (costings || []).forEach((header) => {
+        const key = (header.menu_item_name || '').trim();
+        if (!key) return;
+        if (!costingMap[key]) costingMap[key] = [];
+        (header.lines || []).forEach((line) => {
+          if (!line?.inventory_item_id) return;
+          costingMap[key].push({
+            inventory_item_id: line.inventory_item_id,
+            qty: Number(line.qty) || 0,
+          });
+        });
       });
 
-      // Build sold map: inventory_item_id -> total qty consumed
+      const uuidRefs = recognizedRefs.filter((ref) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ref));
+
+      const [ordersByNumberRes, ordersByIdRes] = await Promise.all([
+        recognizedRefs.length > 0
+          ? supabase
+            .from('orders')
+            .select('id, order_number, order_items(name, quantity, variant_details)')
+            .in('order_number', recognizedRefs)
+            .in('status', ['order_delivered', 'completed'])
+          : Promise.resolve({ data: [] }),
+        uuidRefs.length > 0
+          ? supabase
+            .from('orders')
+            .select('id, order_number, order_items(name, quantity, variant_details)')
+            .in('id', uuidRefs)
+            .in('status', ['order_delivered', 'completed'])
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const orders = [
+        ...(ordersByNumberRes?.data || []),
+        ...(ordersByIdRes?.data || []),
+      ];
+      const uniqueOrders = Array.from(new Map(orders.map((o) => [o.id, o])).values());
+
       const soldMap = {};
-      (orders || []).forEach((order) => {
+      const addInventoryUsage = (headerName, multiplier) => {
+        (costingMap[headerName] || []).forEach(({ inventory_item_id, qty }) => {
+          soldMap[inventory_item_id] = (soldMap[inventory_item_id] || 0) + (Number(multiplier) || 0) * (Number(qty) || 0);
+        });
+      };
+
+      uniqueOrders.forEach((order) => {
         (order.order_items || []).forEach((oi) => {
-          (costingMap[oi.name] || []).forEach(({ inventory_item_id, qty }) => {
-            soldMap[inventory_item_id] = (soldMap[inventory_item_id] || 0) + (Number(oi.quantity) || 0) * qty;
+          const qtyOrdered = Number(oi.quantity) || 0;
+          if (qtyOrdered <= 0) return;
+
+          const variantEntries = Object.entries(oi.variant_details || {});
+          const nonAddonVariants = variantEntries.filter(([key]) => {
+            const normalized = normalizeVariantKey(key);
+            return normalized !== 'addon' && normalized !== 'addons';
+          });
+
+          const baseCandidates = [
+            ...nonAddonVariants
+              .sort(([a], [b]) => (normalizeVariantKey(a) === 'size' ? -1 : normalizeVariantKey(b) === 'size' ? 1 : 0))
+              .map(([, value]) => `${oi.name} - ${value}`),
+            oi.name,
+          ];
+          const baseHeader = baseCandidates.find((candidate) => costingMap[candidate]);
+          if (baseHeader) addInventoryUsage(baseHeader, qtyOrdered);
+
+          variantEntries.forEach(([key, value]) => {
+            const normalized = normalizeVariantKey(key);
+            if (normalized !== 'addon' && normalized !== 'addons') return;
+            parseAddonValues(value).forEach((addonName) => addInventoryUsage(addonName, qtyOrdered));
           });
         });
       });
@@ -764,7 +855,7 @@ export default function AdminPage() {
       //           = allPeriodQty (Jan 1 → end date) − purchases (start date → end date)
       // Purchases = Total Qty Purchased in the selected period [paid only]
       // In Transit= Total Qty in draft RRs in the selected period
-      // Sold      = Total Qty Sold in the selected period [order_delivered + completed]
+      // Sold      = Ingredient qty consumed by JE-recognized sales in selected period
       // Ending    = Beginning + Purchases − Sold (derived)
       // avg_cost  = Total Landed Cost (Jan 1, 2026 → end date) / Total Purchase Qty (same range)
       // total_cost = Ending Qty × avg_cost
@@ -2122,6 +2213,10 @@ export default function AdminPage() {
   }, [activeTab, dashSubTab, fetchLowStockItems]);
 
   useEffect(() => {
+    if (isMobileLayout) setMobileNavOpen(false);
+  }, [activeTab, finSubTab, isMobileLayout]);
+
+  useEffect(() => {
     if (activeTab === 'inventory') fetchInventory();
   }, [activeTab, invDateFrom, invDateTo, fetchInventory]);
 
@@ -3226,8 +3321,21 @@ export default function AdminPage() {
       </Head>
 
       <div style={styles.root}>
+        {isMobileLayout && mobileNavOpen && (
+          <button
+            type="button"
+            aria-label="Close navigation menu"
+            style={styles.mobileOverlay}
+            onClick={() => setMobileNavOpen(false)}
+          />
+        )}
         {/* ── Sidebar ── */}
-        <aside style={styles.sidebar}>
+        <aside style={{
+          ...styles.sidebar,
+          ...(isMobileLayout ? styles.sidebarMobile : null),
+          ...(isMobileLayout && !mobileNavOpen ? styles.sidebarMobileHidden : null),
+        }}
+        >
           <div style={styles.sidebarBrand}>
             <span style={styles.brandName}>Bite Bonansa</span>
             <span style={styles.brandSub}>Admin Panel</span>
@@ -3303,7 +3411,23 @@ export default function AdminPage() {
         </aside>
 
         {/* ── Main ── */}
-        <main style={styles.main}>
+        <main style={{
+          ...styles.main,
+          ...(isMobileLayout ? styles.mainMobile : null),
+        }}
+        >
+          {isMobileLayout && (
+            <div style={styles.mobileTopBar}>
+              <button
+                type="button"
+                style={styles.mobileMenuBtn}
+                onClick={() => setMobileNavOpen((open) => !open)}
+              >
+                ☰ Menu
+              </button>
+              <span style={styles.mobileTopBarTitle}>Admin Panel</span>
+            </div>
+          )}
           {error && (
             <div style={styles.errorBanner}>
               ⚠ {error}
@@ -3605,22 +3729,22 @@ export default function AdminPage() {
           {/* ──────────────── INVENTORY ──────────────── */}
           {activeTab === 'inventory' && (
             <div>
-              <div style={styles.tabHeader}>
+              <div style={{ ...styles.tabHeader, ...(isMobileLayout ? styles.tabHeaderMobile : null) }}>
                 <h1 style={styles.pageTitle}>Inventory</h1>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: isMobileLayout ? '100%' : 'auto' }}>
                   <input
-                    style={{ ...styles.input, width: 220 }}
+                    style={{ ...styles.input, width: isMobileLayout ? '100%' : 220, minWidth: isMobileLayout ? 0 : 220 }}
                     placeholder="Search by code, name, dept…"
                     value={invSearch}
                     onChange={(e) => setInvSearch(e.target.value)}
                   />
-                  <select style={{ ...styles.input, width: 160 }} value={invStatusFilter} onChange={(e) => setInvStatusFilter(e.target.value)}>
+                  <select style={{ ...styles.input, width: isMobileLayout ? '100%' : 160, minWidth: isMobileLayout ? 0 : 160 }} value={invStatusFilter} onChange={(e) => setInvStatusFilter(e.target.value)}>
                     <option value="">All Status</option>
                     <option value="in-stock">In Stock</option>
                     <option value="low-stock">Low Stock</option>
                     <option value="out-of-stock">Out of Stock</option>
                   </select>
-                  <button onClick={() => openInvDialog()} style={styles.primaryBtn}>+ New Item</button>
+                  <button onClick={() => openInvDialog()} style={{ ...styles.primaryBtn, width: isMobileLayout ? '100%' : 'auto' }}>+ New Item</button>
                 </div>
               </div>
 
@@ -3628,13 +3752,13 @@ export default function AdminPage() {
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', background: '#1a1a1a', border: '1px solid #333', borderRadius: 8, padding: '12px 16px' }}>
                 <span style={{ color: '#ffc107', fontWeight: 600, fontSize: 13 }}>📅 Date Coverage:</span>
                 <label style={{ color: '#ccc', fontSize: 13 }}>Month:</label>
-                <input type="month" style={{ ...styles.input, width: 160 }} value={invCoverageMonth} onChange={(e) => setInvCoverageMonth(e.target.value)} />
+                <input type="month" style={{ ...styles.input, width: isMobileLayout ? '100%' : 160 }} value={invCoverageMonth} onChange={(e) => setInvCoverageMonth(e.target.value)} />
                 <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
-                <input type="date" style={{ ...styles.input, width: 160, background: '#111', color: '#aaa' }} value={invDateFrom} readOnly />
+                <input type="date" style={{ ...styles.input, width: isMobileLayout ? '100%' : 160, background: '#111', color: '#aaa' }} value={invDateFrom} readOnly />
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
-                <input type="date" style={{ ...styles.input, width: 160, background: '#111', color: '#aaa' }} value={invDateTo} readOnly />
-                <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
-                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = All Draft RRs (all dates). Sold = Delivered/Completed orders. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
+                <input type="date" style={{ ...styles.input, width: isMobileLayout ? '100%' : 160, background: '#111', color: '#aaa' }} value={invDateTo} readOnly />
+                <button onClick={fetchInventory} style={{ ...styles.primaryBtn, width: isMobileLayout ? '100%' : 'auto' }}>Refresh</button>
+                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = All Draft RRs (all dates). Sold = raw-material qty used per Price Costing for orders recognized in Journal Entries (Revenue + COGS) within date coverage. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
               </div>
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
@@ -3658,7 +3782,9 @@ export default function AdminPage() {
                         if (!(code.includes(q) || name.includes(q) || dept.includes(q) || uom.includes(q))) return false;
                       }
                       if (!invStatusFilter) return true;
-                      const stock = Number(item.current_stock ?? item.ending) || 0;
+                      const stock = invReport.length > 0
+                        ? (Number(item.ending) || 0)
+                        : (Number(item.current_stock) || 0);
                       const minStock = Number(item.min_stock) || 0;
                       if (invStatusFilter === 'out-of-stock') return stock <= 0;
                       if (invStatusFilter === 'low-stock') return stock > 0 && stock <= minStock;
@@ -3679,7 +3805,9 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, color: '#2196f3' }}>{Math.round(Number(item.inTransit) || 0)}</td>
                         <td style={styles.td}>
                           {(() => {
-                            const stock = Number(item.current_stock ?? item.ending) || 0;
+                            const stock = invReport.length > 0
+                              ? (Number(item.ending) || 0)
+                              : (Number(item.current_stock) || 0);
                             const minStock = Number(item.min_stock) || 0;
                             const isOut = stock <= 0;
                             const isLow = !isOut && minStock > 0 && stock <= minStock;
@@ -7086,6 +7214,14 @@ const styles = {
     fontFamily: 'Poppins, sans-serif',
     color: '#fff',
   },
+  mobileOverlay: {
+    position: 'fixed',
+    inset: 0,
+    border: 'none',
+    background: 'rgba(0,0,0,0.55)',
+    zIndex: 98,
+    cursor: 'pointer',
+  },
   sidebar: {
     position: 'fixed',
     left: 0,
@@ -7097,6 +7233,14 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     zIndex: 100,
+    transition: 'transform 0.2s ease',
+  },
+  sidebarMobile: {
+    width: '86vw',
+    maxWidth: 320,
+  },
+  sidebarMobileHidden: {
+    transform: 'translateX(-105%)',
   },
   sidebarBrand: {
     padding: '24px 20px 16px',
@@ -7172,6 +7316,42 @@ const styles = {
     flex: 1,
     minHeight: '100vh',
   },
+  mainMobile: {
+    marginLeft: 0,
+    padding: '16px',
+    paddingTop: '72px',
+  },
+  mobileTopBar: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 56,
+    background: '#111',
+    borderBottom: '1px solid #333',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '0 12px',
+    zIndex: 90,
+  },
+  mobileMenuBtn: {
+    border: '1px solid #555',
+    background: '#1a1a1a',
+    color: '#ffc107',
+    borderRadius: 8,
+    padding: '8px 12px',
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: 'Poppins, sans-serif',
+    cursor: 'pointer',
+  },
+  mobileTopBarTitle: {
+    color: '#ffc107',
+    fontFamily: 'Playfair Display, serif',
+    fontSize: 16,
+    fontWeight: 700,
+  },
   pageTitle: {
     fontFamily: 'Playfair Display, serif',
     color: '#ffc107',
@@ -7184,6 +7364,11 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 24,
+  },
+  tabHeaderMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 12,
   },
   card: {
     background: '#1a1a1a',
