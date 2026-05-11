@@ -75,6 +75,21 @@ function formatFinancialCoverageLabel(fromDate, toDate, unit) {
   return `${formatShortMonth(to)}${yy}`;
 }
 
+function normalizeVariantKey(key) {
+  return String(key || '').toLowerCase().replace(/[-\s]/g, '');
+}
+
+function parseAddonValues(rawValue) {
+  return String(rawValue || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+const ORDER_REVENUE_ACCOUNTS = new Set(['Revenue', 'Sales Revenue']);
+const ORDER_COGS_ACCOUNT = 'Cost of Goods Sold';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export default function AdminPage() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('admin');
@@ -91,6 +106,20 @@ export default function AdminPage() {
 
   // ── Active tab ────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const applyLayout = () => {
+      const mobile = window.innerWidth <= 1024;
+      setIsMobileLayout(mobile);
+      if (!mobile) setMobileNavOpen(false);
+    };
+    applyLayout();
+    window.addEventListener('resize', applyLayout);
+    return () => window.removeEventListener('resize', applyLayout);
+  }, []);
 
   // ── Global loading/error ──────────────────────────────────────────────────
   const [loading, setLoading] = useState(false);
@@ -153,6 +182,7 @@ export default function AdminPage() {
   const [rrEditItem, setRrEditItem] = useState(null);
   const [rrForm, setRrForm] = useState({
     rr_number: '',
+    reference_number: '',
     vendor_id: '',
     vendor_name: '',
     vendor_address: '',
@@ -682,36 +712,105 @@ export default function AdminPage() {
         allPeriodItems = allPeriodItemsRaw || [];
       }
 
-      // 4. Price costing map (menu_item_name → inventory usage)
+      // 4. Price costing map (menu/header name → ingredient usage)
       const { data: costings } = await supabase
-        .from('price_costing_items')
-        .select('inventory_item_id, menu_item_name, qty');
+        .from('price_costing_headers')
+        .select('menu_item_name, lines:price_costing_items(inventory_item_id, qty)');
 
-      // 5. Delivered/completed orders with items in date range
-      // 1.5: Sold = "order_delivered" + "completed" statuses
-      const fromISO = new Date(invDateFrom + 'T00:00:00').toISOString();
-      const toISO = new Date(invDateTo + 'T23:59:59.999').toISOString();
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('id, order_items(name, quantity)')
-        .in('status', ['order_delivered', 'completed'])
-        .gte('created_at', fromISO)
-        .lte('created_at', toISO);
+      // 5. Sold recognition basis: only orders recognized in Journal Entries
+      // within selected date coverage (Revenue + Cost of Goods Sold).
+      const { data: recognizedJE } = await supabase
+        .from('journal_entries')
+        .select('reference, debit_account, credit_account')
+        .eq('reference_type', 'order')
+        .gte('date', invDateFrom)
+        .lte('date', invDateTo);
 
-      // Build costing map: menu_item_name -> [{ inventory_item_id, qty }]
+      const recognizedMap = {};
+      (recognizedJE || []).forEach((row) => {
+        const ref = String(row.reference || '').trim();
+        if (!ref) return;
+        if (!recognizedMap[ref]) recognizedMap[ref] = { revenue: false, cogs: false };
+        if (ORDER_REVENUE_ACCOUNTS.has(row.credit_account)) recognizedMap[ref].revenue = true;
+        if (row.debit_account === ORDER_COGS_ACCOUNT) recognizedMap[ref].cogs = true;
+      });
+      const recognizedRefs = Object.entries(recognizedMap)
+        .filter(([, flags]) => flags.revenue && flags.cogs)
+        .map(([ref]) => ref);
+
       const costingMap = {};
-      (costings || []).forEach((c) => {
-        if (!c.inventory_item_id) return;
-        if (!costingMap[c.menu_item_name]) costingMap[c.menu_item_name] = [];
-        costingMap[c.menu_item_name].push({ inventory_item_id: c.inventory_item_id, qty: Number(c.qty) || 0 });
+      (costings || []).forEach((header) => {
+        const key = (header.menu_item_name || '').trim();
+        if (!key) return;
+        if (!costingMap[key]) costingMap[key] = [];
+        (header.lines || []).forEach((line) => {
+          if (!line?.inventory_item_id) return;
+          costingMap[key].push({
+            inventory_item_id: line.inventory_item_id,
+            qty: Number(line.qty) || 0,
+          });
+        });
       });
 
-      // Build sold map: inventory_item_id -> total qty consumed
+      const uuidRefs = recognizedRefs.filter((ref) => UUID_PATTERN.test(ref));
+
+      const [ordersByNumberRes, ordersByIdRes] = await Promise.all([
+        recognizedRefs.length > 0
+          ? supabase
+            .from('orders')
+            .select('id, order_number, order_items(name, quantity, variant_details)')
+            .in('order_number', recognizedRefs)
+            .in('status', ['order_delivered', 'completed'])
+          : Promise.resolve({ data: [] }),
+        uuidRefs.length > 0
+          ? supabase
+            .from('orders')
+            .select('id, order_number, order_items(name, quantity, variant_details)')
+            .in('id', uuidRefs)
+            .in('status', ['order_delivered', 'completed'])
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const orders = [
+        ...(ordersByNumberRes?.data || []),
+        ...(ordersByIdRes?.data || []),
+      ];
+      const uniqueOrders = Array.from(new Map(orders.map((o) => [o.id, o])).values());
+
       const soldMap = {};
-      (orders || []).forEach((order) => {
+      const addInventoryUsage = (headerName, orderQuantity) => {
+        (costingMap[headerName] || []).forEach(({ inventory_item_id, qty }) => {
+          soldMap[inventory_item_id] = (soldMap[inventory_item_id] || 0) + (Number(orderQuantity) || 0) * (Number(qty) || 0);
+        });
+      };
+
+      uniqueOrders.forEach((order) => {
         (order.order_items || []).forEach((oi) => {
-          (costingMap[oi.name] || []).forEach(({ inventory_item_id, qty }) => {
-            soldMap[inventory_item_id] = (soldMap[inventory_item_id] || 0) + (Number(oi.quantity) || 0) * qty;
+          const qtyOrdered = Number(oi.quantity) || 0;
+          if (qtyOrdered <= 0) return;
+
+          const variantEntries = Object.entries(oi.variant_details || {});
+          const nonAddonVariants = variantEntries.map(([key, value]) => ({
+            key,
+            value,
+            normalized: normalizeVariantKey(key),
+          })).filter(({ normalized }) => {
+            return normalized !== 'addon' && normalized !== 'addons';
+          });
+
+          const baseCandidates = [
+            ...nonAddonVariants
+              .sort((a, b) => (a.normalized === 'size' ? -1 : b.normalized === 'size' ? 1 : 0))
+              .map(({ value }) => `${oi.name} - ${value}`),
+            oi.name,
+          ];
+          const baseHeader = baseCandidates.find((candidate) => costingMap[candidate]);
+          if (baseHeader) addInventoryUsage(baseHeader, qtyOrdered);
+
+          variantEntries.forEach(([key, value]) => {
+            const normalized = normalizeVariantKey(key);
+            if (normalized !== 'addon' && normalized !== 'addons') return;
+            parseAddonValues(value).forEach((addonName) => addInventoryUsage(addonName, qtyOrdered));
           });
         });
       });
@@ -764,7 +863,7 @@ export default function AdminPage() {
       //           = allPeriodQty (Jan 1 → end date) − purchases (start date → end date)
       // Purchases = Total Qty Purchased in the selected period [paid only]
       // In Transit= Total Qty in draft RRs in the selected period
-      // Sold      = Total Qty Sold in the selected period [order_delivered + completed]
+      // Sold      = Ingredient qty consumed by JE-recognized sales in selected period
       // Ending    = Beginning + Purchases − Sold (derived)
       // avg_cost  = Total Landed Cost (Jan 1, 2026 → end date) / Total Purchase Qty (same range)
       // total_cost = Ending Qty × avg_cost
@@ -900,6 +999,8 @@ export default function AdminPage() {
         : paymentMode === 'spaylater' ? 'Spaylater Payable'
           : 'Cash on Hand'
   ), []);
+
+  const formatPaymentModeLabel = useCallback((paymentMode) => String(paymentMode || 'cash_on_hand').replace(/_/g, ' '), []);
 
   const generateBillsPaymentNumber = useCallback(async () => {
     if (!supabase) return;
@@ -2122,6 +2223,10 @@ export default function AdminPage() {
   }, [activeTab, dashSubTab, fetchLowStockItems]);
 
   useEffect(() => {
+    if (isMobileLayout) setMobileNavOpen(false);
+  }, [activeTab, finSubTab, isMobileLayout]);
+
+  useEffect(() => {
     if (activeTab === 'inventory') fetchInventory();
   }, [activeTab, invDateFrom, invDateTo, fetchInventory]);
 
@@ -2555,15 +2660,6 @@ export default function AdminPage() {
     [],
   );
 
-  // ── Auth guard ────────────────────────────────────────────────────────────
-  if (authLoading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0a0a0a', color: '#fff', fontFamily: 'Poppins, sans-serif', fontSize: 18 }}>
-        ⏳ Loading…
-      </div>
-    );
-  }
-
   // ── Helpers ───────────────────────────────────────────────────────────────
   const fmt = (val) => `₱${Number(val).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
 
@@ -2798,6 +2894,177 @@ export default function AdminPage() {
     });
   };
 
+  const buildRRLineItemPayloads = (lineItems) => lineItems.map((li) => ({
+    inventory_item_id: li.inventory_item_id || null,
+    inventory_name: li.inventory_name || li.inventory_code || '(unnamed item)',
+    inventory_code: li.inventory_code || null,
+    uom: li.uom || 'pcs',
+    qty: Number(li.qty) || 0,
+    cost: roundToCurrency(li.cost),
+    freight_allocated: roundToCurrency(li.freight_allocated),
+  }));
+
+  const syncRRInventoryFromEdit = useCallback(async (rrId, oldLineItems, nextLineItems, wasApplied) => {
+    if (!supabase) return;
+
+    const { data: inventoryRows, error: invErr } = await supabase
+      .from('admin_inventory_items')
+      .select('id, name, current_stock, cost_per_unit');
+    if (invErr) throw new Error(`Failed to load inventory balances: ${invErr.message}`);
+
+    const nameToInventory = {};
+    const inventoryById = {};
+    (inventoryRows || []).forEach((row) => {
+      inventoryById[row.id] = row;
+      nameToInventory[(row.name || '').trim().toLowerCase()] = row;
+    });
+
+    const normalizeLine = (line) => {
+      const matchedInventory = line.inventory_item_id
+        ? inventoryById[line.inventory_item_id]
+        : nameToInventory[(line.inventory_name || '').trim().toLowerCase()];
+      const resolvedId = line.inventory_item_id || matchedInventory?.id || null;
+      if (!resolvedId) return null;
+      return {
+        inventory_item_id: resolvedId,
+        qty: Number(line.qty) || 0,
+        value: (Number(line.qty) || 0) * (Number(line.cost) || 0),
+      };
+    };
+
+    const aggregateLines = (lines) => {
+      const summary = {};
+      lines.forEach((line) => {
+        const normalized = normalizeLine(line);
+        if (!normalized) return;
+        if (!summary[normalized.inventory_item_id]) {
+          summary[normalized.inventory_item_id] = { qty: 0, value: 0 };
+        }
+        summary[normalized.inventory_item_id].qty += normalized.qty;
+        summary[normalized.inventory_item_id].value += normalized.value;
+      });
+      return summary;
+    };
+
+    const oldSummary = wasApplied ? aggregateLines(oldLineItems) : {};
+    const nextSummary = aggregateLines(nextLineItems);
+    const affectedIds = Array.from(new Set([
+      ...Object.keys(oldSummary),
+      ...Object.keys(nextSummary),
+    ]));
+
+    for (const inventoryId of affectedIds) {
+      const current = inventoryById[inventoryId];
+      if (!current) continue;
+      const oldData = oldSummary[inventoryId] || { qty: 0, value: 0 };
+      const nextData = nextSummary[inventoryId] || { qty: 0, value: 0 };
+      const deltaQty = nextData.qty - oldData.qty;
+      const deltaValue = nextData.value - oldData.value;
+      const currentStock = Number(current.current_stock) || 0;
+      const currentValue = currentStock * (Number(current.cost_per_unit) || 0);
+      const updatedStock = currentStock + deltaQty;
+      if (updatedStock < 0) {
+        throw new Error(`Editing RR ${rrId} would make ${current.name} stock negative (current: ${currentStock}, change: ${deltaQty}, result: ${updatedStock}).`);
+      }
+      const updatedValue = currentValue + deltaValue;
+      const updatedCost = updatedStock > 0 ? roundToCurrency(updatedValue / updatedStock) : 0;
+      const { error: updErr } = await supabase
+        .from('admin_inventory_items')
+        .update({
+          current_stock: updatedStock,
+          cost_per_unit: updatedCost,
+        })
+        .eq('id', inventoryId);
+      if (updErr) throw new Error(`Failed to update stock for ${current.name}: ${updErr.message}`);
+    }
+  }, [supabase]);
+
+  const syncRRJournalEntriesFromEdit = useCallback(async (rrRecord, vendorName, totalLandedCost) => {
+    if (!supabase) return;
+
+    const roundedTotal = roundToCurrency(totalLandedCost);
+    const approvalPayload = {
+      date: rrRecord.date,
+      description: `RR Approval: ${rrRecord.rr_number}`,
+      debit_account: 'Inventory',
+      credit_account: 'Accounts Payable',
+      amount: roundedTotal,
+      reference_id: rrRecord.id,
+      reference_type: 'receiving_report',
+      name: vendorName || '',
+    };
+
+    const { data: approvalEntries, error: approvalLoadErr } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('reference_type', 'receiving_report')
+      .eq('reference_id', rrRecord.id);
+    if (approvalLoadErr) throw new Error(`Failed to load RR approval journal entry: ${approvalLoadErr.message}`);
+
+    if ((approvalEntries || []).length > 0) {
+      const { error: approvalUpdErr } = await supabase
+        .from('journal_entries')
+        .update(approvalPayload)
+        .eq('reference_type', 'receiving_report')
+        .eq('reference_id', rrRecord.id);
+      if (approvalUpdErr) throw new Error(`Failed to update RR approval journal entry: ${approvalUpdErr.message}`);
+    } else if (roundedTotal > 0) {
+      const { error: approvalInsErr } = await supabase.from('journal_entries').insert(approvalPayload);
+      if (approvalInsErr) throw new Error(`Failed to create RR approval journal entry: ${approvalInsErr.message}`);
+    }
+
+    if (rrRecord.status !== 'paid') return;
+
+    const { data: paymentRows, error: paymentLoadErr } = await supabase
+      .from('rr_payments')
+      .select('id, payment_date, amount, payment_mode')
+      .eq('receiving_report_id', rrRecord.id)
+      .order('created_at', { ascending: true });
+    if (paymentLoadErr) throw new Error(`Failed to load RR payment records: ${paymentLoadErr.message}`);
+
+    const shouldSyncSinglePaymentAmount = (paymentRows || []).length === 1;
+    for (const payment of paymentRows || []) {
+      const paymentAmount = shouldSyncSinglePaymentAmount ? roundedTotal : roundToCurrency(payment.amount);
+      if (shouldSyncSinglePaymentAmount) {
+        const { error: payUpdErr } = await supabase
+          .from('rr_payments')
+          .update({ amount: paymentAmount })
+          .eq('id', payment.id);
+        if (payUpdErr) throw new Error(`Failed to update RR payment amount: ${payUpdErr.message}`);
+      }
+
+      const paymentPayload = {
+        date: payment.payment_date,
+        description: `RR Payment: ${rrRecord.rr_number} (${formatPaymentModeLabel(payment.payment_mode)})`,
+        debit_account: 'Accounts Payable',
+        credit_account: getCreditAccountForPaymentMode(payment.payment_mode),
+        amount: paymentAmount,
+        reference_id: payment.id,
+        reference_type: 'rr_payment',
+        name: vendorName || '',
+      };
+
+      const { data: paymentEntries, error: paymentJeLoadErr } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('reference_type', 'rr_payment')
+        .eq('reference_id', payment.id);
+      if (paymentJeLoadErr) throw new Error(`Failed to load RR payment journal entry: ${paymentJeLoadErr.message}`);
+
+      if ((paymentEntries || []).length > 0) {
+        const { error: paymentJeUpdErr } = await supabase
+          .from('journal_entries')
+          .update(paymentPayload)
+          .eq('reference_type', 'rr_payment')
+          .eq('reference_id', payment.id);
+        if (paymentJeUpdErr) throw new Error(`Failed to update RR payment journal entry: ${paymentJeUpdErr.message}`);
+      } else {
+        const { error: paymentJeInsErr } = await supabase.from('journal_entries').insert(paymentPayload);
+        if (paymentJeInsErr) throw new Error(`Failed to create RR payment journal entry: ${paymentJeInsErr.message}`);
+      }
+    }
+  }, [formatPaymentModeLabel, getCreditAccountForPaymentMode, supabase]);
+
   const openRRDialog = async (item = null) => {
     setRrEditItem(item);
     // Reset line items immediately so stale data from a previous edit never
@@ -2818,6 +3085,7 @@ export default function AdminPage() {
       }
       setRrForm({
         rr_number: item.rr_number || '',
+        reference_number: item.reference_number || '',
         vendor_id: item.vendor_id || '',
         vendor_name: item.vendor?.name || '',
         vendor_address: vendorAddress,
@@ -2867,6 +3135,7 @@ export default function AdminPage() {
       }
       setRrForm({
         rr_number: rrNum,
+        reference_number: '',
         vendor_id: '',
         vendor_name: '',
         vendor_address: '',
@@ -2902,7 +3171,19 @@ export default function AdminPage() {
 
   const updateRRLineItem = (idx, field, value) => {
     setRrLineItems((prev) => {
-      const updated = prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item));
+      const updated = prev.map((item, i) => {
+        if (i !== idx) return item;
+        if (field === 'total_cost') {
+          const qty = Number(item.qty) || 0;
+          const totalCost = Number(value) || 0;
+          return {
+            ...item,
+            cost: qty > 0 ? String(roundToCurrency(totalCost / qty)) : item.cost,
+            total_cost: totalCost,
+          };
+        }
+        return { ...item, [field]: value };
+      });
       return calcFreight(updated, rrForm.freight_in);
     });
   };
@@ -2933,41 +3214,63 @@ export default function AdminPage() {
       if (!rrForm.vendor_id) { setRrSaveError('Please select a vendor (Contact) before saving.'); return; }
       const emptyName = rrLineItems.find((li) => !li.inventory_name);
       if (emptyName) { setRrSaveError('Please select an inventory item for every line before saving.'); return; }
-      const totalLC = rrLineItems.reduce((s, i) => s + (i.total_landed_cost || 0), 0);
+      const invalidQtyLine = rrLineItems.find((li) => (Number(li.qty) || 0) <= 0);
+      if (invalidQtyLine) {
+        setRrSaveError(`Quantity must be greater than zero for ${invalidQtyLine.inventory_name || 'the selected item'}.`);
+        return;
+      }
+      const totalLC = roundToCurrency(rrLineItems.reduce((s, i) => s + (Number(i.total_landed_cost) || 0), 0));
+      const nextStatus = rrEditItem?.status || 'draft';
       const rrPayload = {
         rr_number: rrForm.rr_number,
+        reference_number: rrForm.reference_number?.trim() || null,
         vendor_id: rrForm.vendor_id || null,
         date: rrForm.date,
         terms: rrForm.terms !== '' ? parseInt(rrForm.terms, 10) : null,
         freight_in: Number(rrForm.freight_in),
         total_landed_cost: totalLC,
-        status: 'draft',
+        status: nextStatus,
       };
+      const nextLinePayloads = buildRRLineItemPayloads(rrLineItems);
       let rrId;
       if (rrEditItem) {
+        const { data: oldLineItems, error: oldItemsErr } = await supabase
+          .from('receiving_report_items')
+          .select('inventory_item_id, inventory_name, qty, cost')
+          .eq('receiving_report_id', rrEditItem.id);
+        if (oldItemsErr) throw oldItemsErr;
         const { error: updErr } = await supabase.from('receiving_reports').update(rrPayload).eq('id', rrEditItem.id);
         if (updErr) throw updErr;
         rrId = rrEditItem.id;
-        await supabase.from('receiving_report_items').delete().eq('receiving_report_id', rrId);
+        const { error: deleteErr } = await supabase.from('receiving_report_items').delete().eq('receiving_report_id', rrId);
+        if (deleteErr) throw deleteErr;
+        if (nextLinePayloads.length > 0) {
+          const { error: liErr } = await supabase.from('receiving_report_items').insert(nextLinePayloads.map((li) => ({ ...li, receiving_report_id: rrId })));
+          if (liErr) throw liErr;
+        }
+
+        if (['approved', 'paid'].includes(nextStatus)) {
+          await syncRRInventoryFromEdit(rrId, oldLineItems || [], nextLinePayloads, Boolean(rrEditItem.inventory_update_applied));
+          const { error: rrSyncErr } = await supabase
+            .from('receiving_reports')
+            .update({ inventory_update_applied: true, total_landed_cost: totalLC })
+            .eq('id', rrId);
+          if (rrSyncErr) throw rrSyncErr;
+          await syncRRJournalEntriesFromEdit({
+            id: rrId,
+            rr_number: rrForm.rr_number,
+            date: rrForm.date,
+            status: nextStatus,
+          }, rrForm.vendor_name, totalLC);
+        }
       } else {
         const { data: inserted, error: insErr } = await supabase.from('receiving_reports').insert(rrPayload).select().single();
         if (insErr) throw insErr;
         rrId = inserted.id;
-      }
-      if (rrLineItems.length > 0) {
-        const linePayloads = rrLineItems.map((li) => ({
-          receiving_report_id: rrId,
-          inventory_item_id: li.inventory_item_id || null,
-          inventory_name: li.inventory_name || li.inventory_code || '(unnamed item)',
-          inventory_code: li.inventory_code || null,
-          uom: li.uom || 'pcs',
-          qty: Number(li.qty),
-          cost: Number(li.cost),
-          freight_allocated: li.freight_allocated,
-        }));
-        // Throw so the error surfaces in the UI instead of silently losing items.
-        const { error: liErr } = await supabase.from('receiving_report_items').insert(linePayloads);
-        if (liErr) throw liErr;
+        if (nextLinePayloads.length > 0) {
+          const { error: liErr } = await supabase.from('receiving_report_items').insert(nextLinePayloads.map((li) => ({ ...li, receiving_report_id: rrId })));
+          if (liErr) throw liErr;
+        }
       }
       setRrDialogOpen(false);
       fetchRR();
@@ -3218,6 +3521,15 @@ export default function AdminPage() {
     router.replace('/login');
   };
 
+  // ── Auth guard ────────────────────────────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0a0a0a', color: '#fff', fontFamily: 'Poppins, sans-serif', fontSize: 18 }}>
+        ⏳ Loading…
+      </div>
+    );
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
@@ -3226,8 +3538,21 @@ export default function AdminPage() {
       </Head>
 
       <div style={styles.root}>
+        {isMobileLayout && mobileNavOpen && (
+          <button
+            type="button"
+            aria-label="Close navigation menu"
+            style={styles.mobileOverlay}
+            onClick={() => setMobileNavOpen(false)}
+          />
+        )}
         {/* ── Sidebar ── */}
-        <aside style={styles.sidebar}>
+        <aside style={{
+          ...styles.sidebar,
+          ...(isMobileLayout ? styles.sidebarMobile : null),
+          ...(isMobileLayout && !mobileNavOpen ? styles.sidebarMobileHidden : null),
+        }}
+        >
           <div style={styles.sidebarBrand}>
             <span style={styles.brandName}>Bite Bonansa</span>
             <span style={styles.brandSub}>Admin Panel</span>
@@ -3303,7 +3628,23 @@ export default function AdminPage() {
         </aside>
 
         {/* ── Main ── */}
-        <main style={styles.main}>
+        <main style={{
+          ...styles.main,
+          ...(isMobileLayout ? styles.mainMobile : null),
+        }}
+        >
+          {isMobileLayout && (
+            <div style={styles.mobileTopBar}>
+              <button
+                type="button"
+                style={styles.mobileMenuBtn}
+                onClick={() => setMobileNavOpen((open) => !open)}
+              >
+                ☰ Menu
+              </button>
+              <span style={styles.mobileTopBarTitle}>Admin Panel</span>
+            </div>
+          )}
           {error && (
             <div style={styles.errorBanner}>
               ⚠ {error}
@@ -3605,22 +3946,22 @@ export default function AdminPage() {
           {/* ──────────────── INVENTORY ──────────────── */}
           {activeTab === 'inventory' && (
             <div>
-              <div style={styles.tabHeader}>
+              <div style={{ ...styles.tabHeader, ...(isMobileLayout ? styles.tabHeaderMobile : null) }}>
                 <h1 style={styles.pageTitle}>Inventory</h1>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: isMobileLayout ? '100%' : 'auto' }}>
                   <input
-                    style={{ ...styles.input, width: 220 }}
+                    style={{ ...styles.input, width: isMobileLayout ? '100%' : 220, minWidth: isMobileLayout ? 0 : 220 }}
                     placeholder="Search by code, name, dept…"
                     value={invSearch}
                     onChange={(e) => setInvSearch(e.target.value)}
                   />
-                  <select style={{ ...styles.input, width: 160 }} value={invStatusFilter} onChange={(e) => setInvStatusFilter(e.target.value)}>
+                  <select style={{ ...styles.input, width: isMobileLayout ? '100%' : 160, minWidth: isMobileLayout ? 0 : 160 }} value={invStatusFilter} onChange={(e) => setInvStatusFilter(e.target.value)}>
                     <option value="">All Status</option>
                     <option value="in-stock">In Stock</option>
                     <option value="low-stock">Low Stock</option>
                     <option value="out-of-stock">Out of Stock</option>
                   </select>
-                  <button onClick={() => openInvDialog()} style={styles.primaryBtn}>+ New Item</button>
+                  <button onClick={() => openInvDialog()} style={{ ...styles.primaryBtn, width: isMobileLayout ? '100%' : 'auto' }}>+ New Item</button>
                 </div>
               </div>
 
@@ -3628,13 +3969,13 @@ export default function AdminPage() {
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', background: '#1a1a1a', border: '1px solid #333', borderRadius: 8, padding: '12px 16px' }}>
                 <span style={{ color: '#ffc107', fontWeight: 600, fontSize: 13 }}>📅 Date Coverage:</span>
                 <label style={{ color: '#ccc', fontSize: 13 }}>Month:</label>
-                <input type="month" style={{ ...styles.input, width: 160 }} value={invCoverageMonth} onChange={(e) => setInvCoverageMonth(e.target.value)} />
+                <input type="month" style={{ ...styles.input, width: isMobileLayout ? '100%' : 160 }} value={invCoverageMonth} onChange={(e) => setInvCoverageMonth(e.target.value)} />
                 <label style={{ color: '#ccc', fontSize: 13 }}>From:</label>
-                <input type="date" style={{ ...styles.input, width: 160, background: '#111', color: '#aaa' }} value={invDateFrom} readOnly />
+                <input type="date" style={{ ...styles.input, width: isMobileLayout ? '100%' : 160, background: '#111', color: '#aaa' }} value={invDateFrom} readOnly />
                 <label style={{ color: '#ccc', fontSize: 13 }}>To:</label>
-                <input type="date" style={{ ...styles.input, width: 160, background: '#111', color: '#aaa' }} value={invDateTo} readOnly />
-                <button onClick={fetchInventory} style={styles.primaryBtn}>Refresh</button>
-                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = All Draft RRs (all dates). Sold = Delivered/Completed orders. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
+                <input type="date" style={{ ...styles.input, width: isMobileLayout ? '100%' : 160, background: '#111', color: '#aaa' }} value={invDateTo} readOnly />
+                <button onClick={fetchInventory} style={{ ...styles.primaryBtn, width: isMobileLayout ? '100%' : 'auto' }}>Refresh</button>
+                <span style={{ color: '#666', fontSize: 11 }}>Beginning = Total Qty Purchased (Jan 1, 2026 – Start Date − 1 day, Paid RRs). Purchases = Paid RRs in range. In Transit = All Draft RRs (all dates). Sold = raw-material qty used per Price Costing for orders recognized in Journal Entries (Revenue + COGS) within date coverage. Ending = Beginning + Purchases − Sold. Avg Cost/Unit = Total Landed Cost ÷ Total Purchase Qty. Total Cost = Ending × Avg Cost/Unit.</span>
               </div>
 
               {loading && <p style={styles.loadingText}>Loading…</p>}
@@ -3658,7 +3999,9 @@ export default function AdminPage() {
                         if (!(code.includes(q) || name.includes(q) || dept.includes(q) || uom.includes(q))) return false;
                       }
                       if (!invStatusFilter) return true;
-                      const stock = Number(item.current_stock ?? item.ending) || 0;
+                      const stock = invReport.length > 0
+                        ? (Number(item.ending) || 0)
+                        : (Number(item.current_stock) || 0);
                       const minStock = Number(item.min_stock) || 0;
                       if (invStatusFilter === 'out-of-stock') return stock <= 0;
                       if (invStatusFilter === 'low-stock') return stock > 0 && stock <= minStock;
@@ -3679,7 +4022,9 @@ export default function AdminPage() {
                         <td style={{ ...styles.td, color: '#2196f3' }}>{Math.round(Number(item.inTransit) || 0)}</td>
                         <td style={styles.td}>
                           {(() => {
-                            const stock = Number(item.current_stock ?? item.ending) || 0;
+                            const stock = invReport.length > 0
+                              ? (Number(item.ending) || 0)
+                              : (Number(item.current_stock) || 0);
                             const minStock = Number(item.min_stock) || 0;
                             const isOut = stock <= 0;
                             const isLow = !isOut && minStock > 0 && stock <= minStock;
@@ -4347,7 +4692,10 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rrList.filter((rr) => !rrSearch || (rr.rr_number || '').toLowerCase().includes(rrSearch.toLowerCase()) || (rr.vendor?.name || '').toLowerCase().includes(rrSearch.toLowerCase())).map((rr, idx) => (
+                    {rrList.filter((rr) => !rrSearch
+                      || (rr.rr_number || '').toLowerCase().includes(rrSearch.toLowerCase())
+                      || (rr.reference_number || '').toLowerCase().includes(rrSearch.toLowerCase())
+                      || (rr.vendor?.name || '').toLowerCase().includes(rrSearch.toLowerCase())).map((rr, idx) => (
                       <tr key={rr.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
                         <td style={styles.td}>{rr.rr_number}</td>
                         <td style={styles.td}>{rr.vendor?.name || '—'}</td>
@@ -4365,15 +4713,10 @@ export default function AdminPage() {
                           </span>
                         </td>
                         <td style={styles.td}>
+                          <button onClick={() => openRRView(rr)} style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}>View</button>
+                          <button onClick={() => openRRDialog(rr)} style={styles.actionBtn}>Edit</button>
                           {rr.status !== 'paid' && (
-                            <>
-                              <button onClick={() => openRRView(rr)} style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}>View</button>
-                              <button onClick={() => openRRDialog(rr)} style={styles.actionBtn}>Edit</button>
-                              <button onClick={() => setRrDeleteConfirm(rr)} style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}>Delete</button>
-                            </>
-                          )}
-                          {rr.status === 'paid' && (
-                            <button onClick={() => openRRView(rr)} style={{ ...styles.actionBtn, color: '#2196f3', borderColor: '#2196f3' }}>View</button>
+                            <button onClick={() => setRrDeleteConfirm(rr)} style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336' }}>Delete</button>
                           )}
                           {rr.status === 'draft' && (
                             <button onClick={() => approveRR(rr)} style={{ ...styles.actionBtn, color: '#4caf50', borderColor: '#4caf50' }}>Approve</button>
@@ -4426,6 +4769,10 @@ export default function AdminPage() {
                       <div>
                         <label style={styles.label}>Vendor</label>
                         <input style={{ ...styles.input, background: '#111', color: '#ccc' }} readOnly value={rrViewItem?.vendor?.name || '—'} />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Reference Number</label>
+                        <input style={{ ...styles.input, background: '#111', color: '#ccc' }} readOnly value={rrViewItem?.reference_number || '—'} />
                       </div>
                       <div>
                         <label style={styles.label}>Terms</label>
@@ -4509,6 +4856,15 @@ export default function AdminPage() {
                           type="date"
                           value={rrForm.date}
                           onChange={(e) => setRrForm((p) => ({ ...p, date: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label style={styles.label}>Reference Number</label>
+                        <input
+                          style={styles.input}
+                          value={rrForm.reference_number}
+                          onChange={(e) => setRrForm((p) => ({ ...p, reference_number: e.target.value }))}
+                          placeholder="Invoice / delivery reference no."
                         />
                       </div>
                       <div>
@@ -4603,7 +4959,14 @@ export default function AdminPage() {
                                     onChange={(e) => updateRRLineItem(idx, 'cost', e.target.value)}
                                   />
                                 </td>
-                                <td style={styles.td}><span style={{ fontSize: 11 }}>{fmt(li.total_cost || 0)}</span></td>
+                                <td style={styles.td}>
+                                  <input
+                                    style={{ ...styles.input, width: 100, padding: '4px 8px', fontSize: 12 }}
+                                    type="number"
+                                    value={li.total_cost || 0}
+                                    onChange={(e) => updateRRLineItem(idx, 'total_cost', e.target.value)}
+                                  />
+                                </td>
                                 <td style={styles.td}><span style={{ fontSize: 11 }}>{fmt(li.freight_allocated || 0)}</span></td>
                                 <td style={styles.td}><span style={{ fontSize: 11, color: '#ffc107' }}>{fmt(li.total_landed_cost || 0)}</span></td>
                                 <td style={styles.td}>
@@ -4631,7 +4994,7 @@ export default function AdminPage() {
                     <div style={styles.dialogFooter}>
                       <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
                       <button onClick={saveRR} style={styles.primaryBtn} disabled={savingRR} aria-disabled={savingRR} aria-busy={savingRR}>
-                        {savingRR ? 'Saving…' : 'Save Draft'}
+                        {savingRR ? 'Saving…' : (rrEditItem ? 'Save Changes' : 'Save Draft')}
                       </button>
                     </div>
                   </Dialog.Content>
@@ -7086,6 +7449,14 @@ const styles = {
     fontFamily: 'Poppins, sans-serif',
     color: '#fff',
   },
+  mobileOverlay: {
+    position: 'fixed',
+    inset: 0,
+    border: 'none',
+    background: 'rgba(0,0,0,0.55)',
+    zIndex: 98,
+    cursor: 'pointer',
+  },
   sidebar: {
     position: 'fixed',
     left: 0,
@@ -7097,6 +7468,14 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     zIndex: 100,
+    transition: 'transform 0.2s ease',
+  },
+  sidebarMobile: {
+    width: '86vw',
+    maxWidth: 320,
+  },
+  sidebarMobileHidden: {
+    transform: 'translateX(-105%)',
   },
   sidebarBrand: {
     padding: '24px 20px 16px',
@@ -7172,6 +7551,42 @@ const styles = {
     flex: 1,
     minHeight: '100vh',
   },
+  mainMobile: {
+    marginLeft: 0,
+    padding: '16px',
+    paddingTop: '72px',
+  },
+  mobileTopBar: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 56,
+    background: '#111',
+    borderBottom: '1px solid #333',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '0 12px',
+    zIndex: 90,
+  },
+  mobileMenuBtn: {
+    border: '1px solid #555',
+    background: '#1a1a1a',
+    color: '#ffc107',
+    borderRadius: 8,
+    padding: '8px 12px',
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: 'Poppins, sans-serif',
+    cursor: 'pointer',
+  },
+  mobileTopBarTitle: {
+    color: '#ffc107',
+    fontFamily: 'Playfair Display, serif',
+    fontSize: 16,
+    fontWeight: 700,
+  },
   pageTitle: {
     fontFamily: 'Playfair Display, serif',
     color: '#ffc107',
@@ -7184,6 +7599,11 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 24,
+  },
+  tabHeaderMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 12,
   },
   card: {
     background: '#1a1a1a',
