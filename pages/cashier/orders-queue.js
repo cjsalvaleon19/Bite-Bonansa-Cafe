@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
+import { getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 // Configuration constant for fallback rider availability
 // When riders are found in users table but not in riders table (incomplete profile),
@@ -712,7 +713,7 @@ export default function OrdersQueue() {
                   <div style={styles.orderHeader}>
                     <div>
                       <h3 style={styles.orderNumber}>
-                        Order #{order.order_number || order.id.slice(0, 8)}
+                        Slip #{getOrderSlipNumber(order)}
                       </h3>
                       <p style={styles.orderTime}>
                         {new Date(order.created_at).toLocaleString()}
@@ -831,7 +832,7 @@ export default function OrdersQueue() {
               <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
                 <h3 style={styles.modalTitle}>Select Delivery Rider</h3>
                 <p style={styles.modalSubtext}>
-                  Order #{selectedOrderForRider.order_number || selectedOrderForRider.id.slice(0, 8)}
+                  Slip #{getOrderSlipNumber(selectedOrderForRider)}
                 </p>
                 
                 {isAssigningRider && (
