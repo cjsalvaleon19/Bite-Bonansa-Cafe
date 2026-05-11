@@ -2660,15 +2660,6 @@ export default function AdminPage() {
     [],
   );
 
-  // ── Auth guard ────────────────────────────────────────────────────────────
-  if (authLoading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0a0a0a', color: '#fff', fontFamily: 'Poppins, sans-serif', fontSize: 18 }}>
-        ⏳ Loading…
-      </div>
-    );
-  }
-
   // ── Helpers ───────────────────────────────────────────────────────────────
   const fmt = (val) => `₱${Number(val).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
 
@@ -3529,6 +3520,15 @@ export default function AdminPage() {
     await supabase.auth.signOut();
     router.replace('/login');
   };
+
+  // ── Auth guard ────────────────────────────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0a0a0a', color: '#fff', fontFamily: 'Poppins, sans-serif', fontSize: 18 }}>
+        ⏳ Loading…
+      </div>
+    );
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
