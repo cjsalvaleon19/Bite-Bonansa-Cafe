@@ -5,15 +5,13 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
-import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount, UNACCEPTED_ORDER_STATUSES } from '../../utils/salesCalculations';
+import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount, UNACCEPTED_ORDER_STATUSES, ONLINE_ORDER_MODES } from '../../utils/salesCalculations';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
 const STATS_REFRESH_DEBOUNCE_MS = 2000; // Debounce stats refresh by 2 seconds
-// Support both `pickup` (current customer checkout) and `pick-up` (legacy records).
-const ONLINE_ORDER_MODES = ['delivery', 'pickup', 'pick-up', 'dine-in', 'take-out'];
 
 export default function CashierDashboard() {
   const router = useRouter();
@@ -274,39 +272,26 @@ export default function CashierDashboard() {
     if (!supabase) return;
 
     try {
-      // Fetch online orders awaiting cashier review (supports both current and legacy pending statuses)
-      const { data: orders, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          order_items (
-            id,
-            menu_item_id,
-            name,
-            price,
-            quantity,
-            subtotal,
-            notes,
-            variant_details,
-            menu_items:menu_item_id (
-              category,
-              kitchen_departments:kitchen_department_id (
-                department_name,
-                department_code
-              )
-            )
-          ),
-          users:customer_id (
-            customer_id,
-            phone
-          )
-        `)
-        .in('order_mode', ONLINE_ORDER_MODES)
-        .in('status', UNACCEPTED_ORDER_STATUSES)
-        .order('created_at', { ascending: true });
+      // Use the server-side API route which runs with the service-role client,
+      // bypassing the RLS infinite-recursion bug on the orders table.
+      // The route still enforces that the caller is an authenticated cashier/admin.
+      const session = (await supabase.auth.getSession())?.data?.session;
+      const token = session?.access_token;
+      if (!token) {
+        console.warn('[CashierDashboard] No auth token — skipping pending orders fetch');
+        return;
+      }
 
-      if (error) throw error;
+      const res = await fetch('/api/cashier/pending-orders', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? `HTTP ${res.status}`);
+      }
+
+      const { orders } = await res.json();
       setPendingOrders(orders || []);
     } catch (err) {
       console.error('[CashierDashboard] Failed to fetch pending orders:', err?.message ?? err);

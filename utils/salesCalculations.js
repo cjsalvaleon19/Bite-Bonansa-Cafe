@@ -13,6 +13,12 @@
 export const UNACCEPTED_ORDER_STATUSES = ['pending', 'order_in_queue'];
 
 /**
+ * Order modes that originate from the customer online portal.
+ * Supports both `pickup` (current) and `pick-up` (legacy records).
+ */
+export const ONLINE_ORDER_MODES = ['delivery', 'pickup', 'pick-up', 'dine-in', 'take-out'];
+
+/**
  * Calculate sales breakdown by payment method from a list of orders
  * 
  * @param {Array} orders - Array of order objects
