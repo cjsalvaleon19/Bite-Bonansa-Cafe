@@ -435,12 +435,12 @@ export default function CashierDashboard() {
       const kitchenItemsHtml = items.map((item) => {
         const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
         const subvariantHtml = subvariantLines
-          .map((line) => `<div style="font-size: 14px; padding-top: 2px; padding-left: 12px;">${line}</div>`)
+          .map((line) => `<div style="font-size: 15px; padding-top: 2px; padding-left: 12px;">${line}</div>`)
           .join('');
         return `
           <tr>
             <td style="padding: 4px 0;">
-              <div style="font-size: 14px;">${mainLine}</div>
+              <div style="font-size: 15px;">${mainLine}</div>
               ${subvariantHtml}
             </td>
             <td style="padding: 4px 0; font-size: 24px; text-align: right;">${item.quantity || 1}</td>
@@ -480,7 +480,7 @@ export default function CashierDashboard() {
             <p style="font-size: 18px; font-weight: bold; text-align: center;">ORDER SLIP</p>
           </div>
           <div class="section">
-            <p style="font-size: 18px; font-weight: bold;">Order Slip #: ${getOrderSlipNumber(order)} — ${formatOrderModeLabel(order.order_mode)}</p>
+            <p style="font-size: 15px; font-weight: bold;">Order Slip #: ${getOrderSlipNumber(order)} — ${formatOrderModeLabel(order.order_mode)}</p>
           </div>
           <div class="section">
             <table>
