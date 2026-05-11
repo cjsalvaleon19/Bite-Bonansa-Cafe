@@ -374,37 +374,27 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
     b.push(...encodeText(divider('=', paperWidth)));
 
-    // Order Slip # and mode of order in double size (2.1 & 2.2)
-    const halfWidth = Math.floor(paperWidth / 2);
-    b.push(...CMD.ALIGN_LEFT, ...CMD.SIZE_2X, ...CMD.BOLD_ON);
-    b.push(...encodeText(`Order Slip #: ${getOrderSlipNumber(order)}\n`));
-    b.push(...encodeText(`${formatOrderModeLabel(order.order_mode)}\n`));
-    b.push(...CMD.SIZE_NORMAL, ...CMD.BOLD_OFF);
+    // Order Slip # and mode of order on one line (1.3)
+    b.push(...CMD.ALIGN_LEFT, ...CMD.BOLD_ON);
+    b.push(...encodeText(`#${getOrderSlipNumber(order)}  ${formatOrderModeLabel(order.order_mode)}\n`));
+    b.push(...CMD.BOLD_OFF);
     b.push(...encodeText(divider('-', paperWidth)));
     b.push(...CMD.BOLD_ON, ...encodeText('ITEMS\n'), ...CMD.BOLD_OFF);
 
-    // Item details in double size (2.3)
-    b.push(...CMD.SIZE_2X);
+    // Item details and subvariants in normal size (1.1 & 1.2)
     for (const item of orderItems) {
       const qty = item.quantity || 1;
       const { mainLine, subvariantLines } = formatOrderSlipItemDetails(item);
       const itemLabel = `${qty} x ${mainLine}`;
-      for (const line of wrapText(itemLabel, halfWidth)) {
+      for (const line of wrapText(itemLabel, paperWidth)) {
         b.push(...encodeText(line + '\n'));
       }
-      if (subvariantLines.length > 0) {
-        b.push(...CMD.SIZE_NORMAL);
-        for (const subvariant of subvariantLines) {
-          const wrappedSubvariant = wrapText(`  - ${subvariant}`, paperWidth);
-          for (const line of wrappedSubvariant) {
-            b.push(...encodeText(line + '\n'));
-          }
+      for (const subvariant of subvariantLines) {
+        for (const line of wrapText(`  - ${subvariant}`, paperWidth)) {
+          b.push(...encodeText(line + '\n'));
         }
-        b.push(...CMD.SIZE_2X);
       }
     }
-
-    b.push(...CMD.SIZE_NORMAL);
     b.push(...CMD.FEED_1CM);
     b.push(...CMD.CUT);
     return new Uint8Array(b);
