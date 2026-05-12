@@ -519,6 +519,8 @@ export default function CashierPOS() {
         cash_amount: (paymentMethod === 'cash' || combinedPayment) ? parseFloat(paymentDetails.cashTendered || 0) : 0,
         gcash_amount: (paymentMethod === 'gcash' || combinedPayment) ? remainingAmount : 0,
         gcash_reference: (paymentMethod === 'gcash' || combinedPayment) ? paymentDetails.gcashReference : null,
+        accepted_at: new Date().toISOString(),
+        cashier_id: user?.id || null,
         status: 'order_in_queue',
         created_at: new Date().toISOString(),
       };
@@ -839,7 +841,7 @@ export default function CashierPOS() {
               <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
               <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
               <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
-              <p style="margin: 4px 0; font-size: 12px; font-weight: bold;">Slip#: ${getOrderSlipNumber(order)}</p>
+              <p style="margin: 4px 0; font-size: 50px; font-weight: bold; line-height: 1;">Order Slip ${getOrderSlipNumber(order)}</p>
             </div>
           </div>
           <div style="text-align: center; margin-top: 20px;">

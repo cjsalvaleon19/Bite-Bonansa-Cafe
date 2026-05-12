@@ -84,10 +84,9 @@ export default function EndOfDayReport() {
       startDate.setHours(0, 0, 0, 0);
       const endDate = new Date(selectedDate);
       endDate.setHours(23, 59, 59, 999);
-
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
+      const startIso = startDate.toISOString();
+      const endIso = endDate.toISOString();
+      const orderSelect = `
           *,
           order_items (
             id,
@@ -104,15 +103,62 @@ export default function EndOfDayReport() {
             customer_id,
             phone
           )
-        `)
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
-        .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`)
-        .order('created_at', { ascending: false });
+        `;
 
-      if (error) throw error;
+      const [
+        { data: acceptedByCreatedAt, error: acceptedByCreatedAtError },
+        { data: acceptedByAcceptedAt, error: acceptedByAcceptedAtError },
+        { data: acceptedQueueByCreatedAt, error: acceptedQueueByCreatedAtError },
+        { data: acceptedQueueByAcceptedAt, error: acceptedQueueByAcceptedAtError },
+      ] = await Promise.all([
+        supabase
+          .from('orders')
+          .select(orderSelect)
+          .gte('created_at', startIso)
+          .lte('created_at', endIso)
+          .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('orders')
+          .select(orderSelect)
+          .gte('accepted_at', startIso)
+          .lte('accepted_at', endIso)
+          .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('orders')
+          .select(orderSelect)
+          .gte('created_at', startIso)
+          .lte('created_at', endIso)
+          .eq('status', 'order_in_queue')
+          .not('accepted_at', 'is', null)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('orders')
+          .select(orderSelect)
+          .gte('accepted_at', startIso)
+          .lte('accepted_at', endIso)
+          .eq('status', 'order_in_queue')
+          .not('accepted_at', 'is', null)
+          .order('created_at', { ascending: false }),
+      ]);
 
-      setOrders(data || []);
+      if (acceptedByCreatedAtError) throw acceptedByCreatedAtError;
+      if (acceptedByAcceptedAtError) throw acceptedByAcceptedAtError;
+      if (acceptedQueueByCreatedAtError) throw acceptedQueueByCreatedAtError;
+      if (acceptedQueueByAcceptedAtError) throw acceptedQueueByAcceptedAtError;
+
+      const orderMap = new Map();
+      [acceptedByCreatedAt, acceptedByAcceptedAt, acceptedQueueByCreatedAt, acceptedQueueByAcceptedAt].forEach((queryResult) => {
+        (queryResult || []).forEach((order) => {
+          orderMap.set(order.id, order);
+        });
+      });
+      const mergedOrders = Array.from(orderMap.values()).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      setOrders(mergedOrders);
     } catch (err) {
       console.error('[EODReport] Failed to fetch orders:', err?.message ?? err);
     } finally {
