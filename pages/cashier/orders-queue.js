@@ -54,8 +54,16 @@ const normalizeOrderItemsForPurchaseTracking = (items) => {
 };
 
 const toNumericValue = (value, fallback = 0) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  return fallback;
 };
 
 const buildForceSafeOrderItemsForPurchaseTracking = (items) => {
@@ -89,7 +97,7 @@ const buildForceSafeOrderItemsForPurchaseTracking = (items) => {
     }
 
     const existingItem = normalizedItems[existingIndex];
-    const mergedQuantity = toNumericValue(existingItem?.quantity, 1) + toNumericValue(sanitizedItem?.quantity, 1);
+    const mergedQuantity = toNumericValue(existingItem?.quantity, 0) + toNumericValue(sanitizedItem?.quantity, 0);
     const mergedPrice = toNumericValue(existingItem?.price, 0) + toNumericValue(sanitizedItem?.price, 0);
 
     normalizedItems[existingIndex] = {
@@ -597,6 +605,7 @@ export default function OrdersQueue() {
             completed_at: new Date().toISOString()
           };
 
+          // Only attach items when we have a valid array to avoid writing null/invalid payloads.
           if (Array.isArray(forceSafeItems)) {
             retryPayload.items = forceSafeItems;
           }
@@ -617,7 +626,7 @@ export default function OrdersQueue() {
           console.warn('[OrdersQueue] Retry after purchase conflict threw:', retryErr?.message ?? retryErr);
         }
 
-        alert('Failed to complete order. Please apply latest purchase-tracking migration and try again.');
+        alert('Failed to complete order. Please contact support so they can apply the latest purchase-tracking fix.');
         return;
       }
 
