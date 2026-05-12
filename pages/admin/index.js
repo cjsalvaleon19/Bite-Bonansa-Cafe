@@ -425,6 +425,7 @@ export default function AdminPage() {
   });
   // Lock state for Attendance Sheet (per payroll cycle) — loaded by loadPayrollState
   const [attendanceLocked, setAttendanceLocked] = useState(false);
+  const hasSyncedCashAdvanceOnMount = useRef(false);
 
   // ── My Profile state ──────────────────────────────────────────────────────
   const [profileData, setProfileData] = useState(null);
@@ -2424,11 +2425,13 @@ export default function AdminPage() {
   }, [loadPayrollState]);
 
   useEffect(() => {
+    if (hasSyncedCashAdvanceOnMount.current) return;
+    hasSyncedCashAdvanceOnMount.current = true;
     syncCashAdvanceDeductions();
   }, [syncCashAdvanceDeductions]);
 
   useEffect(() => {
-    if (activeTab !== 'attendance_sheet') return;
+    if (activeTab !== 'attendance_sheet' || !hasSyncedCashAdvanceOnMount.current) return;
     syncCashAdvanceDeductions();
   }, [activeTab, syncCashAdvanceDeductions]);
 
