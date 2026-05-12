@@ -248,9 +248,12 @@ function CustomerOrderPage() {
         .eq('setting_key', 'delivery_enabled')
         .maybeSingle()
       
-      if (!error) {
-        setDeliveryEnabled(isSettingEnabled(data?.setting_value, true))
+      if (error) {
+        console.error('Failed to fetch delivery setting:', error)
+        return
       }
+
+      setDeliveryEnabled(isSettingEnabled(data?.setting_value, true))
     }
     checkDeliveryEnabled()
   }, [])
@@ -274,9 +277,7 @@ function CustomerOrderPage() {
           }
 
           const nextValue = payload.new?.setting_value
-          if (typeof nextValue === 'string' || typeof nextValue === 'boolean') {
-            setDeliveryEnabled(isSettingEnabled(nextValue, true))
-          }
+          setDeliveryEnabled(isSettingEnabled(nextValue, true))
         }
       )
       .subscribe()
