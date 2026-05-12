@@ -257,12 +257,16 @@ export default function CashierDashboard() {
         console.warn('[CashierDashboard] Could not fetch adjustments:', adjErr?.message ?? adjErr);
       }
 
-      const deductions = calculateAdjustmentDeductions(allAdjustments);
+      // Cash-to-GCash reclassifies from Cash bucket → GCash bucket (no effect on Total).
+      // Canceled order / double posting are cash corrections that reduce Cash Sales.
+      const cashDeductions = calculateAdjustmentDeductions(allAdjustments);
+      const displayedCash = cashSales - adjustmentTotal - cashDeductions;
+      const displayedGcash = gcashSales + adjustmentTotal;
 
       setStats({
-        totalSales: totalSales - deductions,
-        cashSales,
-        gcashSales: gcashSales + adjustmentTotal,
+        totalSales: displayedCash + displayedGcash,
+        cashSales: displayedCash,
+        gcashSales: displayedGcash,
         pointsSales,
         receiptCount: (orders || []).length,
         dineInCount,
