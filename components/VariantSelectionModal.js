@@ -11,6 +11,21 @@ export default function VariantSelectionModal({
   const [selectedVariants, setSelectedVariants] = useState({});
   const [quantity, setQuantity] = useState(1);
 
+  const isSiomaisilogSelected = () => {
+    if (item?.name !== 'Silog Meals' || !Array.isArray(item?.variant_types)) return false;
+    const varietyType = item.variant_types.find((type) => type.variant_type_name === 'Variety');
+    if (!varietyType) return false;
+    const selected = selectedVariants[varietyType.id];
+    return Array.isArray(selected) && selected.some((opt) => opt.optionName === 'Siomaisilog');
+  };
+
+  const isTypeRequired = (type) => {
+    if (type?.is_required) return true;
+    return item?.name === 'Silog Meals'
+      && type?.variant_type_name === 'Siomai Style'
+      && isSiomaisilogSelected();
+  };
+
   useEffect(() => {
     setSelectedVariants(
       initialSelectedVariants && typeof initialSelectedVariants === 'object'
@@ -44,10 +59,23 @@ export default function VariantSelectionModal({
       });
     } else {
       // For single selection, replace
-      setSelectedVariants(prev => ({
-        ...prev,
-        [typeId]: [{ optionId, optionName, priceModifier }]
-      }));
+      setSelectedVariants(prev => {
+        const next = {
+          ...prev,
+          [typeId]: [{ optionId, optionName, priceModifier }]
+        };
+
+        const selectedType = item?.variant_types?.find((type) => type.id === typeId);
+        const isSilogVariety = item?.name === 'Silog Meals' && selectedType?.variant_type_name === 'Variety';
+        if (isSilogVariety && optionName !== 'Siomaisilog') {
+          const siomaiStyleType = item?.variant_types?.find((type) => type.variant_type_name === 'Siomai Style');
+          if (siomaiStyleType) {
+            delete next[siomaiStyleType.id];
+          }
+        }
+
+        return next;
+      });
     }
   };
 
@@ -81,7 +109,7 @@ export default function VariantSelectionModal({
     }
 
     return item.variant_types.every(type => {
-      if (type.is_required) {
+      if (isTypeRequired(type)) {
         const selected = selectedVariants[type.id];
         return selected && Array.isArray(selected) && selected.length > 0;
       }
@@ -143,11 +171,16 @@ export default function VariantSelectionModal({
           {item.variant_types && item.variant_types.length > 0 ? (
             item.variant_types
               .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+              .filter(type => {
+                if (item?.name !== 'Silog Meals') return true;
+                if (type.variant_type_name !== 'Siomai Style') return true;
+                return isSiomaisilogSelected();
+              })
               .map(type => (
                 <div key={type.id} style={styles.variantSection}>
                   <h4 style={styles.variantTitle}>
                     {type.variant_type_name}
-                    {type.is_required && <span style={styles.required}> *</span>}
+                    {isTypeRequired(type) && <span style={styles.required}> *</span>}
                     {type.allow_multiple && <span style={styles.hint}> (Select multiple)</span>}
                   </h4>
                   <div style={styles.optionsGrid}>
