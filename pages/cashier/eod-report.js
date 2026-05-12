@@ -86,10 +86,8 @@ export default function EndOfDayReport() {
       endDate.setHours(23, 59, 59, 999);
       const startIso = startDate.toISOString();
       const endIso = endDate.toISOString();
-
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
+      const dateRangeFilter = `and(created_at.gte.${startIso},created_at.lte.${endIso}),and(accepted_at.gte.${startIso},accepted_at.lte.${endIso})`;
+      const orderSelect = `
           *,
           order_items (
             id,
@@ -106,18 +104,34 @@ export default function EndOfDayReport() {
             customer_id,
             phone
           )
-        `)
-        .or(`and(created_at.gte.${startIso},created_at.lte.${endIso}),and(accepted_at.gte.${startIso},accepted_at.lte.${endIso})`)
-        .order('created_at', { ascending: false });
+        `;
 
-      if (error) throw error;
+      const [{ data: acceptedOrders, error: acceptedError }, { data: acceptedQueueOrders, error: acceptedQueueError }] = await Promise.all([
+        supabase
+          .from('orders')
+          .select(orderSelect)
+          .or(dateRangeFilter)
+          .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('orders')
+          .select(orderSelect)
+          .or(dateRangeFilter)
+          .eq('status', 'order_in_queue')
+          .not('accepted_at', 'is', null)
+          .order('created_at', { ascending: false }),
+      ]);
 
-      const acceptedOrders = (data || []).filter((order) => {
-        const isUnaccepted = UNACCEPTED_ORDER_STATUSES.includes(order?.status) && !order?.accepted_at;
-        return !isUnaccepted;
+      if (acceptedError) throw acceptedError;
+      if (acceptedQueueError) throw acceptedQueueError;
+
+      const mergedOrders = [...(acceptedOrders || [])];
+      const seenOrderIds = new Set(mergedOrders.map((order) => order.id));
+      (acceptedQueueOrders || []).forEach((order) => {
+        if (!seenOrderIds.has(order.id)) mergedOrders.push(order);
       });
 
-      setOrders(acceptedOrders);
+      setOrders(mergedOrders);
     } catch (err) {
       console.error('[EODReport] Failed to fetch orders:', err?.message ?? err);
     } finally {
