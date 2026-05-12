@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
+const SILOG_MEALS_NAME = 'Silog Meals';
+const SILOG_VARIETY_TYPE = 'Variety';
+const SIOMAISILOG_OPTION = 'Siomaisilog';
+const SIOMAI_STYLE_TYPE = 'Siomai Style';
+
 export default function VariantSelectionModal({
   item,
   onConfirm,
@@ -12,17 +17,17 @@ export default function VariantSelectionModal({
   const [quantity, setQuantity] = useState(1);
 
   const isSiomaisilogSelected = () => {
-    if (item?.name !== 'Silog Meals' || !Array.isArray(item?.variant_types)) return false;
-    const varietyType = item.variant_types.find((type) => type.variant_type_name === 'Variety');
+    if (item?.name !== SILOG_MEALS_NAME || !Array.isArray(item?.variant_types)) return false;
+    const varietyType = item.variant_types.find((type) => type.variant_type_name === SILOG_VARIETY_TYPE);
     if (!varietyType) return false;
     const selected = selectedVariants[varietyType.id];
-    return Array.isArray(selected) && selected.some((opt) => opt.optionName === 'Siomaisilog');
+    return Array.isArray(selected) && selected.some((opt) => opt.optionName === SIOMAISILOG_OPTION);
   };
 
   const isTypeRequired = (type) => {
     if (type?.is_required) return true;
-    return item?.name === 'Silog Meals'
-      && type?.variant_type_name === 'Siomai Style'
+    return item?.name === SILOG_MEALS_NAME
+      && type?.variant_type_name === SIOMAI_STYLE_TYPE
       && isSiomaisilogSelected();
   };
 
@@ -66,9 +71,9 @@ export default function VariantSelectionModal({
         };
 
         const selectedType = item?.variant_types?.find((type) => type.id === typeId);
-        const isSilogVariety = item?.name === 'Silog Meals' && selectedType?.variant_type_name === 'Variety';
-        if (isSilogVariety && optionName !== 'Siomaisilog') {
-          const siomaiStyleType = item?.variant_types?.find((type) => type.variant_type_name === 'Siomai Style');
+        const isSilogVariety = item?.name === SILOG_MEALS_NAME && selectedType?.variant_type_name === SILOG_VARIETY_TYPE;
+        if (isSilogVariety && optionName !== SIOMAISILOG_OPTION) {
+          const siomaiStyleType = item?.variant_types?.find((type) => type.variant_type_name === SIOMAI_STYLE_TYPE);
           if (siomaiStyleType) {
             delete next[siomaiStyleType.id];
           }
@@ -172,8 +177,8 @@ export default function VariantSelectionModal({
             item.variant_types
               .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
               .filter(type => {
-                if (item?.name !== 'Silog Meals') return true;
-                if (type.variant_type_name !== 'Siomai Style') return true;
+                if (item?.name !== SILOG_MEALS_NAME) return true;
+                if (type.variant_type_name !== SIOMAI_STYLE_TYPE) return true;
                 return isSiomaisilogSelected();
               })
               .map(type => (

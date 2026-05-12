@@ -32,28 +32,21 @@ WITH siomai_style_type AS (
   LIMIT 1
 )
 INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
-SELECT id, 'Fried', 0, true, 1 FROM siomai_style_type
+SELECT
+  sst.id,
+  option_data.option_name,
+  0,
+  true,
+  option_data.display_order
+FROM siomai_style_type sst
+CROSS JOIN (
+  VALUES
+    ('Fried', 1),
+    ('Steamed', 2)
+) AS option_data(option_name, display_order)
 WHERE NOT EXISTS (
   SELECT 1
   FROM menu_item_variant_options vo
-  WHERE vo.variant_type_id = (SELECT id FROM siomai_style_type)
-    AND vo.option_name = 'Fried'
-);
-
-WITH siomai_style_type AS (
-  SELECT vt.id
-  FROM menu_item_variant_types vt
-  JOIN menu_items_base mb ON vt.menu_item_id = mb.id
-  WHERE mb.name = 'Silog Meals'
-    AND mb.category = 'Rice & More'
-    AND vt.variant_type_name = 'Siomai Style'
-  LIMIT 1
-)
-INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
-SELECT id, 'Steamed', 0, true, 2 FROM siomai_style_type
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM menu_item_variant_options vo
-  WHERE vo.variant_type_id = (SELECT id FROM siomai_style_type)
-    AND vo.option_name = 'Steamed'
+  WHERE vo.variant_type_id = sst.id
+    AND vo.option_name = option_data.option_name
 );
