@@ -86,7 +86,6 @@ export default function EndOfDayReport() {
       endDate.setHours(23, 59, 59, 999);
       const startIso = startDate.toISOString();
       const endIso = endDate.toISOString();
-      const dateRangeFilter = `and(created_at.gte.${startIso},created_at.lte.${endIso}),and(accepted_at.gte.${startIso},accepted_at.lte.${endIso})`;
       const orderSelect = `
           *,
           order_items (
@@ -106,30 +105,58 @@ export default function EndOfDayReport() {
           )
         `;
 
-      const [{ data: acceptedOrders, error: acceptedError }, { data: acceptedQueueOrders, error: acceptedQueueError }] = await Promise.all([
+      const [
+        { data: acceptedByCreatedAt, error: acceptedByCreatedAtError },
+        { data: acceptedByAcceptedAt, error: acceptedByAcceptedAtError },
+        { data: acceptedQueueByCreatedAt, error: acceptedQueueByCreatedAtError },
+        { data: acceptedQueueByAcceptedAt, error: acceptedQueueByAcceptedAtError },
+      ] = await Promise.all([
         supabase
           .from('orders')
           .select(orderSelect)
-          .or(dateRangeFilter)
+          .gte('created_at', startIso)
+          .lte('created_at', endIso)
           .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`)
           .order('created_at', { ascending: false }),
         supabase
           .from('orders')
           .select(orderSelect)
-          .or(dateRangeFilter)
+          .gte('accepted_at', startIso)
+          .lte('accepted_at', endIso)
+          .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('orders')
+          .select(orderSelect)
+          .gte('created_at', startIso)
+          .lte('created_at', endIso)
+          .eq('status', 'order_in_queue')
+          .not('accepted_at', 'is', null)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('orders')
+          .select(orderSelect)
+          .gte('accepted_at', startIso)
+          .lte('accepted_at', endIso)
           .eq('status', 'order_in_queue')
           .not('accepted_at', 'is', null)
           .order('created_at', { ascending: false }),
       ]);
 
-      if (acceptedError) throw acceptedError;
-      if (acceptedQueueError) throw acceptedQueueError;
+      if (acceptedByCreatedAtError) throw acceptedByCreatedAtError;
+      if (acceptedByAcceptedAtError) throw acceptedByAcceptedAtError;
+      if (acceptedQueueByCreatedAtError) throw acceptedQueueByCreatedAtError;
+      if (acceptedQueueByAcceptedAtError) throw acceptedQueueByAcceptedAtError;
 
-      const mergedOrders = [...(acceptedOrders || [])];
-      const seenOrderIds = new Set(mergedOrders.map((order) => order.id));
-      (acceptedQueueOrders || []).forEach((order) => {
-        if (!seenOrderIds.has(order.id)) mergedOrders.push(order);
+      const orderMap = new Map();
+      [acceptedByCreatedAt, acceptedByAcceptedAt, acceptedQueueByCreatedAt, acceptedQueueByAcceptedAt].forEach((orderGroup) => {
+        (orderGroup || []).forEach((order) => {
+          orderMap.set(order.id, order);
+        });
       });
+      const mergedOrders = Array.from(orderMap.values()).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
 
       setOrders(mergedOrders);
     } catch (err) {
