@@ -1451,10 +1451,9 @@ const styles = {
   variantOptions: { color: '#aaa' },
   mapContainer: {
     width: '100%',
-    height: '300px',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    border: '1px solid #444',
+    height: 'auto',
+    overflow: 'visible',
+    border: 'none',
     marginTop: '8px',
   },
   changeAmountOverlay: {
