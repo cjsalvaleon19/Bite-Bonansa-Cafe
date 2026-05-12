@@ -5,6 +5,12 @@
 Migrations 147 and 148 were **both** corrupted when applied via copy-paste from
 a web page. This migration eliminates the root cause permanently.
 
+If 149 is already applied and you still get HTTP 500 with
+`ON CONFLICT DO UPDATE command cannot affect row a second time`, run:
+
+- `supabase/migrations/150_force_cleanup_purchase_tracking_triggers.sql`
+- then follow `supabase/migrations/RUN_MIGRATION_150.md`
+
 ### Why this keeps happening
 
 Every browser HTML-encodes `>` as `&gt;`. The PostgreSQL double-arrow operator

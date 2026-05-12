@@ -275,9 +275,14 @@ export default function OrdersQueue() {
         }
 
         // Order was not completed — the trigger error rolled back the UPDATE.
-        alert('Could not complete the order (purchase tracking error). Please apply\n' +
-              'supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n' +
-              'to your Supabase project, then try again.');
+        alert(
+          'Could not complete the order (purchase tracking error).\n\n' +
+          'Apply:\n' +
+          '  supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n\n' +
+          'If migration 149 is already applied and this still fails, apply:\n' +
+          '  supabase/migrations/150_force_cleanup_purchase_tracking_triggers.sql\n\n' +
+          'See RUN_MIGRATION_149.md and RUN_MIGRATION_150.md for verification steps.'
+        );
         return;
       }
       
@@ -630,7 +635,7 @@ export default function OrdersQueue() {
         } else {
           console.warn(
             '[OrdersQueue] Skipping retry — items already normalised, trigger is broken.',
-            'Apply supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql to fix.'
+            'Apply migration 149, or migration 150 if 149 was already applied.'
           );
         }
 
@@ -638,8 +643,11 @@ export default function OrdersQueue() {
           'Could not complete this order.\n\n' +
           'The database purchase-tracking trigger needs to be updated.\n' +
           'Please ask your technical team to apply:\n' +
-          '  supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n\n' +
-          'See supabase/migrations/RUN_MIGRATION_149.md for instructions.'
+          '  1) supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n' +
+          '  2) If still failing: supabase/migrations/150_force_cleanup_purchase_tracking_triggers.sql\n\n' +
+          'See:\n' +
+          '  supabase/migrations/RUN_MIGRATION_149.md\n' +
+          '  supabase/migrations/RUN_MIGRATION_150.md'
         );
         return;
       }
