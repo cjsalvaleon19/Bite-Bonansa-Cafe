@@ -403,20 +403,19 @@ export default function CashierPOS() {
 
   const selectedPayrollEmployee = payrollEmployees.find((employee) => employee.id === salaryDeductionEmployeeId);
   const salaryDeductionMissingMatch = paymentMethod === 'salary_deduction' && !selectedPayrollEmployee;
-  const isDeliveryPinMissing = orderMode === 'delivery' && (!deliveryCoordinates.lat || !deliveryCoordinates.lng);
+  const isPinMissing = !deliveryCoordinates.lat || !deliveryCoordinates.lng;
   const isCheckoutDisabled =
     items.length === 0 ||
     checkoutLoading ||
     salaryDeductionMissingMatch ||
-    (orderMode === 'delivery' && deliveryOutOfRange) ||
-    isDeliveryPinMissing;
+    (orderMode === 'delivery' && (deliveryOutOfRange || isPinMissing));
 
   const handleCheckout = async () => {
     if (items.length === 0) {
       alert('Please add items to the cart');
       return;
     }
-    if (orderMode === 'delivery' && (!deliveryCoordinates.lat || !deliveryCoordinates.lng)) {
+    if (orderMode === 'delivery' && isPinMissing) {
       alert('Please pin the delivery location on the map before checking out.');
       return;
     }
