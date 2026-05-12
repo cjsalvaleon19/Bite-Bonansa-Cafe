@@ -45,9 +45,10 @@ DROP FUNCTION IF EXISTS track_customer_item_purchases();
 CREATE OR REPLACE FUNCTION track_customer_item_purchases()
 RETURNS TRIGGER AS $$
 DECLARE
-  -- UUID pattern — lowercase only (IDs are normalised to lowercase below)
+  -- UUID pattern — accept both uppercase and lowercase; IDs are normalised to
+  -- lowercase inside the SELECT using LOWER() before GROUP BY and UUID cast.
   v_uuid_pattern CONSTANT TEXT :=
-    '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+    '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 
   v_item RECORD;
 BEGIN
