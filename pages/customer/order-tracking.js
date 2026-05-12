@@ -209,7 +209,7 @@ export default function OrderTracking() {
       'Confirmed': 'Order in Process',
       'Order In Process': 'Order in Process',
       'Preparing': 'Order in Process',
-      'Out For Delivery': 'Out for Delivery',
+      'Out For Delivery': orderMode === 'pick-up' || orderMode === 'take-out' ? 'Ready for Pick-up' : 'Out for Delivery',
       'Delivered': 'Order Complete',
       'Order Delivered': 'Order Complete',
       'Completed': 'Order Complete'
@@ -223,8 +223,8 @@ export default function OrderTracking() {
     const isDineIn = orderMode === 'dine-in';
     const isTakeOut = orderMode === 'take-out';
     
-    // Dine-in and Take-out have a different flow: Order in Queue → Proceed to Cashier → Order Complete
-    if (isDineIn || isTakeOut) {
+    // Dine-in has a different flow: Order in Queue → Proceed to Cashier → Order Complete
+    if (isDineIn) {
       const steps = [
         { label: 'Order in Queue', status: 'order_in_queue', icon: '🕐' },
         { label: 'Proceed to the Cashier', status: 'proceed_to_cashier', icon: '💳' },
@@ -254,9 +254,9 @@ export default function OrderTracking() {
       { label: 'Order in Queue', status: 'order_in_queue', icon: '🕐' },
       { label: 'Order in Process', status: 'order_in_process', icon: '👨‍🍳' },
       { 
-        label: isPickup ? 'Ready for Pick-up' : 'Out for Delivery', 
+        label: (isPickup || isTakeOut) ? 'Ready for Pick-up' : 'Out for Delivery', 
         status: 'out_for_delivery', 
-        icon: isPickup ? '✅' : '🛵' 
+        icon: (isPickup || isTakeOut) ? '✅' : '🛵' 
       },
       { 
         label: 'Order Complete', 

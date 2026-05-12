@@ -105,8 +105,8 @@ export default function OrdersQueue() {
         if (order.status === 'order_in_queue' || order.status === 'order_in_process' || order.status === 'proceed_to_cashier') {
           return true;
         }
-        // Only show pick-up orders in out_for_delivery status
-        return order.status === 'out_for_delivery' && order.order_mode === 'pick-up';
+        // Only show pick-up and take-out orders in out_for_delivery status
+        return order.status === 'out_for_delivery' && (order.order_mode === 'pick-up' || order.order_mode === 'take-out');
       });
 
       setOrders(filteredOrders);
@@ -795,8 +795,8 @@ export default function OrdersQueue() {
                           🚚 Out for Delivery
                         </button>
                       )}
-                      {/* Show Ready for Pick-Up button only for pick-up orders in process status */}
-                      {order.order_mode === 'pick-up' && order.status === 'order_in_process' && (
+                      {/* Show Ready for Pick-Up button for pick-up and take-out orders in process status */}
+                      {(order.order_mode === 'pick-up' || order.order_mode === 'take-out') && order.status === 'order_in_process' && (
                         <button
                           style={styles.pickupReadyBtn}
                           onClick={() => handleReadyForPickup(order)}
@@ -804,8 +804,8 @@ export default function OrdersQueue() {
                           ✅ Ready for Pick-Up
                         </button>
                       )}
-                      {/* Show Order Complete button only for pick-up orders that are ready (out_for_delivery status) */}
-                      {order.order_mode === 'pick-up' && order.status === 'out_for_delivery' && (
+                      {/* Show Order Complete button for pick-up and take-out orders that are ready (out_for_delivery status) */}
+                      {(order.order_mode === 'pick-up' || order.order_mode === 'take-out') && order.status === 'out_for_delivery' && (
                         <button
                           style={styles.completeBtn}
                           onClick={() => handleCompletePickup(order)}
