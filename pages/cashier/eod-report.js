@@ -84,6 +84,8 @@ export default function EndOfDayReport() {
       startDate.setHours(0, 0, 0, 0);
       const endDate = new Date(selectedDate);
       endDate.setHours(23, 59, 59, 999);
+      const startIso = startDate.toISOString();
+      const endIso = endDate.toISOString();
 
       const { data, error } = await supabase
         .from('orders')
@@ -105,14 +107,17 @@ export default function EndOfDayReport() {
             phone
           )
         `)
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
-        .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`)
+        .or(`and(created_at.gte.${startIso},created_at.lte.${endIso}),and(accepted_at.gte.${startIso},accepted_at.lte.${endIso})`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      setOrders(data || []);
+      const acceptedOrders = (data || []).filter((order) => {
+        const isUnaccepted = UNACCEPTED_ORDER_STATUSES.includes(order?.status) && !order?.accepted_at;
+        return !isUnaccepted;
+      });
+
+      setOrders(acceptedOrders);
     } catch (err) {
       console.error('[EODReport] Failed to fetch orders:', err?.message ?? err);
     } finally {

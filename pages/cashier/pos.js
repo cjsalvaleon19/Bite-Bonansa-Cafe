@@ -519,6 +519,8 @@ export default function CashierPOS() {
         cash_amount: (paymentMethod === 'cash' || combinedPayment) ? parseFloat(paymentDetails.cashTendered || 0) : 0,
         gcash_amount: (paymentMethod === 'gcash' || combinedPayment) ? remainingAmount : 0,
         gcash_reference: (paymentMethod === 'gcash' || combinedPayment) ? paymentDetails.gcashReference : null,
+        accepted_at: new Date().toISOString(),
+        cashier_id: user?.id || null,
         status: 'order_in_queue',
         created_at: new Date().toISOString(),
       };
