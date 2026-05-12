@@ -556,7 +556,7 @@ export default function CashDrawer() {
           const deductionResult = addSalaryDeductionToPayroll({
             employeeId: formData.attendanceEmployeeId,
             amount: Math.abs(rawAmount),
-            date: toDateOnly(new Date()),
+            date: toDateOnly(transactionData.created_at),
             orderId: `cash_advance:${insertedTransaction.id}`,
             notes: formData.purpose || 'Cash advance from Cash Drawer / Pay Bills',
           });
