@@ -33,7 +33,7 @@ DROP FUNCTION IF EXISTS track_customer_item_purchases();
 CREATE OR REPLACE FUNCTION track_customer_item_purchases()
 RETURNS TRIGGER AS $$
 DECLARE
-  -- Accept any letter case from the JSON payload; IDs are normalised to
+  -- Accept any letter case from the JSON payload; IDs are normalized to
   -- lowercase before grouping so each menu item appears at most once.
   v_uuid_pattern    CONSTANT TEXT := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
   v_int_pattern     CONSTANT TEXT := '^-?\d+$';
@@ -74,7 +74,7 @@ BEGIN
           SUM(valid_items.quantity) AS total_quantity,
           SUM(valid_items.price)    AS total_price
         FROM (
-          -- Normalise to lowercase BEFORE grouping so that "ABC-..." and
+          -- Normalize to lowercase BEFORE grouping so that "ABC-..." and
           -- "abc-..." are treated as the same item and folded into one row.
           SELECT
             LOWER(COALESCE(item->>'id', '')) AS menu_item_id_text,
@@ -129,7 +129,7 @@ CREATE TRIGGER trg_track_customer_purchases
 
 COMMENT ON FUNCTION track_customer_item_purchases IS
   'Tracks customer purchases on first completion transition. '
-  'Normalises menu item IDs to lowercase before grouping (prevents mixed-case UUID conflicts). '
+  'Normalizes menu item IDs to lowercase before grouping (prevents mixed-case UUID conflicts). '
   'Two-layer exception handling (inner + outer) guarantees the trigger never blocks order completion.';
 
 COMMENT ON TRIGGER trg_track_customer_purchases ON orders IS
