@@ -422,6 +422,7 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   // ── Order info ────────────────────────────────────────────────────────────
   b.push(...CMD.ALIGN_LEFT);
   b.push(...encodeText(`Order#: ${order.order_number || String(order.id || '').slice(0, 8)}\n`));
+  b.push(...encodeText(`Slip# : ${getOrderSlipNumber(order)}\n`));
   b.push(...encodeText(`Date  : ${formatReceiptDate(order.created_at)}\n`));
   b.push(...encodeText(`Type  : ${order.order_mode || 'N/A'}\n`));
   if (order.customer_name) {

@@ -60,6 +60,7 @@ export default function CashierPOS() {
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryCoordinates, setDeliveryCoordinates] = useState({ lat: null, lng: null });
   const [deliveryOutOfRange, setDeliveryOutOfRange] = useState(false);
+  const [deliverySearchQuery, setDeliverySearchQuery] = useState('');
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [combinedPayment, setCombinedPayment] = useState(false); // For points + cash/gcash
@@ -98,6 +99,7 @@ export default function CashierPOS() {
       setDeliveryFee(0);
       setDeliveryCoordinates({ lat: null, lng: null });
       setDeliveryOutOfRange(false);
+      setDeliverySearchQuery('');
     }
   }, [orderMode]);
 
@@ -143,8 +145,11 @@ export default function CashierPOS() {
     setSalaryDeductionEmployeeId('');
   }, [paymentMethod]);
 
-  const handleLocationChange = (lat, lng) => {
+  const handleLocationChange = (lat, lng, displayName) => {
     setDeliveryCoordinates({ lat, lng });
+    if (displayName) {
+      setDeliverySearchQuery(displayName);
+    }
   };
 
   const fetchMenu = useCallback(async () => {
@@ -401,10 +406,20 @@ export default function CashierPOS() {
 
   const selectedPayrollEmployee = payrollEmployees.find((employee) => employee.id === salaryDeductionEmployeeId);
   const salaryDeductionMissingMatch = paymentMethod === 'salary_deduction' && !selectedPayrollEmployee;
+  const isPinMissing = !deliveryCoordinates.lat || !deliveryCoordinates.lng;
+  const isCheckoutDisabled =
+    items.length === 0 ||
+    checkoutLoading ||
+    salaryDeductionMissingMatch ||
+    (orderMode === 'delivery' && (deliveryOutOfRange || isPinMissing));
 
   const handleCheckout = async () => {
     if (items.length === 0) {
       alert('Please add items to the cart');
+      return;
+    }
+    if (orderMode === 'delivery' && isPinMissing) {
+      alert('Please pin the delivery location on the map before checking out.');
       return;
     }
     if (orderMode === 'delivery' && deliveryOutOfRange) {
@@ -621,6 +636,7 @@ export default function CashierPOS() {
       setPointsToUse(0);
       setCustomerPointsBalance(0);
       setOrderMode('dine-in');
+      setDeliverySearchQuery('');
       setPaymentMethod('cash');
       setCombinedPayment(false);
       setSalaryDeductionEmployeeId('');
@@ -742,7 +758,7 @@ export default function CashierPOS() {
             <p>Name  : ${customerName}</p>
             ${customerPhone && customerPhone !== 'N/A' ? `<p>Phone : ${customerPhone}</p>` : ''}
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
-            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
+            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Landmark:</strong> ${order.delivery_address}</p>` : ''}
           </div>
           
           <p class="section-title">ITEMS ORDERED</p>
@@ -1099,38 +1115,30 @@ export default function CashierPOS() {
             {orderMode === 'delivery' && (
               <>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Delivery Address *</label>
+                  <label style={styles.label}>Landmark *</label>
                   <textarea
                     style={{ ...styles.input, minHeight: '60px' }}
-                    placeholder="Enter delivery address"
+                    placeholder="Enter landmark"
                     value={customerInfo.address}
                     onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
                     required
                   />
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Pin Delivery Location on Map</label>
+                  <label style={styles.label}>Pin Delivery Location on Map *</label>
                   <div style={styles.mapContainer}>
                     <OpenStreetMapPicker
                       initialLat={STORE_LOCATION.latitude}
                       initialLng={STORE_LOCATION.longitude}
                       onLocationChange={handleLocationChange}
+                      searchQuery={deliverySearchQuery}
+                      onSearchQueryChange={setDeliverySearchQuery}
                     />
                   </div>
-                  {deliveryCoordinates.lat && deliveryCoordinates.lng && (
-                    <div style={styles.deliveryInfo}>
-                      <p style={styles.deliveryInfoText}>
-                        📍 Selected location: {deliveryCoordinates.lat.toFixed(6)}, {deliveryCoordinates.lng.toFixed(6)}
-                      </p>
-                      <p style={styles.deliveryInfoText}>
-                        💰 Delivery Fee: ₱{deliveryFee.toFixed(2)}
-                      </p>
-                      {deliveryOutOfRange && (
-                        <p style={styles.errorText}>
-                          Delivery is only available within T&apos;boli, South Cotabato (max 5 km from our store).
-                        </p>
-                      )}
-                    </div>
+                  {deliveryOutOfRange && (
+                    <p style={styles.errorText}>
+                      Delivery is only available within T&apos;boli, South Cotabato (max 5 km from our store).
+                    </p>
                   )}
                 </div>
               </>
@@ -1334,9 +1342,9 @@ export default function CashierPOS() {
             <div style={styles.cartActions}>
               <button style={styles.clearBtn} onClick={clearCart} disabled={items.length === 0}>Clear</button>
               <button
-                style={{ ...styles.checkoutBtn, opacity: items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange) ? 0.6 : 1 }}
+                style={{ ...styles.checkoutBtn, opacity: isCheckoutDisabled ? 0.6 : 1 }}
                 onClick={handleCheckout}
-                disabled={items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange)}
+                disabled={isCheckoutDisabled}
               >
                 {checkoutLoading ? '⏳ Processing…' : '✔ Checkout'}
               </button>
@@ -1443,23 +1451,10 @@ const styles = {
   variantOptions: { color: '#aaa' },
   mapContainer: {
     width: '100%',
-    height: '300px',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    border: '1px solid #444',
+    height: 'auto',
+    overflow: 'visible',
+    border: 'none',
     marginTop: '8px',
-  },
-  deliveryInfo: {
-    marginTop: '12px',
-    padding: '12px',
-    backgroundColor: '#2a2a2a',
-    borderRadius: '6px',
-    border: '1px solid #444',
-  },
-  deliveryInfoText: {
-    fontSize: '13px',
-    color: '#ccc',
-    margin: '4px 0',
   },
   changeAmountOverlay: {
     position: 'fixed',

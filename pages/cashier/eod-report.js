@@ -735,6 +735,10 @@ export default function EndOfDayReport() {
               <div style={styles.summaryLabel}>Points Redeemed</div>
               <div style={styles.summaryValue}>₱{totalPoints.toFixed(2)}</div>
             </div>
+            <div style={styles.summaryCard}>
+              <div style={styles.summaryLabel}>Delivery Fee</div>
+              <div style={styles.summaryValue}>₱{orders.reduce((sum, o) => sum + parseFloat(o.delivery_fee || 0), 0).toFixed(2)}</div>
+            </div>
           </div>
 
           {/* Orders Table */}
