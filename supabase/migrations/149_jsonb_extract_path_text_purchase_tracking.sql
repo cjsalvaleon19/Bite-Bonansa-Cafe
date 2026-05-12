@@ -2,6 +2,10 @@
 -- Migration 149: Use jsonb_extract_path_text() — permanently immune to
 --                HTML copy-paste corruption of the ->> operator
 -- ============================================================================
+-- ✅ THIS IS THE FILE TO PASTE INTO THE SUPABASE SQL EDITOR.
+--    Do NOT paste from RUN_MIGRATION_149.md — that file contains markdown
+--    code fences (```) which cause: ERROR: syntax error at or near "```"
+-- ============================================================================
 -- Root cause of recurring corruption:
 --   Every time this trigger function has been applied via the Supabase SQL
 --   Editor by copy-pasting from a web page (GitHub, Supabase dashboard, etc.)

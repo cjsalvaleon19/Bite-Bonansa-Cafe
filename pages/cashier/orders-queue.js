@@ -15,44 +15,6 @@ const DEFAULT_FALLBACK_AVAILABILITY = true;
 const isPickupMode = (orderMode) => orderMode === 'pick-up' || orderMode === 'pickup';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const normalizeOrderItemsForPurchaseTracking = (items) => {
-  if (!Array.isArray(items) || items.length === 0) {
-    return { normalizedItems: items, changed: false };
-  }
-
-  let changed = false;
-  const normalizedItems = items.map((item) => {
-    if (!item || typeof item !== 'object') {
-      return item;
-    }
-
-    if (typeof item.id !== 'string') {
-      return item;
-    }
-
-    const trimmedId = item.id.trim();
-    if (!UUID_PATTERN.test(trimmedId)) {
-      return item;
-    }
-
-    const normalizedId = trimmedId.toLowerCase();
-    if (normalizedId === item.id) {
-      return item;
-    }
-
-    changed = true;
-    return {
-      ...item,
-      id: normalizedId,
-    };
-  });
-
-  return {
-    normalizedItems: changed ? normalizedItems : items,
-    changed,
-  };
-};
-
 const toNumericValue = (value, fallback = 0) => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : fallback;
@@ -248,13 +210,14 @@ export default function OrdersQueue() {
 
       // If all items are served, mark the order as completed
       if (allItems && allItems.every(item => item.served)) {
-        const { normalizedItems, changed } = normalizeOrderItemsForPurchaseTracking(order?.items);
+        const forceSafeItems = buildForceSafeOrderItemsForPurchaseTracking(order?.items);
+        const changed = itemsChangedAfterNormalization(order?.items, forceSafeItems);
         const updatePayload = {
           status: 'order_delivered',  // Use order_delivered for consistency with notification system
           completed_at: new Date().toISOString()
         };
         if (changed) {
-          updatePayload.items = normalizedItems;
+          updatePayload.items = forceSafeItems;
         }
 
         const { error: updateOrderError } = await supabase
@@ -312,9 +275,14 @@ export default function OrdersQueue() {
         }
 
         // Order was not completed — the trigger error rolled back the UPDATE.
-        alert('Could not complete the order (purchase tracking error). Please apply\n' +
-              'supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n' +
-              'to your Supabase project, then try again.');
+        alert(
+          'Could not complete the order (purchase tracking error).\n\n' +
+          'Apply:\n' +
+          '  supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n\n' +
+          'If migration 149 is already applied and this still fails, apply:\n' +
+          '  supabase/migrations/150_force_cleanup_purchase_tracking_triggers.sql\n\n' +
+          'See RUN_MIGRATION_149.md and RUN_MIGRATION_150.md for verification steps.'
+        );
         return;
       }
       
@@ -566,13 +534,14 @@ export default function OrdersQueue() {
     if (!confirm('Mark this pick-up order as complete?')) return;
 
     try {
-      const { normalizedItems, changed } = normalizeOrderItemsForPurchaseTracking(order?.items);
+      const forceSafeItems = buildForceSafeOrderItemsForPurchaseTracking(order?.items);
+      const changed = itemsChangedAfterNormalization(order?.items, forceSafeItems);
       const updatePayload = {
         status: 'order_delivered',
         completed_at: new Date().toISOString()
       };
       if (changed) {
-        updatePayload.items = normalizedItems;
+        updatePayload.items = forceSafeItems;
       }
 
       // Update order status to order_delivered (completed)
@@ -666,7 +635,7 @@ export default function OrdersQueue() {
         } else {
           console.warn(
             '[OrdersQueue] Skipping retry — items already normalised, trigger is broken.',
-            'Apply supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql to fix.'
+            'Apply migration 149, or migration 150 if 149 was already applied.'
           );
         }
 
@@ -674,8 +643,11 @@ export default function OrdersQueue() {
           'Could not complete this order.\n\n' +
           'The database purchase-tracking trigger needs to be updated.\n' +
           'Please ask your technical team to apply:\n' +
-          '  supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n\n' +
-          'See supabase/migrations/RUN_MIGRATION_149.md for instructions.'
+          '  1) supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n' +
+          '  2) If still failing: supabase/migrations/150_force_cleanup_purchase_tracking_triggers.sql\n\n' +
+          'See:\n' +
+          '  supabase/migrations/RUN_MIGRATION_149.md\n' +
+          '  supabase/migrations/RUN_MIGRATION_150.md'
         );
         return;
       }

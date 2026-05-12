@@ -1,9 +1,36 @@
 # Migration 149: Permanent Fix — `jsonb_extract_path_text()` (URGENT)
 
+---
+
+## 🚫 DO NOT paste text from THIS file into the SQL Editor
+
+**This is a documentation file (`.md`). SQL code shown here is wrapped in**
+**markdown code fences (` ``` `). If you paste from this file you will get:**
+
+```
+ERROR: 42601: syntax error at or near "```"
+```
+
+**To apply this migration, open and copy from the actual SQL file:**
+
+```
+supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql
+```
+
+Open it in **VS Code, Notepad, or any plain text editor** → Select All → Copy → paste into Supabase SQL Editor.
+
+---
+
 ## ⚠️ Apply This Migration Now
 
 Migrations 147 and 148 were **both** corrupted when applied via copy-paste from
 a web page. This migration eliminates the root cause permanently.
+
+If 149 is already applied and you still get HTTP 500 with
+`ON CONFLICT DO UPDATE command cannot affect row a second time`, run:
+
+- `supabase/migrations/150_force_cleanup_purchase_tracking_triggers.sql`
+- then follow `supabase/migrations/RUN_MIGRATION_150.md`
 
 ### Why this keeps happening
 
