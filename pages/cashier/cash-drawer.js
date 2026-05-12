@@ -8,6 +8,7 @@ import { calculateSalesBreakdown, UNACCEPTED_ORDER_STATUSES } from '../../utils/
 import {
   getOutstandingPayrollSubmissions,
   markPayrollSubmissionPaid,
+  getPayrollEmployees,
   PAYROLL_STORAGE_KEY,
 } from '../../utils/payrollStorage';
 
@@ -46,6 +47,7 @@ export default function CashDrawer() {
   const [payrollReports, setPayrollReports] = useState([]);
   const [filteredPayrollReports, setFilteredPayrollReports] = useState([]);
   const [payrollPeriodSearch, setPayrollPeriodSearch] = useState('');
+  const [attendanceEmployees, setAttendanceEmployees] = useState([]);
 
   // Cash Audit tab state
   const [activeTab, setActiveTab] = useState('transactions');
@@ -73,6 +75,7 @@ export default function CashDrawer() {
       const reports = getOutstandingPayrollSubmissions();
       setPayrollReports(reports);
       setFilteredPayrollReports(reports);
+      setAttendanceEmployees(getPayrollEmployees());
     };
     refreshPayrollReports();
     if (typeof window === 'undefined') return undefined;
@@ -884,6 +887,7 @@ export default function CashDrawer() {
                             setPayrollReports(reports);
                             setFilteredPayrollReports(reports);
                             setPayrollPeriodSearch('');
+                            setAttendanceEmployees(getPayrollEmployees());
                             setFormData({
                               ...formData,
                               billType: e.target.value,
@@ -900,6 +904,7 @@ export default function CashDrawer() {
                           <option value="">Select bill type</option>
                           <option value="drivers_fee">Driver's Fee</option>
                           <option value="payroll">Payroll</option>
+                          <option value="cash_advance">Cash Advance</option>
                           <option value="utilities">Utilities</option>
                           <option value="receiving_report">Receiving Report</option>
                           <option value="other">Other</option>
@@ -1011,6 +1016,40 @@ export default function CashDrawer() {
                             <textarea
                               style={{ ...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif" }}
                               placeholder="Payroll payment details"
+                              value={formData.purpose}
+                              onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                            />
+                          </div>
+                        </>
+                      ) : formData.billType === 'cash_advance' ? (
+                        <>
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Payee Name *</label>
+                            <select
+                              style={styles.input}
+                              value={formData.payeeName}
+                              onChange={(e) => setFormData({ ...formData, payeeName: e.target.value })}
+                              required
+                            >
+                              <option value="">Select employee</option>
+                              {attendanceEmployees.map((emp) => (
+                                <option key={emp.id} value={emp.name}>
+                                  {emp.name}
+                                </option>
+                              ))}
+                            </select>
+                            {attendanceEmployees.length === 0 && (
+                              <p style={{ fontSize: '11px', color: '#ffc107', marginTop: '4px' }}>
+                                No employees found in Attendance Sheet
+                              </p>
+                            )}
+                          </div>
+
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Purpose/Description</label>
+                            <textarea
+                              style={{ ...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif" }}
+                              placeholder="Cash advance details"
                               value={formData.purpose}
                               onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
                             />
