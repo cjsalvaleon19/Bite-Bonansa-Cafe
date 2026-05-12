@@ -15,44 +15,6 @@ const DEFAULT_FALLBACK_AVAILABILITY = true;
 const isPickupMode = (orderMode) => orderMode === 'pick-up' || orderMode === 'pickup';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const normalizeOrderItemsForPurchaseTracking = (items) => {
-  if (!Array.isArray(items) || items.length === 0) {
-    return { normalizedItems: items, changed: false };
-  }
-
-  let changed = false;
-  const normalizedItems = items.map((item) => {
-    if (!item || typeof item !== 'object') {
-      return item;
-    }
-
-    if (typeof item.id !== 'string') {
-      return item;
-    }
-
-    const trimmedId = item.id.trim();
-    if (!UUID_PATTERN.test(trimmedId)) {
-      return item;
-    }
-
-    const normalizedId = trimmedId.toLowerCase();
-    if (normalizedId === item.id) {
-      return item;
-    }
-
-    changed = true;
-    return {
-      ...item,
-      id: normalizedId,
-    };
-  });
-
-  return {
-    normalizedItems: changed ? normalizedItems : items,
-    changed,
-  };
-};
-
 const toNumericValue = (value, fallback = 0) => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : fallback;
@@ -248,13 +210,14 @@ export default function OrdersQueue() {
 
       // If all items are served, mark the order as completed
       if (allItems && allItems.every(item => item.served)) {
-        const { normalizedItems, changed } = normalizeOrderItemsForPurchaseTracking(order?.items);
+        const forceSafeItems = buildForceSafeOrderItemsForPurchaseTracking(order?.items);
+        const changed = itemsChangedAfterNormalization(order?.items, forceSafeItems);
         const updatePayload = {
           status: 'order_delivered',  // Use order_delivered for consistency with notification system
           completed_at: new Date().toISOString()
         };
         if (changed) {
-          updatePayload.items = normalizedItems;
+          updatePayload.items = forceSafeItems;
         }
 
         const { error: updateOrderError } = await supabase
@@ -566,13 +529,14 @@ export default function OrdersQueue() {
     if (!confirm('Mark this pick-up order as complete?')) return;
 
     try {
-      const { normalizedItems, changed } = normalizeOrderItemsForPurchaseTracking(order?.items);
+      const forceSafeItems = buildForceSafeOrderItemsForPurchaseTracking(order?.items);
+      const changed = itemsChangedAfterNormalization(order?.items, forceSafeItems);
       const updatePayload = {
         status: 'order_delivered',
         completed_at: new Date().toISOString()
       };
       if (changed) {
-        updatePayload.items = normalizedItems;
+        updatePayload.items = forceSafeItems;
       }
 
       // Update order status to order_delivered (completed)
