@@ -13,6 +13,113 @@ import { getOrderSlipNumber } from '../../utils/receiptDepartments';
 // Set to true to allow assignment with warnings, false to require profile completion.
 const DEFAULT_FALLBACK_AVAILABILITY = true;
 const isPickupMode = (orderMode) => orderMode === 'pick-up' || orderMode === 'pickup';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const normalizeOrderItemsForPurchaseTracking = (items) => {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { normalizedItems: items, changed: false };
+  }
+
+  let changed = false;
+  const normalizedItems = items.map((item) => {
+    if (!item || typeof item !== 'object') {
+      return item;
+    }
+
+    if (typeof item.id !== 'string') {
+      return item;
+    }
+
+    const trimmedId = item.id.trim();
+    if (!UUID_PATTERN.test(trimmedId)) {
+      return item;
+    }
+
+    const normalizedId = trimmedId.toLowerCase();
+    if (normalizedId === item.id) {
+      return item;
+    }
+
+    changed = true;
+    return {
+      ...item,
+      id: normalizedId,
+    };
+  });
+
+  return {
+    normalizedItems: changed ? normalizedItems : items,
+    changed,
+  };
+};
+
+const toNumericValue = (value, fallback = 0) => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  return fallback;
+};
+
+const buildForceSafeOrderItemsForPurchaseTracking = (items) => {
+  if (!Array.isArray(items) || items.length === 0) {
+    return items;
+  }
+
+  const normalizedItems = [];
+  const itemIndexById = new Map();
+
+  items.forEach((item) => {
+    if (!item || typeof item !== 'object' || typeof item.id !== 'string') {
+      normalizedItems.push(item);
+      return;
+    }
+
+    const trimmedId = item.id.trim();
+    if (!UUID_PATTERN.test(trimmedId)) {
+      normalizedItems.push(trimmedId === item.id ? item : { ...item, id: trimmedId });
+      return;
+    }
+
+    const normalizedId = trimmedId.toLowerCase();
+    const sanitizedItem = normalizedId === item.id ? item : { ...item, id: normalizedId };
+    const existingIndex = itemIndexById.get(normalizedId);
+
+    if (existingIndex === undefined) {
+      itemIndexById.set(normalizedId, normalizedItems.length);
+      normalizedItems.push(sanitizedItem);
+      return;
+    }
+
+    const existingItem = normalizedItems[existingIndex];
+    const mergedQuantity = toNumericValue(existingItem.quantity, 0) + toNumericValue(sanitizedItem.quantity, 0);
+    normalizedItems[existingIndex] = {
+      ...existingItem,
+      quantity: mergedQuantity,
+    };
+  });
+
+  return normalizedItems;
+};
+
+// Compare two item arrays by serialising to JSON.
+// Returns true when forceSafeItems is different from originalItems, meaning
+// the normalization deduped or re-cased at least one UUID and it is worth
+// retrying with the cleaned payload.
+const itemsChangedAfterNormalization = (originalItems, forceSafeItems) => {
+  if (!Array.isArray(originalItems) || !Array.isArray(forceSafeItems)) {
+    return false;
+  }
+  if (originalItems.length !== forceSafeItems.length) {
+    return true;
+  }
+  return JSON.stringify(originalItems) !== JSON.stringify(forceSafeItems);
+};
 
 export default function OrdersQueue() {
   const router = useRouter();
@@ -141,12 +248,18 @@ export default function OrdersQueue() {
 
       // If all items are served, mark the order as completed
       if (allItems && allItems.every(item => item.served)) {
+        const { normalizedItems, changed } = normalizeOrderItemsForPurchaseTracking(order?.items);
+        const updatePayload = {
+          status: 'order_delivered',  // Use order_delivered for consistency with notification system
+          completed_at: new Date().toISOString()
+        };
+        if (changed) {
+          updatePayload.items = normalizedItems;
+        }
+
         const { error: updateOrderError } = await supabase
           .from('orders')
-          .update({
-            status: 'order_delivered',  // Use order_delivered for consistency with notification system
-            completed_at: new Date().toISOString()
-          })
+          .update(updatePayload)
           .eq('id', orderId);
 
         if (updateOrderError) throw updateOrderError;
@@ -169,15 +282,39 @@ export default function OrdersQueue() {
       }
 
       // Check if error is from purchase tracking trigger (ON CONFLICT DO UPDATE).
-      // Migration 145 closes the mixed-case UUID grouping edge case, but keep this
-      // guard for environments with partially applied SQL migrations.
+      // When the production trigger lacks exception handling the trigger error
+      // rolls back the whole UPDATE — the order may NOT have been completed.
+      // Verify actual status before deciding whether to surface a failure.
+      // Apply supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql
+      // to permanently fix the trigger in production.
       const isPurchaseTrackingConflict = errMsg.includes('ON CONFLICT DO UPDATE') ||
                                           errMsg.includes('cannot affect row a second time');
 
       if (isPurchaseTrackingConflict) {
-        console.warn('[OrdersQueue] Purchase tracking conflict during item-served completion:', errMsg);
-        // Refresh orders list - the order status update likely succeeded
-        fetchOrders();
+        console.warn(
+          '[OrdersQueue] Purchase tracking conflict during item-served completion:',
+          errMsg,
+          '— verifying order status. Apply migration 149 to fix permanently.'
+        );
+        try {
+          const { data: currentOrder } = await supabase
+            .from('orders')
+            .select('status')
+            .eq('id', orderId)
+            .single();
+
+          if (currentOrder?.status === 'order_delivered') {
+            fetchOrders();
+            return;
+          }
+        } catch (fetchErr) {
+          console.warn('[OrdersQueue] Could not verify order status after conflict:', fetchErr);
+        }
+
+        // Order was not completed — the trigger error rolled back the UPDATE.
+        alert('Could not complete the order (purchase tracking error). Please apply\n' +
+              'supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n' +
+              'to your Supabase project, then try again.');
         return;
       }
       
@@ -429,15 +566,21 @@ export default function OrdersQueue() {
     if (!confirm('Mark this pick-up order as complete?')) return;
 
     try {
+      const { normalizedItems, changed } = normalizeOrderItemsForPurchaseTracking(order?.items);
+      const updatePayload = {
+        status: 'order_delivered',
+        completed_at: new Date().toISOString()
+      };
+      if (changed) {
+        updatePayload.items = normalizedItems;
+      }
+
       // Update order status to order_delivered (completed)
       // Note: Database trigger will automatically create notification for customer
       // and award loyalty points
       const { error } = await supabase
         .from('orders')
-        .update({
-          status: 'order_delivered',
-          completed_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .eq('id', order.id);
 
       if (error) throw error;
@@ -486,8 +629,54 @@ export default function OrdersQueue() {
         } catch (fetchErr) {
           console.warn('[OrdersQueue] Could not fetch order status after conflict:', fetchErr);
         }
-        // Order was NOT completed - ask user to retry
-        alert('Failed to complete order. Please try again. If the problem persists, contact support.');
+
+        // Force-safe fallback: sanitize + deduplicate item UUIDs and retry once.
+        // Only useful when the normalization actually CHANGED something (i.e. the
+        // items had mixed-case or duplicate UUIDs that caused the trigger to fail).
+        // When items were already clean, retrying with the same data would just
+        // hit the same broken trigger and produce another 500 — so we skip it.
+        // Apply supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql
+        // to fix the DB trigger permanently.
+        const forceSafeItems = buildForceSafeOrderItemsForPurchaseTracking(order?.items);
+        const retryWillHelp = itemsChangedAfterNormalization(order?.items, forceSafeItems);
+
+        if (retryWillHelp) {
+          try {
+            const retryPayload = {
+              status: 'order_delivered',
+              completed_at: new Date().toISOString(),
+              items: forceSafeItems,
+            };
+
+            const { error: retryError } = await supabase
+              .from('orders')
+              .update(retryPayload)
+              .eq('id', order.id);
+
+            if (!retryError) {
+              fetchOrders();
+              alert('Order marked as complete!');
+              return;
+            }
+
+            console.warn('[OrdersQueue] Retry after purchase conflict failed:', retryError?.message ?? retryError);
+          } catch (retryErr) {
+            console.warn('[OrdersQueue] Retry after purchase conflict threw:', retryErr?.message ?? retryErr);
+          }
+        } else {
+          console.warn(
+            '[OrdersQueue] Skipping retry — items already normalised, trigger is broken.',
+            'Apply supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql to fix.'
+          );
+        }
+
+        alert(
+          'Could not complete this order.\n\n' +
+          'The database purchase-tracking trigger needs to be updated.\n' +
+          'Please ask your technical team to apply:\n' +
+          '  supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n\n' +
+          'See supabase/migrations/RUN_MIGRATION_149.md for instructions.'
+        );
         return;
       }
 
