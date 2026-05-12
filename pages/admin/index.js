@@ -425,6 +425,7 @@ export default function AdminPage() {
   });
   // Lock state for Attendance Sheet (per payroll cycle) — loaded by loadPayrollState
   const [attendanceLocked, setAttendanceLocked] = useState(false);
+  const hasMountedAttendanceTabSync = useRef(false);
 
   // ── My Profile state ──────────────────────────────────────────────────────
   const [profileData, setProfileData] = useState(null);
@@ -2338,6 +2339,76 @@ export default function AdminPage() {
     if (message) setPayrollMessage(message);
   }, []);
 
+  const syncCashAdvanceDeductions = useCallback(async () => {
+    if (!supabase) return;
+    const cashAdvanceDeductionType = 'Cash Advance';
+    const cashAdvanceNotesFallback = 'Cash advance from Cash Drawer / Pay Bills';
+    try {
+      const { data: transactions, error } = await supabase
+        .from('cash_drawer_transactions')
+        .select('id, amount, payee_name, purpose, reference_number, created_at, bill_type, transaction_type')
+        .eq('bill_type', 'cash_advance')
+        .in('transaction_type', ['pay-bill', 'cash-out'])
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      if (!(transactions || []).length) return;
+
+      const loaded = loadPayrollData();
+      const baseEmployees = Array.isArray(loaded.employees) ? loaded.employees : [];
+      if (!baseEmployees.length) return;
+
+      const nextEmployees = baseEmployees.map((employee) => ({
+        ...employee,
+        deductions: [...(employee.deductions || [])],
+      }));
+      let changed = false;
+
+      (transactions || []).forEach((transaction) => {
+        const deductionAmount = roundToCurrency(Math.abs(Number(transaction.amount) || 0));
+        if (deductionAmount <= 0) return;
+
+        const referenceEmployeeIdRaw = transaction.reference_number;
+        const payeeName = String(transaction.payee_name || '').trim().toLowerCase();
+
+        let employeeIndex = -1;
+        if (typeof referenceEmployeeIdRaw !== 'undefined' && referenceEmployeeIdRaw !== null) {
+          const referenceEmployeeId = String(referenceEmployeeIdRaw).trim();
+          employeeIndex = nextEmployees.findIndex((employee) => employee.id === referenceEmployeeId);
+        }
+        if (employeeIndex < 0 && payeeName) {
+          employeeIndex = nextEmployees.findIndex((employee) => String(employee.name || '').trim().toLowerCase() === payeeName);
+        }
+        if (employeeIndex < 0) return;
+
+        const sourceOrderId = `cash_advance:${transaction.id}`;
+        const existing = (nextEmployees[employeeIndex].deductions || []).some(
+          (deduction) => deduction.source === SALARY_DEDUCTION_SOURCE && deduction.orderId === sourceOrderId,
+        );
+        if (existing) return;
+
+        nextEmployees[employeeIndex].deductions.push({
+          id: createId('ded'),
+          date: toDateOnly(transaction.created_at || new Date()),
+          type: cashAdvanceDeductionType,
+          amount: deductionAmount,
+          notes: transaction.purpose || cashAdvanceNotesFallback,
+          source: SALARY_DEDUCTION_SOURCE,
+          processed: true,
+          orderId: sourceOrderId,
+        });
+        changed = true;
+      });
+
+      if (!changed) return;
+      const normalized = normalizePayrollData({ ...loaded, employees: nextEmployees });
+      setPayrollData(normalized);
+      setPayrollCycleDays(getPayrollCycleDays(normalized.cycleStart));
+      savePayrollData(normalized);
+    } catch (err) {
+      console.error('[Admin] Failed to sync cash advance deductions:', err?.message || err);
+    }
+  }, [supabase]);
+
   const loadPayrollState = useCallback(() => {
     const loaded = loadPayrollData();
     setPayrollData(loaded);
@@ -2352,6 +2423,19 @@ export default function AdminPage() {
   useEffect(() => {
     loadPayrollState();
   }, [loadPayrollState]);
+
+  useEffect(() => {
+    syncCashAdvanceDeductions();
+  }, [syncCashAdvanceDeductions]);
+
+  useEffect(() => {
+    if (!hasMountedAttendanceTabSync.current) {
+      hasMountedAttendanceTabSync.current = true;
+      return;
+    }
+    if (activeTab !== 'attendance_sheet') return;
+    syncCashAdvanceDeductions();
+  }, [activeTab, syncCashAdvanceDeductions]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;

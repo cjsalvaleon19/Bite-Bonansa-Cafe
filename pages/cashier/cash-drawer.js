@@ -6,9 +6,12 @@ import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import { calculateSalesBreakdown, UNACCEPTED_ORDER_STATUSES } from '../../utils/salesCalculations';
 import {
+  addSalaryDeductionToPayroll,
   getOutstandingPayrollSubmissions,
   markPayrollSubmissionPaid,
+  getPayrollEmployees,
   PAYROLL_STORAGE_KEY,
+  toDateOnly,
 } from '../../utils/payrollStorage';
 
 export default function CashDrawer() {
@@ -32,6 +35,7 @@ export default function CashDrawer() {
     billNumber: '',
     billReportId: '',
     payrollSubmissionId: '',
+    attendanceEmployeeId: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [cashOnHand, setCashOnHand] = useState(0);
@@ -46,6 +50,7 @@ export default function CashDrawer() {
   const [payrollReports, setPayrollReports] = useState([]);
   const [filteredPayrollReports, setFilteredPayrollReports] = useState([]);
   const [payrollPeriodSearch, setPayrollPeriodSearch] = useState('');
+  const [attendanceEmployees, setAttendanceEmployees] = useState([]);
 
   // Cash Audit tab state
   const [activeTab, setActiveTab] = useState('transactions');
@@ -73,6 +78,7 @@ export default function CashDrawer() {
       const reports = getOutstandingPayrollSubmissions();
       setPayrollReports(reports);
       setFilteredPayrollReports(reports);
+      setAttendanceEmployees(getPayrollEmployees());
     };
     refreshPayrollReports();
     if (typeof window === 'undefined') return undefined;
@@ -472,6 +478,10 @@ export default function CashDrawer() {
       alert('Please select a payroll period');
       return;
     }
+    if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'cash_advance' && !formData.attendanceEmployeeId) {
+      alert('Please select an employee from Attendance Sheet');
+      return;
+    }
 
     // For adjustments, validate admin password
     if (activeModal === 'adjustment') {
@@ -519,7 +529,9 @@ export default function CashDrawer() {
         reference_number: (
           formData.billType === 'payroll' && formData.payrollSubmissionId
             ? formData.payrollSubmissionId
-            : (formData.referenceNumber || null)
+            : (formData.billType === 'cash_advance' && formData.attendanceEmployeeId
+              ? formData.attendanceEmployeeId
+              : (formData.referenceNumber || null))
         ),
         adjustment_reason: formData.reason || null,
         bill_type: formData.billType || null,
@@ -529,11 +541,30 @@ export default function CashDrawer() {
         created_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      const { data: insertedTransaction, error } = await supabase
         .from('cash_drawer_transactions')
-        .insert(transactionData);
+        .insert(transactionData)
+        .select('id')
+        .single();
 
       if (error) throw error;
+
+      if (formData.billType === 'cash_advance' && formData.attendanceEmployeeId) {
+        if (!insertedTransaction?.id) {
+          console.error('[CashDrawer] Cash advance transaction ID missing; skipping local deduction sync.');
+        } else {
+          const deductionResult = addSalaryDeductionToPayroll({
+            employeeId: formData.attendanceEmployeeId,
+            amount: Math.abs(rawAmount),
+            date: toDateOnly(transactionData.created_at),
+            orderId: `cash_advance:${insertedTransaction.id}`,
+            notes: formData.purpose || 'Cash advance from Cash Drawer / Pay Bills',
+          });
+          if (!deductionResult.ok) {
+            console.error('[CashDrawer] Failed to store cash advance deduction in attendance sheet local data.');
+          }
+        }
+      }
 
       // If this is a Driver's Fee payment, mark the delivery report as paid
       if (formData.billType === 'drivers_fee' && formData.billReportId) {
@@ -580,6 +611,7 @@ export default function CashDrawer() {
         billNumber: '',
         billReportId: '',
         payrollSubmissionId: '',
+        attendanceEmployeeId: '',
       });
       setActiveModal(null);
       setCashOutType(null);
@@ -884,6 +916,7 @@ export default function CashDrawer() {
                             setPayrollReports(reports);
                             setFilteredPayrollReports(reports);
                             setPayrollPeriodSearch('');
+                            setAttendanceEmployees(getPayrollEmployees());
                             setFormData({
                               ...formData,
                               billType: e.target.value,
@@ -893,6 +926,7 @@ export default function CashDrawer() {
                               purpose: '',
                               billReportId: '',
                               payrollSubmissionId: '',
+                              attendanceEmployeeId: '',
                             });
                           }}
                           required
@@ -900,6 +934,7 @@ export default function CashDrawer() {
                           <option value="">Select bill type</option>
                           <option value="drivers_fee">Driver's Fee</option>
                           <option value="payroll">Payroll</option>
+                          <option value="cash_advance">Cash Advance</option>
                           <option value="utilities">Utilities</option>
                           <option value="receiving_report">Receiving Report</option>
                           <option value="other">Other</option>
@@ -1011,6 +1046,47 @@ export default function CashDrawer() {
                             <textarea
                               style={{ ...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif" }}
                               placeholder="Payroll payment details"
+                              value={formData.purpose}
+                              onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                            />
+                          </div>
+                        </>
+                      ) : formData.billType === 'cash_advance' ? (
+                        <>
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Payee Name *</label>
+                            <select
+                              style={styles.input}
+                              value={formData.attendanceEmployeeId}
+                              onChange={(e) => {
+                                const selected = attendanceEmployees.find((emp) => emp.id === e.target.value);
+                                setFormData({
+                                  ...formData,
+                                  attendanceEmployeeId: e.target.value,
+                                  payeeName: selected?.name || '',
+                                });
+                              }}
+                              required
+                            >
+                              <option value="">Select employee</option>
+                              {attendanceEmployees.map((emp) => (
+                                <option key={emp.id} value={emp.id}>
+                                  {emp.name}
+                                </option>
+                              ))}
+                            </select>
+                            {attendanceEmployees.length === 0 && (
+                              <p style={{ fontSize: '11px', color: '#ffc107', marginTop: '4px' }}>
+                                No employees found in Attendance Sheet
+                              </p>
+                            )}
+                          </div>
+
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Purpose/Description</label>
+                            <textarea
+                              style={{ ...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif" }}
+                              placeholder="Cash advance details"
                               value={formData.purpose}
                               onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
                             />
