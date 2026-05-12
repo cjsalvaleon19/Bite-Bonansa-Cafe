@@ -60,6 +60,7 @@ export default function CashierPOS() {
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryCoordinates, setDeliveryCoordinates] = useState({ lat: null, lng: null });
   const [deliveryOutOfRange, setDeliveryOutOfRange] = useState(false);
+  const [deliverySearchQuery, setDeliverySearchQuery] = useState('');
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [combinedPayment, setCombinedPayment] = useState(false); // For points + cash/gcash
@@ -98,6 +99,7 @@ export default function CashierPOS() {
       setDeliveryFee(0);
       setDeliveryCoordinates({ lat: null, lng: null });
       setDeliveryOutOfRange(false);
+      setDeliverySearchQuery('');
     }
   }, [orderMode]);
 
@@ -625,6 +627,7 @@ export default function CashierPOS() {
       setPointsToUse(0);
       setCustomerPointsBalance(0);
       setOrderMode('dine-in');
+      setDeliverySearchQuery('');
       setPaymentMethod('cash');
       setCombinedPayment(false);
       setSalaryDeductionEmployeeId('');
@@ -1119,22 +1122,14 @@ export default function CashierPOS() {
                       initialLat={STORE_LOCATION.latitude}
                       initialLng={STORE_LOCATION.longitude}
                       onLocationChange={handleLocationChange}
+                      searchQuery={deliverySearchQuery}
+                      onSearchQueryChange={setDeliverySearchQuery}
                     />
                   </div>
-                  {deliveryCoordinates.lat && deliveryCoordinates.lng && (
-                    <div style={styles.deliveryInfo}>
-                      <p style={styles.deliveryInfoText}>
-                        📍 Selected location: {deliveryCoordinates.lat.toFixed(6)}, {deliveryCoordinates.lng.toFixed(6)}
-                      </p>
-                      <p style={styles.deliveryInfoText}>
-                        💰 Delivery Fee: ₱{deliveryFee.toFixed(2)}
-                      </p>
-                      {deliveryOutOfRange && (
-                        <p style={styles.errorText}>
-                          Delivery is only available within T&apos;boli, South Cotabato (max 5 km from our store).
-                        </p>
-                      )}
-                    </div>
+                  {deliveryOutOfRange && (
+                    <p style={styles.errorText}>
+                      Delivery is only available within T&apos;boli, South Cotabato (max 5 km from our store).
+                    </p>
                   )}
                 </div>
               </>
@@ -1458,18 +1453,6 @@ const styles = {
     overflow: 'hidden',
     border: '1px solid #444',
     marginTop: '8px',
-  },
-  deliveryInfo: {
-    marginTop: '12px',
-    padding: '12px',
-    backgroundColor: '#2a2a2a',
-    borderRadius: '6px',
-    border: '1px solid #444',
-  },
-  deliveryInfoText: {
-    fontSize: '13px',
-    color: '#ccc',
-    margin: '4px 0',
   },
   changeAmountOverlay: {
     position: 'fixed',
