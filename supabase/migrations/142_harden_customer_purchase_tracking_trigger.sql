@@ -16,6 +16,10 @@ DROP FUNCTION IF EXISTS track_customer_item_purchases();
 
 CREATE OR REPLACE FUNCTION track_customer_item_purchases()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_uuid_pattern CONSTANT TEXT := '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$';
+  v_int_pattern CONSTANT TEXT := '^-?\d+$';
+  v_decimal_pattern CONSTANT TEXT := '^\d+(\.\d+)?$';
 BEGIN
   -- Only process first transition into a completed state
   IF NEW.status IN ('order_delivered', 'completed')
@@ -43,15 +47,31 @@ BEGIN
         grouped.menu_item_id,
         grouped.total_quantity,
         grouped.total_price,
-        COALESCE(NEW.completed_at, NEW.created_at, NOW())
+        COALESCE(NEW.completed_at, NEW.created_at)
       FROM (
         SELECT
-          (item->>'id')::UUID AS menu_item_id,
-          SUM(COALESCE(NULLIF(item->>'quantity', '')::INT, 1)) AS total_quantity,
-          SUM(COALESCE(NULLIF(item->>'price', '')::DECIMAL(10,2), 0)) AS total_price
-        FROM jsonb_array_elements(NEW.items) AS item
-        WHERE COALESCE(item->>'id', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-        GROUP BY (item->>'id')::UUID
+          LOWER(valid_items.menu_item_id_text)::UUID AS menu_item_id,
+          SUM(valid_items.quantity) AS total_quantity,
+          SUM(valid_items.price) AS total_price
+        FROM (
+          SELECT
+            item->>'id' AS menu_item_id_text,
+            CASE
+              WHEN COALESCE(item->>'quantity', '') ~ v_int_pattern
+                THEN (item->>'quantity')::INT
+              ELSE 1
+            END
+            AS quantity,
+            CASE
+              WHEN COALESCE(item->>'price', '') ~ v_decimal_pattern
+                THEN (item->>'price')::NUMERIC
+              ELSE 0
+            END
+            AS price
+          FROM jsonb_array_elements(NEW.items) AS item
+          WHERE COALESCE(item->>'id', '') ~ v_uuid_pattern
+        ) AS valid_items
+        GROUP BY valid_items.menu_item_id_text
       ) AS grouped
       ON CONFLICT (customer_id, menu_item_id)
       DO UPDATE SET
@@ -67,7 +87,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE TRIGGER trg_track_customer_purchases
   AFTER INSERT OR UPDATE OF status ON orders
