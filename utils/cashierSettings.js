@@ -1,4 +1,4 @@
-export function isSettingEnabled(settingValue, fallbackValue = true) {
+export function parseSettingAsBoolean(settingValue, fallbackValue = true) {
   if (typeof settingValue === 'boolean') {
     return settingValue
   }
@@ -8,6 +8,8 @@ export function isSettingEnabled(settingValue, fallbackValue = true) {
 
     if (normalizedValue === 'true') return true
     if (normalizedValue === 'false') return false
+
+    console.warn('Unexpected cashier setting value:', settingValue)
   }
 
   return fallbackValue

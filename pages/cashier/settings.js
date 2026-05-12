@@ -6,7 +6,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
 import { connectPrinter, disconnectPrinter, isPrinterConnected, sanitizePaperWidth } from '../../utils/bluetoothPrinter';
-import { isSettingEnabled } from '../../utils/cashierSettings';
+import { parseSettingAsBoolean } from '../../utils/cashierSettings';
 
 const PRINTER_WIDTH_KEY = 'bbc_printer_paper_width';
 const DEFAULT_PAPER_WIDTH = '48';
@@ -73,7 +73,7 @@ export default function CashierSettings() {
 
       if (error) throw error;
 
-      setDeliveryEnabled(isSettingEnabled(data?.setting_value, true));
+      setDeliveryEnabled(parseSettingAsBoolean(data?.setting_value, true));
     } catch (err) {
       console.error('[Settings] Failed to fetch settings:', err?.message ?? err);
     }

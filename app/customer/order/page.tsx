@@ -54,7 +54,7 @@ import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
-import { isSettingEnabled } from '@/utils/cashierSettings'
+import { parseSettingAsBoolean } from '@/utils/cashierSettings'
 
 interface VariantSelectionModalProps {
   item: MenuItem
@@ -253,7 +253,7 @@ function CustomerOrderPage() {
         return
       }
 
-      setDeliveryEnabled(isSettingEnabled(data?.setting_value, true))
+      setDeliveryEnabled(parseSettingAsBoolean(data?.setting_value, true))
     }
     checkDeliveryEnabled()
   }, [])
@@ -277,7 +277,7 @@ function CustomerOrderPage() {
           }
 
           const nextValue = payload.new?.setting_value
-          setDeliveryEnabled(isSettingEnabled(nextValue, true))
+          setDeliveryEnabled(parseSettingAsBoolean(nextValue, true))
         }
       )
       .subscribe()
