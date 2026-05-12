@@ -97,8 +97,8 @@ const buildForceSafeOrderItemsForPurchaseTracking = (items) => {
     }
 
     const existingItem = normalizedItems[existingIndex];
-    const mergedQuantity = toNumericValue(existingItem?.quantity, 0) + toNumericValue(sanitizedItem?.quantity, 0);
-    const mergedPrice = toNumericValue(existingItem?.price, 0) + toNumericValue(sanitizedItem?.price, 0);
+    const mergedQuantity = toNumericValue(existingItem.quantity, 0) + toNumericValue(sanitizedItem.quantity, 0);
+    const mergedPrice = toNumericValue(existingItem.price, 0) + toNumericValue(sanitizedItem.price, 0);
 
     normalizedItems[existingIndex] = {
       ...existingItem,
@@ -626,7 +626,7 @@ export default function OrdersQueue() {
           console.warn('[OrdersQueue] Retry after purchase conflict threw:', retryErr?.message ?? retryErr);
         }
 
-        alert('Failed to complete order. Please contact support so they can apply the latest purchase-tracking fix.');
+        alert('Failed to complete order. Please try again, then contact technical support if this keeps happening.');
         return;
       }
 
