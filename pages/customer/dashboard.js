@@ -6,6 +6,7 @@ import { supabase } from '../../utils/supabaseClient';
 import NotificationBell from '../../components/NotificationBell';
 import { isSundayInManila, SUNDAY_CLOSURE_MESSAGE } from '../../lib/store';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
+import { parseSettingAsBoolean } from '../../utils/cashierSettings';
 
 const SUNDAY_LOGIN_REMINDER_KEY = 'bite-bonanza-sunday-login-reminder';
 const normalizeQuantity = (value) => Math.max(1, Number(value) || 1);
@@ -474,6 +475,36 @@ export default function CustomerDashboard() {
     return statusMap[status] || { label: status, color: '#999', icon: '?' };
   };
 
+  const handleOpenOrderPortal = async () => {
+    if (!supabase) {
+      router.push('/customer/order').catch(console.error);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('cashier_settings')
+        .select('setting_value')
+        .eq('setting_key', 'delivery_enabled')
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const isDeliveryEnabled = parseSettingAsBoolean(data?.setting_value, true);
+      if (isDeliveryEnabled) {
+        setShowDeliveryNoticePopup(false);
+        router.push('/customer/order').catch(console.error);
+        return;
+      }
+
+      setShowDeliveryNoticePopup(true);
+    } catch (err) {
+      console.error('[CustomerDashboard] Failed to fetch delivery setting:', err?.message ?? err);
+      setShowDeliveryNoticePopup(false);
+      router.push('/customer/order').catch(console.error);
+    }
+  };
+
   if (loading) {
     return (
       <div style={styles.center}>
@@ -502,7 +533,7 @@ export default function CustomerDashboard() {
             <button
               type="button"
               style={{ ...styles.navLink, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-              onClick={() => setShowDeliveryNoticePopup(true)}
+              onClick={handleOpenOrderPortal}
             >Order Portal</button>
             <Link href="/customer/order-tracking" style={styles.navLink}>Order Tracking</Link>
             <Link href="/customer/profile" style={styles.navLink}>My Profile</Link>
@@ -541,7 +572,7 @@ export default function CustomerDashboard() {
             <button
               type="button"
               style={{ ...styles.actionCard, background: 'none', border: '1px solid rgba(255,193,7,0.2)', cursor: 'pointer', textAlign: 'left' }}
-              onClick={() => setShowDeliveryNoticePopup(true)}
+              onClick={handleOpenOrderPortal}
             >
               <span style={styles.cardIcon}>🍽️</span>
               <h3 style={styles.cardTitle}>Order Now</h3>
