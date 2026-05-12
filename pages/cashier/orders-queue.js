@@ -491,7 +491,27 @@ export default function OrdersQueue() {
         return;
       }
 
-      console.error('[OrdersQueue] Failed to complete pickup order:', errMsg);
+      // For any other unexpected DB error (e.g. a syntax error in a trigger
+      // function, code 42601), verify whether the status update actually
+      // committed before deciding how to respond.
+      console.warn('[OrdersQueue] Unexpected error completing pickup order:', errMsg);
+      try {
+        const { data: currentOrder } = await supabase
+          .from('orders')
+          .select('status')
+          .eq('id', order.id)
+          .single();
+
+        if (currentOrder?.status === 'order_delivered') {
+          // The status was saved — secondary trigger errors are non-fatal
+          fetchOrders();
+          alert('Order marked as complete!');
+          return;
+        }
+      } catch (fetchErr) {
+        console.warn('[OrdersQueue] Could not verify order status after error:', fetchErr);
+      }
+
       alert('Failed to update order status. Please try again.');
     }
   };
