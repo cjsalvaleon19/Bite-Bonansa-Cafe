@@ -107,6 +107,20 @@ const buildForceSafeOrderItemsForPurchaseTracking = (items) => {
   return normalizedItems;
 };
 
+// Compare two item arrays by serialising to JSON.
+// Returns true when forceSafeItems is different from originalItems, meaning
+// the normalization deduped or re-cased at least one UUID and it is worth
+// retrying with the cleaned payload.
+const itemsChangedAfterNormalization = (originalItems, forceSafeItems) => {
+  if (!Array.isArray(originalItems) || !Array.isArray(forceSafeItems)) {
+    return false;
+  }
+  if (originalItems.length !== forceSafeItems.length) {
+    return true;
+  }
+  return JSON.stringify(originalItems) !== JSON.stringify(forceSafeItems);
+};
+
 export default function OrdersQueue() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
@@ -268,15 +282,39 @@ export default function OrdersQueue() {
       }
 
       // Check if error is from purchase tracking trigger (ON CONFLICT DO UPDATE).
-      // Migration 145 closes the mixed-case UUID grouping edge case, but keep this
-      // guard for environments with partially applied SQL migrations.
+      // When the production trigger lacks exception handling the trigger error
+      // rolls back the whole UPDATE — the order may NOT have been completed.
+      // Verify actual status before deciding whether to surface a failure.
+      // Apply supabase/migrations/147_for_loop_purchase_tracking_trigger.sql
+      // to permanently fix the trigger in production.
       const isPurchaseTrackingConflict = errMsg.includes('ON CONFLICT DO UPDATE') ||
                                           errMsg.includes('cannot affect row a second time');
 
       if (isPurchaseTrackingConflict) {
-        console.warn('[OrdersQueue] Purchase tracking conflict during item-served completion:', errMsg);
-        // Refresh orders list - the order status update likely succeeded
-        fetchOrders();
+        console.warn(
+          '[OrdersQueue] Purchase tracking conflict during item-served completion:',
+          errMsg,
+          '— verifying order status. Apply migration 147 to fix permanently.'
+        );
+        try {
+          const { data: currentOrder } = await supabase
+            .from('orders')
+            .select('status')
+            .eq('id', orderId)
+            .single();
+
+          if (currentOrder?.status === 'order_delivered') {
+            fetchOrders();
+            return;
+          }
+        } catch (fetchErr) {
+          console.warn('[OrdersQueue] Could not verify order status after conflict:', fetchErr);
+        }
+
+        // Order was not completed — the trigger error rolled back the UPDATE.
+        alert('Could not complete the order (purchase tracking error). Please apply\n' +
+              'supabase/migrations/147_for_loop_purchase_tracking_trigger.sql\n' +
+              'to your Supabase project, then try again.');
         return;
       }
       
@@ -592,38 +630,53 @@ export default function OrdersQueue() {
           console.warn('[OrdersQueue] Could not fetch order status after conflict:', fetchErr);
         }
 
-        // Force-safe fallback: sanitize + deduplicate item UUIDs and retry completion once.
-        // This protects older DB trigger versions that still fail when duplicate item IDs
-        // appear in the payload during ON CONFLICT purchase upsert.
-        try {
-          const forceSafeItems = buildForceSafeOrderItemsForPurchaseTracking(order?.items);
-          const retryPayload = {
-            status: 'order_delivered',
-            completed_at: new Date().toISOString()
-          };
+        // Force-safe fallback: sanitize + deduplicate item UUIDs and retry once.
+        // Only useful when the normalization actually CHANGED something (i.e. the
+        // items had mixed-case or duplicate UUIDs that caused the trigger to fail).
+        // When items were already clean, retrying with the same data would just
+        // hit the same broken trigger and produce another 500 — so we skip it.
+        // Apply supabase/migrations/147_for_loop_purchase_tracking_trigger.sql to
+        // fix the DB trigger permanently.
+        const forceSafeItems = buildForceSafeOrderItemsForPurchaseTracking(order?.items);
+        const retryWillHelp = itemsChangedAfterNormalization(order?.items, forceSafeItems);
 
-          // Only attach items when we have a valid array to avoid writing null/invalid payloads.
-          if (Array.isArray(forceSafeItems)) {
-            retryPayload.items = forceSafeItems;
+        if (retryWillHelp) {
+          try {
+            const retryPayload = {
+              status: 'order_delivered',
+              completed_at: new Date().toISOString(),
+              items: forceSafeItems,
+            };
+
+            const { error: retryError } = await supabase
+              .from('orders')
+              .update(retryPayload)
+              .eq('id', order.id);
+
+            if (!retryError) {
+              fetchOrders();
+              alert('Order marked as complete!');
+              return;
+            }
+
+            console.warn('[OrdersQueue] Retry after purchase conflict failed:', retryError?.message ?? retryError);
+          } catch (retryErr) {
+            console.warn('[OrdersQueue] Retry after purchase conflict threw:', retryErr?.message ?? retryErr);
           }
-
-          const { error: retryError } = await supabase
-            .from('orders')
-            .update(retryPayload)
-            .eq('id', order.id);
-
-          if (!retryError) {
-            fetchOrders();
-            alert('Order marked as complete!');
-            return;
-          }
-
-          console.warn('[OrdersQueue] Retry after purchase conflict failed:', retryError?.message ?? retryError);
-        } catch (retryErr) {
-          console.warn('[OrdersQueue] Retry after purchase conflict threw:', retryErr?.message ?? retryErr);
+        } else {
+          console.warn(
+            '[OrdersQueue] Skipping retry — items already normalised, trigger is broken.',
+            'Apply supabase/migrations/147_for_loop_purchase_tracking_trigger.sql to fix.'
+          );
         }
 
-        alert('Failed to complete order after automatic retry. Please try again or contact technical support.');
+        alert(
+          'Could not complete this order.\n\n' +
+          'The database purchase-tracking trigger needs to be updated.\n' +
+          'Please ask your technical team to apply:\n' +
+          '  supabase/migrations/147_for_loop_purchase_tracking_trigger.sql\n\n' +
+          'See supabase/migrations/RUN_MIGRATION_147.md for instructions.'
+        );
         return;
       }
 
