@@ -285,7 +285,7 @@ export default function OrdersQueue() {
       // When the production trigger lacks exception handling the trigger error
       // rolls back the whole UPDATE — the order may NOT have been completed.
       // Verify actual status before deciding whether to surface a failure.
-      // Apply supabase/migrations/147_for_loop_purchase_tracking_trigger.sql
+      // Apply supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql
       // to permanently fix the trigger in production.
       const isPurchaseTrackingConflict = errMsg.includes('ON CONFLICT DO UPDATE') ||
                                           errMsg.includes('cannot affect row a second time');
@@ -294,7 +294,7 @@ export default function OrdersQueue() {
         console.warn(
           '[OrdersQueue] Purchase tracking conflict during item-served completion:',
           errMsg,
-          '— verifying order status. Apply migration 147 to fix permanently.'
+          '— verifying order status. Apply migration 149 to fix permanently.'
         );
         try {
           const { data: currentOrder } = await supabase
@@ -313,7 +313,7 @@ export default function OrdersQueue() {
 
         // Order was not completed — the trigger error rolled back the UPDATE.
         alert('Could not complete the order (purchase tracking error). Please apply\n' +
-              'supabase/migrations/147_for_loop_purchase_tracking_trigger.sql\n' +
+              'supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n' +
               'to your Supabase project, then try again.');
         return;
       }
@@ -635,8 +635,8 @@ export default function OrdersQueue() {
         // items had mixed-case or duplicate UUIDs that caused the trigger to fail).
         // When items were already clean, retrying with the same data would just
         // hit the same broken trigger and produce another 500 — so we skip it.
-        // Apply supabase/migrations/147_for_loop_purchase_tracking_trigger.sql to
-        // fix the DB trigger permanently.
+        // Apply supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql
+        // to fix the DB trigger permanently.
         const forceSafeItems = buildForceSafeOrderItemsForPurchaseTracking(order?.items);
         const retryWillHelp = itemsChangedAfterNormalization(order?.items, forceSafeItems);
 
@@ -666,7 +666,7 @@ export default function OrdersQueue() {
         } else {
           console.warn(
             '[OrdersQueue] Skipping retry — items already normalised, trigger is broken.',
-            'Apply supabase/migrations/147_for_loop_purchase_tracking_trigger.sql to fix.'
+            'Apply supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql to fix.'
           );
         }
 
@@ -674,8 +674,8 @@ export default function OrdersQueue() {
           'Could not complete this order.\n\n' +
           'The database purchase-tracking trigger needs to be updated.\n' +
           'Please ask your technical team to apply:\n' +
-          '  supabase/migrations/147_for_loop_purchase_tracking_trigger.sql\n\n' +
-          'See supabase/migrations/RUN_MIGRATION_147.md for instructions.'
+          '  supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql\n\n' +
+          'See supabase/migrations/RUN_MIGRATION_149.md for instructions.'
         );
         return;
       }
