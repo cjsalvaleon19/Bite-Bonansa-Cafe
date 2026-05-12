@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../utils/supabaseClient';
@@ -9,6 +9,60 @@ export default function CustomerMenu() {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [menuItems, setMenuItems] = useState([]);
+  const [variantCountMap, setVariantCountMap] = useState({});
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+
+  // Derived: unique category list
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(menuItems.map((item) => item.category).filter(Boolean))).sort();
+    return ['All', ...cats];
+  }, [menuItems]);
+
+  // Derived: filtered items based on search and category
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return menuItems.filter((item) => {
+      const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
+      const matchesSearch = !q || item.name.toLowerCase().includes(q) || (item.category || '').toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [menuItems, searchQuery, selectedCategory]);
+
+  const fetchMenuItems = async () => {
+    if (!supabase) return;
+    setMenuLoading(true);
+    try {
+      const [itemsResult, variantTypesResult] = await Promise.all([
+        supabase
+          .from('menu_items')
+          .select('id, name, price, category, has_variants')
+          .eq('available', true)
+          .order('category'),
+        supabase
+          .from('menu_item_variant_types')
+          .select('menu_item_id'),
+      ]);
+
+      if (itemsResult.data) {
+        setMenuItems(itemsResult.data);
+      }
+
+      if (variantTypesResult.data) {
+        const countMap = {};
+        variantTypesResult.data.forEach(({ menu_item_id }) => {
+          countMap[menu_item_id] = (countMap[menu_item_id] || 0) + 1;
+        });
+        setVariantCountMap(countMap);
+      }
+    } catch (err) {
+      console.error('[CustomerMenu] Failed to fetch menu items:', err?.message ?? err);
+    } finally {
+      setMenuLoading(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -65,6 +119,7 @@ export default function CustomerMenu() {
         }
 
         setLoading(false);
+        fetchMenuItems();
       } catch (err) {
         console.error('[CustomerMenu] Session check failed:', err?.message ?? err);
         if (mounted) {
@@ -116,7 +171,7 @@ export default function CustomerMenu() {
   return (
     <>
       <Head>
-        <title>Menu - Bite Bonansa Cafe</title>
+        <title>Menu Items - Bite Bonansa Cafe</title>
         <meta name="description" content="Browse our menu and place orders" />
       </Head>
       <div style={styles.page}>
@@ -134,17 +189,63 @@ export default function CustomerMenu() {
         </header>
 
         <main style={styles.main}>
-          <h2 style={styles.title}>🍽️ Our Menu</h2>
-          
-          <div style={styles.content}>
-            <div style={styles.emptyState}>
-              <span style={styles.emptyIcon}>🍕</span>
-              <p style={styles.emptyText}>Menu items coming soon</p>
-              <p style={styles.emptySubtext}>
-                Check back later to see our delicious offerings
+          <h2 style={styles.title}>Menu Items</h2>
+
+          {/* Search bar */}
+          <input
+            type="text"
+            placeholder="🔍 Search items..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={styles.searchInput}
+          />
+
+          {/* Category filter buttons */}
+          <div style={styles.categoriesRow}>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                style={selectedCategory === cat ? styles.categoryBtnActive : styles.categoryBtn}
+                onClick={() => setSelectedCategory(cat)}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Items grid */}
+          {menuLoading ? (
+            <div style={styles.loadingState}>
+              <p style={{ color: '#ffc107', fontFamily: "'Poppins', sans-serif", fontSize: '14px' }}>
+                ⏳ Loading menu…
               </p>
             </div>
-          </div>
+          ) : filteredItems.length > 0 ? (
+            <div style={styles.itemsGrid}>
+              {filteredItems.map((item) => {
+                const variantCount = variantCountMap[item.id] || 0;
+                return (
+                  <div key={item.id} style={styles.itemCard}>
+                    <h4 style={styles.itemName}>{item.name}</h4>
+                    <p style={styles.itemCategory}>{item.category}</p>
+                    <p style={styles.itemPrice}>₱{item.price?.toFixed(2) ?? '0.00'}</p>
+                    {variantCount > 0 && (
+                      <span style={styles.variantBadge}>⚙ {variantCount} variant{variantCount !== 1 ? 's' : ''}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={styles.emptyState}>
+              <span style={styles.emptyIcon}>🍕</span>
+              <p style={styles.emptyText}>No items found</p>
+              <p style={styles.emptySubtext}>
+                {searchQuery ? 'Try a different search term or category.' : 'Check back later for our offerings.'}
+              </p>
+            </div>
+          )}
         </main>
       </div>
     </>
@@ -208,15 +309,114 @@ const styles = {
     maxWidth: '1200px',
     margin: '0 auto',
   },
+  // "Menu Items" heading: Playfair Display, 32px, #ffc107, left-aligned
   title: {
     fontSize: '32px',
     fontFamily: "'Playfair Display', serif",
     color: '#ffc107',
-    marginBottom: '32px',
-    textAlign: 'center',
+    marginBottom: '24px',
+    textAlign: 'left',
   },
-  content: {
-    minHeight: '400px',
+  // Search bar: Poppins, 14px, dark bg, muted placeholder
+  searchInput: {
+    width: '100%',
+    padding: '14px 18px',
+    backgroundColor: '#1a1a1a',
+    color: '#ccc',
+    border: '1px solid #333',
+    borderRadius: '10px',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
+    marginBottom: '20px',
+    outline: 'none',
+    boxSizing: 'border-box',
+  },
+  // Category filter row
+  categoriesRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+    marginBottom: '28px',
+  },
+  // Inactive category button: dark bg, yellow border + yellow text, Poppins 14px
+  categoryBtn: {
+    padding: '8px 18px',
+    backgroundColor: 'transparent',
+    color: '#ffc107',
+    border: '1px solid #ffc107',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
+    cursor: 'pointer',
+  },
+  // Active category button: yellow bg, black text, Poppins 14px bold
+  categoryBtnActive: {
+    padding: '8px 18px',
+    backgroundColor: '#ffc107',
+    color: '#000',
+    border: '1px solid #ffc107',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
+    cursor: 'pointer',
+    fontWeight: '600',
+  },
+  // 3-column responsive grid
+  itemsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+    gap: '20px',
+  },
+  // Item card: dark bg, yellow border, rounded
+  itemCard: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: '12px',
+    padding: '18px',
+    border: '1px solid #ffc107',
+    color: '#fff',
+    textAlign: 'left',
+  },
+  // Item name: Poppins, 600, white, 16px
+  itemName: {
+    fontSize: '16px',
+    fontWeight: '600',
+    fontFamily: "'Poppins', sans-serif",
+    color: '#fff',
+    margin: '0 0 6px 0',
+  },
+  // Item category label: Poppins, 14px, muted gray #888
+  itemCategory: {
+    fontSize: '14px',
+    fontFamily: "'Poppins', sans-serif",
+    color: '#888',
+    margin: '0 0 10px 0',
+  },
+  // Item price: Poppins, bold, #ffc107, 18px
+  itemPrice: {
+    fontSize: '18px',
+    fontWeight: 'bold',
+    fontFamily: "'Poppins', sans-serif",
+    color: '#ffc107',
+    margin: '0 0 12px 0',
+  },
+  // Variants badge: small, dark bg, yellow border + text, 12px
+  variantBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '5px',
+    padding: '4px 10px',
+    backgroundColor: 'transparent',
+    border: '1px solid #ffc107',
+    borderRadius: '6px',
+    color: '#ffc107',
+    fontSize: '12px',
+    fontFamily: "'Poppins', sans-serif",
+  },
+  loadingState: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '60px 20px',
   },
   emptyState: {
     display: 'flex',

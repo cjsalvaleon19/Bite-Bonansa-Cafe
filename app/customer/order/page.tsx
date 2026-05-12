@@ -1327,12 +1327,6 @@ function CustomerOrderPage() {
                       <span style={{ fontSize: '15px', fontWeight: '700', color: '#ffc107', whiteSpace: 'nowrap' }}>{priceLabel}</span>
                     </div>
 
-                    {item.description && (
-                      <p className="mt-1 text-xs sm:text-sm line-clamp-2" style={{ color: '#888888' }}>
-                        {item.description}
-                      </p>
-                    )}
-
                     {/* Variant badge indicator */}
                     {hasVariants && (
                       <div className="mt-2">
@@ -1375,19 +1369,6 @@ function CustomerOrderPage() {
                       </>
                     )}
 
-                    <div className="mt-3">
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openItemDialog(item)
-                        }}
-                      >
-                        <Plus className="mr-1 h-4 w-4" />
-                        {(hasOptions || hasVariants) ? 'Select Options' : 'Add to Cart'}
-                      </Button>
-                    </div>
                   </CardContent>
                 </Card>
               )
