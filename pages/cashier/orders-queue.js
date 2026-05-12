@@ -168,9 +168,9 @@ export default function OrdersQueue() {
         return;
       }
 
-      // Check if error is from purchase tracking trigger (ON CONFLICT DO UPDATE)
-      // After migration 142 the trigger has an exception handler so this should
-      // not occur anymore, but guard defensively.
+      // Check if error is from purchase tracking trigger (ON CONFLICT DO UPDATE).
+      // Migration 145 closes the mixed-case UUID grouping edge case, but keep this
+      // guard for environments with partially applied SQL migrations.
       const isPurchaseTrackingConflict = errMsg.includes('ON CONFLICT DO UPDATE') ||
                                           errMsg.includes('cannot affect row a second time');
 
