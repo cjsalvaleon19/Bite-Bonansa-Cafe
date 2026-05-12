@@ -154,19 +154,34 @@ export default function OrdersQueue() {
 
       fetchOrders();
     } catch (err) {
+      const errMsg = err?.message ?? '';
+
       // Check if error is due to duplicate loyalty transaction
       // This shouldn't happen after migration 082, but handle gracefully just in case
-      const isDuplicateLoyalty = err?.message?.includes('unique_loyalty_per_order') ||
+      const isDuplicateLoyalty = errMsg.includes('unique_loyalty_per_order') ||
                                   err?.code === '23505'; // PostgreSQL unique violation code
       
       if (isDuplicateLoyalty) {
-        console.warn('[OrdersQueue] Loyalty points conflict (likely already awarded):', err.message);
+        console.warn('[OrdersQueue] Loyalty points conflict (likely already awarded):', errMsg);
         // Refresh orders list - the operation likely succeeded despite the error
         fetchOrders();
         return;
       }
+
+      // Check if error is from purchase tracking trigger (ON CONFLICT DO UPDATE).
+      // Migration 145 closes the mixed-case UUID grouping edge case, but keep this
+      // guard for environments with partially applied SQL migrations.
+      const isPurchaseTrackingConflict = errMsg.includes('ON CONFLICT DO UPDATE') ||
+                                          errMsg.includes('cannot affect row a second time');
+
+      if (isPurchaseTrackingConflict) {
+        console.warn('[OrdersQueue] Purchase tracking conflict during item-served completion:', errMsg);
+        // Refresh orders list - the order status update likely succeeded
+        fetchOrders();
+        return;
+      }
       
-      console.error('[OrdersQueue] Failed to mark item as served:', err?.message ?? err);
+      console.error('[OrdersQueue] Failed to mark item as served:', errMsg);
       alert('Failed to update item status. Please try again.');
     }
   };
@@ -476,7 +491,27 @@ export default function OrdersQueue() {
         return;
       }
 
-      console.error('[OrdersQueue] Failed to complete pickup order:', errMsg);
+      // For any other unexpected DB error (e.g. a syntax error in a trigger
+      // function, code 42601), verify whether the status update actually
+      // committed before deciding how to respond.
+      console.warn('[OrdersQueue] Unexpected error completing pickup order:', errMsg);
+      try {
+        const { data: currentOrder } = await supabase
+          .from('orders')
+          .select('status')
+          .eq('id', order.id)
+          .single();
+
+        if (currentOrder?.status === 'order_delivered') {
+          // The status was saved — secondary trigger errors are non-fatal
+          fetchOrders();
+          alert('Order marked as complete!');
+          return;
+        }
+      } catch (fetchErr) {
+        console.warn('[OrdersQueue] Could not verify order status after error:', fetchErr);
+      }
+
       alert('Failed to update order status. Please try again.');
     }
   };
