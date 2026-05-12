@@ -149,8 +149,8 @@ export default function EndOfDayReport() {
       if (acceptedQueueByAcceptedAtError) throw acceptedQueueByAcceptedAtError;
 
       const orderMap = new Map();
-      [acceptedByCreatedAt, acceptedByAcceptedAt, acceptedQueueByCreatedAt, acceptedQueueByAcceptedAt].forEach((orderGroup) => {
-        (orderGroup || []).forEach((order) => {
+      [acceptedByCreatedAt, acceptedByAcceptedAt, acceptedQueueByCreatedAt, acceptedQueueByAcceptedAt].forEach((queryResult) => {
+        (queryResult || []).forEach((order) => {
           orderMap.set(order.id, order);
         });
       });
