@@ -9,7 +9,7 @@ export function parseSettingAsBoolean(settingValue, fallbackValue = true) {
     if (normalizedValue === 'true') return true
     if (normalizedValue === 'false') return false
 
-    console.warn('Unexpected cashier setting value:', settingValue)
+    console.warn('Unexpected cashier setting value:', settingValue, '- using fallback:', fallbackValue)
   }
 
   return fallbackValue
