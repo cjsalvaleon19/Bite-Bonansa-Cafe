@@ -13,19 +13,14 @@ import { getOrderSlipNumber } from '../../utils/receiptDepartments';
 // Set to true to allow assignment with warnings, false to require profile completion.
 const DEFAULT_FALLBACK_AVAILABILITY = true;
 const normalizeOrderMode = (orderMode) => String(orderMode || '').trim().toLowerCase();
-const isPickupMode = (orderMode) => {
+const isOrderMode = (orderMode, allowedModes) => {
   const normalizedMode = normalizeOrderMode(orderMode);
-  return normalizedMode === 'pick-up' || normalizedMode === 'pickup';
+  return allowedModes.includes(normalizedMode);
 };
-const isTakeOutMode = (orderMode) => {
-  const normalizedMode = normalizeOrderMode(orderMode);
-  return normalizedMode === 'take-out' || normalizedMode === 'takeout';
-};
-const isDineInMode = (orderMode) => {
-  const normalizedMode = normalizeOrderMode(orderMode);
-  return normalizedMode === 'dine-in' || normalizedMode === 'dinein';
-};
-const isDeliveryMode = (orderMode) => normalizeOrderMode(orderMode) === 'delivery';
+const isPickupMode = (orderMode) => isOrderMode(orderMode, ['pick-up', 'pickup']);
+const isTakeOutMode = (orderMode) => isOrderMode(orderMode, ['take-out', 'takeout']);
+const isDineInMode = (orderMode) => isOrderMode(orderMode, ['dine-in', 'dinein']);
+const isDeliveryMode = (orderMode) => isOrderMode(orderMode, ['delivery']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const toNumericValue = (value, fallback = 0) => {
@@ -829,10 +824,12 @@ export default function OrdersQueue() {
     ? orders
     : orders.filter(order => {
         const normalizedFilterMode = normalizeOrderMode(filterMode);
+        const normalizedOrderMode = normalizeOrderMode(order.order_mode);
+
         if (normalizedFilterMode === 'pick-up' || normalizedFilterMode === 'pickup') {
-          return isPickupMode(order.order_mode);
+          return normalizedOrderMode === 'pick-up' || normalizedOrderMode === 'pickup';
         }
-        return normalizeOrderMode(order.order_mode) === normalizedFilterMode;
+        return normalizedOrderMode === normalizedFilterMode;
       });
 
   // Memoize check for riders with incomplete profiles to avoid unnecessary re-computation
