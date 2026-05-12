@@ -407,6 +407,10 @@ export default function CashierPOS() {
       alert('Please add items to the cart');
       return;
     }
+    if (orderMode === 'delivery' && (!deliveryCoordinates.lat || !deliveryCoordinates.lng)) {
+      alert('Please pin the delivery location on the map before checking out.');
+      return;
+    }
     if (orderMode === 'delivery' && deliveryOutOfRange) {
       alert('Delivery is only available within T\'boli, South Cotabato (max 5 km from our store).');
       return;
@@ -742,7 +746,7 @@ export default function CashierPOS() {
             <p>Name  : ${customerName}</p>
             ${customerPhone && customerPhone !== 'N/A' ? `<p>Phone : ${customerPhone}</p>` : ''}
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
-            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
+            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Landmark:</strong> ${order.delivery_address}</p>` : ''}
           </div>
           
           <p class="section-title">ITEMS ORDERED</p>
@@ -1099,17 +1103,17 @@ export default function CashierPOS() {
             {orderMode === 'delivery' && (
               <>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Delivery Address *</label>
+                  <label style={styles.label}>Landmark *</label>
                   <textarea
                     style={{ ...styles.input, minHeight: '60px' }}
-                    placeholder="Enter delivery address"
+                    placeholder="Enter landmark"
                     value={customerInfo.address}
                     onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
                     required
                   />
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Pin Delivery Location on Map</label>
+                  <label style={styles.label}>Pin Delivery Location on Map *</label>
                   <div style={styles.mapContainer}>
                     <OpenStreetMapPicker
                       initialLat={STORE_LOCATION.latitude}
@@ -1334,9 +1338,9 @@ export default function CashierPOS() {
             <div style={styles.cartActions}>
               <button style={styles.clearBtn} onClick={clearCart} disabled={items.length === 0}>Clear</button>
               <button
-                style={{ ...styles.checkoutBtn, opacity: items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange) ? 0.6 : 1 }}
+                style={{ ...styles.checkoutBtn, opacity: items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange) || (orderMode === 'delivery' && (!deliveryCoordinates.lat || !deliveryCoordinates.lng)) ? 0.6 : 1 }}
                 onClick={handleCheckout}
-                disabled={items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange)}
+                disabled={items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange) || (orderMode === 'delivery' && (!deliveryCoordinates.lat || !deliveryCoordinates.lng))}
               >
                 {checkoutLoading ? '⏳ Processing…' : '✔ Checkout'}
               </button>
