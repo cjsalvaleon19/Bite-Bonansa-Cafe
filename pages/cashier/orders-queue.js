@@ -53,6 +53,55 @@ const normalizeOrderItemsForPurchaseTracking = (items) => {
   };
 };
 
+const toNumericValue = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const buildForceSafeOrderItemsForPurchaseTracking = (items) => {
+  if (!Array.isArray(items) || items.length === 0) {
+    return items;
+  }
+
+  const normalizedItems = [];
+  const itemIndexById = new Map();
+
+  items.forEach((item) => {
+    if (!item || typeof item !== 'object' || typeof item.id !== 'string') {
+      normalizedItems.push(item);
+      return;
+    }
+
+    const trimmedId = item.id.trim();
+    if (!UUID_PATTERN.test(trimmedId)) {
+      normalizedItems.push(trimmedId === item.id ? item : { ...item, id: trimmedId });
+      return;
+    }
+
+    const normalizedId = trimmedId.toLowerCase();
+    const sanitizedItem = normalizedId === item.id ? item : { ...item, id: normalizedId };
+    const existingIndex = itemIndexById.get(normalizedId);
+
+    if (existingIndex === undefined) {
+      itemIndexById.set(normalizedId, normalizedItems.length);
+      normalizedItems.push(sanitizedItem);
+      return;
+    }
+
+    const existingItem = normalizedItems[existingIndex];
+    const mergedQuantity = toNumericValue(existingItem?.quantity, 1) + toNumericValue(sanitizedItem?.quantity, 1);
+    const mergedPrice = toNumericValue(existingItem?.price, 0) + toNumericValue(sanitizedItem?.price, 0);
+
+    normalizedItems[existingIndex] = {
+      ...existingItem,
+      quantity: mergedQuantity,
+      price: mergedPrice,
+    };
+  });
+
+  return normalizedItems;
+};
+
 export default function OrdersQueue() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
@@ -537,8 +586,38 @@ export default function OrdersQueue() {
         } catch (fetchErr) {
           console.warn('[OrdersQueue] Could not fetch order status after conflict:', fetchErr);
         }
-        // Order was NOT completed - ask user to retry
-        alert('Failed to complete order. Please try again. If the problem persists, contact support.');
+
+        // Force-safe fallback: sanitize + deduplicate item UUIDs and retry completion once.
+        // This protects older DB trigger versions that still fail when duplicate item IDs
+        // appear in the payload during ON CONFLICT purchase upsert.
+        try {
+          const forceSafeItems = buildForceSafeOrderItemsForPurchaseTracking(order?.items);
+          const retryPayload = {
+            status: 'order_delivered',
+            completed_at: new Date().toISOString()
+          };
+
+          if (Array.isArray(forceSafeItems)) {
+            retryPayload.items = forceSafeItems;
+          }
+
+          const { error: retryError } = await supabase
+            .from('orders')
+            .update(retryPayload)
+            .eq('id', order.id);
+
+          if (!retryError) {
+            fetchOrders();
+            alert('Order marked as complete!');
+            return;
+          }
+
+          console.warn('[OrdersQueue] Retry after purchase conflict failed:', retryError?.message ?? retryError);
+        } catch (retryErr) {
+          console.warn('[OrdersQueue] Retry after purchase conflict threw:', retryErr?.message ?? retryErr);
+        }
+
+        alert('Failed to complete order. Please apply latest purchase-tracking migration and try again.');
         return;
       }
 
