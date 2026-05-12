@@ -1,5 +1,26 @@
 # Migration 150: When 149 is already applied but 500 still occurs
 
+---
+
+## 🚫 DO NOT paste text from THIS file into the SQL Editor
+
+**This is a documentation file (`.md`). SQL code shown here is wrapped in**
+**markdown code fences (` ``` `). If you paste from this file you will get:**
+
+```
+ERROR: 42601: syntax error at or near "```"
+```
+
+**To apply this migration, open and copy from the actual SQL file:**
+
+```
+supabase/migrations/150_force_cleanup_purchase_tracking_triggers.sql
+```
+
+Open it in **VS Code, Notepad, or any plain text editor** → Select All → Copy → paste into Supabase SQL Editor.
+
+---
+
 Use this only if:
 - You already applied `149_jsonb_extract_path_text_purchase_tracking.sql`, **and**
 - Completing orders still returns HTTP 500 with:

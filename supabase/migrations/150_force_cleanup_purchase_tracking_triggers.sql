@@ -1,6 +1,10 @@
 -- ============================================================================
 -- Migration 150: Force-cleanup lingering purchase-tracking triggers on orders
 -- ============================================================================
+-- ✅ THIS IS THE FILE TO PASTE INTO THE SUPABASE SQL EDITOR.
+--    Do NOT paste from RUN_MIGRATION_150.md — that file contains markdown
+--    code fences (```) which cause: ERROR: syntax error at or near "```"
+-- ============================================================================
 -- Use this when migration 149 has already been applied, but order completion
 -- still fails with:
 --   ON CONFLICT DO UPDATE command cannot affect row a second time

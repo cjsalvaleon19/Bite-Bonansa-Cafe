@@ -1,5 +1,26 @@
 # Migration 149: Permanent Fix — `jsonb_extract_path_text()` (URGENT)
 
+---
+
+## 🚫 DO NOT paste text from THIS file into the SQL Editor
+
+**This is a documentation file (`.md`). SQL code shown here is wrapped in**
+**markdown code fences (` ``` `). If you paste from this file you will get:**
+
+```
+ERROR: 42601: syntax error at or near "```"
+```
+
+**To apply this migration, open and copy from the actual SQL file:**
+
+```
+supabase/migrations/149_jsonb_extract_path_text_purchase_tracking.sql
+```
+
+Open it in **VS Code, Notepad, or any plain text editor** → Select All → Copy → paste into Supabase SQL Editor.
+
+---
+
 ## ⚠️ Apply This Migration Now
 
 Migrations 147 and 148 were **both** corrupted when applied via copy-paste from
