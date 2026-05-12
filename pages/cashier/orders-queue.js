@@ -12,7 +12,21 @@ import { getOrderSlipNumber } from '../../utils/receiptDepartments';
 // this determines their default availability status for emergency assignments.
 // Set to true to allow assignment with warnings, false to require profile completion.
 const DEFAULT_FALLBACK_AVAILABILITY = true;
-const isPickupMode = (orderMode) => orderMode === 'pick-up' || orderMode === 'pickup';
+const normalizeOrderMode = (orderMode) => String(orderMode || '').trim().toLowerCase();
+const isOrderMode = (orderMode, allowedModes) => {
+  const normalizedMode = normalizeOrderMode(orderMode);
+  return allowedModes.includes(normalizedMode);
+};
+const isPickupMode = (orderMode) => isOrderMode(orderMode, ['pick-up', 'pickup']);
+const isTakeOutMode = (orderMode) => isOrderMode(orderMode, ['take-out', 'takeout']);
+const isDineInMode = (orderMode) => isOrderMode(orderMode, ['dine-in', 'dinein']);
+const isDeliveryMode = (orderMode) => isOrderMode(orderMode, ['delivery']);
+const normalizeOrderStatus = (status) => String(status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+const isQueueActionableStatus = (status) => {
+  const normalizedStatus = normalizeOrderStatus(status);
+  return ['order_in_queue', 'order_in_process', 'proceed_to_cashier'].includes(normalizedStatus);
+};
+const isOutForDeliveryStatus = (status) => normalizeOrderStatus(status) === 'out_for_delivery';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const toNumericValue = (value, fallback = 0) => {
@@ -168,15 +182,15 @@ export default function OrdersQueue() {
         const allItemsServed = orderItems.length > 0 && orderItems.every(item => item.served);
         
         // Exclude orders where all items are served (they should be completed)
-        if (allItemsServed && (order.order_mode === 'dine-in' || order.order_mode === 'take-out')) {
+        if (allItemsServed && (isDineInMode(order.order_mode) || isTakeOutMode(order.order_mode))) {
           return false;
         }
         
-        if (order.status === 'order_in_queue' || order.status === 'order_in_process' || order.status === 'proceed_to_cashier') {
+        if (isQueueActionableStatus(order.status)) {
           return true;
         }
         // Only show pick-up and take-out orders in out_for_delivery status
-        return order.status === 'out_for_delivery' && (isPickupMode(order.order_mode) || order.order_mode === 'take-out');
+        return isOutForDeliveryStatus(order.status) && (isPickupMode(order.order_mode) || isTakeOutMode(order.order_mode));
       });
 
       setOrders(filteredOrders);
@@ -815,8 +829,13 @@ export default function OrdersQueue() {
   const filteredOrders = filterMode === 'all'
     ? orders
     : orders.filter(order => {
-        if (filterMode === 'pick-up') return isPickupMode(order.order_mode);
-        return order.order_mode === filterMode;
+        const normalizedFilterMode = normalizeOrderMode(filterMode);
+        const normalizedOrderMode = normalizeOrderMode(order.order_mode);
+
+        if (normalizedFilterMode === 'pick-up' || normalizedFilterMode === 'pickup') {
+          return normalizedOrderMode === 'pick-up' || normalizedOrderMode === 'pickup';
+        }
+        return normalizedOrderMode === normalizedFilterMode;
       });
 
   // Memoize check for riders with incomplete profiles to avoid unnecessary re-computation
@@ -878,13 +897,13 @@ export default function OrdersQueue() {
               style={filterMode === 'dine-in' ? styles.filterTabActive : styles.filterTab}
               onClick={() => setFilterMode('dine-in')}
             >
-              🍽️ Dine-in ({orders.filter(o => o.order_mode === 'dine-in').length})
+              🍽️ Dine-in ({orders.filter(o => isDineInMode(o.order_mode)).length})
             </button>
             <button
               style={filterMode === 'take-out' ? styles.filterTabActive : styles.filterTab}
               onClick={() => setFilterMode('take-out')}
             >
-              🥡 Take-out ({orders.filter(o => o.order_mode === 'take-out').length})
+              🥡 Take-out ({orders.filter(o => isTakeOutMode(o.order_mode)).length})
             </button>
             <button
               style={filterMode === 'pick-up' ? styles.filterTabActive : styles.filterTab}
@@ -896,7 +915,7 @@ export default function OrdersQueue() {
               style={filterMode === 'delivery' ? styles.filterTabActive : styles.filterTab}
               onClick={() => setFilterMode('delivery')}
             >
-              🚚 Delivery ({orders.filter(o => o.order_mode === 'delivery').length})
+              🚚 Delivery ({orders.filter(o => isDeliveryMode(o.order_mode)).length})
             </button>
           </div>
 
@@ -951,7 +970,7 @@ export default function OrdersQueue() {
                             ₱{((item.price || 0) * (item.quantity || 0)).toFixed(2)}
                           </span>
                           {/* Show Served/Unserve button for dine-in and take-out orders */}
-                          {(order.order_mode === 'dine-in' || order.order_mode === 'take-out') && item.id && (
+                          {(isDineInMode(order.order_mode) || isTakeOutMode(order.order_mode)) && item.id && (
                             item.served ? (
                               <button
                                 style={styles.itemUnserveBtn}
@@ -987,7 +1006,7 @@ export default function OrdersQueue() {
                     </div>
                     <div style={styles.orderActions}>
                       {/* Show Out for Delivery button only for delivery orders in process status */}
-                      {order.order_mode === 'delivery' && order.status === 'order_in_process' && (
+                      {isDeliveryMode(order.order_mode) && isQueueActionableStatus(order.status) && (
                         <button
                           style={styles.deliveryBtn}
                           onClick={() => handleOutForDelivery(order)}
@@ -996,7 +1015,7 @@ export default function OrdersQueue() {
                         </button>
                       )}
                       {/* Show Ready for Pick-Up button for pick-up and take-out orders in process status */}
-                      {(isPickupMode(order.order_mode) || order.order_mode === 'take-out') && order.status === 'order_in_process' && (
+                      {(isPickupMode(order.order_mode) || isTakeOutMode(order.order_mode)) && isQueueActionableStatus(order.status) && (
                         <button
                           style={styles.pickupReadyBtn}
                           onClick={() => handleReadyForPickup(order)}
@@ -1005,7 +1024,7 @@ export default function OrdersQueue() {
                         </button>
                       )}
                       {/* Show Order Complete button for pick-up and take-out orders that are ready (out_for_delivery status) */}
-                      {(isPickupMode(order.order_mode) || order.order_mode === 'take-out') && order.status === 'out_for_delivery' && (
+                      {(isPickupMode(order.order_mode) || isTakeOutMode(order.order_mode)) && isOutForDeliveryStatus(order.status) && (
                         <button
                           style={styles.completeBtn}
                           onClick={() => handleCompletePickup(order)}
