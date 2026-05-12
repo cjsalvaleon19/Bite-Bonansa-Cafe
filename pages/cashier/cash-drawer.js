@@ -6,10 +6,12 @@ import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import { calculateSalesBreakdown, UNACCEPTED_ORDER_STATUSES } from '../../utils/salesCalculations';
 import {
+  addSalaryDeductionToPayroll,
   getOutstandingPayrollSubmissions,
   markPayrollSubmissionPaid,
   getPayrollEmployees,
   PAYROLL_STORAGE_KEY,
+  toDateOnly,
 } from '../../utils/payrollStorage';
 
 export default function CashDrawer() {
@@ -33,6 +35,7 @@ export default function CashDrawer() {
     billNumber: '',
     billReportId: '',
     payrollSubmissionId: '',
+    attendanceEmployeeId: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [cashOnHand, setCashOnHand] = useState(0);
@@ -475,6 +478,10 @@ export default function CashDrawer() {
       alert('Please select a payroll period');
       return;
     }
+    if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'cash_advance' && !formData.attendanceEmployeeId) {
+      alert('Please select an employee from Attendance Sheet');
+      return;
+    }
 
     // For adjustments, validate admin password
     if (activeModal === 'adjustment') {
@@ -522,7 +529,9 @@ export default function CashDrawer() {
         reference_number: (
           formData.billType === 'payroll' && formData.payrollSubmissionId
             ? formData.payrollSubmissionId
-            : (formData.referenceNumber || null)
+            : (formData.billType === 'cash_advance' && formData.attendanceEmployeeId
+              ? formData.attendanceEmployeeId
+              : (formData.referenceNumber || null))
         ),
         adjustment_reason: formData.reason || null,
         bill_type: formData.billType || null,
@@ -532,11 +541,26 @@ export default function CashDrawer() {
         created_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      const { data: insertedTransaction, error } = await supabase
         .from('cash_drawer_transactions')
-        .insert(transactionData);
+        .insert(transactionData)
+        .select('id')
+        .single();
 
       if (error) throw error;
+
+      if (formData.billType === 'cash_advance' && formData.attendanceEmployeeId) {
+        const deductionResult = addSalaryDeductionToPayroll({
+          employeeId: formData.attendanceEmployeeId,
+          amount: Math.abs(rawAmount),
+          date: toDateOnly(new Date()),
+          orderId: `cash_advance:${insertedTransaction?.id || ''}`,
+          notes: formData.purpose || 'Cash advance from Cash Drawer / Pay Bills',
+        });
+        if (!deductionResult.ok) {
+          console.error('[CashDrawer] Failed to store cash advance deduction in attendance sheet local data.');
+        }
+      }
 
       // If this is a Driver's Fee payment, mark the delivery report as paid
       if (formData.billType === 'drivers_fee' && formData.billReportId) {
@@ -583,6 +607,7 @@ export default function CashDrawer() {
         billNumber: '',
         billReportId: '',
         payrollSubmissionId: '',
+        attendanceEmployeeId: '',
       });
       setActiveModal(null);
       setCashOutType(null);
@@ -897,6 +922,7 @@ export default function CashDrawer() {
                               purpose: '',
                               billReportId: '',
                               payrollSubmissionId: '',
+                              attendanceEmployeeId: '',
                             });
                           }}
                           required
@@ -1027,13 +1053,20 @@ export default function CashDrawer() {
                             <label style={styles.label}>Payee Name *</label>
                             <select
                               style={styles.input}
-                              value={formData.payeeName}
-                              onChange={(e) => setFormData({ ...formData, payeeName: e.target.value })}
+                              value={formData.attendanceEmployeeId}
+                              onChange={(e) => {
+                                const selected = attendanceEmployees.find((emp) => emp.id === e.target.value);
+                                setFormData({
+                                  ...formData,
+                                  attendanceEmployeeId: e.target.value,
+                                  payeeName: selected?.name || '',
+                                });
+                              }}
                               required
                             >
                               <option value="">Select employee</option>
                               {attendanceEmployees.map((emp) => (
-                                <option key={emp.id} value={emp.name}>
+                                <option key={emp.id} value={emp.id}>
                                   {emp.name}
                                 </option>
                               ))}
