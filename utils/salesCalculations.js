@@ -67,18 +67,33 @@ export function calculateSalesBreakdown(orders) {
 
 /**
  * Calculate the total deduction from Canceled Order and Double Posting adjustments.
- * These adjustments reduce Total Sales.
+ * These adjustments reduce Cash Sales (and therefore Total Sales).
+ * Cash-to-GCash adjustments are NOT included here — they only move amounts
+ * between Cash Sales and GCash Sales with no effect on Total Sales.
  *
  * @param {Array} adjustments - Array of cash_drawer_transactions rows with adjustment_reason and amount
- * @returns {number} Total deduction (positive number to subtract from Total Sales)
+ * @returns {number} Total deduction (positive number to subtract from Cash Sales)
  */
 export function calculateAdjustmentDeductions(adjustments) {
   return (adjustments || [])
     .filter(adj =>
       adj.adjustment_reason === 'canceled_order' ||
-      adj.adjustment_reason === 'double_posting' ||
-      adj.payment_adjustment_type === 'cash-to-gcash'
+      adj.adjustment_reason === 'double_posting'
     )
+    .reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount || 0)), 0);
+}
+
+/**
+ * Calculate the total amount reclassified from Cash to GCash via cash-to-gcash adjustments.
+ * This amount should be subtracted from Cash Sales and added to GCash Sales.
+ * It has no effect on Total Sales.
+ *
+ * @param {Array} adjustments - Array of cash_drawer_transactions rows
+ * @returns {number} Total cash-to-gcash reclassification amount
+ */
+export function calculateCashToGcashTotal(adjustments) {
+  return (adjustments || [])
+    .filter(adj => adj.payment_adjustment_type === 'cash-to-gcash')
     .reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount || 0)), 0);
 }
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
-import { calculateSalesBreakdown, calculateAdjustmentDeductions, UNACCEPTED_ORDER_STATUSES } from '../../utils/salesCalculations';
+import { calculateSalesBreakdown, calculateAdjustmentDeductions, calculateCashToGcashTotal, UNACCEPTED_ORDER_STATUSES } from '../../utils/salesCalculations';
 import { printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
@@ -661,8 +661,13 @@ export default function EndOfDayReport() {
   };
 
   // Use utility function for sales calculations
-  const { totalSales: baseTotalSales, cashSales: totalCash, gcashSales: totalGcash, pointsSales: totalPoints } = calculateSalesBreakdown(orders);
-  const totalSales = baseTotalSales - calculateAdjustmentDeductions(salesAdjustments);
+  const { cashSales: rawCash, gcashSales: rawGcash, pointsSales: totalPoints } = calculateSalesBreakdown(orders);
+  // Cash-to-GCash reclassifies from Cash bucket → GCash bucket (no effect on Total).
+  // Canceled order / double posting are cash corrections that reduce Cash Sales.
+  const cashToGcashTotal = calculateCashToGcashTotal(salesAdjustments);
+  const totalCash = rawCash - cashToGcashTotal - calculateAdjustmentDeductions(salesAdjustments);
+  const totalGcash = rawGcash + cashToGcashTotal;
+  const totalSales = totalCash + totalGcash;
 
   if (authLoading || loading) {
     return (

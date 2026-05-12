@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import NotificationBell from '../../components/NotificationBell';
-import { calculateSalesBreakdown, calculateAdjustmentDeductions, getGCashAmount, UNACCEPTED_ORDER_STATUSES, ONLINE_ORDER_MODES } from '../../utils/salesCalculations';
+import { calculateSalesBreakdown, calculateAdjustmentDeductions, calculateCashToGcashTotal, getGCashAmount, UNACCEPTED_ORDER_STATUSES, ONLINE_ORDER_MODES } from '../../utils/salesCalculations';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 
@@ -249,20 +249,21 @@ export default function CashierDashboard() {
 
         allAdjustments = adjustments || [];
 
-        const cashToGcash = allAdjustments.filter(adj => adj.payment_adjustment_type === 'cash-to-gcash');
-        if (cashToGcash.length > 0) {
-          adjustmentTotal = cashToGcash.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0);
-        }
+        adjustmentTotal = calculateCashToGcashTotal(allAdjustments);
       } catch (adjErr) {
         console.warn('[CashierDashboard] Could not fetch adjustments:', adjErr?.message ?? adjErr);
       }
 
-      const deductions = calculateAdjustmentDeductions(allAdjustments);
+      // Cash-to-GCash reclassifies from Cash bucket → GCash bucket (no effect on Total).
+      // Canceled order / double posting are cash corrections that reduce Cash Sales.
+      const cashDeductions = calculateAdjustmentDeductions(allAdjustments);
+      const displayedCash = cashSales - adjustmentTotal - cashDeductions;
+      const displayedGcash = gcashSales + adjustmentTotal;
 
       setStats({
-        totalSales: totalSales - deductions,
-        cashSales,
-        gcashSales: gcashSales + adjustmentTotal,
+        totalSales: displayedCash + displayedGcash,
+        cashSales: displayedCash,
+        gcashSales: displayedGcash,
         pointsSales,
         receiptCount: (orders || []).length,
         dineInCount,
