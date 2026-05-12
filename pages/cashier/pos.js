@@ -1337,13 +1337,19 @@ export default function CashierPOS() {
 
             <div style={styles.cartActions}>
               <button style={styles.clearBtn} onClick={clearCart} disabled={items.length === 0}>Clear</button>
-              <button
-                style={{ ...styles.checkoutBtn, opacity: items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange) || (orderMode === 'delivery' && (!deliveryCoordinates.lat || !deliveryCoordinates.lng)) ? 0.6 : 1 }}
-                onClick={handleCheckout}
-                disabled={items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange) || (orderMode === 'delivery' && (!deliveryCoordinates.lat || !deliveryCoordinates.lng))}
-              >
-                {checkoutLoading ? '⏳ Processing…' : '✔ Checkout'}
-              </button>
+              {(() => {
+                const isDeliveryPinMissing = orderMode === 'delivery' && (!deliveryCoordinates.lat || !deliveryCoordinates.lng);
+                const isCheckoutDisabled = items.length === 0 || checkoutLoading || salaryDeductionMissingMatch || (orderMode === 'delivery' && deliveryOutOfRange) || isDeliveryPinMissing;
+                return (
+                  <button
+                    style={{ ...styles.checkoutBtn, opacity: isCheckoutDisabled ? 0.6 : 1 }}
+                    onClick={handleCheckout}
+                    disabled={isCheckoutDisabled}
+                  >
+                    {checkoutLoading ? '⏳ Processing…' : '✔ Checkout'}
+                  </button>
+                );
+              })()}
             </div>
           </section>
         </div>
