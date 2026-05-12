@@ -38,7 +38,7 @@ export default function CustomerMenu() {
       const [itemsResult, variantTypesResult] = await Promise.all([
         supabase
           .from('menu_items')
-          .select('id, name, price, image_url, category, has_variants')
+          .select('id, name, price, category, has_variants')
           .eq('available', true)
           .order('category'),
         supabase
