@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
+const SILOG_MEALS_NAME = 'Silog Meals';
+const SILOG_VARIETY_TYPE = 'Variety';
+const SIOMAISILOG_OPTION = 'Siomaisilog';
+const SIOMAI_STYLE_TYPE = 'Siomai Style';
+
 export default function VariantSelectionModal({
   item,
   onConfirm,
@@ -10,6 +15,21 @@ export default function VariantSelectionModal({
 }) {
   const [selectedVariants, setSelectedVariants] = useState({});
   const [quantity, setQuantity] = useState(1);
+
+  const isSiomaisilogSelected = () => {
+    if (item?.name !== SILOG_MEALS_NAME || !Array.isArray(item?.variant_types)) return false;
+    const varietyType = item.variant_types.find((type) => type.variant_type_name === SILOG_VARIETY_TYPE);
+    if (!varietyType) return false;
+    const selected = selectedVariants[varietyType.id];
+    return Array.isArray(selected) && selected.some((opt) => opt.optionName === SIOMAISILOG_OPTION);
+  };
+
+  const isTypeRequired = (type) => {
+    if (type?.is_required) return true;
+    return item?.name === SILOG_MEALS_NAME
+      && type?.variant_type_name === SIOMAI_STYLE_TYPE
+      && isSiomaisilogSelected();
+  };
 
   useEffect(() => {
     setSelectedVariants(
@@ -44,10 +64,23 @@ export default function VariantSelectionModal({
       });
     } else {
       // For single selection, replace
-      setSelectedVariants(prev => ({
-        ...prev,
-        [typeId]: [{ optionId, optionName, priceModifier }]
-      }));
+      setSelectedVariants(prev => {
+        const next = {
+          ...prev,
+          [typeId]: [{ optionId, optionName, priceModifier }]
+        };
+
+        const selectedType = item?.variant_types?.find((type) => type.id === typeId);
+        const isSilogVariety = item?.name === SILOG_MEALS_NAME && selectedType?.variant_type_name === SILOG_VARIETY_TYPE;
+        if (isSilogVariety && optionName !== SIOMAISILOG_OPTION) {
+          const siomaiStyleType = item?.variant_types?.find((type) => type.variant_type_name === SIOMAI_STYLE_TYPE);
+          if (siomaiStyleType) {
+            delete next[siomaiStyleType.id];
+          }
+        }
+
+        return next;
+      });
     }
   };
 
@@ -81,7 +114,7 @@ export default function VariantSelectionModal({
     }
 
     return item.variant_types.every(type => {
-      if (type.is_required) {
+      if (isTypeRequired(type)) {
         const selected = selectedVariants[type.id];
         return selected && Array.isArray(selected) && selected.length > 0;
       }
@@ -143,11 +176,16 @@ export default function VariantSelectionModal({
           {item.variant_types && item.variant_types.length > 0 ? (
             item.variant_types
               .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+              .filter(type => {
+                if (item?.name !== SILOG_MEALS_NAME) return true;
+                if (type.variant_type_name !== SIOMAI_STYLE_TYPE) return true;
+                return isSiomaisilogSelected();
+              })
               .map(type => (
                 <div key={type.id} style={styles.variantSection}>
                   <h4 style={styles.variantTitle}>
                     {type.variant_type_name}
-                    {type.is_required && <span style={styles.required}> *</span>}
+                    {isTypeRequired(type) && <span style={styles.required}> *</span>}
                     {type.allow_multiple && <span style={styles.hint}> (Select multiple)</span>}
                   </h4>
                   <div style={styles.optionsGrid}>
