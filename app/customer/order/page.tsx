@@ -54,6 +54,7 @@ import { LocationPicker } from '@/components/location-picker'
 import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
+import { parseSettingAsBoolean } from '@/utils/cashierSettings'
 
 interface VariantSelectionModalProps {
   item: MenuItem
@@ -247,10 +248,12 @@ function CustomerOrderPage() {
         .eq('setting_key', 'delivery_enabled')
         .maybeSingle()
       
-      if (!error && data) {
-        const isEnabled = data.setting_value === 'true'
-        setDeliveryEnabled(isEnabled)
+      if (error) {
+        console.error('Failed to fetch delivery setting:', error)
+        return
       }
+
+      setDeliveryEnabled(parseSettingAsBoolean(data?.setting_value, true))
     }
     checkDeliveryEnabled()
   }, [])
@@ -274,9 +277,7 @@ function CustomerOrderPage() {
           }
 
           const nextValue = payload.new?.setting_value
-          if (typeof nextValue === 'string') {
-            setDeliveryEnabled(nextValue === 'true')
-          }
+          setDeliveryEnabled(parseSettingAsBoolean(nextValue, true))
         }
       )
       .subscribe()
