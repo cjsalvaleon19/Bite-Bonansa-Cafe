@@ -13,6 +13,45 @@ import { getOrderSlipNumber } from '../../utils/receiptDepartments';
 // Set to true to allow assignment with warnings, false to require profile completion.
 const DEFAULT_FALLBACK_AVAILABILITY = true;
 const isPickupMode = (orderMode) => orderMode === 'pick-up' || orderMode === 'pickup';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const normalizeOrderItemsForPurchaseTracking = (items) => {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { normalizedItems: items, changed: false };
+  }
+
+  let changed = false;
+  const normalizedItems = items.map((item) => {
+    if (!item || typeof item !== 'object') {
+      return item;
+    }
+
+    if (typeof item.id !== 'string') {
+      return item;
+    }
+
+    const trimmedId = item.id.trim();
+    if (!UUID_PATTERN.test(trimmedId)) {
+      return item;
+    }
+
+    const normalizedId = trimmedId.toLowerCase();
+    if (normalizedId === item.id) {
+      return item;
+    }
+
+    changed = true;
+    return {
+      ...item,
+      id: normalizedId,
+    };
+  });
+
+  return {
+    normalizedItems: changed ? normalizedItems : items,
+    changed,
+  };
+};
 
 export default function OrdersQueue() {
   const router = useRouter();
@@ -141,12 +180,18 @@ export default function OrdersQueue() {
 
       // If all items are served, mark the order as completed
       if (allItems && allItems.every(item => item.served)) {
+        const { normalizedItems, changed } = normalizeOrderItemsForPurchaseTracking(order?.items);
+        const updatePayload = {
+          status: 'order_delivered',  // Use order_delivered for consistency with notification system
+          completed_at: new Date().toISOString()
+        };
+        if (changed) {
+          updatePayload.items = normalizedItems;
+        }
+
         const { error: updateOrderError } = await supabase
           .from('orders')
-          .update({
-            status: 'order_delivered',  // Use order_delivered for consistency with notification system
-            completed_at: new Date().toISOString()
-          })
+          .update(updatePayload)
           .eq('id', orderId);
 
         if (updateOrderError) throw updateOrderError;
@@ -429,15 +474,21 @@ export default function OrdersQueue() {
     if (!confirm('Mark this pick-up order as complete?')) return;
 
     try {
+      const { normalizedItems, changed } = normalizeOrderItemsForPurchaseTracking(order?.items);
+      const updatePayload = {
+        status: 'order_delivered',
+        completed_at: new Date().toISOString()
+      };
+      if (changed) {
+        updatePayload.items = normalizedItems;
+      }
+
       // Update order status to order_delivered (completed)
       // Note: Database trigger will automatically create notification for customer
       // and award loyalty points
       const { error } = await supabase
         .from('orders')
-        .update({
-          status: 'order_delivered',
-          completed_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .eq('id', order.id);
 
       if (error) throw error;
