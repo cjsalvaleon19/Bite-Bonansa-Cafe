@@ -2340,6 +2340,8 @@ export default function AdminPage() {
 
   const syncCashAdvanceDeductions = useCallback(async () => {
     if (!supabase) return;
+    const cashAdvanceDeductionType = 'Cash Advance';
+    const cashAdvanceNotesFallback = 'Cash advance from Cash Drawer / Pay Bills';
     try {
       const { data: transactions, error } = await supabase
         .from('cash_drawer_transactions')
@@ -2364,11 +2366,12 @@ export default function AdminPage() {
         const deductionAmount = roundToCurrency(Math.abs(Number(transaction.amount) || 0));
         if (deductionAmount <= 0) return;
 
-        const referenceEmployeeId = String(transaction.reference_number || '').trim();
+        const referenceEmployeeIdRaw = transaction.reference_number;
         const payeeName = String(transaction.payee_name || '').trim().toLowerCase();
 
         let employeeIndex = -1;
-        if (referenceEmployeeId) {
+        if (typeof referenceEmployeeIdRaw !== 'undefined' && referenceEmployeeIdRaw !== null) {
+          const referenceEmployeeId = String(referenceEmployeeIdRaw).trim();
           employeeIndex = nextEmployees.findIndex((employee) => employee.id === referenceEmployeeId);
         }
         if (employeeIndex < 0 && payeeName) {
@@ -2385,9 +2388,9 @@ export default function AdminPage() {
         nextEmployees[employeeIndex].deductions.push({
           id: createId('ded'),
           date: toDateOnly(transaction.created_at || new Date()),
-          type: 'Cash Advance',
+          type: cashAdvanceDeductionType,
           amount: deductionAmount,
-          notes: transaction.purpose || 'Cash advance from Cash Drawer / Pay Bills',
+          notes: transaction.purpose || cashAdvanceNotesFallback,
           source: SALARY_DEDUCTION_SOURCE,
           processed: true,
           orderId: sourceOrderId,

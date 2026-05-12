@@ -550,15 +550,19 @@ export default function CashDrawer() {
       if (error) throw error;
 
       if (formData.billType === 'cash_advance' && formData.attendanceEmployeeId) {
-        const deductionResult = addSalaryDeductionToPayroll({
-          employeeId: formData.attendanceEmployeeId,
-          amount: Math.abs(rawAmount),
-          date: toDateOnly(new Date()),
-          orderId: `cash_advance:${insertedTransaction?.id || ''}`,
-          notes: formData.purpose || 'Cash advance from Cash Drawer / Pay Bills',
-        });
-        if (!deductionResult.ok) {
-          console.error('[CashDrawer] Failed to store cash advance deduction in attendance sheet local data.');
+        if (!insertedTransaction?.id) {
+          console.error('[CashDrawer] Cash advance transaction ID missing; skipping local deduction sync.');
+        } else {
+          const deductionResult = addSalaryDeductionToPayroll({
+            employeeId: formData.attendanceEmployeeId,
+            amount: Math.abs(rawAmount),
+            date: toDateOnly(new Date()),
+            orderId: `cash_advance:${insertedTransaction.id}`,
+            notes: formData.purpose || 'Cash advance from Cash Drawer / Pay Bills',
+          });
+          if (!deductionResult.ok) {
+            console.error('[CashDrawer] Failed to store cash advance deduction in attendance sheet local data.');
+          }
         }
       }
 
