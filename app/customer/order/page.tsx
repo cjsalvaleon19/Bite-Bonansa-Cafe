@@ -255,6 +255,37 @@ function CustomerOrderPage() {
     checkDeliveryEnabled()
   }, [])
 
+  // Keep delivery enabled setting synced in real-time
+  useEffect(() => {
+    const channel = supabase
+      .channel('customer_delivery_setting_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'cashier_settings',
+          filter: 'setting_key=eq.delivery_enabled',
+        },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            setDeliveryEnabled(true)
+            return
+          }
+
+          const nextValue = payload.new?.setting_value
+          if (typeof nextValue === 'string') {
+            setDeliveryEnabled(nextValue === 'true')
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      channel.unsubscribe()
+    }
+  }, [])
+
   // Fetch loyalty balance
   useEffect(() => {
     async function fetchLoyaltyBalance() {
