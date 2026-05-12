@@ -17,8 +17,14 @@ const isPickupMode = (orderMode) => {
   const normalizedMode = normalizeOrderMode(orderMode);
   return normalizedMode === 'pick-up' || normalizedMode === 'pickup';
 };
-const isTakeOutMode = (orderMode) => normalizeOrderMode(orderMode) === 'take-out';
-const isDineInMode = (orderMode) => normalizeOrderMode(orderMode) === 'dine-in';
+const isTakeOutMode = (orderMode) => {
+  const normalizedMode = normalizeOrderMode(orderMode);
+  return normalizedMode === 'take-out' || normalizedMode === 'takeout';
+};
+const isDineInMode = (orderMode) => {
+  const normalizedMode = normalizeOrderMode(orderMode);
+  return normalizedMode === 'dine-in' || normalizedMode === 'dinein';
+};
 const isDeliveryMode = (orderMode) => normalizeOrderMode(orderMode) === 'delivery';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -822,8 +828,11 @@ export default function OrdersQueue() {
   const filteredOrders = filterMode === 'all'
     ? orders
     : orders.filter(order => {
-        if (filterMode === 'pick-up') return isPickupMode(order.order_mode);
-        return normalizeOrderMode(order.order_mode) === filterMode;
+        const normalizedFilterMode = normalizeOrderMode(filterMode);
+        if (normalizedFilterMode === 'pick-up' || normalizedFilterMode === 'pickup') {
+          return isPickupMode(order.order_mode);
+        }
+        return normalizeOrderMode(order.order_mode) === normalizedFilterMode;
       });
 
   // Memoize check for riders with incomplete profiles to avoid unnecessary re-computation
