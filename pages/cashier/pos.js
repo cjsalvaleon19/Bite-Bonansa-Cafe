@@ -145,8 +145,11 @@ export default function CashierPOS() {
     setSalaryDeductionEmployeeId('');
   }, [paymentMethod]);
 
-  const handleLocationChange = (lat, lng) => {
+  const handleLocationChange = (lat, lng, displayName) => {
     setDeliveryCoordinates({ lat, lng });
+    if (displayName) {
+      setDeliverySearchQuery(displayName);
+    }
   };
 
   const fetchMenu = useCallback(async () => {

@@ -193,6 +193,10 @@ export default function OpenStreetMapPicker({
   const handleLocationSelect = async (lat, lng) => {
     setPosition({ lat, lng });
     setMapCenter({ lat, lng });
+    const fallbackDisplayName = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    if (onSearchQueryChange) {
+      onSearchQueryChange(fallbackDisplayName);
+    }
     
     const { displayName, addressComponents } = await reverseGeocode(lat, lng);
     setSearchResults([]);
