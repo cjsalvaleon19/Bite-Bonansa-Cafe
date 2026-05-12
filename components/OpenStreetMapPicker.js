@@ -195,6 +195,10 @@ export default function OpenStreetMapPicker({
     setMapCenter({ lat, lng });
     
     const { displayName, addressComponents } = await reverseGeocode(lat, lng);
+    setSearchResults([]);
+    if (onSearchQueryChange) {
+      onSearchQueryChange(displayName);
+    }
     onLocationChange(lat, lng, displayName, addressComponents);
   };
 
