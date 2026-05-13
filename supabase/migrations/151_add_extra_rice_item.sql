@@ -34,6 +34,15 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'kitchen_departments entry with department_code=FRY1 is required';
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM menu_items_base
+    WHERE name = 'Extra Rice'
+      AND category = 'Rice & More'
+  ) THEN
+    RAISE EXCEPTION 'menu item Extra Rice in Rice & More was not created';
+  END IF;
 END $$;
 
 UPDATE menu_items_base
