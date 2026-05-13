@@ -48,9 +48,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { formatCurrency, useAuth, calculateDeliveryFee, formatDistance, isSundayInManila, PH_TIMEZONE, SUNDAY_CLOSURE_MESSAGE } from '@/lib/store'
+import { formatCurrency, useAuth, isSundayInManila, PH_TIMEZONE, SUNDAY_CLOSURE_MESSAGE } from '@/lib/store'
 import { supabase } from '@/lib/supabase/client'
-import { LocationPicker } from '@/components/location-picker'
+import {
+  DELIVERY_LOCATION_OPTIONS,
+  formatDeliveryLocationAddress,
+  formatDeliveryLocationLabel,
+  getDeliveryLocationById,
+} from '@/utils/deliveryLocations'
 import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
@@ -185,18 +190,6 @@ function normalizeVariantValues(rawValue: unknown): string[] {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-/**
- * Returns true when the address is only municipality-level (no barangay/road detail).
- * Nominatim display_name lists parts from most-specific to least-specific separated by commas.
- * If the first segment is just "T'Boli" (or variant spellings), it lacks barangay detail.
- */
-function isGenericTboliAddress(address: string): boolean {
-  if (!address) return false
-  const firstPart = address.split(',')[0].trim().toLowerCase()
-  const genericNames = new Set(["t'boli", "tboli", "t'boli municipality"])
-  return genericNames.has(firstPart)
-}
-
 function CustomerOrderPage() {
   const { user } = useAuth()
   const router = useRouter()
@@ -205,10 +198,8 @@ function CustomerOrderPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [cart, setCart] = useState<CartItem[]>([])
-  const [deliveryAddress, setDeliveryAddress] = useState(user?.address || '')
+  const [selectedDeliveryLocationId, setSelectedDeliveryLocationId] = useState('')
   const [deliveryLandmark, setDeliveryLandmark] = useState('')
-  const [deliveryLat, setDeliveryLat] = useState<number | null>(null)
-  const [deliveryLng, setDeliveryLng] = useState<number | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('gcash')
   const [orderNotes, setOrderNotes] = useState('')
   const [cashTendered, setCashTendered] = useState('')
@@ -217,7 +208,6 @@ function CustomerOrderPage() {
   const [gcashScreenshotPreview, setGcashScreenshotPreview] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showGcashDialog, setShowGcashDialog] = useState(false)
-  const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [showLandmarkRequiredDialog, setShowLandmarkRequiredDialog] = useState(false)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
@@ -811,8 +801,10 @@ function CustomerOrderPage() {
   }
 
   const subtotal = cart.reduce((sum, item) => sum + item.price, 0)
-  const { fee: deliveryFee, distance: deliveryDistance, outOfRange: deliveryOutOfRange } =
-    calculateDeliveryFee(deliveryLat, deliveryLng)
+  const selectedDeliveryLocation = getDeliveryLocationById(selectedDeliveryLocationId)
+  const deliveryAddress = selectedDeliveryLocation ? formatDeliveryLocationAddress(selectedDeliveryLocation) : ''
+  const fullDeliveryAddress = [deliveryLandmark.trim(), deliveryAddress].filter(Boolean).join(', ')
+  const deliveryFee = selectedDeliveryLocation?.fee ?? 0
   const appliedDeliveryFee = orderType === 'delivery' ? deliveryFee : 0
   const total = subtotal + appliedDeliveryFee
   const isSundayClosed = isSundayInManila()
@@ -841,23 +833,15 @@ function CustomerOrderPage() {
     }
     
     if (orderType === 'delivery' && !deliveryAddress.trim()) {
-      toast.error('Please pin your delivery location first')
-      return
-    }
-    if (orderType === 'delivery' && (deliveryLat === null || deliveryLng === null)) {
-      toast.error('Please pin your delivery location first')
-      return
-    }
-    if (orderType === 'delivery' && isGenericTboliAddress(deliveryAddress)) {
-      toast.error("Please select a specific barangay address within T'Boli, South Cotabato.")
+      toast.error('Please select your delivery barangay first')
       return
     }
     if (orderType === 'delivery' && !deliveryLandmark.trim()) {
       setShowLandmarkRequiredDialog(true)
       return
     }
-    if (orderType === 'delivery' && deliveryOutOfRange) {
-      toast.error('Delivery is only available within T\'boli, South Cotabato (max 5 km from our store).')
+    if (orderType === 'delivery' && !selectedDeliveryLocation) {
+      toast.error('Please select your delivery barangay first')
       return
     }
     
@@ -960,7 +944,7 @@ function CustomerOrderPage() {
         notesStr += ` | Cash tendered: ${formatCurrency(parseFloat(cashTendered))}`
       }
       if (isDelivery && deliveryLandmark.trim()) {
-        notesStr += ` | Street and Purok: ${deliveryLandmark.trim()}`
+        notesStr += ` | Street and Landmark: ${deliveryLandmark.trim()}`
       }
       if (paymentMethod === 'gcash' && gcashRef) {
         notesStr += ` | GCash ref: ${gcashRef}`
@@ -994,9 +978,9 @@ function CustomerOrderPage() {
           customer_id: user?.id,
           customer_name: customerFullName || 'Customer',
           contact_number: user?.phone || '',
-          customer_address: isDelivery ? deliveryAddress : null,
-          delivery_latitude: isDelivery ? deliveryLat : null,
-          delivery_longitude: isDelivery ? deliveryLng : null,
+          customer_address: isDelivery ? fullDeliveryAddress : null,
+          delivery_latitude: null,
+          delivery_longitude: null,
           status: 'pending',
           order_mode: orderType, // Use the selected order type directly
           payment_method: paymentMethod,
@@ -1083,6 +1067,7 @@ function CustomerOrderPage() {
       setCart([])
       localStorage.removeItem('bite-bonanza-cart')
       setOrderNotes('')
+      setSelectedDeliveryLocationId('')
       setDeliveryLandmark('')
       setCashTendered('')
       setGcashRef('')
@@ -1098,19 +1083,6 @@ function CustomerOrderPage() {
       toast.error('Failed to place order. Please try again.')
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  const handleLocationSelect = (address: string, lat: number, lng: number) => {
-    const resolvedAddress = address?.trim() || `Pinned location (${lat.toFixed(6)}, ${lng.toFixed(6)})`
-    setDeliveryAddress(resolvedAddress)
-    setDeliveryLat(lat)
-    setDeliveryLng(lng)
-    const { fee, distance, outOfRange } = calculateDeliveryFee(lat, lng)
-    if (outOfRange) {
-      toast.error('Delivery is only available within T\'boli, South Cotabato (max 5 km from our store).')
-    } else {
-      toast.success(`Location pinned! Delivery fee: ${formatCurrency(fee)} (${formatDistance(distance ?? 0)})`)
     }
   }
 
@@ -1156,15 +1128,14 @@ function CustomerOrderPage() {
               onEditItem={openCartItemEditor}
               subtotal={subtotal}
               deliveryFee={appliedDeliveryFee}
-              deliveryDistance={deliveryDistance}
-              deliveryOutOfRange={deliveryOutOfRange}
+              deliveryLocationOptions={DELIVERY_LOCATION_OPTIONS}
+              selectedDeliveryLocationId={selectedDeliveryLocationId}
+              setSelectedDeliveryLocationId={setSelectedDeliveryLocationId}
               total={total}
               earnedPoints={earnedPoints}
               deliveryAddress={deliveryAddress}
               deliveryLandmark={deliveryLandmark}
               setDeliveryLandmark={setDeliveryLandmark}
-              hasPinnedLocation={deliveryLat !== null && deliveryLng !== null}
-              openLocationPicker={() => setShowLocationPicker(true)}
               paymentMethod={paymentMethod}
               setPaymentMethod={setPaymentMethod}
               orderNotes={orderNotes}
@@ -1391,15 +1362,14 @@ function CustomerOrderPage() {
                 onEditItem={openCartItemEditor}
                 subtotal={subtotal}
                 deliveryFee={appliedDeliveryFee}
-                deliveryDistance={deliveryDistance}
-                deliveryOutOfRange={deliveryOutOfRange}
+                deliveryLocationOptions={DELIVERY_LOCATION_OPTIONS}
+                selectedDeliveryLocationId={selectedDeliveryLocationId}
+                setSelectedDeliveryLocationId={setSelectedDeliveryLocationId}
                 total={total}
                 earnedPoints={earnedPoints}
                 deliveryAddress={deliveryAddress}
                 deliveryLandmark={deliveryLandmark}
                 setDeliveryLandmark={setDeliveryLandmark}
-                hasPinnedLocation={deliveryLat !== null && deliveryLng !== null}
-                openLocationPicker={() => setShowLocationPicker(true)}
                 paymentMethod={paymentMethod}
                 setPaymentMethod={setPaymentMethod}
                 orderNotes={orderNotes}
@@ -1447,16 +1417,6 @@ function CustomerOrderPage() {
         />
       )}
 
-      {showLocationPicker && (
-        <LocationPicker
-          isOpen={showLocationPicker}
-          onClose={() => setShowLocationPicker(false)}
-          onSelectLocation={(lat: number, lng: number, address: string) => {
-            handleLocationSelect(address, lat, lng)
-          }}
-        />
-      )}
-
       <GCashDialog
         open={showGcashDialog}
         onOpenChange={setShowGcashDialog}
@@ -1474,9 +1434,9 @@ function CustomerOrderPage() {
       <Dialog open={showLandmarkRequiredDialog} onOpenChange={setShowLandmarkRequiredDialog}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Street and Purok is required</DialogTitle>
+            <DialogTitle>Street and Landmark is required</DialogTitle>
             <DialogDescription>
-              Please provide your street and purok details so our rider can find your location before checkout.
+              Please provide your street and landmark details so our rider can find your location before checkout.
             </DialogDescription>
           </DialogHeader>
           <Button onClick={() => setShowLandmarkRequiredDialog(false)}>OK</Button>
@@ -1858,15 +1818,14 @@ interface CartContentProps {
   onEditItem: (item: CartItem) => void
   subtotal: number
   deliveryFee: number
-  deliveryDistance: number | null
-  deliveryOutOfRange?: boolean
+  deliveryLocationOptions: typeof DELIVERY_LOCATION_OPTIONS
+  selectedDeliveryLocationId: string
+  setSelectedDeliveryLocationId: (id: string) => void
   total: number
   earnedPoints: number
   deliveryAddress: string
   deliveryLandmark: string
   setDeliveryLandmark: (landmark: string) => void
-  hasPinnedLocation: boolean
-  openLocationPicker: () => void
   paymentMethod: PaymentMethod
   setPaymentMethod: (method: PaymentMethod) => void
   orderNotes: string
@@ -1887,14 +1846,15 @@ interface CartContentProps {
 }
 
 function CartContent({
-  cart, updateQuantity, removeFromCart, onEditItem, subtotal, deliveryFee, deliveryDistance,
-  deliveryOutOfRange = false, total, earnedPoints, deliveryAddress, deliveryLandmark, setDeliveryLandmark, hasPinnedLocation,
-  openLocationPicker, paymentMethod, setPaymentMethod, orderNotes, setOrderNotes,
+  cart, updateQuantity, removeFromCart, onEditItem, subtotal, deliveryFee, deliveryLocationOptions,
+  selectedDeliveryLocationId, setSelectedDeliveryLocationId, total, earnedPoints, deliveryAddress, deliveryLandmark, setDeliveryLandmark,
+  paymentMethod, setPaymentMethod, orderNotes, setOrderNotes,
   cashTendered, setCashTendered, handlePlaceOrder, isSubmitting, orderType = 'delivery',
   loyaltyBalance, pointsToUse, setPointsToUse, secondaryPaymentMethod, setSecondaryPaymentMethod,
   maxPointsUsable, actualPointsToUse, remainingBalance,
 }: CartContentProps) {
   const change = paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
+  const fullDeliveryAddress = [deliveryLandmark.trim(), deliveryAddress].filter(Boolean).join(', ')
   const isSundayClosed = isSundayInManila()
   const isDeliveryScheduleOpen = isWithinDeliverySchedule()
 
@@ -1979,31 +1939,37 @@ function CartContent({
 
         {orderType === 'delivery' && (
           <div className="space-y-2 rounded-lg bg-card border border-border p-3">
-            <Label htmlFor="address" className="flex items-center gap-2 text-primary">
+            <Label htmlFor="deliveryBarangay" className="flex items-center gap-2 text-primary">
               <MapPin className="h-4 w-4" />
-              Delivery Address
+              Barangay
             </Label>
-            <Textarea
-              id="address"
-              placeholder="Pin your location to fill delivery address"
-              value={deliveryAddress}
-              readOnly
-              className="resize-none"
-              rows={2}
-            />
-            <Button type="button" variant="outline" size="sm" className="w-full touch-manipulation min-h-[44px]" onClick={openLocationPicker}>
-              <MapPin className="mr-2 h-4 w-4" />
-              Search &amp; Pin Location on Map
-            </Button>
-            {!hasPinnedLocation && (
+            <select
+              id="deliveryBarangay"
+              value={selectedDeliveryLocationId}
+              onChange={(e) => setSelectedDeliveryLocationId(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">Select barangay and landmark</option>
+              {deliveryLocationOptions.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {formatDeliveryLocationLabel(location)}
+                </option>
+              ))}
+            </select>
+            {!selectedDeliveryLocationId && (
               <p className="text-xs text-muted-foreground">
-                Please pin your location to continue with delivery checkout.
+                Please select your barangay to continue with delivery checkout.
               </p>
             )}
-            <Label htmlFor="landmark" className="text-primary">Street and Purok</Label>
+            {deliveryAddress && (
+              <p className="text-xs text-muted-foreground">
+                Delivery location: {fullDeliveryAddress}
+              </p>
+            )}
+            <Label htmlFor="landmark" className="text-primary">Street and Landmark</Label>
             <Textarea
               id="landmark"
-              placeholder="Enter street and purok details (required)"
+              placeholder="Enter street and landmark details (required)"
               value={deliveryLandmark}
               onChange={(e) => setDeliveryLandmark(e.target.value)}
               className="resize-none"
@@ -2017,11 +1983,6 @@ function CartContent({
             {!isSundayClosed && !isDeliveryScheduleOpen && (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 Delivery is currently closed. Delivery orders are accepted from {DELIVERY_SCHEDULE_LABEL}.
-              </div>
-            )}
-            {deliveryOutOfRange && (
-              <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <strong>Outside delivery area.</strong> More than 5 km from our store.
               </div>
             )}
           </div>
@@ -2217,11 +2178,6 @@ function CartContent({
                 <Truck className="h-3 w-3" />
                 Delivery Fee
               </span>
-              {deliveryDistance !== null && (
-                <span className="text-xs text-muted-foreground">
-                  Distance: {formatDistance(deliveryDistance)}
-                </span>
-              )}
             </div>
             <span className="font-medium">{formatCurrency(deliveryFee)}</span>
           </div>
@@ -2246,9 +2202,7 @@ function CartContent({
           isSundayClosed ||
           cart.length === 0 ||
           (orderType === 'delivery' && !isDeliveryScheduleOpen) ||
-          (orderType === 'delivery' && !hasPinnedLocation) ||
-          (orderType === 'delivery' && deliveryOutOfRange) ||
-          (orderType === 'delivery' && isGenericTboliAddress(deliveryAddress)) ||
+          (orderType === 'delivery' && !selectedDeliveryLocationId) ||
           // Cash tendered validation only for delivery and pickup orders
           (paymentMethod === 'cash' && (orderType === 'delivery' || orderType === 'pickup') && (!cashTendered || parseFloat(cashTendered) < total)) ||
           (paymentMethod === 'points' && (

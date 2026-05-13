@@ -2,26 +2,22 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import { supabase } from '../../utils/supabaseClient';
 import useCartStore from '../../store/useCartStore';
 import { useRoleGuard } from '../../utils/useRoleGuard';
 import VariantSelectionModal from '../../components/VariantSelectionModal';
 import NotificationBell from '../../components/NotificationBell';
-import { getDistanceBetweenCoordinates, calculateDeliveryFee, STORE_LOCATION } from '../../utils/deliveryCalculator';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
 import { addSalaryDeductionToPayroll, getPayrollEmployees, PAYROLL_STORAGE_KEY, roundToCurrency, toDateOnly } from '../../utils/payrollStorage';
+import {
+  DELIVERY_LOCATION_OPTIONS,
+  formatDeliveryLocationAddress,
+  formatDeliveryLocationLabel,
+  getDeliveryLocationById,
+} from '../../utils/deliveryLocations';
 
-// Dynamically import OpenStreetMapPicker with SSR disabled
-const OpenStreetMapPicker = dynamic(
-  () => import('../../components/OpenStreetMapPicker'),
-  { ssr: false }
-);
-
-const DELIVERY_FEE_DEFAULT = 30;
 const VAT_RATE = 0; // Currently disabled as per requirements
-const MAX_DELIVERY_DISTANCE = 5000; // 5 km in meters
 
 export default function CashierPOS() {
   const router = useRouter();
@@ -58,9 +54,7 @@ export default function CashierPOS() {
   const [pointsToUse, setPointsToUse] = useState(0);
   const [customerPointsBalance, setCustomerPointsBalance] = useState(0);
   const [deliveryFee, setDeliveryFee] = useState(0);
-  const [deliveryCoordinates, setDeliveryCoordinates] = useState({ lat: null, lng: null });
-  const [deliveryOutOfRange, setDeliveryOutOfRange] = useState(false);
-  const [deliverySearchQuery, setDeliverySearchQuery] = useState('');
+  const [selectedDeliveryLocationId, setSelectedDeliveryLocationId] = useState('');
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [combinedPayment, setCombinedPayment] = useState(false); // For points + cash/gcash
@@ -90,38 +84,13 @@ export default function CashierPOS() {
 
   useEffect(() => {
     if (orderMode === 'delivery') {
-      // Only use default if coordinates are not set
-      if (!deliveryCoordinates.lat || !deliveryCoordinates.lng) {
-        setDeliveryFee(DELIVERY_FEE_DEFAULT);
-        setDeliveryOutOfRange(false);
-      }
+      const selectedLocation = getDeliveryLocationById(selectedDeliveryLocationId);
+      setDeliveryFee(selectedLocation ? selectedLocation.fee : 0);
     } else {
       setDeliveryFee(0);
-      setDeliveryCoordinates({ lat: null, lng: null });
-      setDeliveryOutOfRange(false);
-      setDeliverySearchQuery('');
+      setSelectedDeliveryLocationId('');
     }
-  }, [orderMode]);
-
-  // Calculate delivery fee when coordinates change
-  useEffect(() => {
-    if (orderMode === 'delivery' && deliveryCoordinates.lat && deliveryCoordinates.lng) {
-      const distanceInMeters = getDistanceBetweenCoordinates(
-        STORE_LOCATION.latitude,
-        STORE_LOCATION.longitude,
-        deliveryCoordinates.lat,
-        deliveryCoordinates.lng
-      );
-      const isOutOfRange = distanceInMeters > MAX_DELIVERY_DISTANCE;
-      setDeliveryOutOfRange(isOutOfRange);
-      if (isOutOfRange) {
-        setDeliveryFee(0);
-        return;
-      }
-      const calculatedFee = calculateDeliveryFee(distanceInMeters);
-      setDeliveryFee(calculatedFee);
-    }
-  }, [deliveryCoordinates, orderMode]);
+  }, [orderMode, selectedDeliveryLocationId]);
 
   useEffect(() => {
     const refreshPayrollEmployees = () => {
@@ -144,13 +113,6 @@ export default function CashierPOS() {
     }
     setSalaryDeductionEmployeeId('');
   }, [paymentMethod]);
-
-  const handleLocationChange = (lat, lng, displayName) => {
-    setDeliveryCoordinates({ lat, lng });
-    if (displayName) {
-      setDeliverySearchQuery(displayName);
-    }
-  };
 
   const fetchMenu = useCallback(async () => {
     if (!supabase) return;
@@ -406,24 +368,27 @@ export default function CashierPOS() {
 
   const selectedPayrollEmployee = payrollEmployees.find((employee) => employee.id === salaryDeductionEmployeeId);
   const salaryDeductionMissingMatch = paymentMethod === 'salary_deduction' && !selectedPayrollEmployee;
-  const isPinMissing = !deliveryCoordinates.lat || !deliveryCoordinates.lng;
+  const selectedDeliveryLocation = getDeliveryLocationById(selectedDeliveryLocationId);
+  const isDeliveryLocationMissing = orderMode === 'delivery' && !selectedDeliveryLocation;
+  const isDeliveryStreetMissing = orderMode === 'delivery' && !customerInfo.address.trim();
   const isCheckoutDisabled =
     items.length === 0 ||
     checkoutLoading ||
     salaryDeductionMissingMatch ||
-    (orderMode === 'delivery' && (deliveryOutOfRange || isPinMissing));
+    isDeliveryLocationMissing ||
+    isDeliveryStreetMissing;
 
   const handleCheckout = async () => {
     if (items.length === 0) {
       alert('Please add items to the cart');
       return;
     }
-    if (orderMode === 'delivery' && isPinMissing) {
-      alert('Please pin the delivery location on the map before checking out.');
+    if (orderMode === 'delivery' && !selectedDeliveryLocation) {
+      alert('Please select the delivery barangay before checking out.');
       return;
     }
-    if (orderMode === 'delivery' && deliveryOutOfRange) {
-      alert('Delivery is only available within T\'boli, South Cotabato (max 5 km from our store).');
+    if (orderMode === 'delivery' && !customerInfo.address.trim()) {
+      alert('Please enter street and landmark before checking out.');
       return;
     }
     if (paymentMethod === 'salary_deduction' && !selectedPayrollEmployee) {
@@ -504,6 +469,12 @@ export default function CashierPOS() {
         finalPaymentMethod = `points+${paymentMethod}`;
       }
 
+      const formattedDeliveryAddress = selectedDeliveryLocation
+        ? [customerInfo.address?.trim(), formatDeliveryLocationAddress(selectedDeliveryLocation)]
+            .filter(Boolean)
+            .join(', ')
+        : null;
+
       const orderData = {
         items: items.map((item) => ({
           id: item.id,
@@ -519,12 +490,12 @@ export default function CashierPOS() {
         customer_id: customerInfo.userId || null, // Use UUID, not loyalty card ID
         contact_number: customerInfo.contactNumber || null,
         customer_phone: customerInfo.contactNumber || null, // Duplicate for rider interface compatibility
-        customer_address: orderMode === 'delivery' ? customerInfo.address : null,
-        customer_latitude: orderMode === 'delivery' ? deliveryCoordinates.lat : null,
-        customer_longitude: orderMode === 'delivery' ? deliveryCoordinates.lng : null,
-        delivery_address: orderMode === 'delivery' ? customerInfo.address : null,
-        delivery_latitude: orderMode === 'delivery' ? deliveryCoordinates.lat : null,
-        delivery_longitude: orderMode === 'delivery' ? deliveryCoordinates.lng : null,
+        customer_address: orderMode === 'delivery' ? formattedDeliveryAddress : null,
+        customer_latitude: null,
+        customer_longitude: null,
+        delivery_address: orderMode === 'delivery' ? formattedDeliveryAddress : null,
+        delivery_latitude: null,
+        delivery_longitude: null,
         subtotal: subtotal,
         vat_amount: vatAmount,
         delivery_fee: deliveryFee,
@@ -636,7 +607,7 @@ export default function CashierPOS() {
       setPointsToUse(0);
       setCustomerPointsBalance(0);
       setOrderMode('dine-in');
-      setDeliverySearchQuery('');
+      setSelectedDeliveryLocationId('');
       setPaymentMethod('cash');
       setCombinedPayment(false);
       setSalaryDeductionEmployeeId('');
@@ -759,7 +730,7 @@ export default function CashierPOS() {
             <p>Name  : ${customerName}</p>
             ${customerPhone && customerPhone !== 'N/A' ? `<p>Phone : ${customerPhone}</p>` : ''}
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
-            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Street and Purok:</strong> ${order.delivery_address}</p>` : ''}
+            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Street and Landmark:</strong> ${order.delivery_address}</p>` : ''}
           </div>
           
           <p class="section-title">ITEMS ORDERED</p>
@@ -1116,31 +1087,30 @@ export default function CashierPOS() {
             {orderMode === 'delivery' && (
               <>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Street and Purok *</label>
+                  <label style={styles.label}>Street and Landmark *</label>
                   <textarea
                     style={{ ...styles.input, minHeight: '60px' }}
-                    placeholder="Enter street and purok"
+                    placeholder="Enter street and landmark"
                     value={customerInfo.address}
                     onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
                     required
                   />
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Pin Delivery Location on Map *</label>
-                  <div style={styles.mapContainer}>
-                    <OpenStreetMapPicker
-                      initialLat={STORE_LOCATION.latitude}
-                      initialLng={STORE_LOCATION.longitude}
-                      onLocationChange={handleLocationChange}
-                      searchQuery={deliverySearchQuery}
-                      onSearchQueryChange={setDeliverySearchQuery}
-                    />
-                  </div>
-                  {deliveryOutOfRange && (
-                    <p style={styles.errorText}>
-                      Delivery is only available within T&apos;boli, South Cotabato (max 5 km from our store).
-                    </p>
-                  )}
+                  <label style={styles.label}>Barangay *</label>
+                  <select
+                    style={styles.input}
+                    value={selectedDeliveryLocationId}
+                    onChange={(e) => setSelectedDeliveryLocationId(e.target.value)}
+                    required
+                  >
+                    <option value="">Select barangay and landmark</option>
+                    {DELIVERY_LOCATION_OPTIONS.map((location) => (
+                      <option key={location.id} value={location.id}>
+                        {formatDeliveryLocationLabel(location)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </>
             )}
