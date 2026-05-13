@@ -753,12 +753,13 @@ export default function CashierPOS() {
           
           <div style="margin-bottom: 15px;">
             <p>Order#: ${order.order_number || order.id.slice(0, 8)}</p>
+            <p>Slip# : ${getOrderSlipNumber(order)}</p>
             <p>Date  : ${receiptDate}</p>
             <p>Type  : ${orderType}</p>
             <p>Name  : ${customerName}</p>
             ${customerPhone && customerPhone !== 'N/A' ? `<p>Phone : ${customerPhone}</p>` : ''}
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
-            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Landmark:</strong> ${order.delivery_address}</p>` : ''}
+            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Street and Purok:</strong> ${order.delivery_address}</p>` : ''}
           </div>
           
           <p class="section-title">ITEMS ORDERED</p>
@@ -1115,10 +1116,10 @@ export default function CashierPOS() {
             {orderMode === 'delivery' && (
               <>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Landmark *</label>
+                  <label style={styles.label}>Street and Purok *</label>
                   <textarea
                     style={{ ...styles.input, minHeight: '60px' }}
-                    placeholder="Enter landmark"
+                    placeholder="Enter street and purok"
                     value={customerInfo.address}
                     onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
                     required
