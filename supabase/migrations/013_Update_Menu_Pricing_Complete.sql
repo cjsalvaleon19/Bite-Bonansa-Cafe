@@ -706,7 +706,7 @@ WITH addon_type AS (
 INSERT INTO menu_item_variant_options (variant_type_id, option_name, price_modifier, available, display_order)
 SELECT id, 'No veggies', 0, true, 1 FROM addon_type
 UNION ALL
-SELECT id, 'Spam', 15, true, 2 FROM addon_type;
+SELECT id, 'Spam', 20, true, 2 FROM addon_type;
 
 -- ----------------------------------------------------------------------------
 -- 20. FOOTLONG (₱94 base) - Spice Level and Add Ons variants
