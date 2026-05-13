@@ -370,11 +370,13 @@ export default function CashierPOS() {
   const salaryDeductionMissingMatch = paymentMethod === 'salary_deduction' && !selectedPayrollEmployee;
   const selectedDeliveryLocation = getDeliveryLocationById(selectedDeliveryLocationId);
   const isDeliveryLocationMissing = orderMode === 'delivery' && !selectedDeliveryLocation;
+  const isDeliveryStreetMissing = orderMode === 'delivery' && !customerInfo.address.trim();
   const isCheckoutDisabled =
     items.length === 0 ||
     checkoutLoading ||
     salaryDeductionMissingMatch ||
-    isDeliveryLocationMissing;
+    isDeliveryLocationMissing ||
+    isDeliveryStreetMissing;
 
   const handleCheckout = async () => {
     if (items.length === 0) {
@@ -383,6 +385,10 @@ export default function CashierPOS() {
     }
     if (orderMode === 'delivery' && !selectedDeliveryLocation) {
       alert('Please select the delivery barangay before checking out.');
+      return;
+    }
+    if (orderMode === 'delivery' && !customerInfo.address.trim()) {
+      alert('Please enter street and purok before checking out.');
       return;
     }
     if (paymentMethod === 'salary_deduction' && !selectedPayrollEmployee) {

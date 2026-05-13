@@ -16,7 +16,7 @@ export const getDeliveryLocationById = (id) =>
   DELIVERY_LOCATION_OPTIONS.find((location) => location.id === id) || null;
 
 export const formatDeliveryLocationLabel = (location) =>
-  `${location.barangay} — ${location.landmark} (₱${location.fee.toFixed(2)})`;
+  `${location.barangay} - ${location.landmark} (₱${location.fee.toFixed(2)})`;
 
 export const formatDeliveryLocationAddress = (location) =>
   `${location.landmark}, Brgy. ${location.barangay}, T'boli, South Cotabato`;

@@ -803,6 +803,7 @@ function CustomerOrderPage() {
   const subtotal = cart.reduce((sum, item) => sum + item.price, 0)
   const selectedDeliveryLocation = getDeliveryLocationById(selectedDeliveryLocationId)
   const deliveryAddress = selectedDeliveryLocation ? formatDeliveryLocationAddress(selectedDeliveryLocation) : ''
+  const fullDeliveryAddress = [deliveryLandmark.trim(), deliveryAddress].filter(Boolean).join(', ')
   const deliveryFee = selectedDeliveryLocation?.fee ?? 0
   const appliedDeliveryFee = orderType === 'delivery' ? deliveryFee : 0
   const total = subtotal + appliedDeliveryFee
@@ -977,7 +978,7 @@ function CustomerOrderPage() {
           customer_id: user?.id,
           customer_name: customerFullName || 'Customer',
           contact_number: user?.phone || '',
-          customer_address: isDelivery ? deliveryAddress : null,
+          customer_address: isDelivery ? fullDeliveryAddress : null,
           delivery_latitude: null,
           delivery_longitude: null,
           status: 'pending',
@@ -1853,6 +1854,7 @@ function CartContent({
   maxPointsUsable, actualPointsToUse, remainingBalance,
 }: CartContentProps) {
   const change = paymentMethod === 'cash' && cashTendered ? parseFloat(cashTendered) - total : 0
+  const fullDeliveryAddress = [deliveryLandmark.trim(), deliveryAddress].filter(Boolean).join(', ')
   const isSundayClosed = isSundayInManila()
   const isDeliveryScheduleOpen = isWithinDeliverySchedule()
 
@@ -1961,7 +1963,7 @@ function CartContent({
             )}
             {deliveryAddress && (
               <p className="text-xs text-muted-foreground">
-                Delivery location: {deliveryAddress}
+                Delivery location: {fullDeliveryAddress}
               </p>
             )}
             <Label htmlFor="landmark" className="text-primary">Street and Purok</Label>
