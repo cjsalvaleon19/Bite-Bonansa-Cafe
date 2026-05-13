@@ -25,6 +25,17 @@ WHERE NOT EXISTS (
 );
 
 -- Assign to Fryer 1 kitchen department (same lane as Silog Meals)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM kitchen_departments
+    WHERE department_code = 'FRY1'
+  ) THEN
+    RAISE EXCEPTION 'kitchen_departments entry with department_code=FRY1 is required';
+  END IF;
+END $$;
+
 UPDATE menu_items_base
 SET kitchen_department_id = (
   SELECT id
