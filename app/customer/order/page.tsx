@@ -944,7 +944,7 @@ function CustomerOrderPage() {
         notesStr += ` | Cash tendered: ${formatCurrency(parseFloat(cashTendered))}`
       }
       if (isDelivery && deliveryLandmark.trim()) {
-        notesStr += ` | Street and Purok: ${deliveryLandmark.trim()}`
+        notesStr += ` | Street and Landmark: ${deliveryLandmark.trim()}`
       }
       if (paymentMethod === 'gcash' && gcashRef) {
         notesStr += ` | GCash ref: ${gcashRef}`
@@ -1434,9 +1434,9 @@ function CustomerOrderPage() {
       <Dialog open={showLandmarkRequiredDialog} onOpenChange={setShowLandmarkRequiredDialog}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Street and Purok is required</DialogTitle>
+            <DialogTitle>Street and Landmark is required</DialogTitle>
             <DialogDescription>
-              Please provide your street and purok details so our rider can find your location before checkout.
+              Please provide your street and landmark details so our rider can find your location before checkout.
             </DialogDescription>
           </DialogHeader>
           <Button onClick={() => setShowLandmarkRequiredDialog(false)}>OK</Button>
@@ -1966,10 +1966,10 @@ function CartContent({
                 Delivery location: {fullDeliveryAddress}
               </p>
             )}
-            <Label htmlFor="landmark" className="text-primary">Street and Purok</Label>
+            <Label htmlFor="landmark" className="text-primary">Street and Landmark</Label>
             <Textarea
               id="landmark"
-              placeholder="Enter street and purok details (required)"
+              placeholder="Enter street and landmark details (required)"
               value={deliveryLandmark}
               onChange={(e) => setDeliveryLandmark(e.target.value)}
               className="resize-none"

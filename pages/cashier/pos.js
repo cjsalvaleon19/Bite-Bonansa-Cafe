@@ -388,7 +388,7 @@ export default function CashierPOS() {
       return;
     }
     if (orderMode === 'delivery' && !customerInfo.address.trim()) {
-      alert('Please enter street and purok before checking out.');
+      alert('Please enter street and landmark before checking out.');
       return;
     }
     if (paymentMethod === 'salary_deduction' && !selectedPayrollEmployee) {
@@ -730,7 +730,7 @@ export default function CashierPOS() {
             <p>Name  : ${customerName}</p>
             ${customerPhone && customerPhone !== 'N/A' ? `<p>Phone : ${customerPhone}</p>` : ''}
             ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
-            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Street and Purok:</strong> ${order.delivery_address}</p>` : ''}
+            ${order.order_mode === 'delivery' && order.delivery_address ? `<p><strong>Street and Landmark:</strong> ${order.delivery_address}</p>` : ''}
           </div>
           
           <p class="section-title">ITEMS ORDERED</p>
@@ -1087,10 +1087,10 @@ export default function CashierPOS() {
             {orderMode === 'delivery' && (
               <>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Street and Purok *</label>
+                  <label style={styles.label}>Street and Landmark *</label>
                   <textarea
                     style={{ ...styles.input, minHeight: '60px' }}
-                    placeholder="Enter street and purok"
+                    placeholder="Enter street and landmark"
                     value={customerInfo.address}
                     onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
                     required
