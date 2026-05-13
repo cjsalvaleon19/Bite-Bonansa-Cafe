@@ -132,7 +132,18 @@ export default function NotificationBell({ user }) {
   }
 
   function formatTime(timestamp) {
-    const date = new Date(timestamp);
+    // Normalize bare timestamp strings (no 'Z' / '+HH:MM') by treating them
+    // as UTC.  This guards against the case where the DB column is still
+    // TIMESTAMP without timezone and Supabase returns a string such as
+    // "2026-05-13T05:37:00" — without this, a PH (UTC+8) browser would
+    // parse it as local time and make notifications appear ~8 hours older.
+    const normalized =
+      typeof timestamp === 'string' &&
+      !timestamp.endsWith('Z') &&
+      !/[+-]\d{2}:\d{2}$/.test(timestamp)
+        ? timestamp + 'Z'
+        : timestamp;
+    const date = new Date(normalized);
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
@@ -143,7 +154,7 @@ export default function NotificationBell({ user }) {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return date.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' });
   }
 
   return (
