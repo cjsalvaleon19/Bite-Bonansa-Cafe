@@ -143,7 +143,7 @@ FROM (VALUES
    '["Biscoff","Strawberry","Oreo","Mallows"]', '[]', '[]', 'Pastries'),
   ('Clubhouse', 104.00, 'Rice & More',
    '[]', '[]',
-   '[{"name":"No Veggies","price":0},{"name":"Spam","price":15}]',
+   '[{"name":"No Veggies","price":0},{"name":"Spam","price":20}]',
    'Fryer 2'),
   ('Footlong', 94.00, 'Rice & More',
    '["Regular","Spicy"]', '[]', '[{"name":"No Veggies","price":0}]', 'Fryer 2'),
