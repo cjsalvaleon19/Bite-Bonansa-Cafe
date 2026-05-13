@@ -43,13 +43,13 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'menu item Extra Rice in Rice & More was not created';
   END IF;
-END $$;
 
-UPDATE menu_items_base
-SET kitchen_department_id = (
-  SELECT id
-  FROM kitchen_departments
-  WHERE department_code = 'FRY1'
-)
-WHERE name = 'Extra Rice'
-  AND category = 'Rice & More';
+  UPDATE menu_items_base
+  SET kitchen_department_id = (
+    SELECT id
+    FROM kitchen_departments
+    WHERE department_code = 'FRY1'
+  )
+  WHERE name = 'Extra Rice'
+    AND category = 'Rice & More';
+END $$;
