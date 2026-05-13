@@ -848,10 +848,6 @@ function CustomerOrderPage() {
       toast.error('Please pin your delivery location first')
       return
     }
-    if (orderType === 'delivery' && appliedDeliveryFee === 0) {
-      toast.error('Please pin a valid delivery location to calculate the delivery fee.')
-      return
-    }
     if (orderType === 'delivery' && isGenericTboliAddress(deliveryAddress)) {
       toast.error("Please select a specific barangay address within T'Boli, South Cotabato.")
       return
@@ -964,7 +960,7 @@ function CustomerOrderPage() {
         notesStr += ` | Cash tendered: ${formatCurrency(parseFloat(cashTendered))}`
       }
       if (isDelivery && deliveryLandmark.trim()) {
-        notesStr += ` | Landmark: ${deliveryLandmark.trim()}`
+        notesStr += ` | Street and Purok: ${deliveryLandmark.trim()}`
       }
       if (paymentMethod === 'gcash' && gcashRef) {
         notesStr += ` | GCash ref: ${gcashRef}`
@@ -1478,9 +1474,9 @@ function CustomerOrderPage() {
       <Dialog open={showLandmarkRequiredDialog} onOpenChange={setShowLandmarkRequiredDialog}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Landmark is required</DialogTitle>
+            <DialogTitle>Street and Purok is required</DialogTitle>
             <DialogDescription>
-              Please provide landmark details so our rider can find your location before checkout.
+              Please provide your street and purok details so our rider can find your location before checkout.
             </DialogDescription>
           </DialogHeader>
           <Button onClick={() => setShowLandmarkRequiredDialog(false)}>OK</Button>
@@ -2004,10 +2000,10 @@ function CartContent({
                 Please pin your location to continue with delivery checkout.
               </p>
             )}
-            <Label htmlFor="landmark" className="text-primary">Landmark</Label>
+            <Label htmlFor="landmark" className="text-primary">Street and Purok</Label>
             <Textarea
               id="landmark"
-              placeholder="Enter nearest landmark (required)"
+              placeholder="Enter street and purok details (required)"
               value={deliveryLandmark}
               onChange={(e) => setDeliveryLandmark(e.target.value)}
               className="resize-none"
@@ -2251,7 +2247,6 @@ function CartContent({
           cart.length === 0 ||
           (orderType === 'delivery' && !isDeliveryScheduleOpen) ||
           (orderType === 'delivery' && !hasPinnedLocation) ||
-          (orderType === 'delivery' && deliveryFee === 0) ||
           (orderType === 'delivery' && deliveryOutOfRange) ||
           (orderType === 'delivery' && isGenericTboliAddress(deliveryAddress)) ||
           // Cash tendered validation only for delivery and pickup orders

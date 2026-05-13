@@ -242,6 +242,7 @@ export default function EndOfDayReport() {
             
             <div style="margin-bottom: 15px;">
               <p>Order#: ${order.order_number || order.id.slice(0, 8)}</p>
+              <p>Slip# : ${getOrderSlipNumber(order)}</p>
               <p>Date  : ${new Date(order.created_at).toLocaleString()}</p>
               <p>Type  : ${order.order_mode || 'N/A'}</p>
               <p>Name  : ${order.customer_name || 'Walk-in'}</p>
@@ -510,6 +511,7 @@ export default function EndOfDayReport() {
           
           <div style="margin-bottom: 15px;">
             <p>Order#: ${order.order_number || order.id.slice(0, 8)}</p>
+            <p>Slip# : ${getOrderSlipNumber(order)}</p>
             <p>Date  : ${new Date(order.created_at).toLocaleString()}</p>
             <p>Type  : ${order.order_mode || 'N/A'}</p>
             <p>Name  : ${order.customer_name || 'Walk-in'}</p>
