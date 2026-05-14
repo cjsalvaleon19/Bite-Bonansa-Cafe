@@ -45,7 +45,16 @@ function computeEffectiveDeliveryFee(order) {
 }
 
 function getOrderDeliveryAddress(order) {
-  return String(order?.delivery_address || order?.customer_address || '').trim();
+  const rawAddress = [order?.delivery_address, order?.customer_address]
+    .find((value) => typeof value === 'string' && value.trim());
+  return rawAddress ? rawAddress.trim() : '';
+}
+
+function withOrderDeliveryAddress(order) {
+  const deliveryAddress = getOrderDeliveryAddress(order);
+  return deliveryAddress && !order?.delivery_address
+    ? { ...order, delivery_address: deliveryAddress }
+    : order;
 }
 
 export default function CashierDashboard() {
@@ -764,10 +773,7 @@ export default function CashierDashboard() {
   };
 
   const printReceiptBluetooth = async (order, receiptType = 'sales', options = {}) => {
-    const deliveryAddress = getOrderDeliveryAddress(order);
-    const orderForPrint = deliveryAddress && !order.delivery_address
-      ? { ...order, delivery_address: deliveryAddress }
-      : order;
+    const orderForPrint = withOrderDeliveryAddress(order);
     const { silent = false } = options;
     let displayPaymentMethod = orderForPrint.payment_method || 'N/A';
     const ptsClaimed = orderForPrint.points_used || 0;
@@ -809,12 +815,7 @@ export default function CashierDashboard() {
   };
 
   const handleViewOrder = (order) => {
-    const deliveryAddress = getOrderDeliveryAddress(order);
-    setSelectedOrderToView(
-      deliveryAddress && !order.delivery_address
-        ? { ...order, delivery_address: deliveryAddress }
-        : order
-    );
+    setSelectedOrderToView(withOrderDeliveryAddress(order));
     setEditableCashTendered(order.cash_amount || '');
     setViewOrderModal(true);
   };
