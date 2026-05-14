@@ -16,6 +16,7 @@ import {
   formatDeliveryLocationLabel,
   getDeliveryLocationById,
 } from '../../utils/deliveryLocations';
+import { parseSettingAsBoolean } from '../../utils/cashierSettings';
 
 const VAT_RATE = 0; // Currently disabled as per requirements
 
@@ -61,6 +62,7 @@ export default function CashierPOS() {
   const [lastPrintedOrder, setLastPrintedOrder] = useState(null); // For BT re-print
   const [showChangeAmountPopup, setShowChangeAmountPopup] = useState(false);
   const [changeAmountToPrepare, setChangeAmountToPrepare] = useState(0);
+  const [deliveryEnabled, setDeliveryEnabled] = useState(true);
 
   const { items, addItem, replaceItem, removeItem, updateQuantity, clearCart, getTotalPrice } =
     useCartStore();
@@ -113,6 +115,63 @@ export default function CashierPOS() {
     }
     setSalaryDeductionEmployeeId('');
   }, [paymentMethod]);
+
+  // ── Delivery-enabled realtime sync ──────────────────────────────────────────
+  const syncDeliveryEnabledSetting = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('cashier_settings')
+        .select('setting_value')
+        .eq('setting_key', 'delivery_enabled')
+        .maybeSingle();
+      if (error) throw error;
+      setDeliveryEnabled(parseSettingAsBoolean(data?.setting_value, true));
+    } catch (err) {
+      console.error('[POS] Failed to fetch delivery setting:', err?.message ?? err);
+    }
+  }, []);
+
+  // Fetch on mount and subscribe for realtime changes
+  useEffect(() => {
+    void syncDeliveryEnabledSetting();
+
+    if (!supabase) return;
+    const channel = supabase
+      .channel('pos_delivery_setting_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'cashier_settings',
+          filter: 'setting_key=eq.delivery_enabled',
+        },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            void syncDeliveryEnabledSetting();
+            return;
+          }
+          const nextValue = payload.new?.setting_value;
+          if (typeof nextValue === 'undefined') {
+            void syncDeliveryEnabledSetting();
+            return;
+          }
+          setDeliveryEnabled(parseSettingAsBoolean(nextValue, true));
+        }
+      )
+      .subscribe();
+
+    return () => { channel.unsubscribe(); };
+  }, [syncDeliveryEnabledSetting]);
+
+  // Auto-switch away from delivery if it gets disabled
+  useEffect(() => {
+    if (!deliveryEnabled && orderMode === 'delivery') {
+      setOrderMode('dine-in');
+    }
+  }, [deliveryEnabled, orderMode]);
+  // ────────────────────────────────────────────────────────────────────────────
 
   const fetchMenu = useCallback(async () => {
     if (!supabase) return;
@@ -1026,8 +1085,13 @@ export default function CashierPOS() {
                 <option value="dine-in">🍽️ Dine-in</option>
                 <option value="take-out">🥡 Take-out</option>
                 <option value="pick-up">📦 Pick-up</option>
-                <option value="delivery">🚚 Delivery</option>
+                <option value="delivery" disabled={!deliveryEnabled}>🚚 Delivery{!deliveryEnabled ? ' (Disabled)' : ''}</option>
               </select>
+              {!deliveryEnabled && (
+                <p style={{ marginTop: '6px', fontSize: '12px', color: '#ff9800' }}>
+                  ⚠️ Delivery is currently disabled in Settings.
+                </p>
+              )}
             </div>
 
             <div style={styles.formGroup}>
