@@ -6749,6 +6749,7 @@ export default function AdminPage() {
                 }
                 let grandTotal = 0;
                 let grandTotalCredit = 0;
+                const hideSubtotals = Boolean(acctF || srch);
                 return (
                   <div style={styles.tableWrap}>
                     <table style={{ ...styles.table, fontSize: 12 }}>
@@ -6767,9 +6768,6 @@ export default function AdminPage() {
                             rows[0].reference_type ||
                             key.slice(0, 8);
                           const nameDisplay = rows[0].name || '—';
-                          const groupTotal = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-                          grandTotal += groupTotal;
-                          grandTotalCredit += groupTotal;
                           // Each data row expands to a debit line + a credit line
                           // When account filter is active, only show lines where the account matches
                           const displayRows = rows.flatMap((row) => {
@@ -6781,6 +6779,16 @@ export default function AdminPage() {
                             return lines;
                           });
                           if (displayRows.length === 0) return null;
+                          const groupDebitTotal = displayRows.reduce(
+                            (sum, line) => sum + (line.isDebit ? (Number(line.row.amount) || 0) : 0),
+                            0,
+                          );
+                          const groupCreditTotal = displayRows.reduce(
+                            (sum, line) => sum + (!line.isDebit ? (Number(line.row.amount) || 0) : 0),
+                            0,
+                          );
+                          grandTotal += groupDebitTotal;
+                          grandTotalCredit += groupCreditTotal;
                           return (
                             <React.Fragment key={key}>
                               {displayRows.map(({ row, isDebit }, di) => (
@@ -6808,12 +6816,13 @@ export default function AdminPage() {
                                   </td>
                                 </tr>
                               ))}
-                              {/* Group subtotal */}
-                              <tr style={{ background: '#1e1e1e', borderTop: '1px solid #333' }}>
-                                <td colSpan={5} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontWeight: 600, fontSize: 11 }}>Subtotal ({refDisplay}):</td>
-                                <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(groupTotal)}</td>
-                                <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(groupTotal)}</td>
-                              </tr>
+                              {!hideSubtotals && (
+                                <tr style={{ background: '#1e1e1e', borderTop: '1px solid #333' }}>
+                                  <td colSpan={5} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontWeight: 600, fontSize: 11 }}>Subtotal ({refDisplay}):</td>
+                                  <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(groupDebitTotal)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(groupCreditTotal)}</td>
+                                </tr>
+                              )}
                             </React.Fragment>
                           );
                         })}
