@@ -520,6 +520,8 @@ export default function CashDrawer() {
         billNumber: '',
         amount: '',
         purpose: '',
+        attendanceEmployeeId: '',
+        payeeName: '',
       });
       return;
     }
@@ -528,7 +530,6 @@ export default function CashDrawer() {
       payrollSubmissionId: selected.id,
       billNumber: selected.id,
       amount: selected.netPay?.toString() || '',
-      payeeName: 'Payroll',
       purpose: `Payroll period ${selected.periodLabel} (${selected.cycleStart} to ${selected.cycleEnd})`,
     });
   };
@@ -622,6 +623,10 @@ export default function CashDrawer() {
     }
     if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'payroll' && !formData.payrollSubmissionId) {
       alert('Please select a payroll period');
+      return;
+    }
+    if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'payroll' && !formData.attendanceEmployeeId) {
+      alert('Please select an employee (Payee Name)');
       return;
     }
     if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'cash_advance' && !formData.attendanceEmployeeId) {
@@ -1256,13 +1261,32 @@ export default function CashDrawer() {
 
                           <div style={styles.formGroup}>
                             <label style={styles.label}>Payee Name *</label>
-                            <input
+                            <select
                               style={styles.input}
-                              type="text"
-                              value={formData.payeeName || 'Payroll'}
-                              readOnly
+                              value={formData.attendanceEmployeeId}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const selected = attendanceEmployees.find((emp) => String(emp.id) === val);
+                                setFormData({
+                                  ...formData,
+                                  attendanceEmployeeId: val,
+                                  payeeName: selected?.name || '',
+                                });
+                              }}
                               required
-                            />
+                            >
+                              <option value="">Select employee</option>
+                              {attendanceEmployees.map((emp) => (
+                                <option key={emp.id} value={emp.id}>
+                                  {emp.name}
+                                </option>
+                              ))}
+                            </select>
+                            {attendanceEmployees.length === 0 && (
+                              <p style={{ fontSize: '11px', color: '#ffc107', marginTop: '4px' }}>
+                                No employees found in Attendance Sheet
+                              </p>
+                            )}
                           </div>
 
                           <div style={styles.formGroup}>
@@ -1283,10 +1307,11 @@ export default function CashDrawer() {
                               style={styles.input}
                               value={formData.attendanceEmployeeId}
                               onChange={(e) => {
-                                const selected = attendanceEmployees.find((emp) => emp.id === e.target.value);
+                                const val = e.target.value;
+                                const selected = attendanceEmployees.find((emp) => String(emp.id) === val);
                                 setFormData({
                                   ...formData,
-                                  attendanceEmployeeId: e.target.value,
+                                  attendanceEmployeeId: val,
                                   payeeName: selected?.name || '',
                                 });
                               }}
