@@ -139,11 +139,12 @@ export default function CashierDashboard() {
   useEffect(() => {
     if (!router.isReady) return;
     if (router.query?.tab === 'pending') {
-      setActiveTab('pending');
+      if (activeTab !== 'pending') {
+        setActiveTab('pending');
+      }
       setHasNewOrders(false);
-      fetchPendingOnlineOrders();
     }
-  }, [router.isReady, router.query?.tab]);
+  }, [router.isReady, router.query?.tab, activeTab]);
 
   // Set up real-time subscription for new orders (always active for notifications and stats)
   useEffect(() => {
