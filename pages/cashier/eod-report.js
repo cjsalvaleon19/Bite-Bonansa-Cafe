@@ -20,6 +20,23 @@ export default function EndOfDayReport() {
 
   const refreshTimerRef = useRef(null);
 
+  const getNormalizedOrderMode = (orderMode) => String(orderMode || '').trim().toLowerCase();
+  const toNumber = (value) => {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const getEffectiveDeliveryFee = (order) => {
+    const savedDeliveryFee = toNumber(order?.delivery_fee);
+    if (savedDeliveryFee > 0) return savedDeliveryFee;
+    if (getNormalizedOrderMode(order?.order_mode) !== 'delivery') return 0;
+
+    const subtotal = toNumber(order?.subtotal);
+    const totalAmount = toNumber(order?.total_amount);
+    const derivedDeliveryFee = totalAmount - subtotal;
+
+    return derivedDeliveryFee > 0 ? derivedDeliveryFee : 0;
+  };
+
   useEffect(() => {
     if (!authLoading) {
       fetchUser();
@@ -175,11 +192,11 @@ export default function EndOfDayReport() {
     const qrImageUrl = `${window.location.origin}/qr-code.png`;
     
     // Calculate values based on the new flow
-    const subtotal = order.subtotal || 0;
-    const deliveryFee = order.delivery_fee || 0;
+    const subtotal = toNumber(order.subtotal);
+    const deliveryFee = getEffectiveDeliveryFee(order);
     const shouldShowDeliveryFeeRow =
       parseFloat(deliveryFee || 0) > 0 ||
-      String(order.order_mode || '').trim().toLowerCase() === 'delivery';
+      getNormalizedOrderMode(order.order_mode) === 'delivery';
     const total = subtotal + deliveryFee;
     const pointsClaimed = order.points_used || 0;
     const netAmount = total - pointsClaimed;
@@ -451,11 +468,11 @@ export default function EndOfDayReport() {
     const qrImageUrl = `${window.location.origin}/qr-code.png`;
     
     // Calculate values based on the new flow
-    const subtotal = order.subtotal || 0;
-    const deliveryFee = order.delivery_fee || 0;
+    const subtotal = toNumber(order.subtotal);
+    const deliveryFee = getEffectiveDeliveryFee(order);
     const shouldShowDeliveryFeeRow =
       parseFloat(deliveryFee || 0) > 0 ||
-      String(order.order_mode || '').trim().toLowerCase() === 'delivery';
+      getNormalizedOrderMode(order.order_mode) === 'delivery';
     const total = subtotal + deliveryFee;
     const pointsClaimed = order.points_used || 0;
     const netAmount = total - pointsClaimed;
@@ -641,7 +658,7 @@ export default function EndOfDayReport() {
   const handleBtPrintReceipt = async (order) => {
     let displayPaymentMethod = order.payment_method || 'N/A';
     const ptsClaimed = order.points_used || 0;
-    const total = (order.subtotal || 0) + (order.delivery_fee || 0);
+    const total = toNumber(order.subtotal) + getEffectiveDeliveryFee(order);
     if (ptsClaimed > 0) {
       if (ptsClaimed >= total) {
         displayPaymentMethod = 'Points';
@@ -755,7 +772,7 @@ export default function EndOfDayReport() {
             </div>
             <div style={styles.summaryCard}>
               <div style={styles.summaryLabel}>Delivery Fee</div>
-              <div style={styles.summaryValue}>₱{orders.reduce((sum, o) => sum + parseFloat(o.delivery_fee || 0), 0).toFixed(2)}</div>
+              <div style={styles.summaryValue}>₱{orders.reduce((sum, o) => sum + getEffectiveDeliveryFee(o), 0).toFixed(2)}</div>
             </div>
           </div>
 
@@ -809,7 +826,7 @@ export default function EndOfDayReport() {
                         ₱{parseFloat(order.subtotal || 0).toFixed(2)}
                       </td>
                       <td style={styles.td}>
-                        ₱{parseFloat(order.delivery_fee || 0).toFixed(2)}
+                        ₱{getEffectiveDeliveryFee(order).toFixed(2)}
                       </td>
                       <td style={styles.td}>
                         ₱{parseFloat(order.points_used || 0).toFixed(2)}
