@@ -1666,7 +1666,12 @@ export default function AdminPage() {
           .from('menu_items')
           .select('id, name, category');
         const menuCatMap = {};
-        (menuItemsForCat || []).forEach((m) => { menuCatMap[m.id] = m.category || 'Other'; menuCatMap[m.name] = m.category || 'Other'; });
+        const menuNameMap = {};
+        (menuItemsForCat || []).forEach((m) => {
+          menuCatMap[m.id] = m.category || 'Other';
+          menuCatMap[m.name] = m.category || 'Other';
+          menuNameMap[m.id] = m.name || '';
+        });
         const { data: costingHdrs } = await supabase
           .from('price_costing_headers')
           .select('menu_item_name, total_estimated_cogs, selling_price');
@@ -1675,7 +1680,17 @@ export default function AdminPage() {
 
         const itemMap = {};
         salesItems.forEach((si) => {
-          const baseName = (si.name || '').split(' - ')[0].trim();
+          const rawName = String(si.name || '').trim();
+          const nameFromMenu = (si.menu_item_id && menuNameMap[si.menu_item_id]) ? String(menuNameMap[si.menu_item_id]).trim() : '';
+          let baseName = nameFromMenu || rawName.split(' - ')[0].trim();
+          while (/\([^)]*\)\s*$/.test(baseName)) {
+            const trailingMatch = baseName.match(/\(([^)]*)\)\s*$/);
+            const trailingText = trailingMatch ? trailingMatch[1] : '';
+            const looksLikeVariant = /[:,]/.test(trailingText) || /(size|flavor|variety|spice\s*level|add[\s-]*ons?)/i.test(trailingText);
+            if (!looksLikeVariant) break;
+            baseName = baseName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+          }
+          if (!baseName) baseName = rawName;
           const qty = Number(si.quantity) || 1;
           const rev = Number(si.subtotal) || (Number(si.price) || 0) * qty;
           const category = (si.menu_item_id && menuCatMap[si.menu_item_id]) || menuCatMap[baseName] || menuCatMap[si.name] || 'Other';
