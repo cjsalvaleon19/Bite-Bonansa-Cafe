@@ -1697,9 +1697,16 @@ export default function AdminPage() {
         });
         const { data: costingHdrs } = await supabase
           .from('price_costing_headers')
-          .select('menu_item_name, total_estimated_cogs, selling_price');
+          .select('menu_item_name, total_estimated_cogs, labor_cost, overhead_cost, wastage_amount, contingency_amount, selling_price');
         const cogsMap = {};
-        (costingHdrs || []).forEach((h) => { cogsMap[h.menu_item_name] = Number(h.total_estimated_cogs) || 0; });
+        (costingHdrs || []).forEach((h) => {
+          const rawMaterials = (Number(h.total_estimated_cogs) || 0)
+            - (Number(h.labor_cost) || 0)
+            - (Number(h.overhead_cost) || 0)
+            - (Number(h.wastage_amount) || 0)
+            - (Number(h.contingency_amount) || 0);
+          cogsMap[h.menu_item_name] = Math.max(0, rawMaterials);
+        });
 
         const itemMap = {};
         salesItems.forEach((si) => {
@@ -1707,7 +1714,9 @@ export default function AdminPage() {
           const nameFromMenu = (si.menu_item_id && menuNameMap[si.menu_item_id]) ? String(menuNameMap[si.menu_item_id]).trim() : '';
           let baseName = nameFromMenu || rawName.split(' - ')[0].trim();
           let trailingParen = extractTrailingParenthetical(baseName);
-          while (trailingParen) {
+          let parenGuard = 0;
+          while (trailingParen && parenGuard < 10) {
+            parenGuard += 1;
             const trailingText = trailingParen.inside;
             const looksLikeVariant = ITEM_VARIANT_PUNCTUATION_PATTERN.test(trailingText)
               || ITEM_VARIANT_KEYWORD_PATTERN.test(trailingText);
