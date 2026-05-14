@@ -46,15 +46,16 @@ function computeEffectiveDeliveryFee(order) {
 
 function getOrderDeliveryAddress(order) {
   const rawAddress = [order?.delivery_address, order?.customer_address]
-    .find((value) => typeof value === 'string' && value.trim());
+    .find((value) => typeof value === 'string' && value.trim().length > 0);
   return rawAddress ? rawAddress.trim() : '';
 }
 
 function withOrderDeliveryAddress(order) {
   const deliveryAddress = getOrderDeliveryAddress(order);
-  return deliveryAddress && !order?.delivery_address
-    ? { ...order, delivery_address: deliveryAddress }
-    : order;
+  return {
+    ...order,
+    delivery_address: deliveryAddress || null,
+  };
 }
 
 export default function CashierDashboard() {
