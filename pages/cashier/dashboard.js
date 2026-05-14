@@ -8,10 +8,41 @@ import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions, calculateCashToGcashTotal, getGCashAmount, UNACCEPTED_ORDER_STATUSES, ONLINE_ORDER_MODES } from '../../utils/salesCalculations';
 import { connectPrinter, printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
+import { DELIVERY_LOCATION_OPTIONS, formatDeliveryLocationAddress } from '../../utils/deliveryLocations';
 
 // Constants
 const NOTIFICATION_AUDIO_VOLUME = 0.5;
 const STATS_REFRESH_DEBOUNCE_MS = 2000; // Debounce stats refresh by 2 seconds
+
+/**
+ * Compute the effective delivery fee for a delivery order.
+ * Some orders were stored with delivery_fee = 0 (e.g. placed before the
+ * location-based fee was persisted).  We recover the correct value by:
+ *   1. Using the stored delivery_fee when it is non-zero.
+ *   2. Deriving from total_amount − subtotal (equals the fee when total_amount
+ *      was stored correctly but delivery_fee column was not).
+ *   3. Matching the order's customer_address against DELIVERY_LOCATION_OPTIONS
+ *      as a last resort (handles orders where total_amount is also wrong).
+ */
+function computeEffectiveDeliveryFee(order) {
+  const stored = parseFloat(order?.delivery_fee || 0);
+  if (stored > 0) return stored;
+
+  // Derive from stored totals (most reliable when total_amount is correct)
+  const computed = parseFloat(order?.total_amount || 0) - parseFloat(order?.subtotal || 0);
+  if (computed > 0) return computed;
+
+  // Last resort: identify the location from the delivery address string
+  const addr = order?.customer_address || '';
+  if (addr) {
+    const matched = DELIVERY_LOCATION_OPTIONS.find((loc) =>
+      addr.includes(formatDeliveryLocationAddress(loc))
+    );
+    if (matched) return matched.fee;
+  }
+
+  return 0;
+}
 
 export default function CashierDashboard() {
   const router = useRouter();
@@ -813,35 +844,57 @@ export default function CashierDashboard() {
       // Delivery and Pick-up: 'order_in_process' (payment already done online)
       const isDineInOrTakeOut = selectedOrderToView.order_mode === 'dine-in' || selectedOrderToView.order_mode === 'take-out';
       const newStatus = isDineInOrTakeOut ? 'proceed_to_cashier' : 'order_in_process';
-      
-      // Update order status and set accepted_at timestamp
+
+      // Compute the effective delivery fee so receipts and reports are accurate.
+      // If the stored delivery_fee is 0 (can happen with orders placed before the
+      // fee was persisted correctly), backfill it with the computed value.
+      const isDeliveryOrder = selectedOrderToView.order_mode === 'delivery';
+      const effectiveDeliveryFeeOnAccept = isDeliveryOrder
+        ? computeEffectiveDeliveryFee(selectedOrderToView)
+        : 0;
+      const storedDeliveryFee = parseFloat(selectedOrderToView.delivery_fee || 0);
+      const needsDeliveryFeeBackfill = isDeliveryOrder
+        && effectiveDeliveryFeeOnAccept > 0
+        && storedDeliveryFee === 0;
+
+      // Update order status, accepted_at, and (if needed) the corrected delivery_fee.
       // Note: Database trigger will automatically create notification for customer
+      const updatePayload = {
+        status: newStatus,
+        accepted_at: new Date().toISOString(),
+        cashier_id: user?.id,
+      };
+      if (needsDeliveryFeeBackfill) {
+        updatePayload.delivery_fee = effectiveDeliveryFeeOnAccept;
+      }
+
       const { error } = await supabase
         .from('orders')
-        .update({
-          status: newStatus,
-          accepted_at: new Date().toISOString(),
-          cashier_id: user?.id
-        })
+        .update(updatePayload)
         .eq('id', selectedOrderToView.id);
 
       if (error) throw error;
+
+      // Build the order object used for receipts, patching in the effective fee
+      const orderForReceipt = needsDeliveryFeeBackfill
+        ? { ...selectedOrderToView, delivery_fee: effectiveDeliveryFeeOnAccept }
+        : selectedOrderToView;
 
       // Close view modal
       setViewOrderModal(false);
       
       // Show print receipt confirmation modal
-      setAcceptedOrder(selectedOrderToView);
+      setAcceptedOrder(orderForReceipt);
       setShowPrintReceiptModal(true);
       
       // Generate sales invoice receipt
-      printReceipt(selectedOrderToView, 'sales');
-      await printKitchenReceipts(selectedOrderToView);
+      printReceipt(orderForReceipt, 'sales');
+      await printKitchenReceipts(orderForReceipt);
 
       // Auto Bluetooth print on accept click (non-blocking on failure)
       await printerWarmup;
-      await printReceiptBluetooth(selectedOrderToView, 'sales', { silent: true });
-      await printKitchenReceiptsBluetooth(selectedOrderToView, { silent: true });
+      await printReceiptBluetooth(orderForReceipt, 'sales', { silent: true });
+      await printKitchenReceiptsBluetooth(orderForReceipt, { silent: true });
 
       fetchPendingOnlineOrders();
     } catch (err) {
@@ -1321,7 +1374,11 @@ export default function CashierDashboard() {
         </main>
 
         {/* View Order Modal */}
-        {viewOrderModal && selectedOrderToView && (
+        {viewOrderModal && selectedOrderToView && (() => {
+          const effectiveDeliveryFee = selectedOrderToView.order_mode === 'delivery'
+            ? computeEffectiveDeliveryFee(selectedOrderToView)
+            : 0;
+          return (
           <div style={styles.modal} onClick={() => setViewOrderModal(false)}>
             <div style={{ ...styles.modalContent, ...styles.viewOrderModalContent }} onClick={(e) => e.stopPropagation()}>
               <h3 style={styles.modalTitle}>📋 Order Details</h3>
@@ -1416,7 +1473,7 @@ export default function CashierDashboard() {
                 {selectedOrderToView.order_mode === 'delivery' && (
                   <div style={styles.viewOrderTotalRow}>
                     <span>Delivery Fee:</span>
-                    <span>₱{parseFloat(selectedOrderToView.delivery_fee || 0).toFixed(2)}</span>
+                    <span>₱{effectiveDeliveryFee.toFixed(2)}</span>
                   </div>
                 )}
                 {selectedOrderToView.points_used > 0 && (
@@ -1517,7 +1574,8 @@ export default function CashierDashboard() {
               </div>
             </div>
           </div>
-        )}
+        );
+        })()}
 
         {/* GCash Proof Image Lightbox */}
         {showGCashProof && (
