@@ -5,6 +5,21 @@ const SILOG_VARIETY_TYPE = 'Variety';
 const SIOMAISILOG_OPTION = 'Siomaisilog';
 const SIOMAI_STYLE_TYPE = 'Siomai Style';
 
+const normalizeSelectedVariants = (variants) => {
+  if (!variants || typeof variants !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(variants).map(([typeId, options]) => ([
+      typeId,
+      Array.isArray(options)
+        ? options.map((option) => ({
+          ...option,
+          quantity: Math.max(1, Number(option?.quantity) || 1)
+        }))
+        : []
+    ]))
+  );
+};
+
 export default function VariantSelectionModal({
   item,
   onConfirm,
@@ -32,33 +47,26 @@ export default function VariantSelectionModal({
   };
 
   useEffect(() => {
-    setSelectedVariants(
-      initialSelectedVariants && typeof initialSelectedVariants === 'object'
-        ? initialSelectedVariants
-        : {}
-    );
+    setSelectedVariants(normalizeSelectedVariants(initialSelectedVariants));
     setQuantity(Math.max(1, Number(initialQuantity) || 1));
   }, [item?.id, initialSelectedVariants, initialQuantity]);
 
   // Handle variant selection
   const handleVariantSelect = (typeId, optionId, optionName, priceModifier, allowMultiple) => {
     if (allowMultiple) {
-      // For multiple selection, toggle the option
       setSelectedVariants(prev => {
         const currentOptions = prev[typeId] || [];
         const exists = currentOptions.find(opt => opt.optionId === optionId);
         
         if (exists) {
-          // Remove if already selected
           return {
             ...prev,
             [typeId]: currentOptions.filter(opt => opt.optionId !== optionId)
           };
         } else {
-          // Add new option
           return {
             ...prev,
-            [typeId]: [...currentOptions, { optionId, optionName, priceModifier }]
+            [typeId]: [...currentOptions, { optionId, optionName, priceModifier, quantity: 1 }]
           };
         }
       });
@@ -84,6 +92,27 @@ export default function VariantSelectionModal({
     }
   };
 
+  const handleMultiOptionQuantityChange = (typeId, optionId, delta) => {
+    setSelectedVariants((prev) => {
+      const currentOptions = prev[typeId] || [];
+      const nextOptions = currentOptions.map((option) => {
+        if (option.optionId !== optionId) return option;
+        const nextQuantity = Math.max(1, (Number(option.quantity) || 1) + delta);
+        return { ...option, quantity: nextQuantity };
+      });
+
+      return {
+        ...prev,
+        [typeId]: nextOptions
+      };
+    });
+  };
+
+  const getSelectedOptionQuantity = (typeId, optionId) => {
+    const selectedOption = (selectedVariants[typeId] || []).find((option) => option.optionId === optionId);
+    return Math.max(1, Number(selectedOption?.quantity) || 1);
+  };
+
   // Check if an option is selected
   const isOptionSelected = (typeId, optionId) => {
     const options = selectedVariants[typeId];
@@ -99,7 +128,7 @@ export default function VariantSelectionModal({
     Object.values(selectedVariants).forEach(options => {
       if (Array.isArray(options)) {
         options.forEach(option => {
-          price += parseFloat(option.priceModifier || 0);
+          price += parseFloat(option.priceModifier || 0) * (Number(option.quantity) || 1);
         });
       }
     });
@@ -133,7 +162,12 @@ export default function VariantSelectionModal({
       Object.entries(selectedVariants).forEach(([typeId, options]) => {
         const variantTypeName = variantTypesMap.get(typeId);
         if (variantTypeName) {
-          variantDetails[variantTypeName] = options.map(opt => opt.optionName).join(', ');
+          variantDetails[variantTypeName] = options
+            .map(opt => {
+              const optionQuantity = Math.max(1, Number(opt.quantity) || 1);
+              return optionQuantity > 1 ? `${opt.optionName} x${optionQuantity}` : opt.optionName;
+            })
+            .join(', ');
         }
       });
 
@@ -141,7 +175,10 @@ export default function VariantSelectionModal({
       const variantKeys = Object.entries(selectedVariants)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([typeId, options]) => 
-          options.map(opt => opt.optionId).sort().join(',')
+          options
+            .map(opt => `${opt.optionId}x${Math.max(1, Number(opt.quantity) || 1)}`)
+            .sort()
+            .join(',')
         )
         .join('|');
       const cartKey = `${item.id}|${variantKeys}`;
@@ -194,25 +231,62 @@ export default function VariantSelectionModal({
                         .filter(option => option.available !== false) // Only show available options
                         .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
                         .map(option => (
-                          <button
+                          <div
                             key={option.id}
                             style={{
                               ...styles.optionBtn,
                               ...(isOptionSelected(type.id, option.id) ? styles.optionBtnActive : {})
                             }}
-                            onClick={() => handleVariantSelect(
-                              type.id,
-                              option.id,
-                              option.option_name,
-                              option.price_modifier,
-                              type.allow_multiple
-                            )}
                           >
-                            <span style={styles.optionName}>{option.option_name}</span>
-                            {option.price_modifier > 0 && (
-                              <span style={styles.optionPrice}>+₱{parseFloat(option.price_modifier).toFixed(2)}</span>
+                            <button
+                              type="button"
+                              style={styles.optionMainBtn}
+                              aria-label={`${isOptionSelected(type.id, option.id) ? 'Remove' : 'Select'} ${option.option_name}`}
+                              onClick={() => handleVariantSelect(
+                                type.id,
+                                option.id,
+                                option.option_name,
+                                option.price_modifier,
+                                type.allow_multiple
+                              )}
+                            >
+                              <span style={styles.optionName}>{option.option_name}</span>
+                              {option.price_modifier > 0 && (
+                                <span style={styles.optionPrice}>+₱{parseFloat(option.price_modifier).toFixed(2)}</span>
+                              )}
+                            </button>
+                            {type.allow_multiple && isOptionSelected(type.id, option.id) && (
+                              <div style={styles.optionQtyControls}>
+                                <button
+                                  type="button"
+                                  style={styles.optionQtyBtn}
+                                  aria-label={`Decrease quantity for ${option.option_name}`}
+                                  aria-disabled={getSelectedOptionQuantity(type.id, option.id) <= 1}
+                                  disabled={getSelectedOptionQuantity(type.id, option.id) <= 1}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMultiOptionQuantityChange(type.id, option.id, -1);
+                                  }}
+                                >
+                                  −
+                                </button>
+                                <span style={styles.optionQtyValue}>
+                                  {getSelectedOptionQuantity(type.id, option.id)}
+                                </span>
+                                <button
+                                  type="button"
+                                  style={styles.optionQtyBtn}
+                                  aria-label={`Increase quantity for ${option.option_name}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMultiOptionQuantityChange(type.id, option.id, 1);
+                                  }}
+                                >
+                                  +
+                                </button>
+                              </div>
                             )}
-                          </button>
+                          </div>
                         ))
                     ) : (
                       <p style={styles.noOptions}>No options available</p>
@@ -385,6 +459,21 @@ const styles = {
     gap: '4px',
     textAlign: 'center',
   },
+  optionMainBtn: {
+    width: '100%',
+    background: 'none',
+    border: 'none',
+    color: 'inherit',
+    font: 'inherit',
+    padding: 0,
+    margin: 0,
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    textAlign: 'center',
+  },
   optionBtnActive: {
     backgroundColor: '#ffc107',
     color: '#0a0a0a',
@@ -397,6 +486,31 @@ const styles = {
   optionPrice: {
     fontSize: '12px',
     fontWeight: '600',
+  },
+  optionQtyControls: {
+    marginTop: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  optionQtyBtn: {
+    width: '22px',
+    height: '22px',
+    borderRadius: '4px',
+    border: '1px solid rgba(255, 255, 255, 0.35)',
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
+    color: 'inherit',
+    fontSize: '14px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    lineHeight: 1,
+    padding: 0,
+  },
+  optionQtyValue: {
+    minWidth: '18px',
+    textAlign: 'center',
+    fontSize: '12px',
+    fontWeight: '700',
   },
   noOptions: {
     color: '#999',
