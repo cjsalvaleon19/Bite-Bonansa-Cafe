@@ -95,19 +95,22 @@ export default function VariantSelectionModal({
   const handleMultiOptionQuantityChange = (typeId, optionId, delta) => {
     setSelectedVariants((prev) => {
       const currentOptions = prev[typeId] || [];
-      const nextOptions = currentOptions
-        .map((option) => {
-          if (option.optionId !== optionId) return option;
-          const nextQuantity = Math.max(0, (Number(option.quantity) || 1) + delta);
-          return { ...option, quantity: nextQuantity };
-        })
-        .filter((option) => (Number(option.quantity) || 0) > 0);
+      const nextOptions = currentOptions.map((option) => {
+        if (option.optionId !== optionId) return option;
+        const nextQuantity = Math.max(1, (Number(option.quantity) || 1) + delta);
+        return { ...option, quantity: nextQuantity };
+      });
 
       return {
         ...prev,
         [typeId]: nextOptions
       };
     });
+  };
+
+  const getSelectedOptionQuantity = (typeId, optionId) => {
+    const selectedOption = (selectedVariants[typeId] || []).find((option) => option.optionId === optionId);
+    return Math.max(1, Number(selectedOption?.quantity) || 1);
   };
 
   // Check if an option is selected
@@ -236,7 +239,9 @@ export default function VariantSelectionModal({
                             }}
                           >
                             <button
+                              type="button"
                               style={styles.optionMainBtn}
+                              aria-label={`${isOptionSelected(type.id, option.id) ? 'Remove' : 'Select'} ${option.option_name}`}
                               onClick={() => handleVariantSelect(
                                 type.id,
                                 option.id,
@@ -255,6 +260,9 @@ export default function VariantSelectionModal({
                                 <button
                                   type="button"
                                   style={styles.optionQtyBtn}
+                                  aria-label={`Decrease quantity for ${option.option_name}`}
+                                  aria-disabled={getSelectedOptionQuantity(type.id, option.id) <= 1}
+                                  disabled={getSelectedOptionQuantity(type.id, option.id) <= 1}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleMultiOptionQuantityChange(type.id, option.id, -1);
@@ -263,11 +271,12 @@ export default function VariantSelectionModal({
                                   −
                                 </button>
                                 <span style={styles.optionQtyValue}>
-                                  {Math.max(1, Number((selectedVariants[type.id] || []).find(opt => opt.optionId === option.id)?.quantity) || 1)}
+                                  {getSelectedOptionQuantity(type.id, option.id)}
                                 </span>
                                 <button
                                   type="button"
                                   style={styles.optionQtyBtn}
+                                  aria-label={`Increase quantity for ${option.option_name}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleMultiOptionQuantityChange(type.id, option.id, 1);
