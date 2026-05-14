@@ -14,6 +14,8 @@ import {
   toDateOnly,
 } from '../../utils/payrollStorage';
 
+const getCurrentDateOnly = () => new Date().toISOString().split('T')[0];
+
 export default function CashDrawer() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('cashier');
@@ -58,10 +60,12 @@ export default function CashDrawer() {
   const [unpaidBills, setUnpaidBills] = useState([]);
   const [filteredBills, setFilteredBills] = useState([]);
   const [billsSearchQuery, setBillsSearchQuery] = useState('');
+  const [transactionsDateFrom, setTransactionsDateFrom] = useState(getCurrentDateOnly());
+  const [transactionsDateTo, setTransactionsDateTo] = useState(getCurrentDateOnly());
 
   // Cash Audit tab state
   const [activeTab, setActiveTab] = useState('transactions');
-  const [auditDate, setAuditDate] = useState(new Date().toISOString().split('T')[0]);
+  const [auditDate, setAuditDate] = useState(getCurrentDateOnly());
   const [denominations, setDenominations] = useState({
     d1000: '', d500: '', d200: '', d100: '', d50: '', d20: '',
     d10: '', d5: '', d1: '', d050: '', d025: '',
@@ -215,21 +219,22 @@ export default function CashDrawer() {
     }
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (dateFrom = transactionsDateFrom, dateTo = transactionsDateTo) => {
     if (!supabase) return;
 
     try {
-      // Get today's transactions
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      const fallbackDate = getCurrentDateOnly();
+      const startDateValue = dateFrom || fallbackDate;
+      const endDateValue = dateTo || startDateValue;
+      const startDate = new Date(`${startDateValue}T00:00:00`);
+      const endDate = new Date(`${endDateValue}T00:00:00`);
+      endDate.setDate(endDate.getDate() + 1);
 
       const { data, error } = await supabase
         .from('cash_drawer_transactions')
         .select('*')
-        .gte('created_at', today.toISOString())
-        .lt('created_at', tomorrow.toISOString())
+        .gte('created_at', startDate.toISOString())
+        .lt('created_at', endDate.toISOString())
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -251,8 +256,8 @@ export default function CashDrawer() {
       const { data: ordersData } = await supabase
         .from('orders')
         .select('subtotal, total_amount, payment_method, points_used')
-        .gte('created_at', today.toISOString())
-        .lt('created_at', tomorrow.toISOString())
+        .gte('created_at', startDate.toISOString())
+        .lt('created_at', endDate.toISOString())
         .not('status', 'in', `(${UNACCEPTED_ORDER_STATUSES.join(',')})`);
 
       const { cashSales } = calculateSalesBreakdown(ordersData || []);
@@ -265,6 +270,22 @@ export default function CashDrawer() {
     } catch (err) {
       console.error('[CashDrawer] Failed to fetch transactions:', err?.message ?? err);
     }
+  };
+
+  const hasIncompleteTransactionDateRange = !transactionsDateFrom || !transactionsDateTo;
+  const hasInvalidTransactionDateRange = transactionsDateFrom && transactionsDateTo && transactionsDateFrom > transactionsDateTo;
+  const canApplyTransactionCoverage = !hasIncompleteTransactionDateRange && !hasInvalidTransactionDateRange;
+  const formatCoverageDate = (dateValue) => {
+    if (!dateValue) return '';
+    return new Date(`${dateValue}T00:00:00`).toLocaleDateString();
+  };
+  const transactionCoverageLabel = () => {
+    if (hasIncompleteTransactionDateRange) return 'No date coverage selected';
+    const fromLabel = formatCoverageDate(transactionsDateFrom);
+    const toLabel = formatCoverageDate(transactionsDateTo);
+    return transactionsDateFrom === transactionsDateTo
+      ? fromLabel
+      : `${fromLabel} to ${toLabel}`;
   };
 
   // ── Cash Audit helpers ──────────────────────────────────────────────────────
@@ -499,6 +520,8 @@ export default function CashDrawer() {
         billNumber: '',
         amount: '',
         purpose: '',
+        attendanceEmployeeId: '',
+        payeeName: '',
       });
       return;
     }
@@ -507,7 +530,6 @@ export default function CashDrawer() {
       payrollSubmissionId: selected.id,
       billNumber: selected.id,
       amount: selected.netPay?.toString() || '',
-      payeeName: 'Payroll',
       purpose: `Payroll period ${selected.periodLabel} (${selected.cycleStart} to ${selected.cycleEnd})`,
     });
   };
@@ -601,6 +623,10 @@ export default function CashDrawer() {
     }
     if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'payroll' && !formData.payrollSubmissionId) {
       alert('Please select a payroll period');
+      return;
+    }
+    if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'payroll' && !formData.attendanceEmployeeId) {
+      alert('Please select an employee (Payee Name)');
       return;
     }
     if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'cash_advance' && !formData.attendanceEmployeeId) {
@@ -870,6 +896,47 @@ export default function CashDrawer() {
             </div>
           </div>
 
+          <div style={styles.coverageControls}>
+            <div style={{ ...styles.formGroup, flex: 1, marginBottom: 0 }}>
+              <label style={styles.label}>Date From</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={transactionsDateFrom}
+                onChange={(e) => setTransactionsDateFrom(e.target.value)}
+              />
+            </div>
+            <div style={{ ...styles.formGroup, flex: 1, marginBottom: 0 }}>
+              <label style={styles.label}>Date To</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={transactionsDateTo}
+                onChange={(e) => setTransactionsDateTo(e.target.value)}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <button
+                type="button"
+                style={styles.primaryBtn}
+                onClick={() => fetchTransactions(transactionsDateFrom, transactionsDateTo)}
+                disabled={!canApplyTransactionCoverage}
+              >
+                Apply Coverage
+              </button>
+            </div>
+          </div>
+          {hasIncompleteTransactionDateRange && (
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: '#f44336' }}>
+              Both Date From and Date To are required.
+            </p>
+          )}
+          {hasInvalidTransactionDateRange && (
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: '#f44336' }}>
+              Date coverage is invalid. "Date From" must be on or before "Date To".
+            </p>
+          )}
+
           {/* Action Buttons */}
           <div style={styles.actionsGrid}>
             <button
@@ -905,9 +972,9 @@ export default function CashDrawer() {
 
           {/* Transactions List */}
           <div style={styles.transactionsSection}>
-            <h3 style={styles.sectionTitle}>Today's Transactions</h3>
+            <h3 style={styles.sectionTitle}>Cash Transactions ({transactionCoverageLabel()})</h3>
             {transactions.length === 0 ? (
-              <p style={styles.emptyText}>No transactions yet today</p>
+              <p style={styles.emptyText}>No transactions found for selected date coverage</p>
             ) : (
               <div style={styles.transactionsList}>
                 {transactions.map((transaction) => (
@@ -1194,13 +1261,32 @@ export default function CashDrawer() {
 
                           <div style={styles.formGroup}>
                             <label style={styles.label}>Payee Name *</label>
-                            <input
+                            <select
                               style={styles.input}
-                              type="text"
-                              value={formData.payeeName || 'Payroll'}
-                              readOnly
+                              value={formData.attendanceEmployeeId}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const selected = attendanceEmployees.find((emp) => String(emp.id) === val);
+                                setFormData({
+                                  ...formData,
+                                  attendanceEmployeeId: val,
+                                  payeeName: selected?.name || '',
+                                });
+                              }}
                               required
-                            />
+                            >
+                              <option value="">Select employee</option>
+                              {attendanceEmployees.map((emp) => (
+                                <option key={emp.id} value={emp.id}>
+                                  {emp.name}
+                                </option>
+                              ))}
+                            </select>
+                            {attendanceEmployees.length === 0 && (
+                              <p style={{ fontSize: '11px', color: '#ffc107', marginTop: '4px' }}>
+                                No employees found in Attendance Sheet
+                              </p>
+                            )}
                           </div>
 
                           <div style={styles.formGroup}>
@@ -1221,10 +1307,11 @@ export default function CashDrawer() {
                               style={styles.input}
                               value={formData.attendanceEmployeeId}
                               onChange={(e) => {
-                                const selected = attendanceEmployees.find((emp) => emp.id === e.target.value);
+                                const val = e.target.value;
+                                const selected = attendanceEmployees.find((emp) => String(emp.id) === val);
                                 setFormData({
                                   ...formData,
-                                  attendanceEmployeeId: e.target.value,
+                                  attendanceEmployeeId: val,
                                   payeeName: selected?.name || '',
                                 });
                               }}
@@ -1779,6 +1866,13 @@ const styles = {
     fontSize: '48px',
     fontWeight: '700',
     color: '#ffc107',
+  },
+  coverageControls: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr)) auto',
+    gap: '12px',
+    alignItems: 'end',
+    marginBottom: '20px',
   },
   actionsGrid: {
     display: 'grid',
