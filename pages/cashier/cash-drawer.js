@@ -1188,7 +1188,7 @@ export default function CashDrawer() {
                               <option value="">Select receiving report</option>
                               {filteredReceivingReports.map((rr) => (
                                 <option key={rr.id} value={rr.id}>
-                                  {rr.vendor?.name || '(No Vendor)'} — ₱{Number(rr.total_landed_cost || 0).toFixed(2)}
+                                  {rr.vendor?.name || '(No Vendor)'} — ₱{Number(rr.total_landed_cost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </option>
                               ))}
                             </select>
