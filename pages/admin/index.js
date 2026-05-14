@@ -559,18 +559,10 @@ export default function AdminPage() {
       const monthLabel = (d) => d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
       const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-      const [{ data: plJe }, { data: deliveryFees }] = await Promise.all([
-        supabase
+      const { data: plJe } = await supabase
           .from('journal_entries')
           .select('amount, date, debit_account, credit_account')
-          .gte('date', firstMonthDateStr),
-        supabase
-          .from('orders')
-          .select('delivery_fee, created_at')
-          .in('status', ['order_delivered', 'completed'])
-          .gte('created_at', firstMonthISO)
-          .gt('delivery_fee', 0),
-      ]);
+          .gte('date', firstMonthDateStr);
 
       const monthMap = {};
       monthStarts.forEach((d) => {
@@ -582,13 +574,9 @@ export default function AdminPage() {
         if (!monthMap[key]) return;
         const amt = Number(je.amount) || 0;
         if (['Revenue', 'Sales Revenue'].includes(je.credit_account)) monthMap[key].revenue += amt;
+        if (je.credit_account === 'Delivery Income') monthMap[key].deliveryIncome += amt;
         if (je.debit_account === 'Cost of Goods Sold') monthMap[key].cogs += amt;
         if (OPEX_ACCOUNTS.includes(je.debit_account)) monthMap[key].opExp += amt;
-      });
-      (deliveryFees || []).forEach((o) => {
-        const key = (o.created_at || '').slice(0, 7);
-        if (!monthMap[key]) return;
-        monthMap[key].deliveryIncome += Number(o.delivery_fee) || 0;
       });
 
       const pnlRows = monthStarts.map((d) => {
@@ -1555,7 +1543,7 @@ export default function AdminPage() {
           supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).lte('date', openingDate),
           supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).lte('date', openingDate),
           supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('reference_type', 'rr_payment').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Salaries & Wages').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Income Tax Expense').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
@@ -1573,8 +1561,7 @@ export default function AdminPage() {
 
         const cashBeginningBalance = sumAmt(cashOpeningDebits) - sumAmt(cashOpeningCredits);
         const receiptsRevenue = sumAmt(revenueCashJE);
-        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
-        const inventoryPurchases = sumAmt(inventoryPurchasesJE);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
         const salariesWages = sumAmt(salariesJE);
         const incomeTaxes = sumAmt(incomeTaxJE);
         const genOpAdminExpenses = (cashCreditJE || []).reduce((s, row) => {
@@ -1639,12 +1626,12 @@ export default function AdminPage() {
       } else if (finSubTab === 'pl') {
         const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const expByAccount = {};
         FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
@@ -1814,12 +1801,12 @@ export default function AdminPage() {
       } else if (finSubTab === 'budget') {
         const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const expByAccount = {};
         FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
@@ -1889,12 +1876,12 @@ export default function AdminPage() {
         const computePLPeriod = async (cFrom, cTo, cFromISO, cToISO) => {
           const [{ data: rev }, { data: del }, { data: cg }, { data: exps }] = await Promise.all([
             supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', cFrom).lte('date', cTo),
-            supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', cFromISO).lte('created_at', cToISO).gt('delivery_fee', 0),
+            supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', cFrom).lte('date', cTo),
             supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', cFrom).lte('date', cTo),
             supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', cFrom).lte('date', cTo),
           ]);
           const revenue = (rev || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-          const deliveryIncome = (del || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+          const deliveryIncome = (del || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
           const cogs = (cg || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
           const expByAccount = {};
           FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
