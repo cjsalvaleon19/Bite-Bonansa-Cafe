@@ -45,9 +45,13 @@ function computeEffectiveDeliveryFee(order) {
 }
 
 function getOrderDeliveryAddress(order) {
-  const rawAddress = [order?.delivery_address, order?.customer_address]
-    .find((value) => typeof value === 'string' && value.trim().length > 0);
-  return rawAddress ? rawAddress.trim() : '';
+  if (typeof order?.delivery_address === 'string' && order.delivery_address.trim().length > 0) {
+    return order.delivery_address.trim();
+  }
+  if (typeof order?.customer_address === 'string' && order.customer_address.trim().length > 0) {
+    return order.customer_address.trim();
+  }
+  return '';
 }
 
 function withOrderDeliveryAddress(order) {
@@ -816,8 +820,9 @@ export default function CashierDashboard() {
   };
 
   const handleViewOrder = (order) => {
-    setSelectedOrderToView(withOrderDeliveryAddress(order));
-    setEditableCashTendered(order.cash_amount || '');
+    const normalizedOrder = withOrderDeliveryAddress(order);
+    setSelectedOrderToView(normalizedOrder);
+    setEditableCashTendered(normalizedOrder.cash_amount || '');
     setViewOrderModal(true);
   };
 
