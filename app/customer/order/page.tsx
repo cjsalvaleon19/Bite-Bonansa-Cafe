@@ -212,7 +212,7 @@ function CustomerOrderPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
   const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine-in' | 'take-out'>('delivery')
-  const [deliveryEnabled, setDeliveryEnabled] = useState(true)
+  const [deliveryEnabled, setDeliveryEnabled] = useState(false)
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
   // State for new variant system modal
@@ -229,24 +229,46 @@ function CustomerOrderPage() {
   // State for customer full name
   const [customerFullName, setCustomerFullName] = useState<string>('')
 
-  // Check delivery enabled setting
-  useEffect(() => {
-    async function checkDeliveryEnabled() {
+  const syncDeliveryEnabledSetting = useCallback(async () => {
+    try {
       const { data, error } = await supabase
         .from('cashier_settings')
         .select('setting_value')
         .eq('setting_key', 'delivery_enabled')
         .maybeSingle()
-      
-      if (error) {
-        console.error('Failed to fetch delivery setting:', error)
-        return
-      }
+
+      if (error) throw error
 
       setDeliveryEnabled(parseSettingAsBoolean(data?.setting_value, true))
+    } catch (error) {
+      console.error('Failed to fetch delivery setting:', error)
+      setDeliveryEnabled(false)
     }
-    checkDeliveryEnabled()
   }, [])
+
+  // Keep delivery enabled setting synced even if realtime events are missed
+  useEffect(() => {
+    void syncDeliveryEnabledSetting()
+
+    const intervalId = window.setInterval(() => {
+      void syncDeliveryEnabledSetting()
+    }, 15000)
+
+    const handleRefreshDeliverySetting = () => {
+      if (document.visibilityState === 'visible') {
+        void syncDeliveryEnabledSetting()
+      }
+    }
+
+    window.addEventListener('focus', handleRefreshDeliverySetting)
+    document.addEventListener('visibilitychange', handleRefreshDeliverySetting)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', handleRefreshDeliverySetting)
+      document.removeEventListener('visibilitychange', handleRefreshDeliverySetting)
+    }
+  }, [syncDeliveryEnabledSetting])
 
   // Keep delivery enabled setting synced in real-time
   useEffect(() => {
@@ -262,11 +284,15 @@ function CustomerOrderPage() {
         },
         (payload) => {
           if (payload.eventType === 'DELETE') {
-            setDeliveryEnabled(true)
+            void syncDeliveryEnabledSetting()
             return
           }
 
           const nextValue = payload.new?.setting_value
+          if (typeof nextValue === 'undefined') {
+            void syncDeliveryEnabledSetting()
+            return
+          }
           setDeliveryEnabled(parseSettingAsBoolean(nextValue, true))
         }
       )
@@ -275,7 +301,7 @@ function CustomerOrderPage() {
     return () => {
       channel.unsubscribe()
     }
-  }, [])
+  }, [syncDeliveryEnabledSetting])
 
   // Fetch loyalty balance
   useEffect(() => {
