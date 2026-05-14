@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../utils/supabaseClient';
 
-export default function NotificationBell({ user }) {
+export default function NotificationBell({ user, onNotificationClick }) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -92,6 +92,16 @@ export default function NotificationBell({ user }) {
       }
     } catch (err) {
       console.error('[NotificationBell] Failed to mark as read:', err);
+    }
+  }
+
+  async function handleNotificationClick(notification) {
+    if (!notification) return;
+    if (!notification.is_read) {
+      await markAsRead(notification.id);
+    }
+    if (typeof onNotificationClick === 'function') {
+      onNotificationClick(notification);
     }
   }
 
@@ -209,7 +219,7 @@ export default function NotificationBell({ user }) {
                       ? '3px solid transparent'
                       : '3px solid #ffc107'
                   }}
-                  onClick={() => !notification.is_read && markAsRead(notification.id)}
+                  onClick={() => handleNotificationClick(notification)}
                 >
                   <div style={styles.notificationIcon}>
                     {getNotificationIcon(notification.type)}
