@@ -33,7 +33,7 @@ function computeEffectiveDeliveryFee(order) {
   if (computed > 0) return computed;
 
   // Last resort: identify the location from the delivery address string
-  const addr = order?.customer_address || '';
+  const addr = getOrderDeliveryAddress(order);
   if (addr) {
     const matched = DELIVERY_LOCATION_OPTIONS.find((loc) =>
       addr.includes(formatDeliveryLocationAddress(loc))
@@ -42,6 +42,10 @@ function computeEffectiveDeliveryFee(order) {
   }
 
   return 0;
+}
+
+function getOrderDeliveryAddress(order) {
+  return String(order?.delivery_address || order?.customer_address || '').trim();
 }
 
 export default function CashierDashboard() {
@@ -412,6 +416,7 @@ export default function CashierDashboard() {
 
     const items = getOrderItems(order);
     const isKitchenCopy = receiptType === 'kitchen';
+    const deliveryAddress = getOrderDeliveryAddress(order);
     
     // Helper function to strip variant details from item name (for legacy data)
     const stripVariantsFromName = (name) => {
@@ -640,7 +645,7 @@ export default function CashierDashboard() {
           <p>Name  : ${order.customer_name || order.users?.full_name || 'Walk-in'}</p>
           ${receiptPhone ? `<p>Phone : ${receiptPhone}</p>` : ''}
           ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
-          ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
+          ${deliveryAddress && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${deliveryAddress}</p>` : ''}
         </div>
 
         <div class="section">
@@ -759,24 +764,28 @@ export default function CashierDashboard() {
   };
 
   const printReceiptBluetooth = async (order, receiptType = 'sales', options = {}) => {
+    const deliveryAddress = getOrderDeliveryAddress(order);
+    const orderForPrint = deliveryAddress && !order.delivery_address
+      ? { ...order, delivery_address: deliveryAddress }
+      : order;
     const { silent = false } = options;
-    let displayPaymentMethod = order.payment_method || 'N/A';
-    const ptsClaimed = order.points_used || 0;
-    const total = (order.subtotal || 0) + (order.delivery_fee || 0);
+    let displayPaymentMethod = orderForPrint.payment_method || 'N/A';
+    const ptsClaimed = orderForPrint.points_used || 0;
+    const total = (orderForPrint.subtotal || 0) + (orderForPrint.delivery_fee || 0);
     if (ptsClaimed > 0) {
       if (ptsClaimed >= total) {
         displayPaymentMethod = 'Points';
-      } else if (order.payment_method && order.payment_method.includes('points+')) {
-        displayPaymentMethod = order.payment_method.split('points+')[1];
-      } else if (order.payment_method && order.payment_method.includes('+')) {
-        const parts = order.payment_method.split('+');
-        displayPaymentMethod = parts.find(p => p !== 'points') || order.payment_method;
+      } else if (orderForPrint.payment_method && orderForPrint.payment_method.includes('points+')) {
+        displayPaymentMethod = orderForPrint.payment_method.split('points+')[1];
+      } else if (orderForPrint.payment_method && orderForPrint.payment_method.includes('+')) {
+        const parts = orderForPrint.payment_method.split('+');
+        displayPaymentMethod = parts.find(p => p !== 'points') || orderForPrint.payment_method;
       }
     }
     try {
-      await printToBluetoothPrinter(order, receiptType, {
+      await printToBluetoothPrinter(orderForPrint, receiptType, {
         cashierName: user?.full_name || user?.email || 'Cashier',
-        customerLoyaltyId: order.users?.customer_id || null,
+        customerLoyaltyId: orderForPrint.users?.customer_id || null,
         displayPaymentMethod,
         departmentName: options.departmentName || null,
       });
@@ -800,7 +809,12 @@ export default function CashierDashboard() {
   };
 
   const handleViewOrder = (order) => {
-    setSelectedOrderToView(order);
+    const deliveryAddress = getOrderDeliveryAddress(order);
+    setSelectedOrderToView(
+      deliveryAddress && !order.delivery_address
+        ? { ...order, delivery_address: deliveryAddress }
+        : order
+    );
     setEditableCashTendered(order.cash_amount || '');
     setViewOrderModal(true);
   };
@@ -1335,9 +1349,9 @@ export default function CashierDashboard() {
                         </div>
                       )}
 
-                      {order.delivery_address && order.order_mode === 'delivery' && (
+                      {getOrderDeliveryAddress(order) && order.order_mode === 'delivery' && (
                         <div style={styles.orderAddress}>
-                          📍 {order.delivery_address}
+                          📍 {getOrderDeliveryAddress(order)}
                         </div>
                       )}
 
@@ -1413,10 +1427,10 @@ export default function CashierDashboard() {
                     <span>{selectedOrderToView.contact_number}</span>
                   </div>
                 )}
-                {selectedOrderToView.delivery_address && selectedOrderToView.order_mode === 'delivery' && (
+                {getOrderDeliveryAddress(selectedOrderToView) && selectedOrderToView.order_mode === 'delivery' && (
                   <div style={styles.viewOrderRow}>
                     <strong>Delivery Address:</strong>
-                    <span>{selectedOrderToView.delivery_address}</span>
+                    <span>{getOrderDeliveryAddress(selectedOrderToView)}</span>
                   </div>
                 )}
                 {selectedOrderToView.payment_method && (
