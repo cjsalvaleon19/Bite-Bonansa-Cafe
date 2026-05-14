@@ -272,11 +272,13 @@ export default function RiderDeliveries() {
         // Get the order_id from the delivery
         const delivery = deliveries.find(d => d.id === deliveryId);
         if (delivery && delivery.order_id) {
+          const now = new Date().toISOString();
           const { error: orderError } = await supabase
             .from('orders')
             .update({ 
               status: 'order_delivered',
-              delivered_at: new Date().toISOString()
+              delivered_at: now,
+              completed_at: now
             })
             .eq('id', delivery.order_id);
           

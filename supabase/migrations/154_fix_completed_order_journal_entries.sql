@@ -37,7 +37,7 @@ BEGIN
   IF OLD.status IN ('order_delivered', 'completed') THEN RETURN NEW; END IF;
 
   v_ref     := COALESCE(NEW.order_number, NEW.id::text);
-  v_date    := COALESCE((NEW.completed_at)::date, CURRENT_DATE);
+  v_date    := COALESCE(NEW.completed_at, NEW.delivered_at, CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')::date;
   v_total   := ROUND(COALESCE(NEW.total_amount::numeric, 0) * 100) / 100;
   v_points  := ROUND(COALESCE(NEW.points_used::numeric,  0) * 100) / 100;
   v_name    := COALESCE(NULLIF(TRIM(NEW.customer_name), ''), 'Walk-in');
@@ -182,7 +182,7 @@ CREATE TRIGGER trg_create_order_journal_entries
 INSERT INTO journal_entries
   (date, description, debit_account, credit_account, amount, reference_type, reference, name)
 SELECT
-  COALESCE((o.completed_at)::date, (o.created_at)::date, CURRENT_DATE),
+  COALESCE(o.completed_at, o.delivered_at, o.created_at)::date,
   'Sale: ' || COALESCE(o.order_number, o.id::text),
   'Accounts Payable',
   'Revenue',
@@ -206,7 +206,7 @@ WHERE o.status IN ('order_delivered', 'completed')
 INSERT INTO journal_entries
   (date, description, debit_account, credit_account, amount, reference_type, reference, name)
 SELECT
-  COALESCE((o.completed_at)::date, (o.created_at)::date, CURRENT_DATE),
+  COALESCE(o.completed_at, o.delivered_at, o.created_at)::date,
   'Sale: ' || COALESCE(o.order_number, o.id::text),
   CASE
     WHEN LOWER(COALESCE(o.payment_method, '')) LIKE '%credit%'
@@ -255,7 +255,7 @@ WHERE o.status IN ('order_delivered', 'completed')
 INSERT INTO journal_entries
   (date, description, debit_account, credit_account, amount, reference_type, reference, name)
 SELECT
-  COALESCE((o.completed_at)::date, (o.created_at)::date, CURRENT_DATE),
+  COALESCE(o.completed_at, o.delivered_at, o.created_at)::date,
   'Loyalty Points Earned: ' || COALESCE(o.order_number, o.id::text),
   'Rewards',
   'Accounts Payable - Rewards',
@@ -279,7 +279,7 @@ WITH order_scope AS (
   SELECT
     o.id::text AS order_id_text,
     COALESCE(o.order_number, o.id::text) AS order_ref,
-    COALESCE((o.completed_at)::date, (o.created_at)::date, CURRENT_DATE) AS je_date,
+    COALESCE(o.completed_at, o.delivered_at, o.created_at)::date AS je_date,
     COALESCE(NULLIF(TRIM(o.customer_name), ''), 'Walk-in') AS contact_name
   FROM orders o
   WHERE o.status IN ('order_delivered', 'completed')
