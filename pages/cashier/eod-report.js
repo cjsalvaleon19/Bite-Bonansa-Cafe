@@ -676,6 +676,11 @@ export default function EndOfDayReport() {
   const totalCash = rawCash - cashToGcashTotal - calculateAdjustmentDeductions(salesAdjustments);
   const totalGcash = rawGcash + cashToGcashTotal;
   const totalSales = totalCash + totalGcash;
+  const handleNotificationClick = (notification) => {
+    if (notification?.type === 'new_online_order') {
+      router.push('/cashier/dashboard?tab=pending');
+    }
+  };
 
   if (authLoading || loading) {
     return (
@@ -705,7 +710,7 @@ export default function EndOfDayReport() {
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
           <div style={styles.headerActions}>
-            {user && <NotificationBell user={user} />}
+            {user && <NotificationBell user={user} onNotificationClick={handleNotificationClick} />}
             <button style={styles.logoutBtn} onClick={async () => {
               if (supabase) await supabase.auth.signOut();
               router.replace('/login');

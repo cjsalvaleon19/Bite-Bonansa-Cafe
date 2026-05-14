@@ -959,6 +959,11 @@ export default function CashierPOS() {
   const netAmount = totalBeforePayment - pointsToUse;
   const cashTendered = parseFloat(paymentDetails.cashTendered || 0);
   const change = paymentMethod === 'cash' ? cashTendered - netAmount : 0;
+  const handleNotificationClick = (notification) => {
+    if (notification?.type === 'new_online_order') {
+      router.push('/cashier/dashboard?tab=pending');
+    }
+  };
 
   return (
     <>
@@ -977,7 +982,7 @@ export default function CashierPOS() {
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
           <div style={styles.headerActions}>
-            {user && <NotificationBell user={user} />}
+            {user && <NotificationBell user={user} onNotificationClick={handleNotificationClick} />}
             <button style={styles.logoutBtn} onClick={async () => {
               if (supabase) await supabase.auth.signOut();
               router.replace('/login');

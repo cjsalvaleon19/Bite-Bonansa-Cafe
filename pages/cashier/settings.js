@@ -204,6 +204,11 @@ export default function CashierSettings() {
     acc[category].push(item);
     return acc;
   }, {});
+  const handleNotificationClick = (notification) => {
+    if (notification?.type === 'new_online_order') {
+      router.push('/cashier/dashboard?tab=pending');
+    }
+  };
 
   return (
     <>
@@ -223,7 +228,7 @@ export default function CashierSettings() {
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
           <div style={styles.headerActions}>
-            {user && <NotificationBell user={user} />}
+            {user && <NotificationBell user={user} onNotificationClick={handleNotificationClick} />}
             <button style={styles.logoutBtn} onClick={async () => {
               if (supabase) await supabase.auth.signOut();
               router.replace('/login');
