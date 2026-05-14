@@ -523,7 +523,7 @@ export default function CashDrawer() {
       billReportId: selected.id,
       payeeName: selected.vendor?.name || '',
       amount: selected.total_landed_cost?.toString() || '',
-      purpose: `Payment for Receiving Report ${selected.rr_number}${selected.vendor?.name ? ' — ' + selected.vendor.name : ''}`,
+      purpose: `Payment for Receiving Report ${selected.rr_number}${selected.vendor?.name ? ` — ${selected.vendor.name}` : ''}`,
     });
   };
 
