@@ -1683,12 +1683,32 @@ export default function AdminPage() {
           const rawName = String(si.name || '').trim();
           const nameFromMenu = (si.menu_item_id && menuNameMap[si.menu_item_id]) ? String(menuNameMap[si.menu_item_id]).trim() : '';
           let baseName = nameFromMenu || rawName.split(' - ')[0].trim();
-          while (/\([^)]*\)\s*$/.test(baseName)) {
-            const trailingMatch = baseName.match(/\(([^)]*)\)\s*$/);
-            const trailingText = trailingMatch ? trailingMatch[1] : '';
+          const getTrailingParenthetical = (text) => {
+            const trimmed = String(text || '').trim();
+            if (!trimmed.endsWith(')')) return null;
+            let depth = 0;
+            for (let i = trimmed.length - 1; i >= 0; i -= 1) {
+              const ch = trimmed[i];
+              if (ch === ')') depth += 1;
+              else if (ch === '(') {
+                depth -= 1;
+                if (depth === 0) {
+                  return {
+                    inside: trimmed.slice(i + 1, -1),
+                    before: trimmed.slice(0, i).trim(),
+                  };
+                }
+              }
+            }
+            return null;
+          };
+          let trailingParen = getTrailingParenthetical(baseName);
+          while (trailingParen) {
+            const trailingText = trailingParen.inside;
             const looksLikeVariant = /[:,]/.test(trailingText) || /(size|flavor|variety|spice\s*level|add[\s-]*ons?)/i.test(trailingText);
             if (!looksLikeVariant) break;
-            baseName = baseName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+            baseName = trailingParen.before;
+            trailingParen = getTrailingParenthetical(baseName);
           }
           if (!baseName) baseName = rawName;
           const qty = Number(si.quantity) || 1;
