@@ -8,6 +8,9 @@ import NotificationBell from '../../components/NotificationBell';
 import { calculateSalesBreakdown, calculateAdjustmentDeductions, calculateCashToGcashTotal, UNACCEPTED_ORDER_STATUSES } from '../../utils/salesCalculations';
 import { printToBluetoothPrinter } from '../../utils/bluetoothPrinter';
 import { buildKitchenDepartmentOrders, formatOrderModeLabel, formatOrderSlipItemDetails, getOrderItems, getOrderSlipNumber } from '../../utils/receiptDepartments';
+import { DELIVERY_LOCATION_OPTIONS } from '../../utils/deliveryLocations';
+
+const LEGACY_DELIVERY_FEE = 30;
 
 export default function EndOfDayReport() {
   const router = useRouter();
@@ -25,6 +28,7 @@ export default function EndOfDayReport() {
     const parsed = parseFloat(value);
     return Number.isFinite(parsed) ? parsed : 0;
   };
+  const validDeliveryFees = new Set([...DELIVERY_LOCATION_OPTIONS.map((location) => toNumber(location.fee)), LEGACY_DELIVERY_FEE]);
   const getEffectiveDeliveryFee = (order) => {
     const savedDeliveryFee = toNumber(order?.delivery_fee);
     if (savedDeliveryFee > 0) return savedDeliveryFee;
@@ -32,9 +36,10 @@ export default function EndOfDayReport() {
 
     const subtotal = toNumber(order?.subtotal);
     const totalAmount = toNumber(order?.total_amount);
-    const derivedDeliveryFee = totalAmount - subtotal;
+    const vatAmount = toNumber(order?.vat_amount);
+    const calculatedDeliveryFee = Math.round((totalAmount - subtotal - vatAmount) * 100) / 100;
 
-    return derivedDeliveryFee > 0 ? derivedDeliveryFee : 0;
+    return validDeliveryFees.has(calculatedDeliveryFee) ? calculatedDeliveryFee : 0;
   };
 
   useEffect(() => {
@@ -195,7 +200,7 @@ export default function EndOfDayReport() {
     const subtotal = toNumber(order.subtotal);
     const deliveryFee = getEffectiveDeliveryFee(order);
     const shouldShowDeliveryFeeRow =
-      parseFloat(deliveryFee || 0) > 0 ||
+      deliveryFee > 0 ||
       getNormalizedOrderMode(order.order_mode) === 'delivery';
     const total = subtotal + deliveryFee;
     const pointsClaimed = order.points_used || 0;
@@ -471,7 +476,7 @@ export default function EndOfDayReport() {
     const subtotal = toNumber(order.subtotal);
     const deliveryFee = getEffectiveDeliveryFee(order);
     const shouldShowDeliveryFeeRow =
-      parseFloat(deliveryFee || 0) > 0 ||
+      deliveryFee > 0 ||
       getNormalizedOrderMode(order.order_mode) === 'delivery';
     const total = subtotal + deliveryFee;
     const pointsClaimed = order.points_used || 0;
