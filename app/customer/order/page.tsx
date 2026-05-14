@@ -252,7 +252,7 @@ function CustomerOrderPage() {
 
     const intervalId = window.setInterval(() => {
       void syncDeliveryEnabledSetting()
-    }, 15000)
+    }, 30000)
 
     const handleRefreshDeliverySetting = () => {
       if (document.visibilityState === 'visible') {
@@ -260,12 +260,10 @@ function CustomerOrderPage() {
       }
     }
 
-    window.addEventListener('focus', handleRefreshDeliverySetting)
     document.addEventListener('visibilitychange', handleRefreshDeliverySetting)
 
     return () => {
       window.clearInterval(intervalId)
-      window.removeEventListener('focus', handleRefreshDeliverySetting)
       document.removeEventListener('visibilitychange', handleRefreshDeliverySetting)
     }
   }, [syncDeliveryEnabledSetting])
