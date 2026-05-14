@@ -64,7 +64,7 @@ function withOrderDeliveryAddress(order) {
   const deliveryAddress = getOrderDeliveryAddress(order);
   return {
     ...order,
-    delivery_address: deliveryAddress || order?.delivery_address || null,
+    delivery_address: deliveryAddress || null,
   };
 }
 
@@ -822,9 +822,9 @@ export default function CashierDashboard() {
   };
 
   const handleViewOrder = (order) => {
-    const normalizedOrder = withOrderDeliveryAddress(order);
-    setSelectedOrderToView(normalizedOrder);
-    setEditableCashTendered(normalizedOrder.cash_amount || '');
+    const orderWithDeliveryAddress = withOrderDeliveryAddress(order);
+    setSelectedOrderToView(orderWithDeliveryAddress);
+    setEditableCashTendered(orderWithDeliveryAddress.cash_amount || '');
     setViewOrderModal(true);
   };
 
