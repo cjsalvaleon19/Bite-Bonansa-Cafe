@@ -177,6 +177,9 @@ export default function EndOfDayReport() {
     // Calculate values based on the new flow
     const subtotal = order.subtotal || 0;
     const deliveryFee = order.delivery_fee || 0;
+    const shouldShowDeliveryFeeRow =
+      parseFloat(deliveryFee || 0) > 0 ||
+      String(order.order_mode || '').trim().toLowerCase() === 'delivery';
     const total = subtotal + deliveryFee;
     const pointsClaimed = order.points_used || 0;
     const netAmount = total - pointsClaimed;
@@ -281,7 +284,7 @@ export default function EndOfDayReport() {
                   <td><strong>Subtotal:</strong></td>
                   <td style="text-align: right;">₱${subtotal.toFixed(2)}</td>
                 </tr>
-                ${order.order_mode === 'delivery' ? `
+                ${shouldShowDeliveryFeeRow ? `
                 <tr>
                   <td><strong>Delivery Fee:</strong></td>
                   <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
@@ -450,6 +453,9 @@ export default function EndOfDayReport() {
     // Calculate values based on the new flow
     const subtotal = order.subtotal || 0;
     const deliveryFee = order.delivery_fee || 0;
+    const shouldShowDeliveryFeeRow =
+      parseFloat(deliveryFee || 0) > 0 ||
+      String(order.order_mode || '').trim().toLowerCase() === 'delivery';
     const total = subtotal + deliveryFee;
     const pointsClaimed = order.points_used || 0;
     const netAmount = total - pointsClaimed;
@@ -560,7 +566,7 @@ export default function EndOfDayReport() {
                 <td><strong>Subtotal:</strong></td>
                 <td style="text-align: right;">₱${subtotal.toFixed(2)}</td>
               </tr>
-              ${order.order_mode === 'delivery' ? `
+              ${shouldShowDeliveryFeeRow ? `
               <tr>
                 <td><strong>Delivery Fee:</strong></td>
                 <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
