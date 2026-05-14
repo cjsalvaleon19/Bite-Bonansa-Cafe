@@ -5659,6 +5659,12 @@ export default function AdminPage() {
                           </thead>
                           <tbody>
                             {Object.entries(catGroups).map(([cat, items]) => {
+                              const sortedItems = [...items].sort((a, b) => {
+                                const qtyA = Number(a.quantity) || 0;
+                                const qtyB = Number(b.quantity) || 0;
+                                if (qtyB !== qtyA) return qtyB - qtyA;
+                                return String(a.name || '').localeCompare(String(b.name || ''));
+                              });
                               const catQty = items.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
                               const catRev = items.reduce((s, r) => s + r.revenue, 0);
                               const catCogs = items.reduce((s, r) => s + r.cogs, 0);
@@ -5666,7 +5672,7 @@ export default function AdminPage() {
                               const catCmPct = catRev > 0 ? (catCm / catRev) * 100 : 0;
                               return (
                                 <React.Fragment key={cat}>
-                                  {items.map((r, i) => (
+                                  {sortedItems.map((r, i) => (
                                     <tr key={r.name} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
                                       <td style={styles.td}>{r.name}</td>
                                       <td style={styles.td}>{r.category}</td>
