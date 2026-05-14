@@ -344,11 +344,11 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     : (order.items || []);
 
   // Financial values
-  const subtotal   = order.subtotal || 0;
+  const total      = order.subtotal || 0;
   const delivFee   = order.delivery_fee || 0;
-  const total      = subtotal + delivFee;
+  const grossTotal = total + delivFee;
   const ptsClaimed = order.points_used || 0;
-  const netAmount  = total - ptsClaimed;
+  const netAmount  = grossTotal - ptsClaimed;
   const tendered   = opts.cashTendered !== undefined
     ? parseFloat(opts.cashTendered) || 0
     : (order.cash_amount || 0);
@@ -485,13 +485,12 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
 
   // ── Totals (sales copy only) ───────────────────────────────────────────────
   if (!isKitchen) {
-    b.push(...encodeText(twoCol('Subtotal:', `P${subtotal.toFixed(2)}`, paperWidth)));
-    if (delivFee > 0) {
-      b.push(...encodeText(twoCol('Delivery Fee:', `P${delivFee.toFixed(2)}`, paperWidth)));
-    }
     b.push(...CMD.BOLD_ON);
     b.push(...encodeText(twoCol('TOTAL:', `P${total.toFixed(2)}`, paperWidth)));
     b.push(...CMD.BOLD_OFF);
+    if (order.order_mode === 'delivery' || delivFee > 0) {
+      b.push(...encodeText(twoCol('Delivery Fee:', `P${delivFee.toFixed(2)}`, paperWidth)));
+    }
     if (ptsClaimed > 0) {
       b.push(...encodeText(twoCol('Points Claimed:', `-P${ptsClaimed.toFixed(2)}`, paperWidth)));
     }

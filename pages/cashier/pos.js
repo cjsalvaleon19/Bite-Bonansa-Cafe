@@ -698,11 +698,11 @@ export default function CashierPOS() {
     const cashTendered = parseFloat(paymentDetails.cashTendered || 0);
     
     // Calculate values based on the new flow
-    const subtotal = order.subtotal || 0;
+    const total = order.subtotal || 0;
     const deliveryFee = order.delivery_fee || 0;
-    const total = subtotal + deliveryFee;
+    const grossTotal = total + deliveryFee;
     const pointsClaimed = order.points_used || 0;
-    const netAmount = total - pointsClaimed;
+    const netAmount = grossTotal - pointsClaimed;
     const amountTendered = (paymentMethod === 'cash' || combinedPayment) ? cashTendered : 0;
     const change = Math.max(0, amountTendered - netAmount);
     
@@ -713,7 +713,7 @@ export default function CashierPOS() {
     // Determine display payment method based on points usage
     let displayPaymentMethod = order.payment_method || 'N/A';
     if (pointsClaimed > 0) {
-      if (pointsClaimed >= total) {
+      if (pointsClaimed >= grossTotal) {
         // Fully paid by points
         displayPaymentMethod = 'Points';
       } else {
@@ -826,20 +826,16 @@ export default function CashierPOS() {
           
           <div class="footer">
             <table>
-              <tr>
-                <td><strong>Subtotal:</strong></td>
-                <td style="text-align: right;">₱${subtotal.toFixed(2)}</td>
+              <tr class="total">
+                <td style="padding-top: 5px; border-top: 2px solid #000;"><strong>Total:</strong></td>
+                <td style="text-align: right; padding-top: 5px; border-top: 2px solid #000;">₱${total.toFixed(2)}</td>
               </tr>
-              ${deliveryFee > 0 ? `
+              ${(order.order_mode === 'delivery' || deliveryFee > 0) ? `
               <tr>
                 <td><strong>Delivery Fee:</strong></td>
                 <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
               </tr>
               ` : ''}
-              <tr class="total">
-                <td style="padding-top: 5px; border-top: 2px solid #000;"><strong>Total:</strong></td>
-                <td style="text-align: right; padding-top: 5px; border-top: 2px solid #000;">₱${total.toFixed(2)}</td>
-              </tr>
               ${pointsClaimed > 0 ? `
               <tr>
                 <td><strong>Points Claimed:</strong></td>
