@@ -212,7 +212,7 @@ function CustomerOrderPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [dbCategories, setDbCategories] = useState<{ id: string; name: string }[]>([])
   const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine-in' | 'take-out'>('delivery')
-  const [deliveryEnabled, setDeliveryEnabled] = useState(false)
+  const [deliveryEnabled, setDeliveryEnabled] = useState(true)
   const [showItemDialog, setShowItemDialog] = useState(false)
   const [dialogItem, setDialogItem] = useState<MenuItem | null>(null)
   // State for new variant system modal
@@ -239,10 +239,10 @@ function CustomerOrderPage() {
 
       if (error) throw error
 
-      setDeliveryEnabled(parseSettingAsBoolean(data?.setting_value, false))
+      setDeliveryEnabled(parseSettingAsBoolean(data?.setting_value, true))
     } catch (error) {
       console.error('Failed to fetch delivery setting:', error)
-      setDeliveryEnabled(false)
+      setDeliveryEnabled(true)
     }
   }, [])
 
@@ -292,7 +292,7 @@ function CustomerOrderPage() {
             void syncDeliveryEnabledSetting()
             return
           }
-          setDeliveryEnabled(parseSettingAsBoolean(nextValue, false))
+          setDeliveryEnabled(parseSettingAsBoolean(nextValue, true))
         }
       )
       .subscribe()
