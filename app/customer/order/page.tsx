@@ -1004,6 +1004,7 @@ function CustomerOrderPage() {
           customer_name: customerFullName || 'Customer',
           contact_number: user?.phone || '',
           customer_address: isDelivery ? fullDeliveryAddress : null,
+          delivery_address: isDelivery ? fullDeliveryAddress : null,
           delivery_latitude: null,
           delivery_longitude: null,
           status: 'pending',

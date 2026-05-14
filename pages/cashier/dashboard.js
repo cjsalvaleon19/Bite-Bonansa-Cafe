@@ -33,7 +33,7 @@ function computeEffectiveDeliveryFee(order) {
   if (computed > 0) return computed;
 
   // Last resort: identify the location from the delivery address string
-  const addr = order?.customer_address || '';
+  const addr = getOrderDeliveryAddress(order);
   if (addr) {
     const matched = DELIVERY_LOCATION_OPTIONS.find((loc) =>
       addr.includes(formatDeliveryLocationAddress(loc))
@@ -42,6 +42,30 @@ function computeEffectiveDeliveryFee(order) {
   }
 
   return 0;
+}
+
+function getOrderDeliveryAddress(order) {
+  if (typeof order?.delivery_address === 'string') {
+    const deliveryAddress = order.delivery_address.trim();
+    if (deliveryAddress.length > 0) {
+      return deliveryAddress;
+    }
+  }
+  if (typeof order?.customer_address === 'string') {
+    const customerAddress = order.customer_address.trim();
+    if (customerAddress.length > 0) {
+      return customerAddress;
+    }
+  }
+  return '';
+}
+
+function withOrderDeliveryAddress(order) {
+  const deliveryAddress = getOrderDeliveryAddress(order);
+  return {
+    ...order,
+    delivery_address: deliveryAddress || null,
+  };
 }
 
 export default function CashierDashboard() {
@@ -412,6 +436,7 @@ export default function CashierDashboard() {
 
     const items = getOrderItems(order);
     const isKitchenCopy = receiptType === 'kitchen';
+    const deliveryAddress = getOrderDeliveryAddress(order);
     
     // Helper function to strip variant details from item name (for legacy data)
     const stripVariantsFromName = (name) => {
@@ -552,11 +577,11 @@ export default function CashierDashboard() {
     }
     
     // Calculate values based on the new flow
-    const subtotal = order.subtotal || 0;
+    const total = order.subtotal || 0;
     const deliveryFee = order.delivery_fee || 0;
-    const total = subtotal + deliveryFee;
+    const grossTotal = total + deliveryFee;
     const pointsClaimed = order.points_used || 0;
-    const netAmount = total - pointsClaimed;
+    const netAmount = grossTotal - pointsClaimed;
     const amountTendered = order.cash_amount || 0;
     const change = Math.max(0, amountTendered - netAmount);
     
@@ -566,7 +591,7 @@ export default function CashierDashboard() {
     // Determine display payment method based on points usage
     let displayPaymentMethod = order.payment_method || 'N/A';
     if (pointsClaimed > 0) {
-      if (pointsClaimed >= total) {
+      if (pointsClaimed >= grossTotal) {
         // Fully paid by points
         displayPaymentMethod = 'Points';
       } else {
@@ -640,7 +665,7 @@ export default function CashierDashboard() {
           <p>Name  : ${order.customer_name || order.users?.full_name || 'Walk-in'}</p>
           ${receiptPhone ? `<p>Phone : ${receiptPhone}</p>` : ''}
           ${customerLoyaltyId !== 'N/A' ? `<p><strong>Customer ID:</strong> ${customerLoyaltyId}</p>` : ''}
-          ${order.delivery_address && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}
+          ${deliveryAddress && order.order_mode === 'delivery' ? `<p><strong>Delivery Address:</strong> ${deliveryAddress}</p>` : ''}
         </div>
 
         <div class="section">
@@ -662,20 +687,16 @@ export default function CashierDashboard() {
         ${!isKitchenCopy ? `
         <div class="section">
           <table>
-            <tr>
-              <td style="padding: 4px 0;"><strong>Subtotal:</strong></td>
-              <td style="text-align: right;">₱${subtotal.toFixed(2)}</td>
+            <tr class="total-row">
+              <td style="padding: 4px 0; border-top: 2px solid #000;"><strong>Total:</strong></td>
+              <td style="text-align: right; border-top: 2px solid #000;">₱${total.toFixed(2)}</td>
             </tr>
-            ${deliveryFee > 0 ? `
+            ${(order.order_mode === 'delivery' || deliveryFee > 0) ? `
             <tr>
               <td style="padding: 4px 0;"><strong>Delivery Fee:</strong></td>
               <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
             </tr>
             ` : ''}
-            <tr class="total-row">
-              <td style="padding: 4px 0; border-top: 2px solid #000;"><strong>Total:</strong></td>
-              <td style="text-align: right; border-top: 2px solid #000;">₱${total.toFixed(2)}</td>
-            </tr>
             ${pointsClaimed > 0 ? `
             <tr>
               <td style="padding: 4px 0;"><strong>Points Claimed:</strong></td>
@@ -759,24 +780,25 @@ export default function CashierDashboard() {
   };
 
   const printReceiptBluetooth = async (order, receiptType = 'sales', options = {}) => {
+    const orderForPrint = withOrderDeliveryAddress(order);
     const { silent = false } = options;
-    let displayPaymentMethod = order.payment_method || 'N/A';
-    const ptsClaimed = order.points_used || 0;
-    const total = (order.subtotal || 0) + (order.delivery_fee || 0);
+    let displayPaymentMethod = orderForPrint.payment_method || 'N/A';
+    const ptsClaimed = orderForPrint.points_used || 0;
+    const total = (orderForPrint.subtotal || 0) + (orderForPrint.delivery_fee || 0);
     if (ptsClaimed > 0) {
       if (ptsClaimed >= total) {
         displayPaymentMethod = 'Points';
-      } else if (order.payment_method && order.payment_method.includes('points+')) {
-        displayPaymentMethod = order.payment_method.split('points+')[1];
-      } else if (order.payment_method && order.payment_method.includes('+')) {
-        const parts = order.payment_method.split('+');
-        displayPaymentMethod = parts.find(p => p !== 'points') || order.payment_method;
+      } else if (orderForPrint.payment_method && orderForPrint.payment_method.includes('points+')) {
+        displayPaymentMethod = orderForPrint.payment_method.split('points+')[1];
+      } else if (orderForPrint.payment_method && orderForPrint.payment_method.includes('+')) {
+        const parts = orderForPrint.payment_method.split('+');
+        displayPaymentMethod = parts.find(p => p !== 'points') || orderForPrint.payment_method;
       }
     }
     try {
-      await printToBluetoothPrinter(order, receiptType, {
+      await printToBluetoothPrinter(orderForPrint, receiptType, {
         cashierName: user?.full_name || user?.email || 'Cashier',
-        customerLoyaltyId: order.users?.customer_id || null,
+        customerLoyaltyId: orderForPrint.users?.customer_id || null,
         displayPaymentMethod,
         departmentName: options.departmentName || null,
       });
@@ -800,8 +822,9 @@ export default function CashierDashboard() {
   };
 
   const handleViewOrder = (order) => {
-    setSelectedOrderToView(order);
-    setEditableCashTendered(order.cash_amount || '');
+    const orderWithDeliveryAddress = withOrderDeliveryAddress(order);
+    setSelectedOrderToView(orderWithDeliveryAddress);
+    setEditableCashTendered(orderWithDeliveryAddress.cash_amount || '');
     setViewOrderModal(true);
   };
 
@@ -1335,9 +1358,9 @@ export default function CashierDashboard() {
                         </div>
                       )}
 
-                      {order.delivery_address && order.order_mode === 'delivery' && (
+                      {getOrderDeliveryAddress(order) && order.order_mode === 'delivery' && (
                         <div style={styles.orderAddress}>
-                          📍 {order.delivery_address}
+                          📍 {getOrderDeliveryAddress(order)}
                         </div>
                       )}
 
@@ -1413,10 +1436,10 @@ export default function CashierDashboard() {
                     <span>{selectedOrderToView.contact_number}</span>
                   </div>
                 )}
-                {selectedOrderToView.delivery_address && selectedOrderToView.order_mode === 'delivery' && (
+                {getOrderDeliveryAddress(selectedOrderToView) && selectedOrderToView.order_mode === 'delivery' && (
                   <div style={styles.viewOrderRow}>
                     <strong>Delivery Address:</strong>
-                    <span>{selectedOrderToView.delivery_address}</span>
+                    <span>{getOrderDeliveryAddress(selectedOrderToView)}</span>
                   </div>
                 )}
                 {selectedOrderToView.payment_method && (
