@@ -55,6 +55,9 @@ export default function CashDrawer() {
   const [unpaidReceivingReports, setUnpaidReceivingReports] = useState([]);
   const [filteredReceivingReports, setFilteredReceivingReports] = useState([]);
   const [rrSearchQuery, setRrSearchQuery] = useState('');
+  const [unpaidBills, setUnpaidBills] = useState([]);
+  const [filteredBills, setFilteredBills] = useState([]);
+  const [billsSearchQuery, setBillsSearchQuery] = useState('');
 
   // Cash Audit tab state
   const [activeTab, setActiveTab] = useState('transactions');
@@ -109,6 +112,7 @@ export default function CashDrawer() {
       await fetchRiders();
       await fetchDeliveryReports();
       await fetchUnpaidReceivingReports();
+      await fetchUnpaidBills();
     } catch (err) {
       console.error('[CashDrawer] Failed to initialize:', err?.message ?? err);
     } finally {
@@ -189,6 +193,25 @@ export default function CashDrawer() {
       setFilteredReceivingReports(data || []);
     } catch (err) {
       console.error('[CashDrawer] Failed to fetch unpaid receiving reports:', err?.message ?? err);
+    }
+  };
+
+  const fetchUnpaidBills = async () => {
+    if (!supabase) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('bills')
+        .select('id, bill_number, contact, date, total_debit, status')
+        .eq('status', 'approved')
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+
+      setUnpaidBills(data || []);
+      setFilteredBills(data || []);
+    } catch (err) {
+      console.error('[CashDrawer] Failed to fetch unpaid bills:', err?.message ?? err);
     }
   };
 
@@ -527,6 +550,46 @@ export default function CashDrawer() {
     });
   };
 
+  const handleBillsSearch = (query) => {
+    setBillsSearchQuery(query);
+    const normalized = String(query || '').trim().toLowerCase();
+    if (!normalized) {
+      setFilteredBills(unpaidBills);
+      return;
+    }
+    setFilteredBills(
+      unpaidBills.filter((bill) => (
+        String(bill.contact || '').toLowerCase().includes(normalized)
+        || String(bill.bill_number || '').toLowerCase().includes(normalized)
+      )),
+    );
+  };
+
+  const handleBillChange = (billId) => {
+    const selected = unpaidBills.find((bill) => bill.id === billId);
+    if (!selected) {
+      setFormData({
+        ...formData,
+        payeeName: '',
+        billNumber: '',
+        billReportId: '',
+        referenceNumber: '',
+        amount: '',
+        purpose: '',
+      });
+      return;
+    }
+    setFormData({
+      ...formData,
+      payeeName: selected.contact || '',
+      billNumber: selected.bill_number || '',
+      billReportId: selected.id,
+      referenceNumber: selected.bill_number || '',
+      amount: selected.total_debit?.toString() || '',
+      purpose: `Payment for Bill ${selected.bill_number}${selected.contact ? ` — ${selected.contact}` : ''}`,
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!supabase || !user) return;
@@ -546,6 +609,10 @@ export default function CashDrawer() {
     }
     if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'receiving_report' && !formData.receivingReportId) {
       alert('Please select a receiving report');
+      return;
+    }
+    if (activeModal === 'cash-out' && cashOutType === 'pay-bill' && formData.billType === 'bills' && !formData.billReportId) {
+      alert('Please select a bill');
       return;
     }
 
@@ -663,6 +730,21 @@ export default function CashDrawer() {
         setFilteredPayrollReports(refreshedReports);
       }
 
+      if (formData.billType === 'bills' && formData.billReportId) {
+        const { error: updateBillError } = await supabase
+          .from('bills')
+          .update({
+            status: 'paid',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', formData.billReportId);
+
+        if (updateBillError) {
+          console.error('[CashDrawer] Failed to update bill status:', updateBillError.message);
+          alert('Payment recorded but failed to update bill status. Please contact admin.');
+        }
+      }
+
       // Reset form and close modal
       setFormData({
         amount: '',
@@ -685,10 +767,12 @@ export default function CashDrawer() {
       setFilteredReports(deliveryReports);
       setPayrollPeriodSearch('');
       setRrSearchQuery('');
+      setBillsSearchQuery('');
 
       // Refresh transactions
       await fetchTransactions();
       await fetchUnpaidReceivingReports();
+      await fetchUnpaidBills();
 
       alert('Transaction recorded successfully!');
     } catch (err) {
@@ -940,6 +1024,7 @@ export default function CashDrawer() {
                       readOnly={
                         (formData.billType === 'drivers_fee' && formData.billNumber)
                         || (formData.billType === 'payroll' && formData.payrollSubmissionId)
+                        || (formData.billType === 'bills' && formData.billReportId)
                         || (formData.billType === 'receiving_report' && formData.receivingReportId)
                       }
                       required
@@ -989,6 +1074,8 @@ export default function CashDrawer() {
                             setAttendanceEmployees(getPayrollEmployees());
                             setRrSearchQuery('');
                             setFilteredReceivingReports(unpaidReceivingReports);
+                            setBillsSearchQuery('');
+                            setFilteredBills(unpaidBills);
                             setFormData({
                               ...formData,
                               billType: e.target.value,
@@ -996,6 +1083,7 @@ export default function CashDrawer() {
                               billNumber: '',
                               amount: '',
                               purpose: '',
+                              referenceNumber: '',
                               billReportId: '',
                               payrollSubmissionId: '',
                               attendanceEmployeeId: '',
@@ -1009,6 +1097,7 @@ export default function CashDrawer() {
                           <option value="payroll">Payroll</option>
                           <option value="cash_advance">Cash Advance</option>
                           <option value="utilities">Utilities</option>
+                          <option value="bills">Bills</option>
                           <option value="receiving_report">Receiving Report</option>
                           <option value="other">Other</option>
                         </select>
@@ -1160,6 +1249,62 @@ export default function CashDrawer() {
                             <textarea
                               style={{ ...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif" }}
                               placeholder="Cash advance details"
+                              value={formData.purpose}
+                              onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                            />
+                          </div>
+                        </>
+                      ) : formData.billType === 'bills' ? (
+                        <>
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Payee Name (Bills) *</label>
+                            <input
+                              style={styles.input}
+                              type="text"
+                              placeholder="Search by payee name or bill number…"
+                              value={billsSearchQuery}
+                              onChange={(e) => handleBillsSearch(e.target.value)}
+                            />
+                          </div>
+
+                          <div style={styles.formGroup}>
+                            <select
+                              style={styles.input}
+                              value={formData.billReportId}
+                              onChange={(e) => handleBillChange(e.target.value)}
+                              required
+                            >
+                              <option value="">Select bill</option>
+                              {filteredBills.map((bill) => (
+                                <option key={bill.id} value={bill.id}>
+                                  {bill.contact || '(No Payee)'} — {bill.bill_number || 'No Bill #'} — ₱{Number(bill.total_debit || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </option>
+                              ))}
+                            </select>
+                            {filteredBills.length === 0 && (
+                              <p style={{ fontSize: '11px', color: '#ffc107', marginTop: '4px' }}>
+                                No unpaid bills found
+                              </p>
+                            )}
+                          </div>
+
+                          {formData.billReportId && (
+                            <div style={styles.formGroup}>
+                              <label style={styles.label}>Payee Name</label>
+                              <input
+                                style={styles.input}
+                                type="text"
+                                value={formData.payeeName}
+                                readOnly
+                              />
+                            </div>
+                          )}
+
+                          <div style={styles.formGroup}>
+                            <label style={styles.label}>Purpose/Description</label>
+                            <textarea
+                              style={{ ...styles.input, minHeight: '80px', fontFamily: "'Poppins', sans-serif" }}
+                              placeholder="Payment details"
                               value={formData.purpose}
                               onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
                             />
