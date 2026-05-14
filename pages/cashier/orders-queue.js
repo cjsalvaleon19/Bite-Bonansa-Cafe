@@ -844,6 +844,12 @@ export default function OrdersQueue() {
     [riders]
   );
 
+  const handleNotificationClick = (notification) => {
+    if (notification?.type === 'new_online_order') {
+      router.push('/cashier/dashboard?tab=pending');
+    }
+  };
+
   if (authLoading || loading) {
     return (
       <div style={styles.center}>
@@ -872,7 +878,7 @@ export default function OrdersQueue() {
             <Link href="/cashier/profile" style={styles.navLink}>Profile</Link>
           </nav>
           <div style={styles.headerActions}>
-            {user && <NotificationBell user={user} />}
+            {user && <NotificationBell user={user} onNotificationClick={handleNotificationClick} />}
             <button style={styles.logoutBtn} onClick={async () => {
               if (supabase) await supabase.auth.signOut();
               router.replace('/login');

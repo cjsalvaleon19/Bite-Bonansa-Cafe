@@ -136,6 +136,15 @@ export default function CashierDashboard() {
     }
   }, [authLoading]);
 
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (router.query?.tab === 'pending') {
+      setActiveTab('pending');
+      setHasNewOrders(false);
+      fetchPendingOnlineOrders();
+    }
+  }, [router.isReady, router.query?.tab]);
+
   // Set up real-time subscription for new orders (always active for notifications and stats)
   useEffect(() => {
     if (!authLoading) {
