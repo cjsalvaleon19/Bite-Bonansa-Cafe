@@ -86,6 +86,29 @@ function parseAddonValues(rawValue) {
     .filter(Boolean);
 }
 
+const ITEM_VARIANT_PUNCTUATION_PATTERN = /[:,]/;
+const ITEM_VARIANT_KEYWORD_PATTERN = /(size|flavor|variety|spice\s*level|add[\s-]*ons?)/i;
+
+function extractTrailingParenthetical(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed.endsWith(')')) return null;
+  let depth = 0;
+  for (let i = trimmed.length - 1; i >= 0; i -= 1) {
+    const ch = trimmed[i];
+    if (ch === ')') depth += 1;
+    else if (ch === '(') {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          inside: trimmed.slice(i + 1, -1),
+          before: trimmed.slice(0, i).trim(),
+        };
+      }
+    }
+  }
+  return null;
+}
+
 const ORDER_REVENUE_ACCOUNTS = new Set(['Revenue', 'Sales Revenue']);
 const ORDER_COGS_ACCOUNT = 'Cost of Goods Sold';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -1683,32 +1706,14 @@ export default function AdminPage() {
           const rawName = String(si.name || '').trim();
           const nameFromMenu = (si.menu_item_id && menuNameMap[si.menu_item_id]) ? String(menuNameMap[si.menu_item_id]).trim() : '';
           let baseName = nameFromMenu || rawName.split(' - ')[0].trim();
-          const getTrailingParenthetical = (text) => {
-            const trimmed = String(text || '').trim();
-            if (!trimmed.endsWith(')')) return null;
-            let depth = 0;
-            for (let i = trimmed.length - 1; i >= 0; i -= 1) {
-              const ch = trimmed[i];
-              if (ch === ')') depth += 1;
-              else if (ch === '(') {
-                depth -= 1;
-                if (depth === 0) {
-                  return {
-                    inside: trimmed.slice(i + 1, -1),
-                    before: trimmed.slice(0, i).trim(),
-                  };
-                }
-              }
-            }
-            return null;
-          };
-          let trailingParen = getTrailingParenthetical(baseName);
+          let trailingParen = extractTrailingParenthetical(baseName);
           while (trailingParen) {
             const trailingText = trailingParen.inside;
-            const looksLikeVariant = /[:,]/.test(trailingText) || /(size|flavor|variety|spice\s*level|add[\s-]*ons?)/i.test(trailingText);
+            const looksLikeVariant = ITEM_VARIANT_PUNCTUATION_PATTERN.test(trailingText)
+              || ITEM_VARIANT_KEYWORD_PATTERN.test(trailingText);
             if (!looksLikeVariant) break;
             baseName = trailingParen.before;
-            trailingParen = getTrailingParenthetical(baseName);
+            trailingParen = extractTrailingParenthetical(baseName);
           }
           if (!baseName) baseName = rawName;
           const qty = Number(si.quantity) || 1;
