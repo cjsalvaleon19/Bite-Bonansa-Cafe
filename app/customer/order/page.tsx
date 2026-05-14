@@ -252,7 +252,7 @@ function CustomerOrderPage() {
 
     const intervalId = window.setInterval(() => {
       void syncDeliveryEnabledSetting()
-    }, 30000)
+    }, 60000)
 
     const handleRefreshDeliverySetting = () => {
       if (document.visibilityState === 'visible') {
@@ -288,6 +288,7 @@ function CustomerOrderPage() {
 
           const nextValue = payload.new?.setting_value
           if (typeof nextValue === 'undefined') {
+            console.warn('Delivery setting realtime payload missing setting_value. Refreshing from DB.')
             void syncDeliveryEnabledSetting()
             return
           }
