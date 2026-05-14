@@ -202,7 +202,7 @@ export default function CashDrawer() {
     try {
       const { data, error } = await supabase
         .from('bills')
-        .select('id, bill_number, contact, date, total_debit, status')
+        .select('id, bill_number, contact, date, total_debit')
         .eq('status', 'approved')
         .order('date', { ascending: false });
 
