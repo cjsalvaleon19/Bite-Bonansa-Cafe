@@ -239,7 +239,7 @@ function CustomerOrderPage() {
 
       if (error) throw error
 
-      setDeliveryEnabled(parseSettingAsBoolean(data?.setting_value, true))
+      setDeliveryEnabled(parseSettingAsBoolean(data?.setting_value, false))
     } catch (error) {
       console.error('Failed to fetch delivery setting:', error)
       setDeliveryEnabled(false)
@@ -293,7 +293,7 @@ function CustomerOrderPage() {
             void syncDeliveryEnabledSetting()
             return
           }
-          setDeliveryEnabled(parseSettingAsBoolean(nextValue, true))
+          setDeliveryEnabled(parseSettingAsBoolean(nextValue, false))
         }
       )
       .subscribe()
