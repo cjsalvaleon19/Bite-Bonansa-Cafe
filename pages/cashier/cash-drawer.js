@@ -60,8 +60,6 @@ export default function CashDrawer() {
   const [unpaidBills, setUnpaidBills] = useState([]);
   const [filteredBills, setFilteredBills] = useState([]);
   const [billsSearchQuery, setBillsSearchQuery] = useState('');
-  const [transactionsDateFrom, setTransactionsDateFrom] = useState(getCurrentDateOnly());
-  const [transactionsDateTo, setTransactionsDateTo] = useState(getCurrentDateOnly());
 
   // Cash Audit tab state
   const [activeTab, setActiveTab] = useState('transactions');
@@ -219,13 +217,12 @@ export default function CashDrawer() {
     }
   };
 
-  const fetchTransactions = async (dateFrom = transactionsDateFrom, dateTo = transactionsDateTo) => {
+  const fetchTransactions = async () => {
     if (!supabase) return;
 
     try {
-      const fallbackDate = getCurrentDateOnly();
-      const startDateValue = dateFrom || fallbackDate;
-      const endDateValue = dateTo || startDateValue;
+      const startDateValue = getCurrentDateOnly();
+      const endDateValue = startDateValue;
       const startDate = new Date(`${startDateValue}T00:00:00`);
       const endDate = new Date(`${endDateValue}T00:00:00`);
       endDate.setDate(endDate.getDate() + 1);
@@ -270,22 +267,6 @@ export default function CashDrawer() {
     } catch (err) {
       console.error('[CashDrawer] Failed to fetch transactions:', err?.message ?? err);
     }
-  };
-
-  const hasIncompleteTransactionDateRange = !transactionsDateFrom || !transactionsDateTo;
-  const hasInvalidTransactionDateRange = transactionsDateFrom && transactionsDateTo && transactionsDateFrom > transactionsDateTo;
-  const canApplyTransactionCoverage = !hasIncompleteTransactionDateRange && !hasInvalidTransactionDateRange;
-  const formatCoverageDate = (dateValue) => {
-    if (!dateValue) return '';
-    return new Date(`${dateValue}T00:00:00`).toLocaleDateString();
-  };
-  const transactionCoverageLabel = () => {
-    if (hasIncompleteTransactionDateRange) return 'No date coverage selected';
-    const fromLabel = formatCoverageDate(transactionsDateFrom);
-    const toLabel = formatCoverageDate(transactionsDateTo);
-    return transactionsDateFrom === transactionsDateTo
-      ? fromLabel
-      : `${fromLabel} to ${toLabel}`;
   };
 
   // ── Cash Audit helpers ──────────────────────────────────────────────────────
@@ -896,47 +877,6 @@ export default function CashDrawer() {
             </div>
           </div>
 
-          <div style={styles.coverageControls}>
-            <div style={{ ...styles.formGroup, flex: 1, marginBottom: 0 }}>
-              <label style={styles.label}>Date From</label>
-              <input
-                style={styles.input}
-                type="date"
-                value={transactionsDateFrom}
-                onChange={(e) => setTransactionsDateFrom(e.target.value)}
-              />
-            </div>
-            <div style={{ ...styles.formGroup, flex: 1, marginBottom: 0 }}>
-              <label style={styles.label}>Date To</label>
-              <input
-                style={styles.input}
-                type="date"
-                value={transactionsDateTo}
-                onChange={(e) => setTransactionsDateTo(e.target.value)}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <button
-                type="button"
-                style={styles.primaryBtn}
-                onClick={() => fetchTransactions(transactionsDateFrom, transactionsDateTo)}
-                disabled={!canApplyTransactionCoverage}
-              >
-                Apply Coverage
-              </button>
-            </div>
-          </div>
-          {hasIncompleteTransactionDateRange && (
-            <p style={{ margin: '8px 0 0', fontSize: 12, color: '#f44336' }}>
-              Both Date From and Date To are required.
-            </p>
-          )}
-          {hasInvalidTransactionDateRange && (
-            <p style={{ margin: '8px 0 0', fontSize: 12, color: '#f44336' }}>
-              Date coverage is invalid. "Date From" must be on or before "Date To".
-            </p>
-          )}
-
           {/* Action Buttons */}
           <div style={styles.actionsGrid}>
             <button
@@ -972,9 +912,9 @@ export default function CashDrawer() {
 
           {/* Transactions List */}
           <div style={styles.transactionsSection}>
-            <h3 style={styles.sectionTitle}>Cash Transactions ({transactionCoverageLabel()})</h3>
+            <h3 style={styles.sectionTitle}>Cash Transactions</h3>
             {transactions.length === 0 ? (
-              <p style={styles.emptyText}>No transactions found for selected date coverage</p>
+              <p style={styles.emptyText}>No transactions found</p>
             ) : (
               <div style={styles.transactionsList}>
                 {transactions.map((transaction) => (
@@ -1866,13 +1806,6 @@ const styles = {
     fontSize: '48px',
     fontWeight: '700',
     color: '#ffc107',
-  },
-  coverageControls: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr)) auto',
-    gap: '12px',
-    alignItems: 'end',
-    marginBottom: '20px',
   },
   actionsGrid: {
     display: 'grid',
