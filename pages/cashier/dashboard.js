@@ -45,11 +45,17 @@ function computeEffectiveDeliveryFee(order) {
 }
 
 function getOrderDeliveryAddress(order) {
-  if (typeof order?.delivery_address === 'string' && order.delivery_address.trim().length > 0) {
-    return order.delivery_address.trim();
+  if (typeof order?.delivery_address === 'string') {
+    const deliveryAddress = order.delivery_address.trim();
+    if (deliveryAddress.length > 0) {
+      return deliveryAddress;
+    }
   }
-  if (typeof order?.customer_address === 'string' && order.customer_address.trim().length > 0) {
-    return order.customer_address.trim();
+  if (typeof order?.customer_address === 'string') {
+    const customerAddress = order.customer_address.trim();
+    if (customerAddress.length > 0) {
+      return customerAddress;
+    }
   }
   return '';
 }
@@ -58,7 +64,7 @@ function withOrderDeliveryAddress(order) {
   const deliveryAddress = getOrderDeliveryAddress(order);
   return {
     ...order,
-    delivery_address: deliveryAddress || null,
+    delivery_address: deliveryAddress || order?.delivery_address || null,
   };
 }
 
