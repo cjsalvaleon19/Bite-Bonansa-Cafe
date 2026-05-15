@@ -86,6 +86,29 @@ function parseAddonValues(rawValue) {
     .filter(Boolean);
 }
 
+const ITEM_VARIANT_PUNCTUATION_PATTERN = /[:,]/;
+const ITEM_VARIANT_KEYWORD_PATTERN = /(size|flavor|variety|spice\s*level|add[\s-]*ons?)/i;
+
+function extractTrailingParenthetical(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed.endsWith(')')) return null;
+  let depth = 0;
+  for (let i = trimmed.length - 1; i >= 0; i -= 1) {
+    const ch = trimmed[i];
+    if (ch === ')') depth += 1;
+    else if (ch === '(') {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          inside: trimmed.slice(i + 1, -1),
+          before: trimmed.slice(0, i).trim(),
+        };
+      }
+    }
+  }
+  return null;
+}
+
 const ORDER_REVENUE_ACCOUNTS = new Set(['Revenue', 'Sales Revenue']);
 const ORDER_COGS_ACCOUNT = 'Cost of Goods Sold';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -559,18 +582,10 @@ export default function AdminPage() {
       const monthLabel = (d) => d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
       const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-      const [{ data: plJe }, { data: deliveryFees }] = await Promise.all([
-        supabase
+      const { data: plJe } = await supabase
           .from('journal_entries')
           .select('amount, date, debit_account, credit_account')
-          .gte('date', firstMonthDateStr),
-        supabase
-          .from('orders')
-          .select('delivery_fee, created_at')
-          .in('status', ['order_delivered', 'completed'])
-          .gte('created_at', firstMonthISO)
-          .gt('delivery_fee', 0),
-      ]);
+          .gte('date', firstMonthDateStr);
 
       const monthMap = {};
       monthStarts.forEach((d) => {
@@ -582,13 +597,9 @@ export default function AdminPage() {
         if (!monthMap[key]) return;
         const amt = Number(je.amount) || 0;
         if (['Revenue', 'Sales Revenue'].includes(je.credit_account)) monthMap[key].revenue += amt;
+        if (je.credit_account === 'Delivery Income') monthMap[key].deliveryIncome += amt;
         if (je.debit_account === 'Cost of Goods Sold') monthMap[key].cogs += amt;
         if (OPEX_ACCOUNTS.includes(je.debit_account)) monthMap[key].opExp += amt;
-      });
-      (deliveryFees || []).forEach((o) => {
-        const key = (o.created_at || '').slice(0, 7);
-        if (!monthMap[key]) return;
-        monthMap[key].deliveryIncome += Number(o.delivery_fee) || 0;
       });
 
       const pnlRows = monthStarts.map((d) => {
@@ -1555,7 +1566,7 @@ export default function AdminPage() {
           supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).lte('date', openingDate),
           supabase.from('journal_entries').select('amount').in('credit_account', FIN_CASH_ACCOUNTS).lte('date', openingDate),
           supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
+          supabase.from('journal_entries').select('amount').in('debit_account', FIN_CASH_ACCOUNTS).eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('reference_type', 'rr_payment').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Salaries & Wages').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Income Tax Expense').in('credit_account', FIN_CASH_ACCOUNTS).gte('date', dateFrom).lte('date', dateTo),
@@ -1573,8 +1584,7 @@ export default function AdminPage() {
 
         const cashBeginningBalance = sumAmt(cashOpeningDebits) - sumAmt(cashOpeningCredits);
         const receiptsRevenue = sumAmt(revenueCashJE);
-        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
-        const inventoryPurchases = sumAmt(inventoryPurchasesJE);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
         const salariesWages = sumAmt(salariesJE);
         const incomeTaxes = sumAmt(incomeTaxJE);
         const genOpAdminExpenses = (cashCreditJE || []).reduce((s, row) => {
@@ -1639,12 +1649,12 @@ export default function AdminPage() {
       } else if (finSubTab === 'pl') {
         const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const expByAccount = {};
         FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
@@ -1679,16 +1689,42 @@ export default function AdminPage() {
           .from('menu_items')
           .select('id, name, category');
         const menuCatMap = {};
-        (menuItemsForCat || []).forEach((m) => { menuCatMap[m.id] = m.category || 'Other'; menuCatMap[m.name] = m.category || 'Other'; });
+        const menuNameMap = {};
+        (menuItemsForCat || []).forEach((m) => {
+          menuCatMap[m.id] = m.category || 'Other';
+          menuCatMap[m.name] = m.category || 'Other';
+          menuNameMap[m.id] = m.name || '';
+        });
         const { data: costingHdrs } = await supabase
           .from('price_costing_headers')
-          .select('menu_item_name, total_estimated_cogs, selling_price');
+          .select('menu_item_name, total_estimated_cogs, labor_cost, overhead_cost, wastage_amount, contingency_amount, selling_price');
         const cogsMap = {};
-        (costingHdrs || []).forEach((h) => { cogsMap[h.menu_item_name] = Number(h.total_estimated_cogs) || 0; });
+        (costingHdrs || []).forEach((h) => {
+          const rawMaterials = (Number(h.total_estimated_cogs) || 0)
+            - (Number(h.labor_cost) || 0)
+            - (Number(h.overhead_cost) || 0)
+            - (Number(h.wastage_amount) || 0)
+            - (Number(h.contingency_amount) || 0);
+          cogsMap[h.menu_item_name] = Math.max(0, rawMaterials);
+        });
 
         const itemMap = {};
         salesItems.forEach((si) => {
-          const baseName = (si.name || '').split(' - ')[0].trim();
+          const rawName = String(si.name || '').trim();
+          const nameFromMenu = (si.menu_item_id && menuNameMap[si.menu_item_id]) ? String(menuNameMap[si.menu_item_id]).trim() : '';
+          let baseName = nameFromMenu || rawName.split(' - ')[0].trim();
+          let trailingParen = extractTrailingParenthetical(baseName);
+          let parenGuard = 0;
+          while (trailingParen && parenGuard < 10) {
+            parenGuard += 1;
+            const trailingText = trailingParen.inside;
+            const looksLikeVariant = ITEM_VARIANT_PUNCTUATION_PATTERN.test(trailingText)
+              || ITEM_VARIANT_KEYWORD_PATTERN.test(trailingText);
+            if (!looksLikeVariant) break;
+            baseName = trailingParen.before;
+            trailingParen = extractTrailingParenthetical(baseName);
+          }
+          if (!baseName) baseName = rawName;
           const qty = Number(si.quantity) || 1;
           const rev = Number(si.subtotal) || (Number(si.price) || 0) * qty;
           const category = (si.menu_item_id && menuCatMap[si.menu_item_id]) || menuCatMap[baseName] || menuCatMap[si.name] || 'Other';
@@ -1814,12 +1850,12 @@ export default function AdminPage() {
       } else if (finSubTab === 'budget') {
         const [{ data: revenueData }, { data: deliveryIncomeData }, { data: cogsData }, { data: expAllData }] = await Promise.all([
           supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', dateFrom).lte('date', dateTo),
-          supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', fromISO).lte('created_at', toISO).gt('delivery_fee', 0),
+          supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', dateFrom).lte('date', dateTo),
           supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', dateFrom).lte('date', dateTo),
         ]);
         const revenue = (revenueData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+        const deliveryIncome = (deliveryIncomeData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
         const cogs = (cogsData || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
         const expByAccount = {};
         FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
@@ -1889,12 +1925,12 @@ export default function AdminPage() {
         const computePLPeriod = async (cFrom, cTo, cFromISO, cToISO) => {
           const [{ data: rev }, { data: del }, { data: cg }, { data: exps }] = await Promise.all([
             supabase.from('journal_entries').select('amount').in('credit_account', ['Revenue', 'Sales Revenue']).gte('date', cFrom).lte('date', cTo),
-            supabase.from('orders').select('delivery_fee').in('status', ['order_delivered', 'completed']).gte('created_at', cFromISO).lte('created_at', cToISO).gt('delivery_fee', 0),
+            supabase.from('journal_entries').select('amount').eq('credit_account', 'Delivery Income').gte('date', cFrom).lte('date', cTo),
             supabase.from('journal_entries').select('amount').eq('debit_account', 'Cost of Goods Sold').gte('date', cFrom).lte('date', cTo),
             supabase.from('journal_entries').select('amount, debit_account').in('debit_account', [...FIN_OPEX_ACCOUNTS, 'Income Tax Expense']).gte('date', cFrom).lte('date', cTo),
           ]);
           const revenue = (rev || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-          const deliveryIncome = (del || []).reduce((s, o) => s + (Number(o.delivery_fee) || 0), 0);
+          const deliveryIncome = (del || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
           const cogs = (cg || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
           const expByAccount = {};
           FIN_OPEX_ACCOUNTS.forEach((a) => { expByAccount[a] = 0; });
@@ -5672,6 +5708,12 @@ export default function AdminPage() {
                           </thead>
                           <tbody>
                             {Object.entries(catGroups).map(([cat, items]) => {
+                              const sortedItems = [...items].sort((a, b) => {
+                                const qtyA = Number(a.quantity) || 0;
+                                const qtyB = Number(b.quantity) || 0;
+                                if (qtyB !== qtyA) return qtyB - qtyA;
+                                return String(a.name || '').localeCompare(String(b.name || ''));
+                              });
                               const catQty = items.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
                               const catRev = items.reduce((s, r) => s + r.revenue, 0);
                               const catCogs = items.reduce((s, r) => s + r.cogs, 0);
@@ -5679,7 +5721,7 @@ export default function AdminPage() {
                               const catCmPct = catRev > 0 ? (catCm / catRev) * 100 : 0;
                               return (
                                 <React.Fragment key={cat}>
-                                  {items.map((r, i) => (
+                                  {sortedItems.map((r, i) => (
                                     <tr key={r.name} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
                                       <td style={styles.td}>{r.name}</td>
                                       <td style={styles.td}>{r.category}</td>
@@ -6749,6 +6791,7 @@ export default function AdminPage() {
                 }
                 let grandTotal = 0;
                 let grandTotalCredit = 0;
+                const hideSubtotals = Boolean(acctF || srch);
                 return (
                   <div style={styles.tableWrap}>
                     <table style={{ ...styles.table, fontSize: 12 }}>
@@ -6767,9 +6810,6 @@ export default function AdminPage() {
                             rows[0].reference_type ||
                             key.slice(0, 8);
                           const nameDisplay = rows[0].name || '—';
-                          const groupTotal = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-                          grandTotal += groupTotal;
-                          grandTotalCredit += groupTotal;
                           // Each data row expands to a debit line + a credit line
                           // When account filter is active, only show lines where the account matches
                           const displayRows = rows.flatMap((row) => {
@@ -6781,6 +6821,16 @@ export default function AdminPage() {
                             return lines;
                           });
                           if (displayRows.length === 0) return null;
+                          const groupDebitTotal = displayRows.reduce(
+                            (sum, line) => sum + (line.isDebit ? (Number(line.row.amount) || 0) : 0),
+                            0,
+                          );
+                          const groupCreditTotal = displayRows.reduce(
+                            (sum, line) => sum + (!line.isDebit ? (Number(line.row.amount) || 0) : 0),
+                            0,
+                          );
+                          grandTotal += groupDebitTotal;
+                          grandTotalCredit += groupCreditTotal;
                           return (
                             <React.Fragment key={key}>
                               {displayRows.map(({ row, isDebit }, di) => (
@@ -6808,12 +6858,13 @@ export default function AdminPage() {
                                   </td>
                                 </tr>
                               ))}
-                              {/* Group subtotal */}
-                              <tr style={{ background: '#1e1e1e', borderTop: '1px solid #333' }}>
-                                <td colSpan={5} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontWeight: 600, fontSize: 11 }}>Subtotal ({refDisplay}):</td>
-                                <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(groupTotal)}</td>
-                                <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(groupTotal)}</td>
-                              </tr>
+                              {!hideSubtotals && (
+                                <tr style={{ background: '#1e1e1e', borderTop: '1px solid #333' }}>
+                                  <td colSpan={5} style={{ ...styles.td, textAlign: 'right', color: '#aaa', fontWeight: 600, fontSize: 11 }}>Subtotal ({refDisplay}):</td>
+                                  <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50', fontWeight: 700 }}>{fmt(groupDebitTotal)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right', color: '#f44336', fontWeight: 700 }}>{fmt(groupCreditTotal)}</td>
+                                </tr>
+                              )}
                             </React.Fragment>
                           );
                         })}
