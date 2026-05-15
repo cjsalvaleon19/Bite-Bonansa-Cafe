@@ -344,11 +344,11 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     : (order.items || []);
 
   // Financial values
-  const total      = order.subtotal || 0;
+  const subtotal   = order.subtotal || 0;
   const delivFee   = order.delivery_fee || 0;
-  const grossTotal = total + delivFee;
+  const total      = subtotal + delivFee;
   const ptsClaimed = order.points_used || 0;
-  const netAmount  = grossTotal - ptsClaimed;
+  const netAmount  = total - ptsClaimed;
   const tendered   = opts.cashTendered !== undefined
     ? parseFloat(opts.cashTendered) || 0
     : (order.cash_amount || 0);
@@ -486,11 +486,14 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
   // ── Totals (sales copy only) ───────────────────────────────────────────────
   if (!isKitchen) {
     b.push(...CMD.BOLD_ON);
-    b.push(...encodeText(twoCol('TOTAL:', `P${total.toFixed(2)}`, paperWidth)));
+    b.push(...encodeText(twoCol('Subtotal:', `P${subtotal.toFixed(2)}`, paperWidth)));
     b.push(...CMD.BOLD_OFF);
     if (order.order_mode === 'delivery' || delivFee > 0) {
       b.push(...encodeText(twoCol('Delivery Fee:', `P${delivFee.toFixed(2)}`, paperWidth)));
     }
+    b.push(...CMD.BOLD_ON);
+    b.push(...encodeText(twoCol('TOTAL:', `P${total.toFixed(2)}`, paperWidth)));
+    b.push(...CMD.BOLD_OFF);
     if (ptsClaimed > 0) {
       b.push(...encodeText(twoCol('Points Claimed:', `-P${ptsClaimed.toFixed(2)}`, paperWidth)));
     }
@@ -521,6 +524,10 @@ export function buildReceiptBytes(order, receiptType = 'sales', opts = {}) {
     b.push(...CMD.BOLD_OFF);
   } else {
     b.push(...encodeText('Thank you for your order, Biter!\n'));
+    b.push(...CMD.LF);
+    b.push(...CMD.BOLD_ON);
+    b.push(...encodeText(`Order Slip ${getOrderSlipNumber(order)}\n`));
+    b.push(...CMD.BOLD_OFF);
     b.push(...CMD.LF);
     b.push(...qrCodeBytes('https://bitebonansacafe.com'));
     b.push(...CMD.LF);
