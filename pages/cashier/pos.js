@@ -695,14 +695,14 @@ export default function CashierPOS() {
       return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
     };
 
-    const cashTendered = parseFloat(paymentDetails.cashTendered || 0);
+    const cashTendered = parseFloat(order.cash_amount ?? paymentDetails.cashTendered ?? 0);
     
     // Calculate values based on the new flow
-    const total = order.subtotal || 0;
+    const subtotal = order.subtotal || 0;
     const deliveryFee = order.delivery_fee || 0;
-    const grossTotal = total + deliveryFee;
+    const total = subtotal + deliveryFee;
     const pointsClaimed = order.points_used || 0;
-    const netAmount = grossTotal - pointsClaimed;
+    const netAmount = total - pointsClaimed;
     const amountTendered = (paymentMethod === 'cash' || combinedPayment) ? cashTendered : 0;
     const change = Math.max(0, amountTendered - netAmount);
     
@@ -713,7 +713,7 @@ export default function CashierPOS() {
     // Determine display payment method based on points usage
     let displayPaymentMethod = order.payment_method || 'N/A';
     if (pointsClaimed > 0) {
-      if (pointsClaimed >= grossTotal) {
+      if (pointsClaimed >= total) {
         // Fully paid by points
         displayPaymentMethod = 'Points';
       } else {
@@ -827,8 +827,8 @@ export default function CashierPOS() {
           <div class="footer">
             <table>
               <tr class="total">
-                <td style="padding-top: 5px; border-top: 2px solid #000;"><strong>Total:</strong></td>
-                <td style="text-align: right; padding-top: 5px; border-top: 2px solid #000;">₱${total.toFixed(2)}</td>
+                <td style="padding-top: 5px; border-top: 2px solid #000;"><strong>Subtotal:</strong></td>
+                <td style="text-align: right; padding-top: 5px; border-top: 2px solid #000;">₱${subtotal.toFixed(2)}</td>
               </tr>
               ${(order.order_mode === 'delivery' || deliveryFee > 0) ? `
               <tr>
@@ -836,6 +836,10 @@ export default function CashierPOS() {
                 <td style="text-align: right;">₱${deliveryFee.toFixed(2)}</td>
               </tr>
               ` : ''}
+              <tr class="total">
+                <td><strong>Total:</strong></td>
+                <td style="text-align: right;">₱${total.toFixed(2)}</td>
+              </tr>
               ${pointsClaimed > 0 ? `
               <tr>
                 <td><strong>Points Claimed:</strong></td>
@@ -880,11 +884,11 @@ export default function CashierPOS() {
           
           <div style="text-align: center; margin-top: 20px;">
             <p>Thank you for your order, Biter!</p>
+            <p style="margin: 6px 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">Order Slip ${getOrderSlipNumber(order)}</p>
             <div style="margin-top: 12px;">
               <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
               <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
               <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
-              <p style="margin: 4px 0; font-size: 50px; font-weight: bold; line-height: 1;">Order Slip ${getOrderSlipNumber(order)}</p>
             </div>
           </div>
           <div style="text-align: center; margin-top: 20px;">
