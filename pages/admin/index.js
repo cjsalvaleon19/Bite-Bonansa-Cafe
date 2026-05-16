@@ -606,15 +606,15 @@ export default function AdminPage() {
           .select('id, name'),
       ]);
 
-      const saleableMenuNameMap = {};
+      const saleableMenuItemNameMap = {};
       (saleableMenuItems || []).forEach((item) => {
-        saleableMenuNameMap[item.id] = item.name || '';
+        saleableMenuItemNameMap[item.id] = item.name || '';
       });
 
       const aggregate = (rows) => {
         const map = {};
         (rows || []).forEach((r) => {
-          const baseName = getBaseMenuItemName(r.name, saleableMenuNameMap[r.menu_item_id]);
+          const baseName = getBaseMenuItemName(r.name, saleableMenuItemNameMap[r.menu_item_id]);
           map[baseName] = (map[baseName] || 0) + (Number(r.quantity) || 1);
         });
         return Object.entries(map)
