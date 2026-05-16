@@ -134,7 +134,8 @@ function extractTrailingParenthetical(text) {
 
 function getBaseMenuItemName(rawName, menuItemName = '') {
   const raw = String(rawName || '').trim();
-  let baseName = String(menuItemName || '').trim() || raw.split(' - ')[0].trim();
+  const normalizedMenuItemName = String(menuItemName || '').trim();
+  let baseName = normalizedMenuItemName || raw.split(' - ')[0].trim();
   let trailingParen = extractTrailingParenthetical(baseName);
   let parenGuard = 0;
 
