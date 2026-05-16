@@ -3292,13 +3292,14 @@ export default function AdminPage() {
           .eq('variant_type_id', addOnVariantTypeId);
         if (existingAddOnOptionsErr) throw existingAddOnOptionsErr;
 
+        const selectedDrinkAddOnSet = new Set(drinkAddOnSubvariants);
         const defaultDrinkAddOnMap = new Map(
           DRINK_ADD_ON_SUBVARIANTS.map((addOnOption, addOnIndex) => ([
             normalizeVariantOptionName(addOnOption.option_name),
             {
               ...addOnOption,
               display_order: addOnIndex + 1,
-              available: drinkAddOnSubvariants.includes(addOnOption.option_name),
+              available: selectedDrinkAddOnSet.has(addOnOption.option_name),
             },
           ])),
         );
