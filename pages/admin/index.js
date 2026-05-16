@@ -2899,7 +2899,7 @@ export default function AdminPage() {
       {
         type: 'group', key: 'inventory', label: '📦 Inventory',
         children: [
-          { key: 'net_item', label: '🧮 Net Item' },
+          { key: 'net_item', label: '🧮 New Item' },
           { key: 'costing', label: '💰 Price Costing' },
           { key: 'rr', label: '📋 Receiving Report' },
           { key: 'inventory', label: '📊 Inventory Report' },
@@ -3143,7 +3143,7 @@ export default function AdminPage() {
       }
 
       if (!menuItemId) {
-        throw new Error('Unable to resolve menu item while saving this Net Item.');
+        throw new Error('Unable to resolve menu item while saving this New Item.');
       }
 
       if (isDrinksDepartment) {
@@ -3258,7 +3258,7 @@ export default function AdminPage() {
         .select('id, menu_item_name');
       if (headerErr) throw headerErr;
       if (!insertedHeaders || insertedHeaders.length === 0) {
-        throw new Error('Unable to create price costing header for this Net Item.');
+        throw new Error('Unable to create price costing header for this New Item.');
       }
 
       const lineRows = insertedHeaders.flatMap((headerRow) => netItemForm.lines.map((line) => ({
@@ -4685,11 +4685,11 @@ export default function AdminPage() {
           {activeTab === 'net_item' && (
             <div>
               <div style={styles.tabHeader}>
-                <h1 style={styles.pageTitle}>Net Item</h1>
-                <button onClick={openNetItemDialog} style={styles.primaryBtn}>+ New Net Item</button>
+                <h1 style={styles.pageTitle}>New Item</h1>
+                <button onClick={openNetItemDialog} style={styles.primaryBtn}>+ New Item</button>
               </div>
               <p style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
-                Save a Net Item to automatically enroll it in Menu (cashier/customer) and Price Costing.
+                Save a New Item to automatically enroll it in Menu (cashier/customer) and Price Costing.
               </p>
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
@@ -4729,7 +4729,7 @@ export default function AdminPage() {
                     style={{ ...styles.dialogContent, maxWidth: '75vw', width: '75vw', maxHeight: '90vh', overflowY: 'auto' }}
                     aria-describedby={undefined}
                   >
-                    <Dialog.Title style={styles.dialogTitle}>New Net Item</Dialog.Title>
+                    <Dialog.Title style={styles.dialogTitle}>New Item</Dialog.Title>
                     <div style={styles.formGrid}>
                       <label style={styles.label}>Item Menu Name</label>
                       <input
