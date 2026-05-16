@@ -100,6 +100,7 @@ const createEmptyNetItemLine = () => ({
 const createEmptyNetItemForm = () => ({
   menu_item_name: '',
   menu_category: '',
+  kitchen_department_id: '',
   selling_price: '0',
   labor_cost: '0',
   overhead_cost: '0',
@@ -109,6 +110,8 @@ const createEmptyNetItemForm = () => ({
   contingency_amount: '0',
   lines: [createEmptyNetItemLine()],
 });
+
+const KITCHEN_DEPARTMENT_ORDER = ['Fryer 1', 'Fryer 2', 'Pastries', 'Drinks'];
 
 function extractTrailingParenthetical(text) {
   const trimmed = String(text || '').trim();
@@ -200,6 +203,7 @@ export default function AdminPage() {
   const [costingCmStatusFilter, setCostingCmStatusFilter] = useState('');
   const [invItems, setInvItems] = useState([]);
   const [menuItemsList, setMenuItemsList] = useState([]);
+  const [kitchenDepartments, setKitchenDepartments] = useState([]);
   const [costingDialogOpen, setCostingDialogOpen] = useState(false);
   const [costingEditItem, setCostingEditItem] = useState(null);
   const [menuSearchOpen, setMenuSearchOpen] = useState(false);
@@ -1503,13 +1507,14 @@ export default function AdminPage() {
     if (!supabase) return;
     setLoading(true);
     try {
-      const [{ data: headers, error: e1 }, { data: inv, error: e2 }, { data: menus }] = await Promise.all([
+      const [{ data: headers, error: e1 }, { data: inv, error: e2 }, { data: menus }, { data: departments, error: e3 }] = await Promise.all([
         supabase
           .from('price_costing_headers')
           .select('*, lines:price_costing_items(id, inventory_item_id, uom, qty, cost, inventory_item:admin_inventory_items(id,name,code,uom,cost_per_unit))')
           .order('menu_item_name'),
         supabase.from('admin_inventory_items').select('*').order('name'),
         supabase.from('menu_items').select('id, name, category, price, base_price, has_variants, menu_item_variant_types(id, variant_type_name, is_required, options:menu_item_variant_options(id, option_name, price_modifier, available))').eq('available', true).order('name'),
+        supabase.from('kitchen_departments').select('id, department_name').in('department_name', KITCHEN_DEPARTMENT_ORDER),
       ]);
       if (e1) {
         if (e1.message && e1.message.includes('price_costing_headers')) {
@@ -1520,9 +1525,15 @@ export default function AdminPage() {
         throw e1;
       }
       if (e2) throw e2;
+      if (e3) throw e3;
       setCostingHeaders(headers || []);
       setInvItems(inv || []);
       setMenuItemsList(menus || []);
+      const rank = new Map(KITCHEN_DEPARTMENT_ORDER.map((name, idx) => [name, idx]));
+      const orderedDepartments = [...(departments || [])].sort(
+        (a, b) => (rank.get(a.department_name) ?? 999) - (rank.get(b.department_name) ?? 999),
+      );
+      setKitchenDepartments(orderedDepartments);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -2961,6 +2972,10 @@ export default function AdminPage() {
       setError('Selling Price must be a valid non-negative number.');
       return;
     }
+    if (!netItemForm.kitchen_department_id) {
+      setError('Kitchen Department is required for order slip printing.');
+      return;
+    }
     const normalizedName = trimmedName.toLowerCase();
     if (costingHeaders.some((h) => (h.menu_item_name || '').trim().toLowerCase() === normalizedName)) {
       setError('This menu item already exists in Price Costing.');
@@ -2999,6 +3014,7 @@ export default function AdminPage() {
         category: (netItemForm.menu_category || '').trim() || null,
         price: computed.sellingPrice,
         available: true,
+        kitchen_department_id: netItemForm.kitchen_department_id,
       };
 
       const { data: existingMenuRows, error: existingMenuErr } = await supabase
@@ -4530,6 +4546,18 @@ export default function AdminPage() {
                         onChange={(e) => setNetItemForm((p) => ({ ...p, menu_category: e.target.value }))}
                         placeholder="e.g. Pasta"
                       />
+
+                      <label style={styles.label}>Kitchen Department</label>
+                      <select
+                        style={styles.input}
+                        value={netItemForm.kitchen_department_id}
+                        onChange={(e) => setNetItemForm((p) => ({ ...p, kitchen_department_id: e.target.value }))}
+                      >
+                        <option value="">Select kitchen department</option>
+                        {kitchenDepartments.map((department) => (
+                          <option key={department.id} value={department.id}>{department.department_name}</option>
+                        ))}
+                      </select>
                     </div>
 
                     <div style={{ marginTop: 16, marginBottom: 8 }}>

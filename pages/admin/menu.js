@@ -8,7 +8,8 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 // Lists all menu items and lets admins add, edit, and toggle availability.
 // Auth-guarded: redirects to /login if no active session.
 
-const EMPTY_FORM = { name: '', category: '', price: '', available: true };
+const KITCHEN_DEPARTMENT_ORDER = ['Fryer 1', 'Fryer 2', 'Pastries', 'Drinks'];
+const EMPTY_FORM = { name: '', category: '', price: '', available: true, kitchen_department_id: '' };
 
 export default function MenuPage() {
   const router = useRouter();
@@ -22,6 +23,7 @@ export default function MenuPage() {
   const [saveError, setSaveError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [kitchenDepartments, setKitchenDepartments] = useState([]);
 
 
   // ── Fetch menu items ────────────────────────────────────────────────────────
@@ -29,11 +31,24 @@ export default function MenuPage() {
     if (!supabase) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('menu_items')
-        .select('id, name, category, price, available')
-        .order('category');
+      const [{ data, error }, { data: departments, error: deptError }] = await Promise.all([
+        supabase
+          .from('menu_items')
+          .select('id, name, category, price, available, kitchen_department_id, kitchen_department')
+          .order('category'),
+        supabase
+          .from('kitchen_departments')
+          .select('id, department_name')
+          .in('department_name', KITCHEN_DEPARTMENT_ORDER),
+      ]);
       if (!error && data) setItems(data);
+      if (!deptError && departments) {
+        const rank = new Map(KITCHEN_DEPARTMENT_ORDER.map((name, idx) => [name, idx]));
+        const sortedDepartments = [...departments].sort(
+          (a, b) => (rank.get(a.department_name) ?? 999) - (rank.get(b.department_name) ?? 999)
+        );
+        setKitchenDepartments(sortedDepartments);
+      }
     } catch { /* non-fatal */ } finally {
       setLoading(false);
     }
@@ -58,6 +73,7 @@ export default function MenuPage() {
       category: item.category ?? '',
       price: String(item.price),
       available: item.available,
+      kitchen_department_id: item.kitchen_department_id ?? '',
     });
     setSaveError('');
     setDialogOpen(true);
@@ -68,6 +84,7 @@ export default function MenuPage() {
     if (!form.name.trim()) { setSaveError('Name is required.'); return; }
     const price = parseFloat(form.price);
     if (isNaN(price) || price < 0) { setSaveError('Price must be a valid number.'); return; }
+    if (!form.kitchen_department_id) { setSaveError('Kitchen Department is required for order slip printing.'); return; }
     setSaving(true);
     setSaveError('');
     try {
@@ -76,6 +93,7 @@ export default function MenuPage() {
         category: form.category.trim() || null,
         price,
         available: form.available,
+        kitchen_department_id: form.kitchen_department_id,
       };
       let error;
       if (editItem) {
@@ -144,7 +162,7 @@ export default function MenuPage() {
           <table style={styles.table}>
             <thead>
               <tr>
-                {['Name', 'Category', 'Price (₱)', 'Available', 'Actions'].map((h) => (
+                {['Name', 'Category', 'Kitchen Department', 'Price (₱)', 'Available', 'Actions'].map((h) => (
                   <th key={h} style={styles.th}>{h}</th>
                 ))}
               </tr>
@@ -154,6 +172,7 @@ export default function MenuPage() {
                 <tr key={item.id} style={styles.tr}>
                   <td style={styles.td}>{item.name}</td>
                   <td style={styles.td}>{item.category ?? '—'}</td>
+                  <td style={styles.td}>{item.kitchen_department ?? '—'}</td>
                   <td style={styles.td}>₱{Number(item.price).toFixed(2)}</td>
                   <td style={styles.td}>
                     <span style={{ color: item.available ? '#4caf50' : '#f44336' }}>
@@ -217,6 +236,20 @@ export default function MenuPage() {
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
                 placeholder="0.00"
               />
+            </div>
+            <div style={styles.field}>
+              <label style={styles.fieldLabel} htmlFor="itemKitchenDepartment">Kitchen Department *</label>
+              <select
+                id="itemKitchenDepartment"
+                style={styles.fieldInput}
+                value={form.kitchen_department_id}
+                onChange={(e) => setForm({ ...form, kitchen_department_id: e.target.value })}
+              >
+                <option value="">Select kitchen department</option>
+                {kitchenDepartments.map((department) => (
+                  <option key={department.id} value={department.id}>{department.department_name}</option>
+                ))}
+              </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
               <input
