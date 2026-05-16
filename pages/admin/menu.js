@@ -3,23 +3,12 @@ import { useRouter } from 'next/router';
 import * as Dialog from '@radix-ui/react-dialog';
 import { supabase } from '../../utils/supabaseClient';
 import { useRoleGuard } from '../../utils/useRoleGuard';
+import { KITCHEN_DEPARTMENT_ORDER, MENU_CATEGORIES } from '../../utils/menuConstants';
 
 // ─── Admin: Menu Management ───────────────────────────────────────────────────
 // Lists all menu items and lets admins add, edit, and toggle availability.
 // Auth-guarded: redirects to /login if no active session.
 
-const KITCHEN_DEPARTMENT_ORDER = ['Fryer 1', 'Fryer 2', 'Pastries', 'Drinks'];
-const MENU_CATEGORIES = [
-  'Chicken',
-  'Frappe Series',
-  'Fruit Soda & Lemonade',
-  'Hot/Iced Drinks',
-  'Milktea Series',
-  'Noodles',
-  'Others',
-  'Rice & More',
-  'Snack & Bites',
-];
 const EMPTY_FORM = { name: '', category: '', price: '', available: true, kitchen_department_id: '' };
 
 export default function MenuPage() {

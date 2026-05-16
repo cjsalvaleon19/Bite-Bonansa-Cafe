@@ -31,6 +31,7 @@ import {
   upsertPayrollSubmissionReport,
   createId,
 } from '../../utils/payrollStorage';
+import { KITCHEN_DEPARTMENT_ORDER, MENU_CATEGORIES } from '../../utils/menuConstants';
 
 function shiftDateByMonthsClamped(inputDate, deltaMonths) {
   const date = new Date(inputDate);
@@ -110,19 +111,6 @@ const createEmptyNetItemForm = () => ({
   contingency_amount: '0',
   lines: [createEmptyNetItemLine()],
 });
-
-const KITCHEN_DEPARTMENT_ORDER = ['Fryer 1', 'Fryer 2', 'Pastries', 'Drinks'];
-const MENU_CATEGORIES = [
-  'Chicken',
-  'Frappe Series',
-  'Fruit Soda & Lemonade',
-  'Hot/Iced Drinks',
-  'Milktea Series',
-  'Noodles',
-  'Others',
-  'Rice & More',
-  'Snack & Bites',
-];
 
 function extractTrailingParenthetical(text) {
   const trimmed = String(text || '').trim();
