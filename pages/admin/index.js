@@ -132,6 +132,26 @@ function extractTrailingParenthetical(text) {
   return null;
 }
 
+function getBaseMenuItemName(rawName, menuItemName = '') {
+  const raw = String(rawName || '').trim();
+  const normalizedMenuItemName = String(menuItemName || '').trim();
+  let baseName = normalizedMenuItemName || raw.split(' - ')[0].trim();
+  let trailingParen = extractTrailingParenthetical(baseName);
+  let parenGuard = 0;
+
+  while (trailingParen && parenGuard < 10) {
+    parenGuard += 1;
+    const trailingText = trailingParen.inside;
+    const looksLikeVariant = ITEM_VARIANT_PUNCTUATION_PATTERN.test(trailingText)
+      || ITEM_VARIANT_KEYWORD_PATTERN.test(trailingText);
+    if (!looksLikeVariant) break;
+    baseName = trailingParen.before;
+    trailingParen = extractTrailingParenthetical(baseName);
+  }
+
+  return baseName || raw;
+}
+
 const ORDER_REVENUE_ACCOUNTS = new Set(['Revenue', 'Sales Revenue']);
 const ORDER_COGS_ACCOUNT = 'Cost of Goods Sold';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -572,24 +592,35 @@ export default function AdminPage() {
       const lastMonthStart = new Date(now2.getFullYear(), now2.getMonth() - 1, 1).toISOString();
       const lastMonthEnd = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString();
 
-      const [{ data: tmItems }, { data: lmItems }] = await Promise.all([
+      const [{ data: tmItems }, { data: lmItems }, { data: saleableMenuItems }] = await Promise.all([
         supabase
           .from('order_items')
-          .select('name, quantity')
+          .select('name, quantity, menu_item_id')
           .gte('created_at', thisMonthStart),
         supabase
           .from('order_items')
-          .select('name, quantity')
+          .select('name, quantity, menu_item_id')
           .gte('created_at', lastMonthStart)
           .lt('created_at', lastMonthEnd),
+        supabase
+          .from('menu_items')
+          .select('id, name'),
       ]);
+
+      const saleableMenuItemNameMap = {};
+      (saleableMenuItems || []).forEach((item) => {
+        saleableMenuItemNameMap[item.id] = item.name || '';
+      });
 
       const aggregate = (rows) => {
         const map = {};
-        (rows || []).forEach((r) => { map[r.name] = (map[r.name] || 0) + (Number(r.quantity) || 1); });
+        (rows || []).forEach((r) => {
+          const baseName = getBaseMenuItemName(r.name, saleableMenuItemNameMap[r.menu_item_id]);
+          map[baseName] = (map[baseName] || 0) + (Number(r.quantity) || 1);
+        });
         return Object.entries(map)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 10)
+          .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+          .slice(0, 20)
           .map(([name, qty]) => ({ name, qty }));
       };
       setSaleableItemsThisMonth(aggregate(tmItems));
@@ -1747,20 +1778,7 @@ export default function AdminPage() {
         const itemMap = {};
         salesItems.forEach((si) => {
           const rawName = String(si.name || '').trim();
-          const nameFromMenu = (si.menu_item_id && menuNameMap[si.menu_item_id]) ? String(menuNameMap[si.menu_item_id]).trim() : '';
-          let baseName = nameFromMenu || rawName.split(' - ')[0].trim();
-          let trailingParen = extractTrailingParenthetical(baseName);
-          let parenGuard = 0;
-          while (trailingParen && parenGuard < 10) {
-            parenGuard += 1;
-            const trailingText = trailingParen.inside;
-            const looksLikeVariant = ITEM_VARIANT_PUNCTUATION_PATTERN.test(trailingText)
-              || ITEM_VARIANT_KEYWORD_PATTERN.test(trailingText);
-            if (!looksLikeVariant) break;
-            baseName = trailingParen.before;
-            trailingParen = extractTrailingParenthetical(baseName);
-          }
-          if (!baseName) baseName = rawName;
+          const baseName = getBaseMenuItemName(rawName, menuNameMap[si.menu_item_id]);
           const qty = Number(si.quantity) || 1;
           const rev = Number(si.subtotal) || (Number(si.price) || 0) * qty;
           const category = (si.menu_item_id && menuCatMap[si.menu_item_id]) || menuCatMap[baseName] || menuCatMap[si.name] || 'Other';
