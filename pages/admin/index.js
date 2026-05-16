@@ -112,6 +112,17 @@ const createEmptyNetItemForm = () => ({
 });
 
 const KITCHEN_DEPARTMENT_ORDER = ['Fryer 1', 'Fryer 2', 'Pastries', 'Drinks'];
+const MENU_CATEGORIES = [
+  'Chicken',
+  'Frappe Series',
+  'Fruit Soda & Lemonade',
+  'Hot/Iced Drinks',
+  'Milktea Series',
+  'Noodles',
+  'Others',
+  'Rice & More',
+  'Snack & Bites',
+];
 
 function extractTrailingParenthetical(text) {
   const trimmed = String(text || '').trim();
@@ -4540,12 +4551,16 @@ export default function AdminPage() {
                       />
 
                       <label style={styles.label}>Menu Category</label>
-                      <input
+                      <select
                         style={styles.input}
                         value={netItemForm.menu_category}
                         onChange={(e) => setNetItemForm((p) => ({ ...p, menu_category: e.target.value }))}
-                        placeholder="e.g. Pasta"
-                      />
+                      >
+                        <option value="">Select menu category</option>
+                        {MENU_CATEGORIES.map((category) => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </select>
 
                       <label style={styles.label}>Kitchen Department</label>
                       <select
