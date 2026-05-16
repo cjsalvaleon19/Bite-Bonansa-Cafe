@@ -89,6 +89,8 @@ function parseAddonValues(rawValue) {
 
 const ITEM_VARIANT_PUNCTUATION_PATTERN = /[:,]/;
 const ITEM_VARIANT_KEYWORD_PATTERN = /(size|flavor|variety|spice\s*level|add[\s-]*ons?)/i;
+const DRINKS_DEPARTMENT_NAME = 'drinks';
+const DRINK_SIZE_SUBVARIANTS = ['12oz', '16oz', '22oz'];
 
 const createEmptyNetItemLine = () => ({
   id: null,
@@ -102,6 +104,7 @@ const createEmptyNetItemForm = () => ({
   menu_item_name: '',
   menu_category: '',
   kitchen_department_id: '',
+  size_subvariants: [],
   selling_price: '0',
   labor_cost: '0',
   overhead_cost: '0',
@@ -3054,6 +3057,9 @@ export default function AdminPage() {
       setError('Kitchen Department is required for order slip printing.');
       return;
     }
+    const selectedKitchenDepartment = kitchenDepartments.find((department) => department.id === netItemForm.kitchen_department_id);
+    const isDrinksDepartment = String(selectedKitchenDepartment?.department_name || '').trim().toLowerCase() === DRINKS_DEPARTMENT_NAME;
+    const drinkSizeSubvariants = isDrinksDepartment ? DRINK_SIZE_SUBVARIANTS : [];
     const normalizedName = trimmedName.toLowerCase();
     if (costingHeaders.some((h) => (h.menu_item_name || '').trim().toLowerCase() === normalizedName)) {
       setError('This menu item already exists in Price Costing.');
@@ -3102,21 +3108,90 @@ export default function AdminPage() {
         .limit(1);
       if (existingMenuErr) throw existingMenuErr;
 
+      let menuItemId = existingMenuRows?.[0]?.id || null;
       if (existingMenuRows && existingMenuRows.length > 0) {
         const { error: menuUpdateErr } = await supabase
           .from('menu_items')
-          .update(baseMenuPayload)
+          .update(isDrinksDepartment ? { ...baseMenuPayload, has_variants: true } : baseMenuPayload)
           .eq('id', existingMenuRows[0].id);
         if (menuUpdateErr) throw menuUpdateErr;
       } else {
-        const { error: menuInsertErr } = await supabase
+        const { data: insertedMenuItem, error: menuInsertErr } = await supabase
           .from('menu_items')
-          .insert({ ...baseMenuPayload, has_variants: false });
+          .insert({ ...baseMenuPayload, has_variants: isDrinksDepartment })
+          .select('id')
+          .single();
         if (menuInsertErr) throw menuInsertErr;
+        menuItemId = insertedMenuItem?.id || null;
+      }
+
+      if (!menuItemId) {
+        throw new Error('Unable to resolve menu item while saving this Net Item.');
+      }
+
+      if (isDrinksDepartment) {
+        const { data: existingSizeVariantRows, error: existingSizeVariantErr } = await supabase
+          .from('menu_item_variant_types')
+          .select('id')
+          .eq('menu_item_id', menuItemId)
+          .ilike('variant_type_name', 'Size')
+          .limit(1);
+        if (existingSizeVariantErr) throw existingSizeVariantErr;
+
+        let sizeVariantTypeId = existingSizeVariantRows?.[0]?.id || null;
+        if (sizeVariantTypeId) {
+          const { error: updateSizeVariantErr } = await supabase
+            .from('menu_item_variant_types')
+            .update({ is_required: true, allow_multiple: false, display_order: 1 })
+            .eq('id', sizeVariantTypeId);
+          if (updateSizeVariantErr) throw updateSizeVariantErr;
+        } else {
+          const { data: insertedSizeVariant, error: insertSizeVariantErr } = await supabase
+            .from('menu_item_variant_types')
+            .insert({
+              menu_item_id: menuItemId,
+              variant_type_name: 'Size',
+              is_required: true,
+              allow_multiple: false,
+              display_order: 1,
+            })
+            .select('id')
+            .single();
+          if (insertSizeVariantErr) throw insertSizeVariantErr;
+          sizeVariantTypeId = insertedSizeVariant?.id || null;
+        }
+
+        if (!sizeVariantTypeId) {
+          throw new Error('Unable to enroll size variants for this Drinks item.');
+        }
+
+        const { data: existingSizeOptions, error: existingSizeOptionsErr } = await supabase
+          .from('menu_item_variant_options')
+          .select('option_name')
+          .eq('variant_type_id', sizeVariantTypeId);
+        if (existingSizeOptionsErr) throw existingSizeOptionsErr;
+
+        const existingOptionNames = new Set(
+          (existingSizeOptions || []).map((option) => String(option.option_name || '').trim().toLowerCase()),
+        );
+        const missingSizeOptions = drinkSizeSubvariants
+          .filter((sizeOption) => !existingOptionNames.has(sizeOption.toLowerCase()))
+          .map((sizeOption, idx) => ({
+            variant_type_id: sizeVariantTypeId,
+            option_name: sizeOption,
+            price_modifier: 0,
+            available: true,
+            display_order: idx + 1,
+          }));
+        if (missingSizeOptions.length > 0) {
+          const { error: insertSizeOptionsErr } = await supabase
+            .from('menu_item_variant_options')
+            .insert(missingSizeOptions);
+          if (insertSizeOptionsErr) throw insertSizeOptionsErr;
+        }
       }
 
       const headerPayload = {
-        menu_item_name: trimmedName,
         menu_category: baseMenuPayload.category,
         labor_cost: Number(netItemForm.labor_cost) || 0,
         overhead_cost: Number(netItemForm.overhead_cost) || 0,
@@ -3131,17 +3206,26 @@ export default function AdminPage() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
+      const costingHeaderNames = isDrinksDepartment
+        ? [trimmedName, ...drinkSizeSubvariants.map((sizeOption) => `${trimmedName} - ${sizeOption}`)]
+        : [trimmedName];
+      const headerRows = costingHeaderNames.map((menuItemName) => ({
+        ...headerPayload,
+        menu_item_name: menuItemName,
+      }));
 
-      const { data: insertedHeader, error: headerErr } = await supabase
+      const { data: insertedHeaders, error: headerErr } = await supabase
         .from('price_costing_headers')
-        .insert(headerPayload)
-        .select('id')
-        .single();
+        .insert(headerRows)
+        .select('id, menu_item_name');
       if (headerErr) throw headerErr;
+      if (!insertedHeaders || insertedHeaders.length === 0) {
+        throw new Error('Unable to create price costing header for this Net Item.');
+      }
 
-      const lineRows = netItemForm.lines.map((line) => ({
-        costing_header_id: insertedHeader.id,
-        menu_item_name: trimmedName,
+      const lineRows = insertedHeaders.flatMap((headerRow) => netItemForm.lines.map((line) => ({
+        costing_header_id: headerRow.id,
+        menu_item_name: headerRow.menu_item_name,
         inventory_item_id: line.inventory_item_id || null,
         uom: line.uom || '',
         qty: Number(line.qty) || 0,
@@ -3153,7 +3237,7 @@ export default function AdminPage() {
         contingency_pct: 0,
         contribution_margin_pct: 0,
         selling_price: computed.sellingPrice,
-      }));
+      })));
       if (lineRows.length > 0) {
         const { error: lineErr } = await supabase.from('price_costing_items').insert(lineRows);
         if (lineErr) throw lineErr;
@@ -4633,13 +4717,50 @@ export default function AdminPage() {
                       <select
                         style={styles.input}
                         value={netItemForm.kitchen_department_id}
-                        onChange={(e) => setNetItemForm((p) => ({ ...p, kitchen_department_id: e.target.value }))}
+                        onChange={(e) => setNetItemForm((p) => {
+                          const nextKitchenDepartmentId = e.target.value;
+                          const selectedDepartment = kitchenDepartments.find((department) => department.id === nextKitchenDepartmentId);
+                          const isDrinksDepartment = String(selectedDepartment?.department_name || '').trim().toLowerCase() === DRINKS_DEPARTMENT_NAME;
+                          return {
+                            ...p,
+                            kitchen_department_id: nextKitchenDepartmentId,
+                            size_subvariants: isDrinksDepartment ? [...DRINK_SIZE_SUBVARIANTS] : [],
+                          };
+                        })}
                       >
                         <option value="">Select kitchen department</option>
                         {kitchenDepartments.map((department) => (
                           <option key={department.id} value={department.id}>{department.department_name}</option>
                         ))}
                       </select>
+                      {String((kitchenDepartments.find((department) => department.id === netItemForm.kitchen_department_id)?.department_name) || '').trim().toLowerCase() === DRINKS_DEPARTMENT_NAME && (
+                        <>
+                          <label style={styles.label}>Size Subvariants</label>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              {DRINK_SIZE_SUBVARIANTS.map((sizeOption) => (
+                                <span
+                                  key={sizeOption}
+                                  style={{
+                                    padding: '4px 10px',
+                                    borderRadius: 999,
+                                    border: '1px solid #555',
+                                    background: '#151515',
+                                    color: '#ffc107',
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {sizeOption}
+                                </span>
+                              ))}
+                            </div>
+                            <span style={styles.helperText}>
+                              Drinks items are auto-enrolled with 12oz, 16oz, and 22oz Size variants for per-size COGS plotting.
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     <div style={{ marginTop: 16, marginBottom: 8 }}>
