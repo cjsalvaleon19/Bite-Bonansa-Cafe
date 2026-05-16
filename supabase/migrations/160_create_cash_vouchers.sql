@@ -68,24 +68,23 @@ DECLARE
   v_yy TEXT;
   v_prefix TEXT;
   v_last_seq INT := 0;
-  v_last TEXT;
 BEGIN
   v_yy := TO_CHAR(NOW(), 'YY');
   v_prefix := 'CV# ' || v_yy;
 
-  SELECT cv_number INTO v_last
-  FROM cash_vouchers
-  WHERE cv_number LIKE v_prefix || '%'
-  ORDER BY cv_number DESC
-  LIMIT 1;
-
-  IF v_last IS NOT NULL THEN
-    BEGIN
-      v_last_seq := CAST(SUBSTRING(v_last FROM LENGTH(v_prefix) + 1) AS INT);
-    EXCEPTION WHEN OTHERS THEN
-      v_last_seq := 0;
-    END;
-  END IF;
+  SELECT COALESCE(
+    MAX(
+      CASE
+        WHEN cv_number LIKE v_prefix || '%'
+             AND SUBSTRING(cv_number FROM LENGTH(v_prefix) + 1) ~ '^[0-9]+$'
+          THEN CAST(SUBSTRING(cv_number FROM LENGTH(v_prefix) + 1) AS INT)
+        ELSE 0
+      END
+    ),
+    0
+  )
+  INTO v_last_seq
+  FROM cash_vouchers;
 
   RETURN v_prefix || LPAD(CAST(v_last_seq + 1 AS TEXT), 6, '0');
 END;

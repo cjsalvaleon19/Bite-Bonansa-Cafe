@@ -193,6 +193,8 @@ function getBaseMenuItemName(rawName, menuItemName = '') {
 const ORDER_REVENUE_ACCOUNTS = new Set(['Revenue', 'Sales Revenue']);
 const ORDER_COGS_ACCOUNT = 'Cost of Goods Sold';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CASH_VOUCHER_TRANSACTION_TYPES = ['cash-in', 'cash-out', 'pay-bill', 'pay-expense', 'adjustment'];
+const CASH_VOUCHER_CONTRA_ACCOUNT = 'Cash on Hand';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -1128,6 +1130,10 @@ export default function AdminPage() {
     return 'Cash out';
   }, []);
 
+  const buildCashVoucherJournalDescription = useCallback((cvNumber, line) => (
+    `Cash Voucher ${cvNumber}${line.source ? ` - ${line.source}` : ''}${line.description ? `: ${line.description}` : ''}`
+  ), []);
+
   const fetchCashVoucherAccounts = useCallback(async () => {
     if (!supabase) return;
     try {
@@ -1154,15 +1160,17 @@ export default function AdminPage() {
         .from('cash_vouchers')
         .select('cv_number')
         .like('cv_number', `${prefix}%`)
-        .order('cv_number', { ascending: false })
-        .limit(1);
+        .order('created_at', { ascending: false })
+        .limit(200);
       if (rowsErr) throw rowsErr;
-      let seq = 1;
-      if (rows && rows.length > 0 && rows[0].cv_number) {
-        const n = parseInt(rows[0].cv_number.slice(prefix.length), 10);
-        if (!isNaN(n)) seq = n + 1;
-      }
-      return `${prefix}${String(seq).padStart(6, '0')}`;
+      const maxSeq = (rows || []).reduce((maxValue, row) => {
+        const cvNumber = String(row?.cv_number || '');
+        if (!cvNumber.startsWith(prefix)) return maxValue;
+        const parsed = Number(cvNumber.slice(prefix.length));
+        if (!Number.isFinite(parsed)) return maxValue;
+        return parsed > maxValue ? parsed : maxValue;
+      }, 0);
+      return `${prefix}${String(maxSeq + 1).padStart(6, '0')}`;
     } catch {
       return '';
     }
@@ -1191,16 +1199,20 @@ export default function AdminPage() {
       const cvNumber = await nextCashVoucherNumber();
       if (!cvNumber) continue;
 
-      const startIso = `${auditDate}T00:00:00.000Z`;
-      const endDate = new Date(`${auditDate}T00:00:00.000Z`);
-      endDate.setUTCDate(endDate.getUTCDate() + 1);
+      const dateMatch = String(auditDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!dateMatch) continue;
+      const year = Number(dateMatch[1]);
+      const month = Number(dateMatch[2]);
+      const day = Number(dateMatch[3]);
+      const startDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+      const endDate = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
 
       const { data: dayTransactions, error: txErr } = await supabase
         .from('cash_drawer_transactions')
         .select('id, transaction_type, amount, description, purpose, category, created_at')
-        .gte('created_at', startIso)
-        .lt('created_at', endDate.toISOString())
-        .in('transaction_type', ['cash-in', 'cash-out', 'pay-bill', 'pay-expense', 'adjustment'])
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+        .in('transaction_type', CASH_VOUCHER_TRANSACTION_TYPES)
         .order('created_at', { ascending: true });
       if (txErr) throw txErr;
 
@@ -1225,16 +1237,20 @@ export default function AdminPage() {
       if ((dayTransactions || []).length > 0) {
         const lines = dayTransactions.map((transaction, index) => {
           const source = mapCashDrawerTypeToVoucherSource(transaction.transaction_type);
+          const amountValue = Number(transaction.amount) || 0;
+          const entryType = source === 'Adjustment'
+            ? (amountValue >= 0 ? 'debit' : 'credit')
+            : (source === 'Cash in' ? 'debit' : 'credit');
           return {
             cash_voucher_id: insertedVoucher.id,
             cash_drawer_transaction_id: transaction.id,
             line_order: index + 1,
-            line_date: toDateOnly(transaction.created_at || auditDate),
+            line_date: transaction.created_at ? toDateOnly(transaction.created_at) : auditDate,
             source,
             description: transaction.description || transaction.purpose || source,
             account_title: transaction.category || null,
-            entry_type: source === 'Cash in' ? 'debit' : 'credit',
-            amount: Math.abs(Number(transaction.amount) || 0),
+            entry_type: entryType,
+            amount: Math.abs(amountValue),
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           };
@@ -1361,11 +1377,11 @@ export default function AdminPage() {
       if (existingJeDeleteErr) throw existingJeDeleteErr;
 
       const jeRows = validLines.map((line) => {
-        const debitAccount = line.entryValue === 'debit' ? line.accountValue : 'Cash on Hand';
-        const creditAccount = line.entryValue === 'credit' ? line.accountValue : 'Cash on Hand';
+        const debitAccount = line.entryValue === 'debit' ? line.accountValue : CASH_VOUCHER_CONTRA_ACCOUNT;
+        const creditAccount = line.entryValue === 'credit' ? line.accountValue : CASH_VOUCHER_CONTRA_ACCOUNT;
         return {
           date: line.date || cashVoucherEditItem.audit_date,
-          description: `Cash Voucher ${cashVoucherEditItem.cv_number}${line.source ? ` - ${line.source}` : ''}${line.description ? `: ${line.description}` : ''}`,
+          description: buildCashVoucherJournalDescription(cashVoucherEditItem.cv_number, line),
           debit_account: debitAccount,
           credit_account: creditAccount,
           amount: line.amountValue,
@@ -1385,7 +1401,7 @@ export default function AdminPage() {
     } catch (err) {
       setCashVoucherError(err.message);
     }
-  }, [supabase, cashVoucherEditItem, cashVoucherItems, fetchCashVouchers, editCashVoucher]);
+  }, [supabase, cashVoucherEditItem, cashVoucherItems, fetchCashVouchers, editCashVoucher, buildCashVoucherJournalDescription]);
 
   const getCreditAccountForPaymentMode = useCallback((paymentMode) => (
     paymentMode === 'cash_in_bank' ? 'Cash in Bank'
