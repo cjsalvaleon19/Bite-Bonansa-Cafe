@@ -92,6 +92,15 @@ const ITEM_VARIANT_KEYWORD_PATTERN = /(size|flavor|variety|spice\s*level|add[\s-
 const DRINKS_DEPARTMENT_NAME = 'drinks';
 const DRINK_SIZE_SUBVARIANTS = ['12oz', '16oz', '22oz'];
 
+function resolveDrinkSizeSubvariants(selectedSizes) {
+  const selectedSet = new Set(
+    (Array.isArray(selectedSizes) ? selectedSizes : [])
+      .map((size) => String(size || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  return DRINK_SIZE_SUBVARIANTS.filter((sizeOption) => selectedSet.has(sizeOption.toLowerCase()));
+}
+
 const createEmptyNetItemLine = () => ({
   id: null,
   inventory_item_id: '',
@@ -3059,7 +3068,11 @@ export default function AdminPage() {
     }
     const selectedKitchenDepartment = kitchenDepartments.find((department) => department.id === netItemForm.kitchen_department_id);
     const isDrinksDepartment = String(selectedKitchenDepartment?.department_name || '').trim().toLowerCase() === DRINKS_DEPARTMENT_NAME;
-    const drinkSizeSubvariants = isDrinksDepartment ? DRINK_SIZE_SUBVARIANTS : [];
+    const drinkSizeSubvariants = isDrinksDepartment ? resolveDrinkSizeSubvariants(netItemForm.size_subvariants) : [];
+    if (isDrinksDepartment && drinkSizeSubvariants.length === 0) {
+      setError('Select at least one Drinks size subvariant.');
+      return;
+    }
     const normalizedName = trimmedName.toLowerCase();
     if (costingHeaders.some((h) => (h.menu_item_name || '').trim().toLowerCase() === normalizedName)) {
       setError('This menu item already exists in Price Costing.');
@@ -3167,15 +3180,15 @@ export default function AdminPage() {
 
         const { data: existingSizeOptions, error: existingSizeOptionsErr } = await supabase
           .from('menu_item_variant_options')
-          .select('option_name')
+          .select('id, option_name')
           .eq('variant_type_id', sizeVariantTypeId);
         if (existingSizeOptionsErr) throw existingSizeOptionsErr;
 
-        const existingOptionNames = new Set(
-          (existingSizeOptions || []).map((option) => String(option.option_name || '').trim().toLowerCase()),
+        const existingSizeOptionMap = new Map(
+          (existingSizeOptions || []).map((option) => [String(option.option_name || '').trim().toLowerCase(), option]),
         );
         const missingSizeOptions = drinkSizeSubvariants
-          .filter((sizeOption) => !existingOptionNames.has(sizeOption.toLowerCase()))
+          .filter((sizeOption) => !existingSizeOptionMap.has(sizeOption.toLowerCase()))
           .map((sizeOption, idx) => ({
             variant_type_id: sizeVariantTypeId,
             option_name: sizeOption,
@@ -3188,6 +3201,27 @@ export default function AdminPage() {
             .from('menu_item_variant_options')
             .insert(missingSizeOptions);
           if (insertSizeOptionsErr) throw insertSizeOptionsErr;
+        }
+
+        const defaultDrinkSizeSet = new Set(DRINK_SIZE_SUBVARIANTS.map((sizeOption) => sizeOption.toLowerCase()));
+        const selectedDrinkSizeSet = new Set(drinkSizeSubvariants.map((sizeOption) => sizeOption.toLowerCase()));
+        const sizeOptionUpdates = (existingSizeOptions || [])
+          .filter((option) => defaultDrinkSizeSet.has(String(option.option_name || '').trim().toLowerCase()))
+          .map((option) => {
+            const normalizedOptionName = String(option.option_name || '').trim().toLowerCase();
+            const selectedIndex = drinkSizeSubvariants.findIndex((sizeOption) => sizeOption.toLowerCase() === normalizedOptionName);
+            return supabase
+              .from('menu_item_variant_options')
+              .update({
+                available: selectedDrinkSizeSet.has(normalizedOptionName),
+                display_order: selectedIndex >= 0 ? selectedIndex + 1 : DRINK_SIZE_SUBVARIANTS.length + 1,
+              })
+              .eq('id', option.id);
+          });
+        if (sizeOptionUpdates.length > 0) {
+          const updateResults = await Promise.all(sizeOptionUpdates);
+          const failedUpdate = updateResults.find(({ error: updateErr }) => updateErr);
+          if (failedUpdate?.error) throw failedUpdate.error;
         }
       }
 
@@ -4739,24 +4773,36 @@ export default function AdminPage() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               {DRINK_SIZE_SUBVARIANTS.map((sizeOption) => (
-                                <span
+                                <button
+                                  type="button"
                                   key={sizeOption}
+                                  onClick={() => setNetItemForm((p) => {
+                                    const isSelected = p.size_subvariants.includes(sizeOption);
+                                    return {
+                                      ...p,
+                                      size_subvariants: isSelected
+                                        ? p.size_subvariants.filter((value) => value !== sizeOption)
+                                        : resolveDrinkSizeSubvariants([...p.size_subvariants, sizeOption]),
+                                    };
+                                  })}
+                                  aria-pressed={netItemForm.size_subvariants.includes(sizeOption)}
                                   style={{
                                     padding: '4px 10px',
                                     borderRadius: 999,
-                                    border: '1px solid #555',
-                                    background: '#151515',
-                                    color: '#ffc107',
+                                    border: `1px solid ${netItemForm.size_subvariants.includes(sizeOption) ? '#ffc107' : '#555'}`,
+                                    background: netItemForm.size_subvariants.includes(sizeOption) ? '#ffc107' : '#151515',
+                                    color: netItemForm.size_subvariants.includes(sizeOption) ? '#111' : '#ffc107',
                                     fontSize: 12,
                                     fontWeight: 600,
+                                    cursor: 'pointer',
                                   }}
                                 >
                                   {sizeOption}
-                                </span>
+                                </button>
                               ))}
                             </div>
                             <span style={styles.helperText}>
-                              Drinks items are auto-enrolled with 12oz, 16oz, and 22oz Size variants for per-size COGS plotting.
+                              Click to enroll only the Drinks size subvariants that should appear in Menu and per-size COGS.
                             </span>
                           </div>
                         </>
