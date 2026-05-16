@@ -91,6 +91,12 @@ const ITEM_VARIANT_PUNCTUATION_PATTERN = /[:,]/;
 const ITEM_VARIANT_KEYWORD_PATTERN = /(size|flavor|variety|spice\s*level|add[\s-]*ons?)/i;
 const DRINKS_DEPARTMENT_NAME = 'drinks';
 const DRINK_SIZE_SUBVARIANTS = ['12oz', '16oz', '22oz'];
+const DRINK_ADD_ON_SUBVARIANTS = [
+  { option_name: 'Extra Shot', price_modifier: 15 },
+  { option_name: 'Coffee Jelly', price_modifier: 15 },
+  { option_name: 'Pearls', price_modifier: 15 },
+  { option_name: 'Cream Cheese', price_modifier: 15 },
+];
 
 function resolveDrinkSizeSubvariants(selectedSizes) {
   const selectedSet = new Set(
@@ -3227,6 +3233,88 @@ export default function AdminPage() {
           const failedUpdate = updateResults.find(({ error: updateErr }) => updateErr);
           if (failedUpdate?.error) throw failedUpdate.error;
         }
+
+        const { data: existingAddOnVariantRows, error: existingAddOnVariantErr } = await supabase
+          .from('menu_item_variant_types')
+          .select('id')
+          .eq('menu_item_id', menuItemId)
+          .ilike('variant_type_name', 'Add Ons')
+          .limit(1);
+        if (existingAddOnVariantErr) throw existingAddOnVariantErr;
+
+        let addOnVariantTypeId = existingAddOnVariantRows?.[0]?.id || null;
+        if (addOnVariantTypeId) {
+          const { error: updateAddOnVariantErr } = await supabase
+            .from('menu_item_variant_types')
+            .update({ is_required: false, allow_multiple: true, display_order: 2 })
+            .eq('id', addOnVariantTypeId);
+          if (updateAddOnVariantErr) throw updateAddOnVariantErr;
+        } else {
+          const { data: insertedAddOnVariant, error: insertAddOnVariantErr } = await supabase
+            .from('menu_item_variant_types')
+            .insert({
+              menu_item_id: menuItemId,
+              variant_type_name: 'Add Ons',
+              is_required: false,
+              allow_multiple: true,
+              display_order: 2,
+            })
+            .select('id')
+            .single();
+          if (insertAddOnVariantErr) throw insertAddOnVariantErr;
+          addOnVariantTypeId = insertedAddOnVariant?.id || null;
+        }
+
+        if (!addOnVariantTypeId) {
+          throw new Error('Unable to enroll add-on variants for this Drinks item.');
+        }
+
+        const { data: existingAddOnOptions, error: existingAddOnOptionsErr } = await supabase
+          .from('menu_item_variant_options')
+          .select('id, option_name')
+          .eq('variant_type_id', addOnVariantTypeId);
+        if (existingAddOnOptionsErr) throw existingAddOnOptionsErr;
+
+        const existingAddOnOptionMap = new Map(
+          (existingAddOnOptions || []).map((option) => [String(option.option_name || '').trim().toLowerCase(), option]),
+        );
+        const missingAddOnOptions = DRINK_ADD_ON_SUBVARIANTS
+          .filter((addOnOption) => !existingAddOnOptionMap.has(addOnOption.option_name.toLowerCase()))
+          .map((addOnOption, idx) => ({
+            variant_type_id: addOnVariantTypeId,
+            option_name: addOnOption.option_name,
+            price_modifier: addOnOption.price_modifier,
+            available: true,
+            display_order: idx + 1,
+          }));
+        if (missingAddOnOptions.length > 0) {
+          const { error: insertAddOnOptionsErr } = await supabase
+            .from('menu_item_variant_options')
+            .insert(missingAddOnOptions);
+          if (insertAddOnOptionsErr) throw insertAddOnOptionsErr;
+        }
+
+        const addOnOptionUpdates = (existingAddOnOptions || [])
+          .map((option) => {
+            const normalizedName = String(option.option_name || '').trim().toLowerCase();
+            const addOnIndex = DRINK_ADD_ON_SUBVARIANTS.findIndex((addOn) => addOn.option_name.toLowerCase() === normalizedName);
+            if (addOnIndex < 0) return null;
+            const selectedAddOn = DRINK_ADD_ON_SUBVARIANTS[addOnIndex];
+            return supabase
+              .from('menu_item_variant_options')
+              .update({
+                price_modifier: selectedAddOn.price_modifier,
+                available: true,
+                display_order: addOnIndex + 1,
+              })
+              .eq('id', option.id);
+          })
+          .filter(Boolean);
+        if (addOnOptionUpdates.length > 0) {
+          const updateResults = await Promise.all(addOnOptionUpdates);
+          const failedUpdate = updateResults.find(({ error: updateErr }) => updateErr);
+          if (failedUpdate?.error) throw failedUpdate.error;
+        }
       }
 
       const headerPayload = {
@@ -4852,6 +4940,33 @@ export default function AdminPage() {
                             </div>
                             <span style={styles.helperText}>
                               Click to enroll only the Drinks size options that should appear in Menu and per-size COGS.
+                            </span>
+                          </div>
+                        </>
+                      )}
+                      {String((kitchenDepartments.find((department) => department.id === netItemForm.kitchen_department_id)?.department_name) || '').trim().toLowerCase() === DRINKS_DEPARTMENT_NAME && (
+                        <>
+                          <label style={styles.label}>Add Ons (Optional)</label>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+                              {DRINK_ADD_ON_SUBVARIANTS.map((addOnOption) => (
+                                <div
+                                  key={addOnOption.option_name}
+                                  style={{
+                                    border: '1px solid #3a3a3a',
+                                    borderRadius: 10,
+                                    padding: '10px 12px',
+                                    background: '#1a1a1a',
+                                    textAlign: 'center',
+                                  }}
+                                >
+                                  <div style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>{addOnOption.option_name}</div>
+                                  <div style={{ color: '#ffc107', fontSize: 12, fontWeight: 700 }}>+₱{Number(addOnOption.price_modifier).toFixed(2)}</div>
+                                </div>
+                              ))}
+                            </div>
+                            <span style={styles.helperText}>
+                              These optional add-ons are automatically enrolled for Drinks items (multi-select in cashier/customer ordering).
                             </span>
                           </div>
                         </>
