@@ -9,6 +9,17 @@ import { useRoleGuard } from '../../utils/useRoleGuard';
 // Auth-guarded: redirects to /login if no active session.
 
 const KITCHEN_DEPARTMENT_ORDER = ['Fryer 1', 'Fryer 2', 'Pastries', 'Drinks'];
+const MENU_CATEGORIES = [
+  'Chicken',
+  'Frappe Series',
+  'Fruit Soda & Lemonade',
+  'Hot/Iced Drinks',
+  'Milktea Series',
+  'Noodles',
+  'Others',
+  'Rice & More',
+  'Snack & Bites',
+];
 const EMPTY_FORM = { name: '', category: '', price: '', available: true, kitchen_department_id: '' };
 
 export default function MenuPage() {
@@ -216,13 +227,17 @@ export default function MenuPage() {
             </div>
             <div style={styles.field}>
               <label style={styles.fieldLabel} htmlFor="itemCategory">Category</label>
-              <input
+              <select
                 id="itemCategory"
                 style={styles.fieldInput}
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                placeholder="e.g. Coffee, Pastry"
-              />
+              >
+                <option value="">Select menu category</option>
+                {MENU_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
             </div>
             <div style={styles.field}>
               <label style={styles.fieldLabel} htmlFor="itemPrice">Price (₱) *</label>
