@@ -2412,6 +2412,12 @@ export default function AdminPage() {
     if (message) setPayrollMessage(message);
   }, []);
 
+  const buildDefaultPayrollDaily = useCallback((cycleDays) => cycleDays.map((day) => {
+    if (day.isSunday) return true;
+    if (day.isFuture) return null;
+    return true;
+  }), []);
+
   const notifyCashiersOnPayrollSubmission = useCallback(async (payrollReport) => {
     if (!supabase || !payrollReport?.id) return;
     try {
@@ -2678,11 +2684,7 @@ export default function AdminPage() {
           id: employee.id || createId('emp'),
           name,
           monthlyPay: roundToCurrency(employee.monthlyPay || 0),
-          daily: nextCycleDays.map((day) => {
-            if (day.isSunday) return true;
-            if (day.isFuture) return null;
-            return true;
-          }),
+          daily: buildDefaultPayrollDaily(nextCycleDays),
           deductions: [],
         };
       })
@@ -2701,7 +2703,7 @@ export default function AdminPage() {
       },
       hasSnapshotForNextCycle
         ? 'Payroll period updated (loaded saved attendance).'
-        : 'Payroll period updated. Employee names and monthly pay carried over; attendance and deductions reset for this period.',
+        : 'Payroll period updated. Employee names and pay carried over; attendance reset for new period.',
     );
     // Load the lock state for the new cycle
     try {
@@ -2726,11 +2728,7 @@ export default function AdminPage() {
       id: createId('emp'),
       name,
       monthlyPay: 0,
-      daily: payrollCycleDays.map((day) => {
-        if (day.isSunday) return true;
-        if (day.isFuture) return null;
-        return true;
-      }),
+      daily: buildDefaultPayrollDaily(payrollCycleDays),
       deductions: [],
     };
     syncPayrollState(
