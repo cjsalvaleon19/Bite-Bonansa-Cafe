@@ -73,6 +73,26 @@ export default function CashierPOS() {
   }, [authLoading]);
 
   useEffect(() => {
+    if (!supabase || authLoading) return undefined;
+
+    const channel = supabase
+      .channel('pos_menu_realtime_updates')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_items' },
+        () => { void fetchMenu(); },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_item_variant_options' },
+        () => { void fetchMenu(); },
+      )
+      .subscribe();
+
+    return () => { channel.unsubscribe(); };
+  }, [authLoading]);
+
+  useEffect(() => {
     const fetchUser = async () => {
       if (!supabase) return;
       try {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../utils/supabaseClient';
@@ -32,7 +32,7 @@ export default function CustomerMenu() {
     });
   }, [menuItems, searchQuery, selectedCategory]);
 
-  const fetchMenuItems = async () => {
+  const fetchMenuItems = useCallback(async () => {
     if (!supabase) return;
     setMenuLoading(true);
     try {
@@ -83,7 +83,7 @@ export default function CustomerMenu() {
     } finally {
       setMenuLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -165,7 +165,27 @@ export default function CustomerMenu() {
       mounted = false;
       subscription?.unsubscribe();
     };
-  }, [router]);
+  }, [router, fetchMenuItems]);
+
+  useEffect(() => {
+    if (!supabase || loading) return undefined;
+
+    const channel = supabase
+      .channel('customer_menu_realtime_updates')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_items' },
+        () => { void fetchMenuItems(); },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_item_variant_options' },
+        () => { void fetchMenuItems(); },
+      )
+      .subscribe();
+
+    return () => { channel.unsubscribe(); };
+  }, [loading, fetchMenuItems]);
 
   const handleLogout = async () => {
     try {
