@@ -3261,7 +3261,7 @@ export default function AdminPage() {
         }
         const sizeOptionIdsToDelete = (existingSizeOptions || [])
           .filter((option) => {
-            const normalizedOptionName = String(option.option_name || '').trim().toLowerCase();
+            const normalizedOptionName = normalizeVariantOptionName(option.option_name);
             return defaultDrinkSizeSet.has(normalizedOptionName) && !selectedDrinkSizeSet.has(normalizedOptionName);
           })
           .map((option) => option.id);
