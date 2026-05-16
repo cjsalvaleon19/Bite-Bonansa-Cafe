@@ -4,6 +4,8 @@ const SILOG_MEALS_NAME = 'Silog Meals';
 const SILOG_VARIETY_TYPE = 'Variety';
 const SIOMAISILOG_OPTION = 'Siomaisilog';
 const SIOMAI_STYLE_TYPE = 'Siomai Style';
+const OMITTED_SIZE_OPTION_NAME = '12oz';
+const OMITTED_SIZE_OPTION_NAME_NORMALIZED = OMITTED_SIZE_OPTION_NAME.toLowerCase();
 
 const normalizeSelectedVariants = (variants) => {
   if (!variants || typeof variants !== 'object') return {};
@@ -17,6 +19,29 @@ const normalizeSelectedVariants = (variants) => {
         }))
         : []
     ]))
+  );
+};
+
+const shouldHideOptionForType = (typeName, optionName) => {
+  const normalizedTypeName = String(typeName || '').trim().toLowerCase();
+  const normalizedOptionName = String(optionName || '').trim().toLowerCase();
+  return normalizedTypeName === 'size' && normalizedOptionName === OMITTED_SIZE_OPTION_NAME_NORMALIZED;
+};
+
+const pruneHiddenOptionsFromSelection = (selection, variantTypes) => {
+  if (!selection || typeof selection !== 'object') return {};
+
+  const typeNameById = new Map(
+    (Array.isArray(variantTypes) ? variantTypes : []).map((type) => [String(type.id), type.variant_type_name])
+  );
+
+  return Object.fromEntries(
+    Object.entries(selection).map(([typeId, options]) => {
+      const variantTypeName = typeNameById.get(String(typeId));
+      const visibleOptions = (Array.isArray(options) ? options : [])
+        .filter((option) => !shouldHideOptionForType(variantTypeName, option?.optionName));
+      return [typeId, visibleOptions];
+    })
   );
 };
 
@@ -47,7 +72,8 @@ export default function VariantSelectionModal({
   };
 
   useEffect(() => {
-    setSelectedVariants(normalizeSelectedVariants(initialSelectedVariants));
+    const normalizedSelection = normalizeSelectedVariants(initialSelectedVariants);
+    setSelectedVariants(pruneHiddenOptionsFromSelection(normalizedSelection, item?.variant_types));
     setQuantity(Math.max(1, Number(initialQuantity) || 1));
   }, [item?.id, initialSelectedVariants, initialQuantity]);
 
@@ -226,11 +252,12 @@ export default function VariantSelectionModal({
                     {type.allow_multiple && <span style={styles.hint}> (Select multiple)</span>}
                   </h4>
                   <div style={styles.optionsGrid}>
-                    {type.options && type.options.length > 0 ? (
-                      type.options
-                        .filter(option => option.available !== false) // Only show available options
-                        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
-                        .map(option => (
+                      {type.options && type.options.length > 0 ? (
+                        type.options
+                          .filter(option => option.available !== false) // Only show available options
+                          .filter(option => !shouldHideOptionForType(type.variant_type_name, option.option_name))
+                          .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+                          .map(option => (
                           <div
                             key={option.id}
                             style={{
