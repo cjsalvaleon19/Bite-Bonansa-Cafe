@@ -69,30 +69,6 @@ export default function CashierPOS() {
     useCartStore();
 
   useEffect(() => {
-    if (!authLoading) fetchMenu();
-  }, [authLoading]);
-
-  useEffect(() => {
-    if (!supabase || authLoading) return undefined;
-
-    const channel = supabase
-      .channel('pos_menu_realtime_updates')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'menu_items' },
-        () => { fetchMenu(); },
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'menu_item_variant_options' },
-        () => { fetchMenu(); },
-      )
-      .subscribe();
-
-    return () => { channel.unsubscribe(); };
-  }, [authLoading]);
-
-  useEffect(() => {
     const fetchUser = async () => {
       if (!supabase) return;
       try {
@@ -295,6 +271,30 @@ export default function CashierPOS() {
       setMenuLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!authLoading) fetchMenu();
+  }, [authLoading, fetchMenu]);
+
+  useEffect(() => {
+    if (!supabase || authLoading) return undefined;
+
+    const channel = supabase
+      .channel('pos_menu_realtime_updates')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_items' },
+        () => { fetchMenu(); },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_item_variant_options' },
+        () => { fetchMenu(); },
+      )
+      .subscribe();
+
+    return () => { channel.unsubscribe(); };
+  }, [authLoading, fetchMenu]);
 
   const handleAddItem = (item) => {
     // Check if item is sold out
