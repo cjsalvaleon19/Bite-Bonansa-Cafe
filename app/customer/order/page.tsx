@@ -60,7 +60,6 @@ import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { MenuItem, MenuItemAddon, PaymentMethod } from '@/lib/types'
 import { parseSettingAsBoolean } from '@/utils/cashierSettings'
-import { getRegisteredSubvariantCount, getRegisteredSubvariantPreview } from '@/utils/variantPreview'
 
 interface VariantSelectionModalProps {
   item: MenuItem
@@ -1293,9 +1292,6 @@ function CustomerOrderPage() {
               // Check for new variant system
               const hasVariants = item.has_variants && item.variant_types && item.variant_types.length > 0
               const variantCount = item.variant_types?.length || 0
-              const subvariantPreview = getRegisteredSubvariantPreview(item.variant_types, 3)
-              const hiddenSubvariantCount = Math.max(0, getRegisteredSubvariantCount(item.variant_types) - subvariantPreview.length)
-
               const minSizePrice = hasSizes
                 ? Math.min(...sizes.map((s: any) => s.price))
                 : null
@@ -1314,23 +1310,6 @@ function CustomerOrderPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex flex-col min-w-0">
                         <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff', marginBottom: '2px' }}>{item.name}</h3>
-                        {subvariantPreview.length > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1.5">
-                            {subvariantPreview.map((subvariant: string) => (
-                              <span
-                                key={subvariant}
-                                style={{ fontSize: '10px', color: '#ffc107', backgroundColor: 'rgba(255,193,7,0.1)', border: '1px solid rgba(255,193,7,0.3)', borderRadius: '999px', padding: '2px 6px', display: 'inline-block', fontWeight: 600 }}
-                              >
-                                {subvariant}
-                              </span>
-                            ))}
-                            {hiddenSubvariantCount > 0 && (
-                              <span style={{ fontSize: '10px', color: '#888888', border: '1px solid rgba(136,136,136,0.3)', borderRadius: '999px', padding: '2px 6px', display: 'inline-block', fontWeight: 600 }}>
-                                +{hiddenSubvariantCount} more
-                              </span>
-                            )}
-                          </div>
-                        )}
                         {item.category && (
                           <span style={{ fontSize: '11px', color: '#888888' }}>{item.category}</span>
                         )}

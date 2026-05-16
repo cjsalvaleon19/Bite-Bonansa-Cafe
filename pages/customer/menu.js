@@ -3,7 +3,6 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../utils/supabaseClient';
 import NotificationBell from '../../components/NotificationBell';
-import { getRegisteredSubvariantCount, getRegisteredSubvariantPreview } from '../../utils/variantPreview';
 
 export default function CustomerMenu() {
   const router = useRouter();
@@ -72,8 +71,6 @@ export default function CustomerMenu() {
           const variantTypes = nextVariantMetaMap[menuItemId].variantTypes;
           nextVariantMetaMap[menuItemId] = {
             variantCount: variantTypes.length,
-            subvariantPreview: getRegisteredSubvariantPreview(variantTypes, 3),
-            subvariantCount: getRegisteredSubvariantCount(variantTypes),
           };
         });
         setVariantMetaMap(nextVariantMetaMap);
@@ -265,23 +262,11 @@ export default function CustomerMenu() {
           ) : filteredItems.length > 0 ? (
               <div style={styles.itemsGrid}>
               {filteredItems.map((item) => {
-                const variantMeta = variantMetaMap[item.id] || { variantCount: 0, subvariantPreview: [], subvariantCount: 0 };
+                const variantMeta = variantMetaMap[item.id] || { variantCount: 0 };
                 const variantCount = variantMeta.variantCount || 0;
-                const subvariantPreview = variantMeta.subvariantPreview || [];
-                const hiddenSubvariantCount = Math.max(0, (variantMeta.subvariantCount || 0) - subvariantPreview.length);
                 return (
                   <div key={item.id} style={styles.itemCard}>
                     <h4 style={styles.itemName}>{item.name}</h4>
-                    {subvariantPreview.length > 0 && (
-                      <div style={styles.subvariantRow}>
-                        {subvariantPreview.map((subvariant) => (
-                          <span key={subvariant} style={styles.subvariantChip}>{subvariant}</span>
-                        ))}
-                        {hiddenSubvariantCount > 0 && (
-                          <span style={styles.subvariantOverflowChip}>+{hiddenSubvariantCount} more</span>
-                        )}
-                      </div>
-                    )}
                     <p style={styles.itemCategory}>{item.category}</p>
                     <p style={styles.itemPrice}>₱{item.price?.toFixed(2) ?? '0.00'}</p>
                     {variantCount > 0 && (
@@ -437,36 +422,6 @@ const styles = {
     fontFamily: "'Poppins', sans-serif",
     color: '#fff',
     margin: '0 0 6px 0',
-  },
-  subvariantRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '6px',
-    margin: '0 0 8px 0',
-  },
-  subvariantChip: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '3px 8px',
-    backgroundColor: 'rgba(255, 193, 7, 0.12)',
-    border: '1px solid rgba(255, 193, 7, 0.35)',
-    borderRadius: '999px',
-    color: '#ffc107',
-    fontSize: '11px',
-    fontFamily: "'Poppins', sans-serif",
-    fontWeight: '600',
-  },
-  subvariantOverflowChip: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '3px 8px',
-    backgroundColor: 'rgba(136, 136, 136, 0.12)',
-    border: '1px solid rgba(136, 136, 136, 0.35)',
-    borderRadius: '999px',
-    color: '#aaa',
-    fontSize: '11px',
-    fontFamily: "'Poppins', sans-serif",
-    fontWeight: '600',
   },
   // Item category label: Poppins, 14px, muted gray #888
   itemCategory: {
