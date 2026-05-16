@@ -1280,16 +1280,19 @@ export default function AdminPage() {
         .order('line_order', { ascending: true })
         .order('created_at', { ascending: true });
       if (linesErr) throw linesErr;
-      setCashVoucherItems((lines || []).map((line) => ({
-        id: line.id,
-        description: line.description || '',
-        date: line.line_date || voucher.audit_date,
-        source: line.source || '',
-        account_title: isEndingBalanceCashVoucherLine(line) ? CASH_VOUCHER_CONTRA_ACCOUNT : (line.account_title || ''),
-        entry_type: isEndingBalanceCashVoucherLine(line) ? 'debit' : (line.entry_type || 'debit'),
-        amount: String(Math.abs(Number(line.amount) || 0)),
-        cash_drawer_transaction_id: line.cash_drawer_transaction_id || null,
-      })));
+      setCashVoucherItems((lines || []).map((line) => {
+        const endingBalanceLine = isEndingBalanceCashVoucherLine(line);
+        return {
+          id: line.id,
+          description: line.description || '',
+          date: line.line_date || voucher.audit_date,
+          source: line.source || '',
+          account_title: endingBalanceLine ? CASH_VOUCHER_CONTRA_ACCOUNT : (line.account_title || ''),
+          entry_type: endingBalanceLine ? 'debit' : (line.entry_type || 'debit'),
+          amount: String(Math.abs(Number(line.amount) || 0)),
+          cash_drawer_transaction_id: line.cash_drawer_transaction_id || null,
+        };
+      }));
     } catch (err) {
       setCashVoucherError(err.message);
       setCashVoucherItems([]);
@@ -8327,7 +8330,7 @@ export default function AdminPage() {
                                   fontSize: 12,
                                   padding: '4px 6px',
                                   width: 190,
-                                  ...(isEndingBalanceLine ? { background: '#111', color: '#aaa' } : null),
+                                  ...(isEndingBalanceLine ? { background: '#111', color: '#aaa' } : {}),
                                 }}
                                 value={line.account_title}
                                 list="cash-voucher-accounts-list"
@@ -8348,7 +8351,7 @@ export default function AdminPage() {
                                   width: 120,
                                   fontSize: 12,
                                   padding: '4px 6px',
-                                  ...(isEndingBalanceLine ? { background: '#111', color: '#aaa' } : null),
+                                  ...(isEndingBalanceLine ? { background: '#111', color: '#aaa' } : {}),
                                 }}
                                 value={isEndingBalanceLine ? 'debit' : (line.entry_type || 'debit')}
                                 disabled={isEndingBalanceLine}
