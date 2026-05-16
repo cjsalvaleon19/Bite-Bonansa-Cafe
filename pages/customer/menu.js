@@ -272,16 +272,7 @@ export default function CustomerMenu() {
                 return (
                   <div key={item.id} style={styles.itemCard}>
                     <h4 style={styles.itemName}>{item.name}</h4>
-                    {subvariantPreview.length > 0 && (
-                      <div style={styles.subvariantRow}>
-                        {subvariantPreview.map((subvariant) => (
-                          <span key={subvariant} style={styles.subvariantChip}>{subvariant}</span>
-                        ))}
-                        {hiddenSubvariantCount > 0 && (
-                          <span style={styles.subvariantOverflowChip}>+{hiddenSubvariantCount} more</span>
-                        )}
-                      </div>
-                    )}
+
                     <p style={styles.itemCategory}>{item.category}</p>
                     <p style={styles.itemPrice}>₱{item.price?.toFixed(2) ?? '0.00'}</p>
                     {variantCount > 0 && (
