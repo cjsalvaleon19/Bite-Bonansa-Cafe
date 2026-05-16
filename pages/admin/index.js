@@ -107,6 +107,10 @@ function resolveDrinkSizeSubvariants(selectedSizes) {
   return DRINK_SIZE_SUBVARIANTS.filter((sizeOption) => selectedSet.has(sizeOption.toLowerCase()));
 }
 
+function normalizeVariantOptionName(optionName) {
+  return String(optionName || '').trim().toLowerCase();
+}
+
 const createEmptyNetItemLine = () => ({
   id: null,
   inventory_item_id: '',
@@ -3275,17 +3279,23 @@ export default function AdminPage() {
           .eq('variant_type_id', addOnVariantTypeId);
         if (existingAddOnOptionsErr) throw existingAddOnOptionsErr;
 
-        const existingAddOnOptionMap = new Map(
-          (existingAddOnOptions || []).map((option) => [String(option.option_name || '').trim().toLowerCase(), option]),
+        const defaultDrinkAddOnMap = new Map(
+          DRINK_ADD_ON_SUBVARIANTS.map((addOnOption, addOnIndex) => ([
+            normalizeVariantOptionName(addOnOption.option_name),
+            { ...addOnOption, display_order: addOnIndex + 1 },
+          ])),
         );
-        const missingAddOnOptions = DRINK_ADD_ON_SUBVARIANTS
-          .filter((addOnOption) => !existingAddOnOptionMap.has(addOnOption.option_name.toLowerCase()))
-          .map((addOnOption, idx) => ({
+        const existingAddOnOptionMap = new Map(
+          (existingAddOnOptions || []).map((option) => [normalizeVariantOptionName(option.option_name), option]),
+        );
+        const missingAddOnOptions = Array.from(defaultDrinkAddOnMap.entries())
+          .filter(([normalizedName]) => !existingAddOnOptionMap.has(normalizedName))
+          .map(([, addOnOption]) => ({
             variant_type_id: addOnVariantTypeId,
             option_name: addOnOption.option_name,
             price_modifier: addOnOption.price_modifier,
             available: true,
-            display_order: idx + 1,
+            display_order: addOnOption.display_order,
           }));
         if (missingAddOnOptions.length > 0) {
           const { error: insertAddOnOptionsErr } = await supabase
@@ -3296,16 +3306,14 @@ export default function AdminPage() {
 
         const addOnOptionUpdates = (existingAddOnOptions || [])
           .map((option) => {
-            const normalizedName = String(option.option_name || '').trim().toLowerCase();
-            const addOnIndex = DRINK_ADD_ON_SUBVARIANTS.findIndex((addOn) => addOn.option_name.toLowerCase() === normalizedName);
-            if (addOnIndex < 0) return null;
-            const selectedAddOn = DRINK_ADD_ON_SUBVARIANTS[addOnIndex];
+            const selectedAddOn = defaultDrinkAddOnMap.get(normalizeVariantOptionName(option.option_name));
+            if (!selectedAddOn) return null;
             return supabase
               .from('menu_item_variant_options')
               .update({
                 price_modifier: selectedAddOn.price_modifier,
                 available: true,
-                display_order: addOnIndex + 1,
+                display_order: selectedAddOn.display_order,
               })
               .eq('id', option.id);
           })
