@@ -107,6 +107,17 @@ function resolveDrinkSizeSubvariants(selectedSizes) {
   return DRINK_SIZE_SUBVARIANTS.filter((sizeOption) => selectedSet.has(sizeOption.toLowerCase()));
 }
 
+function resolveDrinkAddOnSubvariants(selectedAddOns) {
+  const selectedSet = new Set(
+    (Array.isArray(selectedAddOns) ? selectedAddOns : [])
+      .map((optionName) => String(optionName || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  return DRINK_ADD_ON_SUBVARIANTS
+    .map((addOnOption) => addOnOption.option_name)
+    .filter((optionName) => selectedSet.has(optionName.toLowerCase()));
+}
+
 function normalizeVariantOptionName(optionName) {
   return String(optionName || '').trim().toLowerCase();
 }
@@ -124,6 +135,7 @@ const createEmptyNetItemForm = () => ({
   menu_category: '',
   kitchen_department_id: '',
   size_subvariants: [],
+  add_on_subvariants: [],
   selling_price: '0',
   labor_cost: '0',
   overhead_cost: '0',
@@ -3083,6 +3095,7 @@ export default function AdminPage() {
     }
     const isDrinksDepartment = String(selectedKitchenDepartment?.department_name || '').trim().toLowerCase() === DRINKS_DEPARTMENT_NAME;
     const drinkSizeSubvariants = isDrinksDepartment ? resolveDrinkSizeSubvariants(netItemForm.size_subvariants) : [];
+    const drinkAddOnSubvariants = isDrinksDepartment ? resolveDrinkAddOnSubvariants(netItemForm.add_on_subvariants) : [];
     if (isDrinksDepartment && drinkSizeSubvariants.length === 0) {
       setError('Select at least one Drinks size subvariant.');
       return;
@@ -3282,7 +3295,11 @@ export default function AdminPage() {
         const defaultDrinkAddOnMap = new Map(
           DRINK_ADD_ON_SUBVARIANTS.map((addOnOption, addOnIndex) => ([
             normalizeVariantOptionName(addOnOption.option_name),
-            { ...addOnOption, display_order: addOnIndex + 1 },
+            {
+              ...addOnOption,
+              display_order: addOnIndex + 1,
+              available: drinkAddOnSubvariants.includes(addOnOption.option_name),
+            },
           ])),
         );
         const existingAddOnOptionMap = new Map(
@@ -3294,7 +3311,7 @@ export default function AdminPage() {
             variant_type_id: addOnVariantTypeId,
             option_name: addOnOption.option_name,
             price_modifier: addOnOption.price_modifier,
-            available: true,
+            available: addOnOption.available,
             display_order: addOnOption.display_order,
           }));
         if (missingAddOnOptions.length > 0) {
@@ -3312,7 +3329,7 @@ export default function AdminPage() {
               .from('menu_item_variant_options')
               .update({
                 price_modifier: selectedAddOn.price_modifier,
-                available: true,
+                available: selectedAddOn.available,
                 display_order: selectedAddOn.display_order,
               })
               .eq('id', option.id);
@@ -4904,6 +4921,7 @@ export default function AdminPage() {
                             ...p,
                             kitchen_department_id: nextKitchenDepartmentId,
                             size_subvariants: isDrinksDepartment ? [...DRINK_SIZE_SUBVARIANTS] : [],
+                            add_on_subvariants: isDrinksDepartment ? DRINK_ADD_ON_SUBVARIANTS.map((option) => option.option_name) : [],
                           };
                         })}
                       >
@@ -4958,23 +4976,36 @@ export default function AdminPage() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
                               {DRINK_ADD_ON_SUBVARIANTS.map((addOnOption) => (
-                                <div
+                                <button
+                                  type="button"
                                   key={addOnOption.option_name}
+                                  onClick={() => setNetItemForm((p) => {
+                                    const isSelected = p.add_on_subvariants.includes(addOnOption.option_name);
+                                    return {
+                                      ...p,
+                                      add_on_subvariants: isSelected
+                                        ? p.add_on_subvariants.filter((value) => value !== addOnOption.option_name)
+                                        : resolveDrinkAddOnSubvariants([...p.add_on_subvariants, addOnOption.option_name]),
+                                    };
+                                  })}
+                                  aria-pressed={netItemForm.add_on_subvariants.includes(addOnOption.option_name)}
                                   style={{
-                                    border: '1px solid #3a3a3a',
+                                    border: `1px solid ${netItemForm.add_on_subvariants.includes(addOnOption.option_name) ? '#ffc107' : '#3a3a3a'}`,
                                     borderRadius: 10,
                                     padding: '10px 12px',
-                                    background: '#1a1a1a',
+                                    background: netItemForm.add_on_subvariants.includes(addOnOption.option_name) ? 'rgba(255, 193, 7, 0.15)' : '#1a1a1a',
                                     textAlign: 'center',
+                                    cursor: 'pointer',
+                                    color: '#fff',
                                   }}
                                 >
                                   <div style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>{addOnOption.option_name}</div>
                                   <div style={{ color: '#ffc107', fontSize: 12, fontWeight: 700 }}>+₱{Number(addOnOption.price_modifier).toFixed(2)}</div>
-                                </div>
+                                </button>
                               ))}
                             </div>
                             <span style={styles.helperText}>
-                              These optional add-ons are automatically enrolled for Drinks items (multi-select in cashier/customer ordering).
+                              Click add-ons to include/exclude while enrolling this Drinks item in Menu.
                             </span>
                           </div>
                         </>
