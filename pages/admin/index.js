@@ -4738,12 +4738,14 @@ export default function AdminPage() {
 
                           <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (₱)</label>
                           <input
+                            id="netItemSellingPrice"
                             style={styles.input}
                             type="number"
                             value={netItemForm.selling_price}
                             onChange={(e) => setNetItemForm((p) => ({ ...p, selling_price: e.target.value }))}
+                            aria-describedby="netItemSellingPriceHelp"
                           />
-                          <span style={styles.helperText}>Selling Price drives Contribution Margin and CM Ratio.</span>
+                          <span id="netItemSellingPriceHelp" style={styles.helperText}>Selling Price drives Contribution Margin and CM Ratio.</span>
                         </div>
                       );
                     })()}
