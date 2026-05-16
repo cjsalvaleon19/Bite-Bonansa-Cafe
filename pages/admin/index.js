@@ -1327,20 +1327,23 @@ export default function AdminPage() {
     setCashVoucherError('');
     setCashVoucherSuccess('');
     try {
-      const validLines = (cashVoucherItems || [])
-        .map((line, index) => ({
+      const normalizedLines = (cashVoucherItems || [])
+        .map((line) => ({
           ...line,
-          line_order: index + 1,
           amountValue: Math.abs(Number(line.amount) || 0),
           accountValue: isEndingBalanceCashVoucherLine(line) ? CASH_VOUCHER_CONTRA_ACCOUNT : String(line.account_title || '').trim(),
           entryValue: isEndingBalanceCashVoucherLine(line) ? 'debit' : (line.entry_type === 'credit' ? 'credit' : 'debit'),
-        }))
-        .filter((line) => line.amountValue > 0 && line.accountValue);
-      if (!validLines.length) {
-        throw new Error('Set account title and amount for at least one line item before saving.');
+        }));
+      const persistedLines = normalizedLines
+        .filter((line) => line.amountValue > 0)
+        .map((line, index) => ({ ...line, line_order: index + 1 }));
+      const journalLines = persistedLines.filter((line) => line.accountValue);
+
+      if (!persistedLines.length) {
+        throw new Error('Set amount for at least one line item before saving.');
       }
 
-      const totalAmount = validLines.reduce((sum, line) => sum + line.amountValue, 0);
+      const totalAmount = persistedLines.reduce((sum, line) => sum + line.amountValue, 0);
       const nowIso = new Date().toISOString();
 
       const { error: voucherUpdErr } = await supabase
@@ -1360,14 +1363,14 @@ export default function AdminPage() {
         .eq('cash_voucher_id', cashVoucherEditItem.id);
       if (itemDeleteErr) throw itemDeleteErr;
 
-      const itemRows = validLines.map((line) => ({
+      const itemRows = persistedLines.map((line) => ({
         cash_voucher_id: cashVoucherEditItem.id,
         cash_drawer_transaction_id: line.cash_drawer_transaction_id || null,
         line_order: line.line_order,
         line_date: line.date || cashVoucherEditItem.audit_date,
         source: line.source || '',
         description: line.description || null,
-        account_title: line.accountValue,
+        account_title: line.accountValue || null,
         entry_type: line.entryValue,
         amount: line.amountValue,
         created_at: nowIso,
@@ -1385,24 +1388,26 @@ export default function AdminPage() {
         .eq('reference', cashVoucherEditItem.cv_number);
       if (existingJeDeleteErr) throw existingJeDeleteErr;
 
-      const jeRows = validLines.map((line) => {
-        const debitAccount = line.entryValue === 'debit' ? line.accountValue : CASH_VOUCHER_CONTRA_ACCOUNT;
-        const creditAccount = line.entryValue === 'credit' ? line.accountValue : CASH_VOUCHER_CONTRA_ACCOUNT;
-        return {
-          date: line.date || cashVoucherEditItem.audit_date,
-          description: buildCashVoucherJournalDescription(cashVoucherEditItem.cv_number, line),
-          debit_account: debitAccount,
-          credit_account: creditAccount,
-          amount: line.amountValue,
-          reference_id: cashVoucherEditItem.id,
-          reference_type: 'cash_voucher',
-          reference: cashVoucherEditItem.cv_number,
-          entry_number: cashVoucherEditItem.cv_number,
-          name: 'Cash Voucher',
-        };
-      });
-      const { error: jeInsErr } = await supabase.from('journal_entries').insert(jeRows);
-      if (jeInsErr) throw jeInsErr;
+      if (journalLines.length > 0) {
+        const jeRows = journalLines.map((line) => {
+          const debitAccount = line.entryValue === 'debit' ? line.accountValue : CASH_VOUCHER_CONTRA_ACCOUNT;
+          const creditAccount = line.entryValue === 'credit' ? line.accountValue : CASH_VOUCHER_CONTRA_ACCOUNT;
+          return {
+            date: line.date || cashVoucherEditItem.audit_date,
+            description: buildCashVoucherJournalDescription(cashVoucherEditItem.cv_number, line),
+            debit_account: debitAccount,
+            credit_account: creditAccount,
+            amount: line.amountValue,
+            reference_id: cashVoucherEditItem.id,
+            reference_type: 'cash_voucher',
+            reference: cashVoucherEditItem.cv_number,
+            entry_number: cashVoucherEditItem.cv_number,
+            name: 'Cash Voucher',
+          };
+        });
+        const { error: jeInsErr } = await supabase.from('journal_entries').insert(jeRows);
+        if (jeInsErr) throw jeInsErr;
+      }
 
       setCashVoucherSuccess(`Cash Voucher ${cashVoucherEditItem.cv_number} saved successfully.`);
       await fetchCashVouchers();
