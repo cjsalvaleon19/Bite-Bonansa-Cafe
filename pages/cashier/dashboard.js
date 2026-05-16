@@ -666,7 +666,6 @@ export default function CashierDashboard() {
 
         <div class="section">
           <p>Order#: ${order.order_number || order.id.slice(0, 8)}</p>
-          <p>Slip# : ${getOrderSlipNumber(order)}</p>
           <p>Date  : ${new Date(order.created_at).toLocaleString()}</p>
           <p>Type  : ${order.order_mode || 'N/A'}</p>
           ${isKitchenCopy && departmentName ? `<p><strong>Kitchen Department:</strong> ${departmentName}</p>` : ''}
@@ -751,11 +750,11 @@ export default function CashierDashboard() {
         <div class="footer">
           <p>Thank you for your order, Biter!</p>
           ${!isKitchenCopy ? `<div style="margin-top: 12px; text-align: center;">
+            <p style="font-size: 50px; font-weight: bold; line-height: 1; margin: 6px 0;">Order Slip ${getOrderSlipNumber(order)}</p>
             <p style="font-size: 18px; font-weight: bold; letter-spacing: 1px; margin-bottom: 6px;">ORDER #${orderShortNumber}</p>
             <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
             <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
             <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
-            <p style="margin: 4px 0; font-size: 50px; font-weight: bold; line-height: 1;">Order Slip ${getOrderSlipNumber(order)}</p>
           </div>` : ''}
         </div>
 

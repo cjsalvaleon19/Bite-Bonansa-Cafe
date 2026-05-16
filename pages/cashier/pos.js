@@ -783,7 +783,6 @@ export default function CashierPOS() {
           
           <div style="margin-bottom: 15px;">
             <p>Order#: ${order.order_number || order.id.slice(0, 8)}</p>
-            <p>Slip# : ${getOrderSlipNumber(order)}</p>
             <p>Date  : ${receiptDate}</p>
             <p>Type  : ${orderType}</p>
             <p>Name  : ${customerName}</p>
