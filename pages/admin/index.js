@@ -8136,8 +8136,8 @@ export default function AdminPage() {
                           // When account filter is active, only show lines where the account matches
                           const displayRows = rows.flatMap((row) => {
                             const lines = [];
-                            const debitAccount = String(row.debit_account || '').trim();
-                            const creditAccount = String(row.credit_account || '').trim();
+                            const debitAccount = (row.debit_account || '').trim();
+                            const creditAccount = (row.credit_account || '').trim();
                             const drMatch = debitAccount && (!acctF || debitAccount.toLowerCase() === acctF);
                             const crMatch = creditAccount && (!acctF || creditAccount.toLowerCase() === acctF);
                             if (drMatch) lines.push({ row, isDebit: true });
