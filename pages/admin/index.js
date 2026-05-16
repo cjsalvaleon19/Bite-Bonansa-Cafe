@@ -246,7 +246,7 @@ export default function AdminPage() {
     id: null,
     menu_item_name: '',
     menu_category: '',
-    menu_item_price: '0', // locked to cashier menu price
+    menu_item_price: '0', // user-editable; saved value is synced to menu_items
     labor_cost: '0',
     overhead_cost: '0',
     wastage_pct: '0',
