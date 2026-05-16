@@ -3394,6 +3394,51 @@ export default function AdminPage() {
         if (lineErr) throw lineErr;
       }
 
+      // Sync selling price to menu_items table so cashier and customer see updated price
+      const itemName = (costingForm.menu_item_name || '').trim();
+      const dashIdx = itemName.lastIndexOf(' - ');
+      if (dashIdx !== -1) {
+        // Variant item: e.g. "Americano - 16oz" → base="Americano", option="16oz"
+        const baseName = itemName.slice(0, dashIdx).trim();
+        const optionName = itemName.slice(dashIdx + 3).trim();
+        const { data: baseItems } = await supabase
+          .from('menu_items')
+          .select('id, price, base_price')
+          .ilike('name', baseName)
+          .limit(1);
+        if (baseItems && baseItems.length > 0) {
+          const baseItem = baseItems[0];
+          const basePrice = Number(baseItem.price || baseItem.base_price || 0);
+          const newModifier = sellingPrice - basePrice;
+          // Find the variant option by name under this menu item
+          const { data: variantOptions } = await supabase
+            .from('menu_item_variant_options')
+            .select('id, variant_type_id, menu_item_variant_types!inner(menu_item_id)')
+            .eq('menu_item_variant_types.menu_item_id', baseItem.id)
+            .ilike('option_name', optionName)
+            .limit(1);
+          if (variantOptions && variantOptions.length > 0) {
+            await supabase
+              .from('menu_item_variant_options')
+              .update({ price_modifier: newModifier })
+              .eq('id', variantOptions[0].id);
+          }
+        }
+      } else {
+        // Base item: update menu_items.price directly
+        const { data: matchedItems } = await supabase
+          .from('menu_items')
+          .select('id')
+          .ilike('name', itemName)
+          .limit(1);
+        if (matchedItems && matchedItems.length > 0) {
+          await supabase
+            .from('menu_items')
+            .update({ price: sellingPrice, base_price: sellingPrice })
+            .eq('id', matchedItems[0].id);
+        }
+      }
+
       setCostingDialogOpen(false);
       fetchCosting();
     } catch (err) {
@@ -5487,15 +5532,16 @@ export default function AdminPage() {
                             />
                           </div>
 
-                          {/* Selling Price (locked to menu) */}
-                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (₱) — from Menu</label>
+                          {/* Selling Price (editable — synced to menu on save) */}
+                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (₱)</label>
                           <div>
                             <input
-                              style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }}
-                              readOnly
-                              value={fmt(sellingPrice)}
+                              type="number"
+                              style={{ ...styles.input, color: '#ffc107', fontWeight: 700 }}
+                              value={costingForm.menu_item_price}
+                              onChange={(e) => setCostingForm((p) => ({ ...p, menu_item_price: e.target.value }))}
                             />
-                            <span style={styles.helperText}>Auto-filled from cashier menu price. Use 🔍 search to change.</span>
+                            <span style={styles.helperText}>Editing this and saving will update the price in the cashier and customer menu.</span>
                           </div>
                         </div>
                       );
