@@ -196,6 +196,12 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const CASH_VOUCHER_TRANSACTION_TYPES = ['cash-in', 'cash-out', 'pay-bill', 'pay-expense', 'adjustment'];
 const CASH_VOUCHER_CONTRA_ACCOUNT = 'Cash on Hand';
 
+function isEndingBalanceCashVoucherLine(line) {
+  const description = String(line?.description || '').trim().toLowerCase();
+  const source = String(line?.source || '').trim().toLowerCase();
+  return description.includes('ending balance') || source.includes('ending balance');
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const { loading: authLoading } = useRoleGuard('admin');
@@ -1279,8 +1285,8 @@ export default function AdminPage() {
         description: line.description || '',
         date: line.line_date || voucher.audit_date,
         source: line.source || '',
-        account_title: line.account_title || '',
-        entry_type: line.entry_type || 'debit',
+        account_title: isEndingBalanceCashVoucherLine(line) ? CASH_VOUCHER_CONTRA_ACCOUNT : (line.account_title || ''),
+        entry_type: isEndingBalanceCashVoucherLine(line) ? 'debit' : (line.entry_type || 'debit'),
         amount: String(Math.abs(Number(line.amount) || 0)),
         cash_drawer_transaction_id: line.cash_drawer_transaction_id || null,
       })));
@@ -1323,8 +1329,8 @@ export default function AdminPage() {
           ...line,
           line_order: index + 1,
           amountValue: Math.abs(Number(line.amount) || 0),
-          accountValue: String(line.account_title || '').trim(),
-          entryValue: line.entry_type === 'credit' ? 'credit' : 'debit',
+          accountValue: isEndingBalanceCashVoucherLine(line) ? CASH_VOUCHER_CONTRA_ACCOUNT : String(line.account_title || '').trim(),
+          entryValue: isEndingBalanceCashVoucherLine(line) ? 'debit' : (line.entry_type === 'credit' ? 'credit' : 'debit'),
         }))
         .filter((line) => line.amountValue > 0 && line.accountValue);
       if (!validLines.length) {
@@ -8287,7 +8293,7 @@ export default function AdminPage() {
                     <table style={{ ...styles.table, fontSize: 12 }}>
                       <thead>
                         <tr>
-                          {['Description', 'Date', 'Source', 'Account Title', 'Debit/Credit', 'Amount (₱)'].map((h) => (
+                          {['Description', 'Date', 'Source', 'Account Title', 'Debit/Credit', 'Amount (₱)', ''].map((h) => (
                             <th key={h} style={styles.th}>{h}</th>
                           ))}
                         </tr>
@@ -8312,23 +8318,47 @@ export default function AdminPage() {
                             </td>
                             <td style={{ ...styles.td, color: '#aaa' }}>{line.source || '—'}</td>
                             <td style={styles.td}>
+                              {(() => {
+                                const isEndingBalanceLine = isEndingBalanceCashVoucherLine(line);
+                                return (
                               <input
-                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 190 }}
+                                style={{
+                                  ...styles.input,
+                                  fontSize: 12,
+                                  padding: '4px 6px',
+                                  width: 190,
+                                  ...(isEndingBalanceLine ? { background: '#111', color: '#aaa' } : null),
+                                }}
                                 value={line.account_title}
                                 list="cash-voucher-accounts-list"
                                 placeholder="Select account title..."
+                                readOnly={isEndingBalanceLine}
                                 onChange={(e) => setCashVoucherItems((prev) => prev.map((entry, idx) => (idx === li ? { ...entry, account_title: e.target.value } : entry)))}
                               />
+                                );
+                              })()}
                             </td>
                             <td style={styles.td}>
+                              {(() => {
+                                const isEndingBalanceLine = isEndingBalanceCashVoucherLine(line);
+                                return (
                               <select
-                                style={{ ...styles.input, width: 120, fontSize: 12, padding: '4px 6px' }}
-                                value={line.entry_type || 'debit'}
+                                style={{
+                                  ...styles.input,
+                                  width: 120,
+                                  fontSize: 12,
+                                  padding: '4px 6px',
+                                  ...(isEndingBalanceLine ? { background: '#111', color: '#aaa' } : null),
+                                }}
+                                value={isEndingBalanceLine ? 'debit' : (line.entry_type || 'debit')}
+                                disabled={isEndingBalanceLine}
                                 onChange={(e) => setCashVoucherItems((prev) => prev.map((entry, idx) => (idx === li ? { ...entry, entry_type: e.target.value } : entry)))}
                               >
                                 <option value="debit">Debit</option>
                                 <option value="credit">Credit</option>
                               </select>
+                                );
+                              })()}
                             </td>
                             <td style={styles.td}>
                               <input
@@ -8340,11 +8370,21 @@ export default function AdminPage() {
                                 onChange={(e) => setCashVoucherItems((prev) => prev.map((entry, idx) => (idx === li ? { ...entry, amount: e.target.value } : entry)))}
                               />
                             </td>
+                            <td style={styles.td}>
+                              <button
+                                type="button"
+                                style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                                onClick={() => setCashVoucherItems((prev) => prev.filter((_, idx) => idx !== li))}
+                                title="Delete line item"
+                              >
+                                🗑
+                              </button>
+                            </td>
                           </tr>
                         ))}
                         {cashVoucherItems.length === 0 && (
                           <tr>
-                            <td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 20 }}>
+                            <td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 20 }}>
                               No cash transactions found for this cash audit date.
                             </td>
                           </tr>
