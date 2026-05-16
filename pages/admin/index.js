@@ -90,7 +90,7 @@ function parseAddonValues(rawValue) {
 const ITEM_VARIANT_PUNCTUATION_PATTERN = /[:,]/;
 const ITEM_VARIANT_KEYWORD_PATTERN = /(size|flavor|variety|spice\s*level|add[\s-]*ons?)/i;
 const DRINKS_DEPARTMENT_NAME = 'drinks';
-const DRINK_SIZE_SUBVARIANTS = ['12oz Hot', '16oz', '22oz'];
+const DRINK_SIZE_SUBVARIANTS = ['12oz Hot', '16oz Iced', '22oz Iced', '16oz', '22oz'];
 const DRINK_ADD_ON_SUBVARIANTS = [
   { option_name: 'Extra Shot', price_modifier: 15 },
   { option_name: 'Coffee Jelly', price_modifier: 15 },
