@@ -17,6 +17,7 @@ import {
   getDeliveryLocationById,
 } from '../../utils/deliveryLocations';
 import { parseSettingAsBoolean } from '../../utils/cashierSettings';
+import { getRegisteredSubvariantCount, getRegisteredSubvariantPreview } from '../../utils/variantPreview';
 
 const VAT_RATE = 0; // Currently disabled as per requirements
 
@@ -66,10 +67,6 @@ export default function CashierPOS() {
 
   const { items, addItem, replaceItem, removeItem, updateQuantity, clearCart, getTotalPrice } =
     useCartStore();
-
-  useEffect(() => {
-    if (!authLoading) fetchMenu();
-  }, [authLoading]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -274,6 +271,30 @@ export default function CashierPOS() {
       setMenuLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!authLoading) fetchMenu();
+  }, [authLoading, fetchMenu]);
+
+  useEffect(() => {
+    if (!supabase || authLoading) return undefined;
+
+    const channel = supabase
+      .channel('pos_menu_realtime_updates')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_items' },
+        () => { fetchMenu(); },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_item_variant_options' },
+        () => { fetchMenu(); },
+      )
+      .subscribe();
+
+    return () => { channel.unsubscribe(); };
+  }, [authLoading, fetchMenu]);
 
   const handleAddItem = (item) => {
     // Check if item is sold out
@@ -1051,32 +1072,76 @@ export default function CashierPOS() {
                   return categoryMatch && searchMatch;
                 })
                 .sort((a, b) => a.name.localeCompare(b.name))
-                .map((item) => (
-                <button
-                  key={item.id}
-                  style={{
-                    ...styles.menuCard,
-                    ...(item.is_sold_out ? styles.soldOutCard : {})
-                  }}
-                  onClick={() => handleAddItem(item)}
-                  disabled={item.is_sold_out}
-                >
-                  <span style={styles.menuItemName}>{item.name}</span>
-                  <span style={styles.menuItemCategory}>{item.category}</span>
-                  <span style={styles.menuItemPrice}>₱{Number(item.price || item.base_price || 0).toFixed(2)}</span>
-                  
-                  {/* Badge to indicate item has variants */}
-                  {item.has_variants && item.variant_types && item.variant_types.length > 0 && (
-                    <span style={styles.variantBadge}>
-                      ⚙️ {item.variant_types.length} variant{item.variant_types.length > 1 ? 's' : ''}
-                    </span>
-                  )}
-                  
-                  {item.is_sold_out && (
-                    <span style={styles.soldOutBadge}>SOLD OUT</span>
-                  )}
-                </button>
-              ))}
+                .map((item) => {
+                  const subvariantPreview = getRegisteredSubvariantPreview(item.variant_types, 3);
+                  const subvariantCount = getRegisteredSubvariantCount(item.variant_types);
+                  const hiddenSubvariantCount = Math.max(0, subvariantCount - subvariantPreview.length);
+                  return (
+                    <button
+                      key={item.id}
+                      style={{
+                        ...styles.menuCard,
+                        ...(item.is_sold_out ? styles.soldOutCard : {})
+                      }}
+                      onClick={() => handleAddItem(item)}
+                      disabled={item.is_sold_out}
+                    >
+                      <span style={styles.menuItemName}>{item.name}</span>
+                      {subvariantPreview.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                          {subvariantPreview.map((subvariant) => (
+                            <span
+                              key={subvariant}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '3px 8px',
+                                borderRadius: 999,
+                                background: 'rgba(255, 193, 7, 0.12)',
+                                border: '1px solid rgba(255, 193, 7, 0.35)',
+                                color: '#ffc107',
+                                fontSize: 11,
+                                fontWeight: 600,
+                              }}
+                            >
+                              {subvariant}
+                            </span>
+                          ))}
+                          {hiddenSubvariantCount > 0 && (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '3px 8px',
+                                borderRadius: 999,
+                                background: 'rgba(136, 136, 136, 0.12)',
+                                border: '1px solid rgba(136, 136, 136, 0.35)',
+                                color: '#aaa',
+                                fontSize: 11,
+                                fontWeight: 600,
+                              }}
+                            >
+                              +{hiddenSubvariantCount} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <span style={styles.menuItemCategory}>{item.category}</span>
+                      <span style={styles.menuItemPrice}>₱{Number(item.price || item.base_price || 0).toFixed(2)}</span>
+                      
+                      {/* Badge to indicate item has variants */}
+                      {item.has_variants && item.variant_types && item.variant_types.length > 0 && (
+                        <span style={styles.variantBadge}>
+                          ⚙️ {item.variant_types.length} variant{item.variant_types.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      
+                      {item.is_sold_out && (
+                        <span style={styles.soldOutBadge}>SOLD OUT</span>
+                      )}
+                    </button>
+                  );
+                })}
             </div>
           </section>
 
