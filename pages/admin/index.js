@@ -8135,11 +8135,16 @@ export default function AdminPage() {
                           // Each data row expands to a debit line + a credit line
                           // When account filter is active, only show lines where the account matches
                           const displayRows = rows.flatMap((row) => {
+                            const normalizeAccount = (value) => String(value || '')
+                              .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                              .trim();
+                            const drAccount = normalizeAccount(row.debit_account);
+                            const crAccount = normalizeAccount(row.credit_account);
                             const lines = [];
-                            const drMatch = !acctF || (row.debit_account || '').toLowerCase() === acctF;
-                            const crMatch = !acctF || (row.credit_account || '').toLowerCase() === acctF;
-                            if (drMatch) lines.push({ row, isDebit: true });
-                            if (crMatch) lines.push({ row, isDebit: false });
+                            const drMatch = Boolean(drAccount) && (!acctF || drAccount.toLowerCase() === acctF);
+                            const crMatch = Boolean(crAccount) && (!acctF || crAccount.toLowerCase() === acctF);
+                            if (drMatch) lines.push({ row, isDebit: true, accountTitle: drAccount });
+                            if (crMatch) lines.push({ row, isDebit: false, accountTitle: crAccount });
                             return lines;
                           });
                           if (displayRows.length === 0) return null;
@@ -8155,7 +8160,7 @@ export default function AdminPage() {
                           grandTotalCredit += groupCreditTotal;
                           return (
                             <React.Fragment key={key}>
-                              {displayRows.map(({ row, isDebit }, di) => (
+                              {displayRows.map(({ row, isDebit, accountTitle }, di) => (
                                 <tr key={`${row.id}-${isDebit ? 'dr' : 'cr'}`} style={di % 2 === 0 ? styles.trEven : styles.trOdd}>
                                   {/* Date: shown on every line */}
                                   <td style={styles.td}>{row.date}</td>
@@ -8167,8 +8172,8 @@ export default function AdminPage() {
                                   <td style={styles.td}>{row.description}</td>
                                   {/* Account Title: Dr. flush-left, Cr. indented */}
                                   {isDebit
-                                    ? <td style={{ ...styles.td, color: '#4caf50' }}>Dr. {row.debit_account}</td>
-                                    : <td style={{ ...styles.td, color: '#f44336', paddingLeft: 24 }}>Cr. {row.credit_account}</td>
+                                    ? <td style={{ ...styles.td, color: '#4caf50' }}>Dr. {accountTitle}</td>
+                                    : <td style={{ ...styles.td, color: '#f44336', paddingLeft: 24 }}>Cr. {accountTitle}</td>
                                   }
                                   {/* Debit (₱): amount only on debit line */}
                                   <td style={{ ...styles.td, color: '#4caf50', textAlign: 'right' }}>
