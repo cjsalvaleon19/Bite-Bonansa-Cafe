@@ -100,9 +100,13 @@ function ensureDailyArray(daily = [], cycleDays = []) {
   const today = toDateOnly(new Date());
   return cycleDays.map((d, idx) => {
     if (d.isSunday) return true;
-    if (d.date === today) return true;
     const raw = daily[idx];
-    if (raw === true || raw === false || raw === null) return raw;
+    if (raw === true || raw === false) return raw;
+    if (raw === null) {
+      if (d.date === today) return true;
+      return null;
+    }
+    if (d.date === today) return true;
     if (isFutureDate(d.date, today)) return null;
     return true;
   });
@@ -182,12 +186,42 @@ function normalizeSubmittedReport(report) {
   };
 }
 
+function normalizePayrollEmployeesForCycle(rawEmployees = [], cycleStart) {
+  const cycleDays = getPayrollCycleDays(cycleStart);
+  const employees = Array.isArray(rawEmployees) ? rawEmployees : [];
+  return employees
+    .map((employee) => {
+      const name = String(employee?.name || '').trim();
+      if (!name) return null;
+      return {
+        id: employee?.id || createId('emp'),
+        name,
+        monthlyPay: roundToCurrency(employee?.monthlyPay ?? 0),
+        daily: ensureDailyArray(employee?.daily || [], cycleDays),
+        deductions: Array.isArray(employee?.deductions)
+          ? employee.deductions.map((d) => ({
+              id: d?.id || createId('ded'),
+              date: toDateOnly(d?.date || new Date()),
+              type: d?.type || 'Cash Advance',
+              amount: roundToCurrency(d?.amount),
+              notes: d?.notes || '',
+              source: d?.source || 'manual',
+              processed: Boolean(d?.processed),
+              orderId: d?.orderId || null,
+            }))
+          : [],
+      };
+    })
+    .filter(Boolean);
+}
+
 export function buildDefaultPayrollData() {
   return {
     cycleStart: getDefaultCycleStart(),
     submitted: false,
     submittedAt: null,
     submittedReports: [],
+    cycleEmployees: {},
     employees: [],
   };
 }
@@ -195,8 +229,19 @@ export function buildDefaultPayrollData() {
 export function normalizePayrollData(rawData) {
   const base = rawData && typeof rawData === 'object' ? rawData : buildDefaultPayrollData();
   const cycleStart = toDateOnly(normalizeCycleStartDate(base.cycleStart || getDefaultCycleStart()));
-  const cycleDays = getPayrollCycleDays(cycleStart);
-  const employees = Array.isArray(base.employees) ? base.employees : [];
+  const normalizedCycleEmployees = {};
+  if (base.cycleEmployees && typeof base.cycleEmployees === 'object' && !Array.isArray(base.cycleEmployees)) {
+    Object.entries(base.cycleEmployees).forEach(([cycleKey, rawEmployees]) => {
+      const normalizedCycleStart = toDateOnly(normalizeCycleStartDate(cycleKey));
+      normalizedCycleEmployees[normalizedCycleStart] = normalizePayrollEmployeesForCycle(rawEmployees, normalizedCycleStart);
+    });
+  }
+  const fallbackEmployees = normalizePayrollEmployeesForCycle(base.employees, cycleStart);
+  const hasExistingCycleSnapshot = Object.prototype.hasOwnProperty.call(normalizedCycleEmployees, cycleStart);
+  const selectedEmployees = hasExistingCycleSnapshot
+    ? normalizedCycleEmployees[cycleStart]
+    : fallbackEmployees;
+  normalizedCycleEmployees[cycleStart] = selectedEmployees;
 
   return {
     cycleStart,
@@ -205,30 +250,8 @@ export function normalizePayrollData(rawData) {
     submittedReports: (Array.isArray(base.submittedReports) ? base.submittedReports : [])
       .map((report) => normalizeSubmittedReport(report))
       .filter(Boolean),
-    employees: employees
-      .map((employee) => {
-        const name = String(employee?.name || '').trim();
-        if (!name) return null;
-        return {
-          id: employee?.id || createId('emp'),
-          name,
-          monthlyPay: roundToCurrency(employee?.monthlyPay ?? 0),
-          daily: ensureDailyArray(employee?.daily || [], cycleDays),
-          deductions: Array.isArray(employee?.deductions)
-            ? employee.deductions.map((d) => ({
-                id: d?.id || createId('ded'),
-                date: toDateOnly(d?.date || new Date()),
-                type: d?.type || 'Cash Advance',
-                amount: roundToCurrency(d?.amount),
-                notes: d?.notes || '',
-                source: d?.source || 'manual',
-                processed: Boolean(d?.processed),
-                orderId: d?.orderId || null,
-              }))
-            : [],
-        };
-      })
-      .filter(Boolean),
+    cycleEmployees: normalizedCycleEmployees,
+    employees: selectedEmployees,
   };
 }
 

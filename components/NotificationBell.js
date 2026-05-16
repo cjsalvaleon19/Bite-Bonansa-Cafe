@@ -136,6 +136,7 @@ export default function NotificationBell({ user, onNotificationClick }) {
       new_menu_item: '🍕',
       new_online_order: '🛒',
       delivery_assignment: '🚚',
+      payroll_submission: '💼',
       default: '🔔'
     };
     return icons[type] || icons.default;

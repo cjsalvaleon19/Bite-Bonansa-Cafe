@@ -2412,6 +2412,39 @@ export default function AdminPage() {
     if (message) setPayrollMessage(message);
   }, []);
 
+  const buildDefaultPayrollDaily = useCallback((cycleDays) => cycleDays.map((day) => {
+    if (day.isSunday) return true;
+    if (day.isFuture) return null;
+    return true;
+  }), []);
+
+  const notifyCashiersOnPayrollSubmission = useCallback(async (payrollReport) => {
+    if (!supabase || !payrollReport?.id) return;
+    try {
+      const { data: cashiers, error: cashiersError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'cashier');
+      if (cashiersError) throw cashiersError;
+      if (!(cashiers || []).length) return;
+
+      const notifications = cashiers.map((cashier) => ({
+        user_id: cashier.id,
+        title: 'Payroll Attendance Submitted',
+        message: `Payroll attendance for ${payrollReport.periodLabel} is ready under Pay Bills > Payroll.`,
+        type: 'payroll_submission',
+        related_id: payrollReport.id,
+        related_type: 'payroll_attendance',
+      }));
+      const { error: insertError } = await supabase
+        .from('notifications')
+        .insert(notifications);
+      if (insertError) throw insertError;
+    } catch (err) {
+      console.error('[Admin] Failed to notify cashiers about payroll submission:', err?.message || err);
+    }
+  }, [supabase]);
+
   const syncCashAdvanceDeductions = useCallback(async () => {
     if (!supabase) return;
     const cashAdvanceDeductionType = 'Cash Advance';
@@ -2616,6 +2649,7 @@ export default function AdminPage() {
 
       const upsertResult = upsertPayrollSubmissionReport(payrollReport);
       if (!upsertResult.ok) throw new Error('Failed to save payroll submission report.');
+      await notifyCashiersOnPayrollSubmission(payrollReport);
       syncPayrollState(
         {
           ...payrollData,
@@ -2639,7 +2673,38 @@ export default function AdminPage() {
       return;
     }
     const nextCycleStart = getPayrollCycleStartForPeriod(monthValue, cycleType);
-    syncPayrollState({ ...payrollData, cycleStart: nextCycleStart }, 'Payroll period updated (auto-saved).');
+    const localData = normalizePayrollData(loadPayrollData());
+    const hasSnapshotForNextCycle = Object.prototype.hasOwnProperty.call(localData.cycleEmployees || {}, nextCycleStart);
+    const nextCycleDays = getPayrollCycleDays(nextCycleStart);
+    const seededEmployees = (payrollData.employees || [])
+      .map((employee) => {
+        const name = String(employee?.name || '').trim();
+        if (!name) return null;
+        return {
+          id: employee.id || createId('emp'),
+          name,
+          monthlyPay: roundToCurrency(employee.monthlyPay || 0),
+          daily: buildDefaultPayrollDaily(nextCycleDays),
+          deductions: [],
+        };
+      })
+      .filter(Boolean);
+    const nextEmployees = hasSnapshotForNextCycle
+      ? localData.cycleEmployees[nextCycleStart]
+      : seededEmployees;
+    const matchedSubmission = (payrollData.submittedReports || []).find((report) => report.cycleStart === nextCycleStart);
+    syncPayrollState(
+      {
+        ...payrollData,
+        cycleStart: nextCycleStart,
+        submitted: Boolean(matchedSubmission),
+        submittedAt: matchedSubmission?.submittedAt || null,
+        employees: nextEmployees,
+      },
+      hasSnapshotForNextCycle
+        ? 'Payroll period updated (loaded saved attendance).'
+        : 'Payroll period updated. Employee names and pay carried over; attendance reset for new period.',
+    );
     // Load the lock state for the new cycle
     try {
       if (typeof window !== 'undefined') {
@@ -2663,11 +2728,7 @@ export default function AdminPage() {
       id: createId('emp'),
       name,
       monthlyPay: 0,
-      daily: payrollCycleDays.map((day) => {
-        if (day.isSunday) return true;
-        if (day.isFuture) return null;
-        return true;
-      }),
+      daily: buildDefaultPayrollDaily(payrollCycleDays),
       deductions: [],
     };
     syncPayrollState(
