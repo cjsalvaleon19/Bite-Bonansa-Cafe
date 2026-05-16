@@ -100,9 +100,13 @@ function ensureDailyArray(daily = [], cycleDays = []) {
   const today = toDateOnly(new Date());
   return cycleDays.map((d, idx) => {
     if (d.isSunday) return true;
-    if (d.date === today) return true;
     const raw = daily[idx];
-    if (raw === true || raw === false || raw === null) return raw;
+    if (raw === true || raw === false) return raw;
+    if (raw === null) {
+      if (d.date === today) return true;
+      return null;
+    }
+    if (d.date === today) return true;
     if (isFutureDate(d.date, today)) return null;
     return true;
   });
