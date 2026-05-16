@@ -3244,7 +3244,7 @@ export default function AdminPage() {
           .map((option) => {
             const normalizedOptionName = normalizeVariantOptionName(option.option_name);
             const selectedOrder = selectedDrinkSizeOrderMap.get(normalizedOptionName);
-            if (!selectedDrinkSizeSet.has(normalizedOptionName) || selectedOrder === undefined) return null;
+            if (!selectedDrinkSizeSet.has(normalizedOptionName)) return null;
             return supabase
               .from('menu_item_variant_options')
               .update({
@@ -3345,8 +3345,9 @@ export default function AdminPage() {
 
         const addOnOptionUpdates = (existingAddOnOptions || [])
           .map((option) => {
-            const selectedAddOn = defaultDrinkAddOnMap.get(normalizeVariantOptionName(option.option_name));
-            if (!selectedAddOn || !selectedDrinkAddOnSet.has(normalizeVariantOptionName(option.option_name))) return null;
+            const normalizedOptionName = normalizeVariantOptionName(option.option_name);
+            const selectedAddOn = defaultDrinkAddOnMap.get(normalizedOptionName);
+            if (!selectedAddOn || !selectedDrinkAddOnSet.has(normalizedOptionName)) return null;
             return supabase
               .from('menu_item_variant_options')
               .update({
