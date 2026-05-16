@@ -90,6 +90,7 @@ function parseAddonValues(rawValue) {
 const ITEM_VARIANT_PUNCTUATION_PATTERN = /[:,]/;
 const ITEM_VARIANT_KEYWORD_PATTERN = /(size|flavor|variety|spice\s*level|add[\s-]*ons?)/i;
 const DRINKS_DEPARTMENT_NAME = 'drinks';
+// Keep both explicit ("Iced") and plain labels because existing items and flows still rely on both.
 const DRINK_SIZE_SUBVARIANTS = ['12oz Hot', '16oz Iced', '22oz Iced', '16oz', '22oz'];
 const DRINK_ADD_ON_SUBVARIANTS = [
   { option_name: 'Extra Shot', price_modifier: 15 },
