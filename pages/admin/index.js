@@ -3234,19 +3234,22 @@ export default function AdminPage() {
           if (insertSizeOptionsErr) throw insertSizeOptionsErr;
         }
 
-        const defaultDrinkSizeSet = new Set(DRINK_SIZE_SUBVARIANTS.map((sizeOption) => sizeOption.toLowerCase()));
-        const selectedDrinkSizeSet = new Set(drinkSizeSubvariants.map((sizeOption) => sizeOption.toLowerCase()));
+        const defaultDrinkSizeSet = new Set(DRINK_SIZE_SUBVARIANTS.map((sizeOption) => normalizeVariantOptionName(sizeOption)));
+        const selectedDrinkSizeOrderMap = new Map(
+          drinkSizeSubvariants.map((sizeOption, index) => [normalizeVariantOptionName(sizeOption), index + 1]),
+        );
+        const selectedDrinkSizeSet = new Set(selectedDrinkSizeOrderMap.keys());
         const sizeOptionUpdates = (existingSizeOptions || [])
-          .filter((option) => defaultDrinkSizeSet.has(String(option.option_name || '').trim().toLowerCase()))
+          .filter((option) => defaultDrinkSizeSet.has(normalizeVariantOptionName(option.option_name)))
           .map((option) => {
-            const normalizedOptionName = String(option.option_name || '').trim().toLowerCase();
-            const selectedIndex = drinkSizeSubvariants.findIndex((sizeOption) => sizeOption.toLowerCase() === normalizedOptionName);
-            if (!selectedDrinkSizeSet.has(normalizedOptionName)) return null;
+            const normalizedOptionName = normalizeVariantOptionName(option.option_name);
+            const selectedOrder = selectedDrinkSizeOrderMap.get(normalizedOptionName);
+            if (!selectedDrinkSizeSet.has(normalizedOptionName) || selectedOrder === undefined) return null;
             return supabase
               .from('menu_item_variant_options')
               .update({
                 available: true,
-                display_order: selectedIndex + 1,
+                display_order: selectedOrder,
               })
               .eq('id', option.id);
           })
