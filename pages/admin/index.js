@@ -2935,7 +2935,10 @@ export default function AdminPage() {
     const wastageAmt = Number(form.wastage_amount) || 0;
     const contingencyAmt = Number(form.contingency_amount) || 0;
     const totalEstimatedCOGS = baseCOGS + wastageAmt + contingencyAmt;
-    const sellingPrice = Number(form.menu_item_price ?? form.selling_price) || 0;
+    const resolvedSellingPrice = (form.menu_item_price === '' || form.menu_item_price === null || form.menu_item_price === undefined)
+      ? form.selling_price
+      : form.menu_item_price;
+    const sellingPrice = Number(resolvedSellingPrice) || 0;
     const cmAmt = sellingPrice - totalEstimatedCOGS;
     const cmPct = sellingPrice > 0 ? (cmAmt / sellingPrice) * 100 : 0;
     return { lineSubtotal, baseCOGS, totalEstimatedCOGS, sellingPrice, cmAmt, cmPct };
@@ -2980,6 +2983,16 @@ export default function AdminPage() {
 
     setSavingNetItem(true);
     try {
+      const { data: existingHeaderRows, error: existingHeaderErr } = await supabase
+        .from('price_costing_headers')
+        .select('id')
+        .ilike('menu_item_name', trimmedName)
+        .limit(1);
+      if (existingHeaderErr) throw existingHeaderErr;
+      if (existingHeaderRows && existingHeaderRows.length > 0) {
+        throw new Error('This menu item already exists in Price Costing.');
+      }
+
       const computed = calcCostingValues(netItemForm);
       const baseMenuPayload = {
         name: trimmedName,
