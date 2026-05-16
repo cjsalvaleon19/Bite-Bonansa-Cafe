@@ -71,7 +71,7 @@ export default function CustomerMenu() {
         Object.keys(nextVariantMetaMap).forEach((menuItemId) => {
           const variantTypes = nextVariantMetaMap[menuItemId].variantTypes;
           nextVariantMetaMap[menuItemId] = {
-            variantCount: getRegisteredSubvariantCount(variantTypes) > 0 ? variantTypes.length : 0,
+            variantCount: variantTypes.length,
             subvariantPreview: getRegisteredSubvariantPreview(variantTypes, 3),
             subvariantCount: getRegisteredSubvariantCount(variantTypes),
           };

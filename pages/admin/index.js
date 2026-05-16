@@ -3067,6 +3067,10 @@ export default function AdminPage() {
       return;
     }
     const selectedKitchenDepartment = kitchenDepartments.find((department) => department.id === netItemForm.kitchen_department_id);
+    if (!selectedKitchenDepartment) {
+      setError('Selected kitchen department could not be resolved.');
+      return;
+    }
     const isDrinksDepartment = String(selectedKitchenDepartment?.department_name || '').trim().toLowerCase() === DRINKS_DEPARTMENT_NAME;
     const drinkSizeSubvariants = isDrinksDepartment ? resolveDrinkSizeSubvariants(netItemForm.size_subvariants) : [];
     if (isDrinksDepartment && drinkSizeSubvariants.length === 0) {
@@ -4802,7 +4806,7 @@ export default function AdminPage() {
                               ))}
                             </div>
                             <span style={styles.helperText}>
-                              Click to enroll only the Drinks size subvariants that should appear in Menu and per-size COGS.
+                              Click to enroll only the Drinks size options that should appear in Menu and per-size COGS.
                             </span>
                           </div>
                         </>
