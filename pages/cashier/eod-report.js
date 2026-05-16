@@ -362,11 +362,11 @@ export default function EndOfDayReport() {
             
             <div style="text-align: center; margin-top: 20px;">
               <p>Thank you for your order, Biter!</p>
+              <p style="margin: 6px 0; font-size: 40px; font-weight: bold;">Slip#: ${getOrderSlipNumber(order)}</p>
               <div style="margin-top: 12px;">
                 <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
                 <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
                 <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
-                <p style="margin: 4px 0; font-size: 40px; font-weight: bold;">Slip#: ${getOrderSlipNumber(order)}</p>
               </div>
             </div>
           </div>
@@ -644,11 +644,11 @@ export default function EndOfDayReport() {
           
           <div style="text-align: center; margin-top: 20px;">
             <p>Thank you for your order, Biter!</p>
+            <p style="margin: 6px 0; font-size: 40px; font-weight: bold;">Slip#: ${getOrderSlipNumber(order)}</p>
             <div style="margin-top: 12px;">
               <img src="${qrImageUrl}" alt="Scan to order online" style="width: 90px; height: 90px;" />
               <p style="margin: 4px 0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">Scan to Order Online</p>
               <p style="margin: 2px 0; font-size: 11px; color: #333;">bitebonansacafe.com</p>
-              <p style="margin: 4px 0; font-size: 40px; font-weight: bold;">Slip#: ${getOrderSlipNumber(order)}</p>
             </div>
           </div>
         </body>
