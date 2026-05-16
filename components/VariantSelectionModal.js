@@ -5,6 +5,7 @@ const SILOG_VARIETY_TYPE = 'Variety';
 const SIOMAISILOG_OPTION = 'Siomaisilog';
 const SIOMAI_STYLE_TYPE = 'Siomai Style';
 const OMITTED_SIZE_OPTION_NAME = '12oz';
+const OMITTED_SIZE_OPTION_NAME_NORMALIZED = OMITTED_SIZE_OPTION_NAME.toLowerCase();
 
 const normalizeSelectedVariants = (variants) => {
   if (!variants || typeof variants !== 'object') return {};
@@ -24,7 +25,7 @@ const normalizeSelectedVariants = (variants) => {
 const shouldHideOptionForType = (typeName, optionName) => {
   const normalizedTypeName = String(typeName || '').trim().toLowerCase();
   const normalizedOptionName = String(optionName || '').trim().toLowerCase();
-  return normalizedTypeName === 'size' && normalizedOptionName === OMITTED_SIZE_OPTION_NAME.toLowerCase();
+  return normalizedTypeName === 'size' && normalizedOptionName === OMITTED_SIZE_OPTION_NAME_NORMALIZED;
 };
 
 const pruneHiddenOptionsFromSelection = (selection, variantTypes) => {
