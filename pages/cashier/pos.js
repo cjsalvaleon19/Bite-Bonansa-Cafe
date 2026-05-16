@@ -17,7 +17,6 @@ import {
   getDeliveryLocationById,
 } from '../../utils/deliveryLocations';
 import { parseSettingAsBoolean } from '../../utils/cashierSettings';
-import { getRegisteredSubvariantCount, getRegisteredSubvariantPreview } from '../../utils/variantPreview';
 
 const VAT_RATE = 0; // Currently disabled as per requirements
 
@@ -1073,9 +1072,6 @@ export default function CashierPOS() {
                 })
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map((item) => {
-                  const subvariantPreview = getRegisteredSubvariantPreview(item.variant_types, 3);
-                  const subvariantCount = getRegisteredSubvariantCount(item.variant_types);
-                  const hiddenSubvariantCount = Math.max(0, subvariantCount - subvariantPreview.length);
                   return (
                     <button
                       key={item.id}
@@ -1087,45 +1083,6 @@ export default function CashierPOS() {
                       disabled={item.is_sold_out}
                     >
                       <span style={styles.menuItemName}>{item.name}</span>
-                      {subvariantPreview.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
-                          {subvariantPreview.map((subvariant) => (
-                            <span
-                              key={subvariant}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                padding: '3px 8px',
-                                borderRadius: 999,
-                                background: 'rgba(255, 193, 7, 0.12)',
-                                border: '1px solid rgba(255, 193, 7, 0.35)',
-                                color: '#ffc107',
-                                fontSize: 11,
-                                fontWeight: 600,
-                              }}
-                            >
-                              {subvariant}
-                            </span>
-                          ))}
-                          {hiddenSubvariantCount > 0 && (
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                padding: '3px 8px',
-                                borderRadius: 999,
-                                background: 'rgba(136, 136, 136, 0.12)',
-                                border: '1px solid rgba(136, 136, 136, 0.35)',
-                                color: '#aaa',
-                                fontSize: 11,
-                                fontWeight: 600,
-                              }}
-                            >
-                              +{hiddenSubvariantCount} more
-                            </span>
-                          )}
-                        </div>
-                      )}
                       <span style={styles.menuItemCategory}>{item.category}</span>
                       <span style={styles.menuItemPrice}>₱{Number(item.price || item.base_price || 0).toFixed(2)}</span>
                       
