@@ -3241,18 +3241,33 @@ export default function AdminPage() {
           .map((option) => {
             const normalizedOptionName = String(option.option_name || '').trim().toLowerCase();
             const selectedIndex = drinkSizeSubvariants.findIndex((sizeOption) => sizeOption.toLowerCase() === normalizedOptionName);
+            if (!selectedDrinkSizeSet.has(normalizedOptionName)) return null;
             return supabase
               .from('menu_item_variant_options')
               .update({
-                available: selectedDrinkSizeSet.has(normalizedOptionName),
-                display_order: selectedIndex >= 0 ? selectedIndex + 1 : DRINK_SIZE_SUBVARIANTS.length + 1,
+                available: true,
+                display_order: selectedIndex + 1,
               })
               .eq('id', option.id);
-          });
+          })
+          .filter(Boolean);
         if (sizeOptionUpdates.length > 0) {
           const updateResults = await Promise.all(sizeOptionUpdates);
           const failedUpdate = updateResults.find(({ error: updateErr }) => updateErr);
           if (failedUpdate?.error) throw failedUpdate.error;
+        }
+        const sizeOptionIdsToDelete = (existingSizeOptions || [])
+          .filter((option) => {
+            const normalizedOptionName = String(option.option_name || '').trim().toLowerCase();
+            return defaultDrinkSizeSet.has(normalizedOptionName) && !selectedDrinkSizeSet.has(normalizedOptionName);
+          })
+          .map((option) => option.id);
+        if (sizeOptionIdsToDelete.length > 0) {
+          const { error: deleteSizeOptionsErr } = await supabase
+            .from('menu_item_variant_options')
+            .delete()
+            .in('id', sizeOptionIdsToDelete);
+          if (deleteSizeOptionsErr) throw deleteSizeOptionsErr;
         }
 
         const { data: existingAddOnVariantRows, error: existingAddOnVariantErr } = await supabase
@@ -3296,14 +3311,13 @@ export default function AdminPage() {
           .eq('variant_type_id', addOnVariantTypeId);
         if (existingAddOnOptionsErr) throw existingAddOnOptionsErr;
 
-        const selectedDrinkAddOnSet = new Set(drinkAddOnSubvariants);
+        const selectedDrinkAddOnSet = new Set(drinkAddOnSubvariants.map((optionName) => normalizeVariantOptionName(optionName)));
         const defaultDrinkAddOnMap = new Map(
           DRINK_ADD_ON_SUBVARIANTS.map((addOnOption, addOnIndex) => ([
             normalizeVariantOptionName(addOnOption.option_name),
             {
               ...addOnOption,
               display_order: addOnIndex + 1,
-              available: selectedDrinkAddOnSet.has(addOnOption.option_name),
             },
           ])),
         );
@@ -3311,12 +3325,12 @@ export default function AdminPage() {
           (existingAddOnOptions || []).map((option) => [normalizeVariantOptionName(option.option_name), option]),
         );
         const missingAddOnOptions = Array.from(defaultDrinkAddOnMap.entries())
-          .filter(([normalizedName]) => !existingAddOnOptionMap.has(normalizedName))
+          .filter(([normalizedName]) => selectedDrinkAddOnSet.has(normalizedName) && !existingAddOnOptionMap.has(normalizedName))
           .map(([, addOnOption]) => ({
             variant_type_id: addOnVariantTypeId,
             option_name: addOnOption.option_name,
             price_modifier: addOnOption.price_modifier,
-            available: addOnOption.available,
+            available: true,
             display_order: addOnOption.display_order,
           }));
         if (missingAddOnOptions.length > 0) {
@@ -3329,12 +3343,12 @@ export default function AdminPage() {
         const addOnOptionUpdates = (existingAddOnOptions || [])
           .map((option) => {
             const selectedAddOn = defaultDrinkAddOnMap.get(normalizeVariantOptionName(option.option_name));
-            if (!selectedAddOn) return null;
+            if (!selectedAddOn || !selectedDrinkAddOnSet.has(normalizeVariantOptionName(option.option_name))) return null;
             return supabase
               .from('menu_item_variant_options')
               .update({
                 price_modifier: selectedAddOn.price_modifier,
-                available: selectedAddOn.available,
+                available: true,
                 display_order: selectedAddOn.display_order,
               })
               .eq('id', option.id);
@@ -3344,6 +3358,26 @@ export default function AdminPage() {
           const updateResults = await Promise.all(addOnOptionUpdates);
           const failedUpdate = updateResults.find(({ error: updateErr }) => updateErr);
           if (failedUpdate?.error) throw failedUpdate.error;
+        }
+        const addOnOptionIdsToDelete = (existingAddOnOptions || [])
+          .filter((option) => {
+            const normalizedOptionName = normalizeVariantOptionName(option.option_name);
+            return defaultDrinkAddOnMap.has(normalizedOptionName) && !selectedDrinkAddOnSet.has(normalizedOptionName);
+          })
+          .map((option) => option.id);
+        if (addOnOptionIdsToDelete.length > 0) {
+          const { error: deleteAddOnOptionsErr } = await supabase
+            .from('menu_item_variant_options')
+            .delete()
+            .in('id', addOnOptionIdsToDelete);
+          if (deleteAddOnOptionsErr) throw deleteAddOnOptionsErr;
+        }
+        if (selectedDrinkAddOnSet.size === 0) {
+          const { error: deleteAddOnVariantErr } = await supabase
+            .from('menu_item_variant_types')
+            .delete()
+            .eq('id', addOnVariantTypeId);
+          if (deleteAddOnVariantErr) throw deleteAddOnVariantErr;
         }
       }
 
