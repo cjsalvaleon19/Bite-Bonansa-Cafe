@@ -31,6 +31,7 @@ import {
   upsertPayrollSubmissionReport,
   createId,
 } from '../../utils/payrollStorage';
+import { KITCHEN_DEPARTMENT_ORDER, MENU_CATEGORIES } from '../../utils/menuConstants';
 
 function shiftDateByMonthsClamped(inputDate, deltaMonths) {
   const date = new Date(inputDate);
@@ -88,6 +89,28 @@ function parseAddonValues(rawValue) {
 
 const ITEM_VARIANT_PUNCTUATION_PATTERN = /[:,]/;
 const ITEM_VARIANT_KEYWORD_PATTERN = /(size|flavor|variety|spice\s*level|add[\s-]*ons?)/i;
+
+const createEmptyNetItemLine = () => ({
+  id: null,
+  inventory_item_id: '',
+  uom: '',
+  qty: '0',
+  cost_per_unit: '0',
+});
+
+const createEmptyNetItemForm = () => ({
+  menu_item_name: '',
+  menu_category: '',
+  kitchen_department_id: '',
+  selling_price: '0',
+  labor_cost: '0',
+  overhead_cost: '0',
+  wastage_pct: '0',
+  wastage_amount: '0',
+  contingency_pct: '0',
+  contingency_amount: '0',
+  lines: [createEmptyNetItemLine()],
+});
 
 function extractTrailingParenthetical(text) {
   const trimmed = String(text || '').trim();
@@ -179,10 +202,14 @@ export default function AdminPage() {
   const [costingCmStatusFilter, setCostingCmStatusFilter] = useState('');
   const [invItems, setInvItems] = useState([]);
   const [menuItemsList, setMenuItemsList] = useState([]);
+  const [kitchenDepartments, setKitchenDepartments] = useState([]);
   const [costingDialogOpen, setCostingDialogOpen] = useState(false);
   const [costingEditItem, setCostingEditItem] = useState(null);
   const [menuSearchOpen, setMenuSearchOpen] = useState(false);
   const [menuSearchQuery, setMenuSearchQuery] = useState('');
+  const [netItemDialogOpen, setNetItemDialogOpen] = useState(false);
+  const [savingNetItem, setSavingNetItem] = useState(false);
+  const [netItemForm, setNetItemForm] = useState(createEmptyNetItemForm);
   const [costingForm, setCostingForm] = useState({
     id: null,
     menu_item_name: '',
@@ -256,6 +283,8 @@ export default function AdminPage() {
   // ── Costing Inventory Item Picker state ───────────────────────────────────
   const [costingInvPickerIdx, setCostingInvPickerIdx] = useState(null); // line index or null
   const [costingInvPickerQuery, setCostingInvPickerQuery] = useState('');
+  const [netItemInvPickerIdx, setNetItemInvPickerIdx] = useState(null); // line index or null
+  const [netItemInvPickerQuery, setNetItemInvPickerQuery] = useState('');
 
   // ── Journal Entries state ─────────────────────────────────────────────────
   const [journalSubTab, setJournalSubTab] = useState('all');
@@ -1477,13 +1506,14 @@ export default function AdminPage() {
     if (!supabase) return;
     setLoading(true);
     try {
-      const [{ data: headers, error: e1 }, { data: inv, error: e2 }, { data: menus }] = await Promise.all([
+      const [{ data: headers, error: e1 }, { data: inv, error: e2 }, { data: menus }, { data: departments, error: e3 }] = await Promise.all([
         supabase
           .from('price_costing_headers')
           .select('*, lines:price_costing_items(id, inventory_item_id, uom, qty, cost, inventory_item:admin_inventory_items(id,name,code,uom,cost_per_unit))')
           .order('menu_item_name'),
         supabase.from('admin_inventory_items').select('*').order('name'),
         supabase.from('menu_items').select('id, name, category, price, base_price, has_variants, menu_item_variant_types(id, variant_type_name, is_required, options:menu_item_variant_options(id, option_name, price_modifier, available))').eq('available', true).order('name'),
+        supabase.from('kitchen_departments').select('id, department_name').in('department_name', KITCHEN_DEPARTMENT_ORDER),
       ]);
       if (e1) {
         if (e1.message && e1.message.includes('price_costing_headers')) {
@@ -1494,9 +1524,15 @@ export default function AdminPage() {
         throw e1;
       }
       if (e2) throw e2;
+      if (e3) throw e3;
       setCostingHeaders(headers || []);
       setInvItems(inv || []);
       setMenuItemsList(menus || []);
+      const rank = new Map(KITCHEN_DEPARTMENT_ORDER.map((name, idx) => [name, idx]));
+      const orderedDepartments = [...(departments || [])].sort(
+        (a, b) => (rank.get(a.department_name) ?? 999) - (rank.get(b.department_name) ?? 999),
+      );
+      setKitchenDepartments(orderedDepartments);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -2250,6 +2286,7 @@ export default function AdminPage() {
     if (activeTab === 'dashboard') fetchDashboard();
     else if (activeTab === 'inventory') fetchInventory();
     else if (activeTab === 'costing') fetchCosting();
+    else if (activeTab === 'net_item') fetchCosting();
     else if (activeTab === 'rr') fetchRR();
     else if (activeTab === 'financial') fetchFinancial();
     else if (activeTab === 'profile') fetchProfile();
@@ -2771,6 +2808,7 @@ export default function AdminPage() {
       {
         type: 'group', key: 'inventory', label: '📦 Inventory',
         children: [
+          { key: 'net_item', label: '🧮 Net Item' },
           { key: 'costing', label: '💰 Price Costing' },
           { key: 'rr', label: '📋 Receiving Report' },
           { key: 'inventory', label: '📊 Inventory Report' },
@@ -2907,11 +2945,150 @@ export default function AdminPage() {
     const wastageAmt = Number(form.wastage_amount) || 0;
     const contingencyAmt = Number(form.contingency_amount) || 0;
     const totalEstimatedCOGS = baseCOGS + wastageAmt + contingencyAmt;
-    // Selling price is locked to the menu item price
-    const sellingPrice = Number(form.menu_item_price) || 0;
+    const resolvedSellingPrice = (form.menu_item_price === '' || form.menu_item_price === null || form.menu_item_price === undefined)
+      ? form.selling_price
+      : form.menu_item_price;
+    const sellingPrice = Number(resolvedSellingPrice) || 0;
     const cmAmt = sellingPrice - totalEstimatedCOGS;
     const cmPct = sellingPrice > 0 ? (cmAmt / sellingPrice) * 100 : 0;
     return { lineSubtotal, baseCOGS, totalEstimatedCOGS, sellingPrice, cmAmt, cmPct };
+  };
+
+  const openNetItemDialog = () => {
+    setNetItemForm(createEmptyNetItemForm());
+    setNetItemDialogOpen(true);
+  };
+
+  const saveNetItem = async () => {
+    if (!supabase || savingNetItem) return;
+    const trimmedName = (netItemForm.menu_item_name || '').trim();
+    if (!trimmedName) {
+      setError('Item Menu Name is required.');
+      return;
+    }
+    const sellingPrice = Number(netItemForm.selling_price);
+    if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+      setError('Selling Price must be a valid non-negative number.');
+      return;
+    }
+    if (!netItemForm.kitchen_department_id) {
+      setError('Kitchen Department is required for order slip printing.');
+      return;
+    }
+    const normalizedName = trimmedName.toLowerCase();
+    if (costingHeaders.some((h) => (h.menu_item_name || '').trim().toLowerCase() === normalizedName)) {
+      setError('This menu item already exists in Price Costing.');
+      return;
+    }
+    if (!netItemForm.lines.length) {
+      setError('Add at least one inventory item line.');
+      return;
+    }
+
+    const invalidLine = netItemForm.lines.find((line) => {
+      const qty = Number(line.qty);
+      const cost = Number(line.cost_per_unit);
+      return !line.inventory_item_id || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(cost) || cost < 0;
+    });
+    if (invalidLine) {
+      setError('Each line must have an inventory item, quantity greater than zero, and valid non-negative cost.');
+      return;
+    }
+
+    setSavingNetItem(true);
+    try {
+      const { data: existingHeaderRows, error: existingHeaderErr } = await supabase
+        .from('price_costing_headers')
+        .select('id')
+        .ilike('menu_item_name', trimmedName)
+        .limit(1);
+      if (existingHeaderErr) throw existingHeaderErr;
+      if (existingHeaderRows && existingHeaderRows.length > 0) {
+        throw new Error('This menu item already exists in Price Costing.');
+      }
+
+      const computed = calcCostingValues(netItemForm);
+      const baseMenuPayload = {
+        name: trimmedName,
+        category: (netItemForm.menu_category || '').trim() || null,
+        price: computed.sellingPrice,
+        available: true,
+        kitchen_department_id: netItemForm.kitchen_department_id,
+      };
+
+      const { data: existingMenuRows, error: existingMenuErr } = await supabase
+        .from('menu_items')
+        .select('id, name')
+        .ilike('name', trimmedName)
+        .limit(1);
+      if (existingMenuErr) throw existingMenuErr;
+
+      if (existingMenuRows && existingMenuRows.length > 0) {
+        const { error: menuUpdateErr } = await supabase
+          .from('menu_items')
+          .update(baseMenuPayload)
+          .eq('id', existingMenuRows[0].id);
+        if (menuUpdateErr) throw menuUpdateErr;
+      } else {
+        const { error: menuInsertErr } = await supabase
+          .from('menu_items')
+          .insert({ ...baseMenuPayload, has_variants: false });
+        if (menuInsertErr) throw menuInsertErr;
+      }
+
+      const headerPayload = {
+        menu_item_name: trimmedName,
+        menu_category: baseMenuPayload.category,
+        labor_cost: Number(netItemForm.labor_cost) || 0,
+        overhead_cost: Number(netItemForm.overhead_cost) || 0,
+        wastage_pct: Number(netItemForm.wastage_pct) || 0,
+        wastage_amount: Number(netItemForm.wastage_amount) || 0,
+        contingency_pct: Number(netItemForm.contingency_pct) || 0,
+        contingency_amount: Number(netItemForm.contingency_amount) || 0,
+        contribution_margin_pct: computed.cmPct,
+        contribution_margin_amount: computed.cmAmt,
+        total_estimated_cogs: computed.totalEstimatedCOGS,
+        selling_price: computed.sellingPrice,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: insertedHeader, error: headerErr } = await supabase
+        .from('price_costing_headers')
+        .insert(headerPayload)
+        .select('id')
+        .single();
+      if (headerErr) throw headerErr;
+
+      const lineRows = netItemForm.lines.map((line) => ({
+        costing_header_id: insertedHeader.id,
+        menu_item_name: trimmedName,
+        inventory_item_id: line.inventory_item_id || null,
+        uom: line.uom || '',
+        qty: Number(line.qty) || 0,
+        cost: Number(line.cost_per_unit) || 0,
+        total_cogs: computed.totalEstimatedCOGS,
+        labor_cost: 0,
+        overhead_cost: 0,
+        wastage_pct: 0,
+        contingency_pct: 0,
+        contribution_margin_pct: 0,
+        selling_price: computed.sellingPrice,
+      }));
+      if (lineRows.length > 0) {
+        const { error: lineErr } = await supabase.from('price_costing_items').insert(lineRows);
+        if (lineErr) throw lineErr;
+      }
+
+      setNetItemDialogOpen(false);
+      setNetItemForm(createEmptyNetItemForm());
+      fetchCosting();
+      setActiveTab('costing');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingNetItem(false);
+    }
   };
 
   const openCostingDialog = (item = null) => {
@@ -4302,6 +4479,344 @@ export default function AdminPage() {
               </Dialog.Content>
             </Dialog.Portal>
           </Dialog.Root>
+
+          {/* ──────────────── NET ITEM ──────────────── */}
+          {activeTab === 'net_item' && (
+            <div>
+              <div style={styles.tabHeader}>
+                <h1 style={styles.pageTitle}>Net Item</h1>
+                <button onClick={openNetItemDialog} style={styles.primaryBtn}>+ New Net Item</button>
+              </div>
+              <p style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+                Save a Net Item to automatically enroll it in Menu (cashier/customer) and Price Costing.
+              </p>
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      {['Menu Item', 'Category', 'Selling Price (₱)', 'Total Est. COGS (₱)', 'CM Ratio'].map((h) => (
+                        <th key={h} style={styles.th}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {costingHeaders.slice(0, 10).map((item, idx) => {
+                      const sp = Number(item.selling_price) || 0;
+                      const tec = Number(item.total_estimated_cogs) || 0;
+                      const cmRatio = sp > 0 ? ((sp - tec) / sp) * 100 : 0;
+                      return (
+                        <tr key={item.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                          <td style={styles.td}>{item.menu_item_name}</td>
+                          <td style={styles.td}>{item.menu_category || '—'}</td>
+                          <td style={styles.td}>{fmt(sp)}</td>
+                          <td style={styles.td}>{fmt(tec)}</td>
+                          <td style={{ ...styles.td, color: cmRatio >= 0 ? '#4caf50' : '#f44336', fontWeight: 600 }}>{cmRatio.toFixed(2)}%</td>
+                        </tr>
+                      );
+                    })}
+                    {costingHeaders.length === 0 && (
+                      <tr><td colSpan={5} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 32 }}>No Price Costing items yet.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <Dialog.Root open={netItemDialogOpen} onOpenChange={setNetItemDialogOpen}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content
+                    style={{ ...styles.dialogContent, maxWidth: '75vw', width: '75vw', maxHeight: '90vh', overflowY: 'auto' }}
+                    aria-describedby={undefined}
+                  >
+                    <Dialog.Title style={styles.dialogTitle}>New Net Item</Dialog.Title>
+                    <div style={styles.formGrid}>
+                      <label style={styles.label}>Item Menu Name</label>
+                      <input
+                        style={styles.input}
+                        value={netItemForm.menu_item_name}
+                        onChange={(e) => setNetItemForm((p) => ({ ...p, menu_item_name: e.target.value }))}
+                        placeholder="e.g. Chicken Alfredo"
+                      />
+
+                      <label style={styles.label}>Menu Category</label>
+                      <select
+                        style={styles.input}
+                        value={netItemForm.menu_category}
+                        onChange={(e) => setNetItemForm((p) => ({ ...p, menu_category: e.target.value }))}
+                      >
+                        <option value="">Select menu category</option>
+                        {MENU_CATEGORIES.map((category) => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </select>
+
+                      <label style={styles.label}>Kitchen Department</label>
+                      <select
+                        style={styles.input}
+                        value={netItemForm.kitchen_department_id}
+                        onChange={(e) => setNetItemForm((p) => ({ ...p, kitchen_department_id: e.target.value }))}
+                      >
+                        <option value="">Select kitchen department</option>
+                        {kitchenDepartments.map((department) => (
+                          <option key={department.id} value={department.id}>{department.department_name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ marginTop: 16, marginBottom: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ color: '#ffc107', fontWeight: 600, fontSize: 13 }}>Inventory Items</span>
+                        <button
+                          type="button"
+                          style={styles.primaryBtn}
+                          onClick={() => setNetItemForm((p) => ({ ...p, lines: [...p.lines, createEmptyNetItemLine()] }))}
+                        >+ Add Line</button>
+                      </div>
+                      <div style={styles.tableWrap}>
+                        <table style={{ ...styles.table, fontSize: 12 }}>
+                          <thead>
+                            <tr>
+                              {['Inventory Item', 'UoM', 'Qty', 'Cost/Unit (₱)', 'Line Total (₱)', ''].map((h) => (
+                                <th key={h} style={styles.th}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {netItemForm.lines.map((line, li) => {
+                              const lineTotal = (Number(line.qty) || 0) * (Number(line.cost_per_unit) || 0);
+                              const selectedInventory = invItems.find((i) => i.id === line.inventory_item_id);
+                              return (
+                                <tr key={li}>
+                                  <td style={styles.td}>
+                                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                      <span style={{ flex: 1, fontSize: 11, color: selectedInventory ? '#fff' : '#666' }}>
+                                        {selectedInventory ? `${selectedInventory.name} (${selectedInventory.code})` : '— Select —'}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        title="Search inventory item"
+                                        style={{ background: '#333', border: '1px solid #555', borderRadius: 4, color: '#ffc107', cursor: 'pointer', padding: '2px 7px', fontSize: 13 }}
+                                        onClick={() => { setNetItemInvPickerIdx(li); setNetItemInvPickerQuery(''); }}
+                                      >🔍</button>
+                                    </div>
+                                  </td>
+                                  <td style={styles.td}>
+                                    <input
+                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 70 }}
+                                      value={line.uom}
+                                      onChange={(e) => setNetItemForm((p) => {
+                                        const lines = [...p.lines];
+                                        lines[li] = { ...lines[li], uom: e.target.value };
+                                        return { ...p, lines };
+                                      })}
+                                    />
+                                  </td>
+                                  <td style={styles.td}>
+                                    <input
+                                      type="number"
+                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 80 }}
+                                      value={line.qty}
+                                      onChange={(e) => setNetItemForm((p) => {
+                                        const lines = [...p.lines];
+                                        lines[li] = { ...lines[li], qty: e.target.value };
+                                        return { ...p, lines };
+                                      })}
+                                    />
+                                  </td>
+                                  <td style={styles.td}>
+                                    <input
+                                      type="number"
+                                      style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 100 }}
+                                      value={line.cost_per_unit}
+                                      onChange={(e) => setNetItemForm((p) => {
+                                        const lines = [...p.lines];
+                                        lines[li] = { ...lines[li], cost_per_unit: e.target.value };
+                                        return { ...p, lines };
+                                      })}
+                                    />
+                                  </td>
+                                  <td style={{ ...styles.td, color: '#4caf50' }}>{fmt(lineTotal)}</td>
+                                  <td style={styles.td}>
+                                    <button
+                                      type="button"
+                                      style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                                      onClick={() => setNetItemForm((p) => ({ ...p, lines: p.lines.filter((_, i) => i !== li) }))}
+                                    >✕</button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {netItemForm.lines.length === 0 && (
+                              <tr><td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#555', padding: 16, fontSize: 12 }}>No inventory lines. Click "+ Add Line".</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const { lineSubtotal, baseCOGS, totalEstimatedCOGS, sellingPrice, cmAmt, cmPct } = calcCostingValues(netItemForm);
+                      return (
+                        <div style={styles.formGrid}>
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>Total Raw Materials (₱)</label>
+                          <input style={{ ...styles.input, background: '#111', color: '#4caf50', fontWeight: 700 }} readOnly value={fmt(lineSubtotal)} />
+
+                          <label style={styles.label}>Labor Cost (₱)</label>
+                          <input style={styles.input} type="number" value={netItemForm.labor_cost} onChange={(e) => setNetItemForm((p) => ({ ...p, labor_cost: e.target.value }))} />
+
+                          <label style={styles.label}>Overhead Cost (₱)</label>
+                          <input style={styles.input} type="number" value={netItemForm.overhead_cost} onChange={(e) => setNetItemForm((p) => ({ ...p, overhead_cost: e.target.value }))} />
+
+                          <label style={styles.label}>Wastage</label>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 90 }}
+                                value={netItemForm.wastage_pct}
+                                onChange={(e) => {
+                                  const pct = Number(e.target.value) || 0;
+                                  const amount = (pct / 100) * baseCOGS;
+                                  setNetItemForm((p) => ({ ...p, wastage_pct: e.target.value, wastage_amount: amount.toFixed(4) }));
+                                }}
+                              />
+                              <span style={{ color: '#888', fontSize: 12 }}>%</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ color: '#888', fontSize: 12 }}>₱</span>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 110 }}
+                                value={netItemForm.wastage_amount}
+                                onChange={(e) => {
+                                  const amount = Number(e.target.value) || 0;
+                                  const pct = baseCOGS > 0 ? (amount / baseCOGS) * 100 : 0;
+                                  setNetItemForm((p) => ({ ...p, wastage_amount: e.target.value, wastage_pct: pct.toFixed(4) }));
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          <label style={styles.label}>Contingency</label>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 90 }}
+                                value={netItemForm.contingency_pct}
+                                onChange={(e) => {
+                                  const pct = Number(e.target.value) || 0;
+                                  const amount = (pct / 100) * baseCOGS;
+                                  setNetItemForm((p) => ({ ...p, contingency_pct: e.target.value, contingency_amount: amount.toFixed(4) }));
+                                }}
+                              />
+                              <span style={{ color: '#888', fontSize: 12 }}>%</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ color: '#888', fontSize: 12 }}>₱</span>
+                              <input
+                                type="number"
+                                style={{ ...styles.input, width: 110 }}
+                                value={netItemForm.contingency_amount}
+                                onChange={(e) => {
+                                  const amount = Number(e.target.value) || 0;
+                                  const pct = baseCOGS > 0 ? (amount / baseCOGS) * 100 : 0;
+                                  setNetItemForm((p) => ({ ...p, contingency_amount: e.target.value, contingency_pct: pct.toFixed(4) }));
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Total Estimated COGS (₱)</label>
+                          <input style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }} readOnly value={fmt(totalEstimatedCOGS)} />
+
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>Contribution Margin Amount (₱)</label>
+                          <input style={{ ...styles.input, background: '#111', color: cmAmt >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }} readOnly value={fmt(cmAmt)} />
+
+                          <label style={{ ...styles.label, color: '#4caf50', fontWeight: 700 }}>CM Ratio</label>
+                          <input style={{ ...styles.input, background: '#111', color: cmAmt >= 0 ? '#4caf50' : '#f44336', fontWeight: 700 }} readOnly value={`${cmPct.toFixed(2)}%`} />
+
+                          <label style={{ ...styles.label, color: '#ffc107', fontWeight: 700 }}>Selling Price (₱)</label>
+                          <input
+                            id="netItemSellingPrice"
+                            style={styles.input}
+                            type="number"
+                            value={netItemForm.selling_price}
+                            onChange={(e) => setNetItemForm((p) => ({ ...p, selling_price: e.target.value }))}
+                            aria-describedby="netItemSellingPriceHelp"
+                          />
+                          <span id="netItemSellingPriceHelp" style={styles.helperText}>Selling Price drives Contribution Margin and CM Ratio.</span>
+                        </div>
+                      );
+                    })()}
+
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Cancel</button></Dialog.Close>
+                      <button onClick={saveNetItem} style={styles.primaryBtn} disabled={savingNetItem}>{savingNetItem ? 'Saving…' : 'Save'}</button>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+
+              <Dialog.Root open={netItemInvPickerIdx !== null} onOpenChange={(open) => { if (!open) setNetItemInvPickerIdx(null); }}>
+                <Dialog.Portal>
+                  <Dialog.Overlay style={styles.dialogOverlay} />
+                  <Dialog.Content style={{ ...styles.dialogContent, maxWidth: 480 }} aria-describedby={undefined}>
+                    <Dialog.Title style={styles.dialogTitle}>Select Inventory Item</Dialog.Title>
+                    <div style={{ marginBottom: 12 }}>
+                      <input
+                        style={styles.input}
+                        placeholder="Search by name or code…"
+                        value={netItemInvPickerQuery}
+                        onChange={(e) => setNetItemInvPickerQuery(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 12 }}>
+                      {[...invItems]
+                        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                        .filter((i) => {
+                          const q = netItemInvPickerQuery.toLowerCase();
+                          return !q || (i.name || '').toLowerCase().includes(q) || (i.code || '').toLowerCase().includes(q);
+                        })
+                        .map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              if (netItemInvPickerIdx !== null) {
+                                setNetItemForm((p) => {
+                                  const lines = [...p.lines];
+                                  lines[netItemInvPickerIdx] = {
+                                    ...lines[netItemInvPickerIdx],
+                                    inventory_item_id: item.id,
+                                    uom: item.uom || lines[netItemInvPickerIdx].uom,
+                                    cost_per_unit: String(item.cost_per_unit ?? lines[netItemInvPickerIdx].cost_per_unit ?? 0),
+                                  };
+                                  return { ...p, lines };
+                                });
+                              }
+                              setNetItemInvPickerIdx(null);
+                            }}
+                            style={{
+                              padding: '8px 10px',
+                              borderBottom: '1px solid #333',
+                              cursor: 'pointer',
+                              color: '#ddd',
+                            }}
+                          >
+                            <div style={{ fontSize: 13 }}>{item.name}</div>
+                            <div style={{ fontSize: 11, color: '#888' }}>{item.code || '—'} · {item.uom || '—'} · {fmt(item.cost_per_unit || 0)}</div>
+                          </div>
+                        ))}
+                    </div>
+                    <div style={styles.dialogFooter}>
+                      <Dialog.Close asChild><button style={styles.cancelBtn}>Close</button></Dialog.Close>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+            </div>
+          )}
 
           {/* ──────────────── PRICE COSTING ──────────────── */}
           {activeTab === 'costing' && (
