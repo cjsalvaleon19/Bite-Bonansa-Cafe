@@ -111,7 +111,7 @@ const GCASH_OWNER = {
 
 /**
  * Sizes that are not available for Hot variety drinks.
- * Includes both legacy plain labels and explicit "Iced" labels for compatibility.
+ * Includes legacy plain labels ("16oz", "22oz") and explicit "Iced" labels for compatibility.
  */
 const HOT_VARIETY_EXCLUDED_SIZES = new Set(['16oz', '22oz', '16oz Iced', '22oz Iced'])
 
