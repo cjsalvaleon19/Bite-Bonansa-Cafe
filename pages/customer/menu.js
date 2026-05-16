@@ -175,12 +175,12 @@ export default function CustomerMenu() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'menu_items' },
-        () => { void fetchMenuItems(); },
+        () => { fetchMenuItems(); },
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'menu_item_variant_options' },
-        () => { void fetchMenuItems(); },
+        () => { fetchMenuItems(); },
       )
       .subscribe();
 

@@ -80,12 +80,12 @@ export default function CashierPOS() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'menu_items' },
-        () => { void fetchMenu(); },
+        () => { fetchMenu(); },
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'menu_item_variant_options' },
-        () => { void fetchMenu(); },
+        () => { fetchMenu(); },
       )
       .subscribe();
 
