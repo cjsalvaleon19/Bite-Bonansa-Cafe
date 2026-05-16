@@ -4,7 +4,7 @@ const SILOG_MEALS_NAME = 'Silog Meals';
 const SILOG_VARIETY_TYPE = 'Variety';
 const SIOMAISILOG_OPTION = 'Siomaisilog';
 const SIOMAI_STYLE_TYPE = 'Siomai Style';
-const OMITTED_SIZE_OPTION = '12oz';
+const OMITTED_SIZE_OPTION_NAME = '12oz';
 
 const normalizeSelectedVariants = (variants) => {
   if (!variants || typeof variants !== 'object') return {};
@@ -24,7 +24,7 @@ const normalizeSelectedVariants = (variants) => {
 const shouldHideOptionForType = (typeName, optionName) => {
   const normalizedTypeName = String(typeName || '').trim().toLowerCase();
   const normalizedOptionName = String(optionName || '').trim().toLowerCase();
-  return normalizedTypeName === 'size' && normalizedOptionName === OMITTED_SIZE_OPTION;
+  return normalizedTypeName === 'size' && normalizedOptionName === OMITTED_SIZE_OPTION_NAME.toLowerCase();
 };
 
 const pruneHiddenOptionsFromSelection = (selection, variantTypes) => {
@@ -74,7 +74,7 @@ export default function VariantSelectionModal({
     const normalizedSelection = normalizeSelectedVariants(initialSelectedVariants);
     setSelectedVariants(pruneHiddenOptionsFromSelection(normalizedSelection, item?.variant_types));
     setQuantity(Math.max(1, Number(initialQuantity) || 1));
-  }, [item?.id, item?.variant_types, initialSelectedVariants, initialQuantity]);
+  }, [item?.id, initialSelectedVariants, initialQuantity]);
 
   // Handle variant selection
   const handleVariantSelect = (typeId, optionId, optionName, priceModifier, allowMultiple) => {
