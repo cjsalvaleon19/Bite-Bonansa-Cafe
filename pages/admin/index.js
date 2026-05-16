@@ -193,6 +193,14 @@ function getBaseMenuItemName(rawName, menuItemName = '') {
 const ORDER_REVENUE_ACCOUNTS = new Set(['Revenue', 'Sales Revenue']);
 const ORDER_COGS_ACCOUNT = 'Cost of Goods Sold';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CASH_VOUCHER_TRANSACTION_TYPES = ['cash-in', 'cash-out', 'pay-bill', 'pay-expense', 'adjustment'];
+const CASH_VOUCHER_CONTRA_ACCOUNT = 'Cash on Hand';
+
+function isEndingBalanceCashVoucherLine(line) {
+  const description = String(line?.description || '').trim().toLowerCase();
+  const source = String(line?.source || '').trim().toLowerCase();
+  return description.includes('ending balance') || source.includes('ending balance');
+}
 
 export default function AdminPage() {
   const router = useRouter();
@@ -517,6 +525,21 @@ export default function AdminPage() {
   const [billNewContactForm, setBillNewContactForm] = useState({ name: '', address: '', contact: '', tin: '' });
   const [billNewContactSaving, setBillNewContactSaving] = useState(false);
   const [billNewContactError, setBillNewContactError] = useState('');
+  // Cash Voucher
+  const [cashVoucherList, setCashVoucherList] = useState([]);
+  const [cashVoucherItems, setCashVoucherItems] = useState([]);
+  const [cashVoucherSearch, setCashVoucherSearch] = useState('');
+  const [cashVoucherLoading, setCashVoucherLoading] = useState(false);
+  const [cashVoucherEditItem, setCashVoucherEditItem] = useState(null);
+  const [cashVoucherError, setCashVoucherError] = useState('');
+  const [cashVoucherSuccess, setCashVoucherSuccess] = useState('');
+  const [cashVoucherAccounts, setCashVoucherAccounts] = useState([]);
+  const cashVoucherAccountOptions = useMemo(() => (
+    Array.from(new Set([
+      ...journalKnownAccounts,
+      ...(cashVoucherAccounts || []).map((account) => String(account.account_name || '').trim()).filter(Boolean),
+    ])).sort((a, b) => a.localeCompare(b))
+  ), [journalKnownAccounts, cashVoucherAccounts]);
 
   // ── Payroll / Attendance Sheet state ───────────────────────────────────────
   const [payrollData, setPayrollData] = useState(() => normalizePayrollData(buildDefaultPayrollData()));
@@ -1106,6 +1129,288 @@ export default function AdminPage() {
       setBillNumber('');
     }
   }, []);
+
+  const mapCashDrawerTypeToVoucherSource = useCallback((transactionType) => {
+    if (transactionType === 'cash-in') return 'Cash in';
+    if (transactionType === 'adjustment') return 'Adjustment';
+    return 'Cash out';
+  }, []);
+
+  const buildCashVoucherJournalDescription = useCallback((cvNumber, line) => (
+    `Cash Voucher ${cvNumber}${line.source ? ` - ${line.source}` : ''}${line.description ? `: ${line.description}` : ''}`
+  ), []);
+
+  const fetchCashVoucherAccounts = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const { data, error: accountsErr } = await supabase
+        .from('chart_of_accounts')
+        .select('account_name')
+        .eq('is_active', true)
+        .order('account_name');
+      if (accountsErr) throw accountsErr;
+      setCashVoucherAccounts(data || []);
+    } catch {
+      setCashVoucherAccounts([]);
+    }
+  }, [supabase]);
+
+  const nextCashVoucherNumber = useCallback(async () => {
+    if (!supabase) return '';
+    try {
+      const { data, error } = await supabase.rpc('generate_cash_voucher_number');
+      if (!error && data) return data;
+      const yy = new Date().getFullYear().toString().slice(-2);
+      const prefix = `CV# ${yy}`;
+      const { data: rows, error: rowsErr } = await supabase
+        .from('cash_vouchers')
+        .select('cv_number')
+        .like('cv_number', `${prefix}%`)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (rowsErr) throw rowsErr;
+      const maxSeq = (rows || []).reduce((maxValue, row) => {
+        const cvNumber = String(row?.cv_number || '');
+        if (!cvNumber.startsWith(prefix)) return maxValue;
+        const parsed = Number(cvNumber.slice(prefix.length));
+        if (!Number.isFinite(parsed)) return maxValue;
+        return parsed > maxValue ? parsed : maxValue;
+      }, 0);
+      return `${prefix}${String(maxSeq + 1).padStart(6, '0')}`;
+    } catch {
+      return '';
+    }
+  }, [supabase]);
+
+  const ensureDailyCashVouchers = useCallback(async () => {
+    if (!supabase) return;
+    const { data: submittedAudits, error: auditsErr } = await supabase
+      .from('cash_audits')
+      .select('audit_date')
+      .eq('is_submitted', true)
+      .order('audit_date', { ascending: false });
+    if (auditsErr) throw auditsErr;
+    if (!(submittedAudits || []).length) return;
+
+    const { data: existingVouchers, error: existingErr } = await supabase
+      .from('cash_vouchers')
+      .select('audit_date');
+    if (existingErr) throw existingErr;
+    const existingDates = new Set((existingVouchers || []).map((voucher) => voucher.audit_date));
+    const missingDates = Array.from(new Set((submittedAudits || []).map((audit) => audit.audit_date)))
+      .filter((auditDate) => !existingDates.has(auditDate))
+      .sort();
+
+    for (const auditDate of missingDates) {
+      const cvNumber = await nextCashVoucherNumber();
+      if (!cvNumber) continue;
+
+      const dateMatch = String(auditDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!dateMatch) continue;
+      const year = Number(dateMatch[1]);
+      const month = Number(dateMatch[2]);
+      const day = Number(dateMatch[3]);
+      const startDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+      const endDate = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+
+      const { data: dayTransactions, error: txErr } = await supabase
+        .from('cash_drawer_transactions')
+        .select('id, transaction_type, amount, description, purpose, category, created_at')
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+        .in('transaction_type', CASH_VOUCHER_TRANSACTION_TYPES)
+        .order('created_at', { ascending: true });
+      if (txErr) throw txErr;
+
+      const totalAmount = (dayTransactions || []).reduce((sum, transaction) => (
+        sum + Math.abs(Number(transaction.amount) || 0)
+      ), 0);
+
+      const { data: insertedVoucher, error: voucherInsErr } = await supabase
+        .from('cash_vouchers')
+        .insert({
+          cv_number: cvNumber,
+          audit_date: auditDate,
+          status: 'draft',
+          total_amount: totalAmount,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single();
+      if (voucherInsErr) throw voucherInsErr;
+
+      if ((dayTransactions || []).length > 0) {
+        const lines = dayTransactions.map((transaction, index) => {
+          const source = mapCashDrawerTypeToVoucherSource(transaction.transaction_type);
+          const amountValue = Number(transaction.amount) || 0;
+          const entryType = source === 'Adjustment'
+            ? (amountValue >= 0 ? 'debit' : 'credit')
+            : (source === 'Cash in' ? 'debit' : 'credit');
+          return {
+            cash_voucher_id: insertedVoucher.id,
+            cash_drawer_transaction_id: transaction.id,
+            line_order: index + 1,
+            line_date: transaction.created_at ? toDateOnly(transaction.created_at) : auditDate,
+            source,
+            description: transaction.description || transaction.purpose || source,
+            account_title: transaction.category || null,
+            entry_type: entryType,
+            amount: Math.abs(amountValue),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+        });
+        const { error: lineInsErr } = await supabase.from('cash_voucher_items').insert(lines);
+        if (lineInsErr) throw lineInsErr;
+      }
+    }
+  }, [supabase, mapCashDrawerTypeToVoucherSource, nextCashVoucherNumber]);
+
+  const editCashVoucher = useCallback(async (voucher) => {
+    if (!supabase || !voucher?.id) return;
+    setCashVoucherEditItem(voucher);
+    setCashVoucherError('');
+    setCashVoucherSuccess('');
+    try {
+      const { data: lines, error: linesErr } = await supabase
+        .from('cash_voucher_items')
+        .select('*')
+        .eq('cash_voucher_id', voucher.id)
+        .order('line_order', { ascending: true })
+        .order('created_at', { ascending: true });
+      if (linesErr) throw linesErr;
+      setCashVoucherItems((lines || []).map((line) => {
+        const endingBalanceLine = isEndingBalanceCashVoucherLine(line);
+        return {
+          id: line.id,
+          description: line.description || '',
+          date: line.line_date || voucher.audit_date,
+          source: line.source || '',
+          account_title: endingBalanceLine ? CASH_VOUCHER_CONTRA_ACCOUNT : (line.account_title || ''),
+          entry_type: endingBalanceLine ? 'debit' : (line.entry_type || 'debit'),
+          amount: String(Math.abs(Number(line.amount) || 0)),
+          cash_drawer_transaction_id: line.cash_drawer_transaction_id || null,
+        };
+      }));
+    } catch (err) {
+      setCashVoucherError(err.message);
+      setCashVoucherItems([]);
+    }
+  }, [supabase]);
+
+  const fetchCashVouchers = useCallback(async () => {
+    if (!supabase) return;
+    setCashVoucherLoading(true);
+    setCashVoucherError('');
+    try {
+      await Promise.all([
+        fetchCashVoucherAccounts(),
+        ensureDailyCashVouchers(),
+      ]);
+      const { data, error: vouchersErr } = await supabase
+        .from('cash_vouchers')
+        .select('*')
+        .order('audit_date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (vouchersErr) throw vouchersErr;
+      setCashVoucherList(data || []);
+    } catch (err) {
+      setCashVoucherError(err.message);
+    } finally {
+      setCashVoucherLoading(false);
+    }
+  }, [supabase, ensureDailyCashVouchers, fetchCashVoucherAccounts]);
+
+  const saveCashVoucher = useCallback(async () => {
+    if (!supabase || !cashVoucherEditItem) return;
+    setCashVoucherError('');
+    setCashVoucherSuccess('');
+    try {
+      const validLines = (cashVoucherItems || [])
+        .map((line, index) => ({
+          ...line,
+          line_order: index + 1,
+          amountValue: Math.abs(Number(line.amount) || 0),
+          accountValue: isEndingBalanceCashVoucherLine(line) ? CASH_VOUCHER_CONTRA_ACCOUNT : String(line.account_title || '').trim(),
+          entryValue: isEndingBalanceCashVoucherLine(line) ? 'debit' : (line.entry_type === 'credit' ? 'credit' : 'debit'),
+        }))
+        .filter((line) => line.amountValue > 0 && line.accountValue);
+      if (!validLines.length) {
+        throw new Error('Set account title and amount for at least one line item before saving.');
+      }
+
+      const totalAmount = validLines.reduce((sum, line) => sum + line.amountValue, 0);
+      const nowIso = new Date().toISOString();
+
+      const { error: voucherUpdErr } = await supabase
+        .from('cash_vouchers')
+        .update({
+          status: 'saved',
+          total_amount: totalAmount,
+          saved_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('id', cashVoucherEditItem.id);
+      if (voucherUpdErr) throw voucherUpdErr;
+
+      const { error: itemDeleteErr } = await supabase
+        .from('cash_voucher_items')
+        .delete()
+        .eq('cash_voucher_id', cashVoucherEditItem.id);
+      if (itemDeleteErr) throw itemDeleteErr;
+
+      const itemRows = validLines.map((line) => ({
+        cash_voucher_id: cashVoucherEditItem.id,
+        cash_drawer_transaction_id: line.cash_drawer_transaction_id || null,
+        line_order: line.line_order,
+        line_date: line.date || cashVoucherEditItem.audit_date,
+        source: line.source || '',
+        description: line.description || null,
+        account_title: line.accountValue,
+        entry_type: line.entryValue,
+        amount: line.amountValue,
+        created_at: nowIso,
+        updated_at: nowIso,
+      }));
+      const { error: itemInsErr } = await supabase
+        .from('cash_voucher_items')
+        .insert(itemRows);
+      if (itemInsErr) throw itemInsErr;
+
+      const { error: existingJeDeleteErr } = await supabase
+        .from('journal_entries')
+        .delete()
+        .eq('reference_type', 'cash_voucher')
+        .eq('reference', cashVoucherEditItem.cv_number);
+      if (existingJeDeleteErr) throw existingJeDeleteErr;
+
+      const jeRows = validLines.map((line) => {
+        const debitAccount = line.entryValue === 'debit' ? line.accountValue : CASH_VOUCHER_CONTRA_ACCOUNT;
+        const creditAccount = line.entryValue === 'credit' ? line.accountValue : CASH_VOUCHER_CONTRA_ACCOUNT;
+        return {
+          date: line.date || cashVoucherEditItem.audit_date,
+          description: buildCashVoucherJournalDescription(cashVoucherEditItem.cv_number, line),
+          debit_account: debitAccount,
+          credit_account: creditAccount,
+          amount: line.amountValue,
+          reference_id: cashVoucherEditItem.id,
+          reference_type: 'cash_voucher',
+          reference: cashVoucherEditItem.cv_number,
+          entry_number: cashVoucherEditItem.cv_number,
+          name: 'Cash Voucher',
+        };
+      });
+      const { error: jeInsErr } = await supabase.from('journal_entries').insert(jeRows);
+      if (jeInsErr) throw jeInsErr;
+
+      setCashVoucherSuccess(`Cash Voucher ${cashVoucherEditItem.cv_number} saved successfully.`);
+      await fetchCashVouchers();
+      await editCashVoucher({ ...cashVoucherEditItem, status: 'saved', total_amount: totalAmount });
+    } catch (err) {
+      setCashVoucherError(err.message);
+    }
+  }, [supabase, cashVoucherEditItem, cashVoucherItems, fetchCashVouchers, editCashVoucher, buildCashVoucherJournalDescription]);
 
   const getCreditAccountForPaymentMode = useCallback((paymentMode) => (
     paymentMode === 'cash_in_bank' ? 'Cash in Bank'
@@ -2197,7 +2502,7 @@ export default function AdminPage() {
       } else if (journalSubTab === 'purchases') {
         q = q.in('reference_type', ['receiving_report', 'rr_payment', 'bill']);
       } else if (journalSubTab === 'others') {
-        q = q.in('reference_type', ['cash_adjustment', 'manual_entry']);
+        q = q.in('reference_type', ['cash_adjustment', 'manual_entry', 'cash_voucher']);
       }
 
       // Apply sub-filter
@@ -2216,6 +2521,7 @@ export default function AdminPage() {
       } else if (journalSubTab === 'others' && journalSubFilter !== 'all') {
         if (journalSubFilter === 'adjustments') q = q.eq('reference_type', 'cash_adjustment');
         else if (journalSubFilter === 'manual_entry') q = q.eq('reference_type', 'manual_entry');
+        else if (journalSubFilter === 'cash_voucher') q = q.eq('reference_type', 'cash_voucher');
       }
 
       // Account name filter is applied client-side per-line in the display layer
@@ -2350,7 +2656,8 @@ export default function AdminPage() {
     else if (activeTab === 'manual') { generateManualEntryNumber(); }
     else if (activeTab === 'bills') { fetchBills(); generateBillNumber(); }
     else if (activeTab === 'bills_payment') { fetchBillsPaymentReferences(); generateBillsPaymentNumber(); }
-  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber, fetchBills, generateBillNumber, fetchBillsPaymentReferences, generateBillsPaymentNumber]);
+    else if (activeTab === 'cash_voucher') { fetchCashVouchers(); }
+  }, [activeTab, fetchDashboard, fetchInventory, fetchCosting, fetchRR, fetchFinancial, fetchProfile, fetchJournal, generateManualEntryNumber, fetchBills, generateBillNumber, fetchBillsPaymentReferences, generateBillsPaymentNumber, fetchCashVouchers]);
 
   useEffect(() => {
     if (activeTab === 'dashboard' && dashSubTab === 'stock-alerts') fetchLowStockItems();
@@ -2919,6 +3226,7 @@ export default function AdminPage() {
         children: [
           { key: 'bills', label: '🧾 Bills' },
           { key: 'bills_payment', label: '💸 Bills Payment' },
+          { key: 'cash_voucher', label: '📄 Cash Voucher' },
           { key: 'manual', label: '✏️ Manual Entry' },
         ],
       },
@@ -7676,6 +7984,7 @@ export default function AdminPage() {
                   { key: 'all', label: 'All Adjusting Entries' },
                   { key: 'adjustments', label: 'Adjustments' },
                   { key: 'manual_entry', label: 'Manual Entry' },
+                  { key: 'cash_voucher', label: 'Cash Voucher' },
                 ].map((sf) => (
                   <button key={sf.key} onClick={() => setJournalSubFilter(sf.key)}
                     style={{ padding: '5px 14px', borderRadius: 14, cursor: 'pointer', fontFamily: 'Poppins, sans-serif', fontSize: 12,
@@ -7887,6 +8196,223 @@ export default function AdminPage() {
                   </div>
                 );
               })()}
+            </div>
+          )}
+
+          {/* ──────────────── CASH VOUCHER ──────────────── */}
+          {activeTab === 'cash_voucher' && (
+            <div>
+              <div style={styles.tabHeader}>
+                <h1 style={styles.pageTitle}>Cash Voucher</h1>
+                <button
+                  type="button"
+                  style={styles.actionBtn}
+                  onClick={fetchCashVouchers}
+                  disabled={cashVoucherLoading}
+                >
+                  {cashVoucherLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
+              </div>
+
+              {cashVoucherError && <p style={{ color: '#f44336', marginBottom: 12 }}>{cashVoucherError}</p>}
+              {cashVoucherSuccess && <p style={{ color: '#4caf50', marginBottom: 12 }}>{cashVoucherSuccess}</p>}
+
+              <div style={{ ...styles.card, marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+                  <label style={{ color: '#ccc', fontSize: 13 }}>Search:</label>
+                  <input
+                    type="text"
+                    placeholder="Filter by CV number, date, status…"
+                    style={{ ...styles.input, width: 320 }}
+                    value={cashVoucherSearch}
+                    onChange={(e) => setCashVoucherSearch(e.target.value)}
+                  />
+                </div>
+                <div style={styles.tableWrap}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        {['CV Number', 'Date', 'Total (₱)', 'Status', 'Actions'].map((h) => (
+                          <th key={h} style={styles.th}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(cashVoucherList || []).filter((voucher) => {
+                        if (!cashVoucherSearch) return true;
+                        const q = cashVoucherSearch.toLowerCase();
+                        return (
+                          String(voucher.cv_number || '').toLowerCase().includes(q)
+                          || String(voucher.audit_date || '').toLowerCase().includes(q)
+                          || String(voucher.status || '').toLowerCase().includes(q)
+                        );
+                      }).map((voucher, idx) => (
+                        <tr key={voucher.id} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
+                          <td style={{ ...styles.td, color: '#ffc107', fontWeight: 700 }}>{voucher.cv_number}</td>
+                          <td style={styles.td}>{voucher.audit_date}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', color: '#4caf50' }}>{fmt(voucher.total_amount || 0)}</td>
+                          <td style={styles.td}>
+                            <span
+                              style={{
+                                ...styles.badge,
+                                background: voucher.status === 'saved' ? '#1a3a1a' : '#2a2a00',
+                                color: voucher.status === 'saved' ? '#4caf50' : '#ffc107',
+                                border: `1px solid ${voucher.status === 'saved' ? '#4caf50' : '#ffc107'}`,
+                              }}
+                            >
+                              {voucher.status || 'draft'}
+                            </span>
+                          </td>
+                          <td style={styles.td}>
+                            <button type="button" style={styles.actionBtn} onClick={() => editCashVoucher(voucher)}>
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {(cashVoucherList || []).length === 0 && (
+                        <tr>
+                          <td colSpan={5} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 24 }}>
+                            No cash vouchers yet. Submit a cashier cash audit first, then refresh.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {cashVoucherEditItem && (
+                <div style={styles.card}>
+                  <h3 style={styles.cardTitle}>Cash Voucher Details</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 120px 1fr', gap: 10, marginBottom: 14 }}>
+                    <label style={styles.label}>CV Number</label>
+                    <input style={{ ...styles.input, background: '#111', color: '#ffc107', fontWeight: 700 }} readOnly value={cashVoucherEditItem.cv_number || ''} />
+                    <label style={styles.label}>Date</label>
+                    <input style={{ ...styles.input, background: '#111', color: '#fff' }} readOnly value={cashVoucherEditItem.audit_date || ''} />
+                  </div>
+
+                  <div style={styles.tableWrap}>
+                    <table style={{ ...styles.table, fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          {['Description', 'Date', 'Source', 'Account Title', 'Debit/Credit', 'Amount (₱)', ''].map((h) => (
+                            <th key={h} style={styles.th}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(cashVoucherItems || []).map((line, li) => (
+                          <tr key={line.id || li}>
+                            <td style={styles.td}>
+                              <input
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 240 }}
+                                value={line.description}
+                                onChange={(e) => setCashVoucherItems((prev) => prev.map((entry, idx) => (idx === li ? { ...entry, description: e.target.value } : entry)))}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input
+                                type="date"
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 150 }}
+                                value={line.date || cashVoucherEditItem.audit_date}
+                                onChange={(e) => setCashVoucherItems((prev) => prev.map((entry, idx) => (idx === li ? { ...entry, date: e.target.value } : entry)))}
+                              />
+                            </td>
+                            <td style={{ ...styles.td, color: '#aaa' }}>{line.source || '—'}</td>
+                            <td style={styles.td}>
+                              {(() => {
+                                const isEndingBalanceLine = isEndingBalanceCashVoucherLine(line);
+                                return (
+                              <input
+                                style={{
+                                  ...styles.input,
+                                  fontSize: 12,
+                                  padding: '4px 6px',
+                                  width: 190,
+                                  ...(isEndingBalanceLine ? { background: '#111', color: '#aaa' } : {}),
+                                }}
+                                value={line.account_title}
+                                list="cash-voucher-accounts-list"
+                                placeholder="Select account title..."
+                                readOnly={isEndingBalanceLine}
+                                onChange={(e) => setCashVoucherItems((prev) => prev.map((entry, idx) => (idx === li ? { ...entry, account_title: e.target.value } : entry)))}
+                              />
+                                );
+                              })()}
+                            </td>
+                            <td style={styles.td}>
+                              {(() => {
+                                const isEndingBalanceLine = isEndingBalanceCashVoucherLine(line);
+                                return (
+                              <select
+                                style={{
+                                  ...styles.input,
+                                  width: 120,
+                                  fontSize: 12,
+                                  padding: '4px 6px',
+                                  ...(isEndingBalanceLine ? { background: '#111', color: '#aaa' } : {}),
+                                }}
+                                value={isEndingBalanceLine ? 'debit' : (line.entry_type || 'debit')}
+                                disabled={isEndingBalanceLine}
+                                onChange={(e) => setCashVoucherItems((prev) => prev.map((entry, idx) => (idx === li ? { ...entry, entry_type: e.target.value } : entry)))}
+                              >
+                                <option value="debit">Debit</option>
+                                <option value="credit">Credit</option>
+                              </select>
+                                );
+                              })()}
+                            </td>
+                            <td style={styles.td}>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                style={{ ...styles.input, fontSize: 12, padding: '4px 6px', width: 120 }}
+                                value={line.amount}
+                                onChange={(e) => setCashVoucherItems((prev) => prev.map((entry, idx) => (idx === li ? { ...entry, amount: e.target.value } : entry)))}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <button
+                                type="button"
+                                style={{ ...styles.actionBtn, color: '#f44336', borderColor: '#f44336', padding: '2px 8px' }}
+                                onClick={() => setCashVoucherItems((prev) => prev.filter((_, idx) => idx !== li))}
+                                title="Delete line item"
+                              >
+                                🗑
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {cashVoucherItems.length === 0 && (
+                          <tr>
+                            <td colSpan={7} style={{ ...styles.td, textAlign: 'center', color: '#666', padding: 20 }}>
+                              No cash transactions found for this cash audit date.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <datalist id="cash-voucher-accounts-list">
+                    {cashVoucherAccountOptions.map((account) => (
+                      <option key={account} value={account} />
+                    ))}
+                  </datalist>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+                    <button
+                      type="button"
+                      style={styles.primaryBtn}
+                      onClick={saveCashVoucher}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
