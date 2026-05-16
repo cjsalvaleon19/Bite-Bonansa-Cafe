@@ -267,7 +267,6 @@ export default function CustomerMenu() {
                 return (
                   <div key={item.id} style={styles.itemCard}>
                     <h4 style={styles.itemName}>{item.name}</h4>
-
                     <p style={styles.itemCategory}>{item.category}</p>
                     <p style={styles.itemPrice}>₱{item.price?.toFixed(2) ?? '0.00'}</p>
                     {variantCount > 0 && (
